@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"fx_functions",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"fx_functions",
+  "parent":{
+    "name":"ui",
+    "path":"folders/Scripts/ui.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

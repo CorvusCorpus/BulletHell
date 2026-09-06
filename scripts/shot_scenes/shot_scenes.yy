@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"shot_scenes",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"shot_scenes",
+  "parent":{
+    "name":"dev",
+    "path":"folders/Scripts/dev.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

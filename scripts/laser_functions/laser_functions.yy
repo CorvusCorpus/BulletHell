@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"laser_functions",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"laser_functions",
+  "parent":{
+    "name":"engine",
+    "path":"folders/Scripts/engine.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

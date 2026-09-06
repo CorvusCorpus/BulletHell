@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"selftest",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"selftest",
+  "parent":{
+    "name":"dev",
+    "path":"folders/Scripts/dev.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

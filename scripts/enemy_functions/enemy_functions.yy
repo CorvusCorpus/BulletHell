@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"enemy_functions",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"enemy_functions",
+  "parent":{
+    "name":"engine",
+    "path":"folders/Scripts/engine.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

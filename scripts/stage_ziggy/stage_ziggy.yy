@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"stage_ziggy",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"stage_ziggy",
+  "parent":{
+    "name":"content",
+    "path":"folders/Scripts/content.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}
