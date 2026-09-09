@@ -18,7 +18,11 @@ function shot_scene_list() {
     return ["title", "practice", "stage", "focus", "bomb", "hit", "midboss",
             "declare", "spell", "boss", "laser", "rays", "clear", "pause",
             "result", "practice_ready", "practice_result", "bullets",
-            "motion"];
+            "motion", "drafts", "draft_attacks", "draft_spell",
+            "hex_draw", "hex_seal", "hex_scatter", "hex_gaps",
+            "hex_burst",
+            "grove", "grove_turn", "grove_blood", "grove_boss",
+            "grove_spell"];
 }
 
 function shot_scene_known(_name) {
@@ -32,9 +36,11 @@ function shot_scene_known(_name) {
 /// @desc Which room a scene has to be posed in.
 function shot_scene_room(_name) {
     switch (_name) {
-        case "title":    return room_title;
-        case "practice": return room_practice;
-        case "bullets":  return room_shot;  // a chart, not a game state
+        case "title":
+        case "drafts":      return room_title;
+        case "practice":
+        case "draft_attacks":  return room_practice;
+        case "bullets":     return room_shot;  // a chart, not a game state
     }
     return room_game;
 }
@@ -58,6 +64,66 @@ function shot_scene_prepare(_name) {
             // Ziggy's first spell, which is the one with a name worth reading
             // across a panel and the background that goes with it.
             global.practice = practice_new(_stage, 1, 1);
+            break;
+
+        case "drafts":
+            // The rack with the cursor on the drafting table, which is the
+            // last card and therefore the one nothing else photographs. The
+            // card has a branch of its own in the rack's Draw -- see
+            // `stage_drafts` -- and a branch nothing looks at is a branch that
+            // has never been checked.
+            global.stage_pick = array_length(rack_list()) - 1;
+            break;
+
+        case "draft_attacks":
+            global.stage_def = draft_stage_def();
+            // Land on a named draft, so the picture has the spell bead, the
+            // lit band and a name in it rather than the top of the list.
+            global.practice = practice_new(draft_stage_def(), 0, 2);
+            break;
+
+        case "draft_spell":
+            global.stage_def = draft_stage_def();
+            // `Falling Sky` -- the one draft whose whole idea is the shape of
+            // a trajectory, which is precisely the thing no assertion can see.
+            global.practice = practice_new(draft_stage_def(), 0, 1);
+            break;
+
+        case "grove":
+        case "grove_turn":
+        case "grove_blood":
+        case "grove_boss":
+        case "grove_spell":
+            // **The Hollow Grove gets five pictures, and four of them are
+            // about the background rather than about the fight.** That is
+            // unusual here and it is the whole reason the stage exists: a
+            // corridor is a thing in motion and a wood in it is a thing that
+            // changes, and neither claim can be made by one frame. Night,
+            // totality, the wave arriving, and the wood after it -- plus one
+            // of the danmaku over the top of all of it, because a background
+            // photographed with an empty field is a background nobody has
+            // checked.
+            global.stage_def = stage_grove_def();
+            break;
+
+        case "hex_draw":
+        case "hex_seal":
+        case "hex_scatter":
+        case "hex_gaps":
+        case "hex_burst":
+            // **`Demon Sealing Hex` gets five pictures, and no other attack in
+            // the game gets more than one.** That is not because it is more
+            // important; it is because it is the only attack whose *shape* is
+            // the pattern. Everything else here can be judged from one frame
+            // -- a fan is a fan -- where this one makes five claims in
+            // sequence that are each false in a different way if the geometry
+            // is wrong, and `test_hex_seal` can only prove the arithmetic
+            // behind them. A ward that closes into a perfect pentagram and is
+            // unreadable against a dark field is exactly the bug this tool
+            // exists for.
+            global.stage_def = draft_stage_def();
+            global.practice = practice_new(draft_stage_def(), 0,
+                                           array_length(draft_list()) - 1);
             break;
     }
 }
@@ -277,6 +343,21 @@ function shot_pose(_scene, _g) {
             // problem the beat exists to solve.
             return 50;
 
+        case "draft_spell":
+            // **Nothing is posed here either.** `obj_game`'s Create has
+            // already put the boss on the draft off the request
+            // `shot_scene_prepare` wrote, so what this photographs is the
+            // drafting table's own entry path rather than a reconstruction of
+            // it -- which is the point, since the whole claim being made is
+            // that a draft is played through the game's machinery untouched.
+            //
+            // Far enough in for the lobs to have been thrown, hung and started
+            // to fall, and nowhere near the 360 points of health the slot is
+            // worth, so the attack is still running when the shutter goes.
+            _g.player.x = FIELD_CX - 40;
+            _g.player.y = FIELD_Y1 - 240;
+            return 200 + PRACTICE_READY + BOSS_SPELL_LEAD;
+
         case "practice_result":
             // **Nothing is posed here.** The boss is already on the field and
             // already fighting the attack, because `obj_game`'s Create put it
@@ -287,6 +368,179 @@ function shot_pose(_scene, _g) {
             _g.player.x = FIELD_CX - 90;
             _g.player.y = FIELD_Y1 - 260;
             return 430;
+
+        case "grove":
+            // The stage at its plainest: night, the moon on the horizon, and
+            // a wave of fodder over it. **Wound to the same place stage one's
+            // `stage` scene is** -- the fullest the first half ever gets --
+            // so the two stages are photographed doing the same thing and the
+            // only difference in the picture is the world.
+            _g.stage.t = 530;
+            _g.player.x = FIELD_CX - 140;
+            _g.player.y = FIELD_Y1 - 200;
+            return 300;
+
+        case "grove_turn":
+            // **Totality**, which is the one frame in the stage with almost no
+            // light in it. The turn is posed rather than played to: the
+            // timeline reaches it a minute and a half in, behind a midboss,
+            // and a scene that got there honestly would be four minutes of
+            // harness for one photograph.
+            //
+            // **The turn is *started* and then waited out, not written
+            // straight into.** It eases a frame at a time like everything
+            // else in the game, so a scene that set the number it wanted and
+            // then ran sixty frames photographed sixty frames *past* the
+            // moment it asked for -- which for this one is the difference
+            // between the umbra covering the moon and the umbra having gone.
+            // The first version of this picture was a lit wood with a caption
+            // claiming it was an eclipse.
+            _g.player.x = FIELD_CX + 60;
+            _g.player.y = FIELD_Y1 - 220;
+            _g.bg.omen_on = true;
+            return shot_omen_frame(GROVE_WAVE_START * 0.5);
+
+        case "grove_blood":
+            // ...and the same wood a few seconds later, with the wavefront
+            // part way down the corridor. **Caught mid-wave rather than after
+            // it**, because "the far trees are red and the near ones are not
+            // yet" is the claim, and a picture taken once it is over is a
+            // picture of a red forest.
+            _g.player.x = FIELD_CX - 60;
+            _g.player.y = FIELD_Y1 - 240;
+            _g.bg.omen_on = true;
+            return shot_omen_frame(GROVE_WAVE_START + 0.34);
+
+        case "grove_boss":
+            // Briar's opening non-spell over the turned wood, which is what
+            // the stage actually looks like when it is being played. The moon
+            // is directly behind her and the danmaku is over both -- the one
+            // question no still of the background alone can answer.
+            shot_boss(_g, 0, briar_spawn);
+            _g.player.x = FIELD_CX - 120;
+            _g.player.y = FIELD_Y1 - 260;
+            _g.bg.omen_on = true;
+            _g.bg.omen = 1;
+            return 200;
+
+        case "grove_spell":
+            // Her caster's own background: the wash, the bone circle and the
+            // antlers out of the corners. Photographed on a spell whose
+            // pattern is beams, so the picture has something in it as well as
+            // the ceremony.
+            shot_boss(_g, 1, briar_spawn);
+            _g.player.x = FIELD_CX + 140;
+            _g.player.y = FIELD_Y1 - 280;
+            _g.bg.omen_on = true;
+            _g.bg.omen = 1;
+            _g.player.untouchable = true;
+            return 240 + BOSS_SPELL_LEAD;
+
+        case "hex_draw":
+        case "hex_seal":
+        case "hex_scatter":
+        case "hex_gaps":
+        case "hex_burst":
+            // **The player is posed and then left alone**, because the ward is
+            // drawn round wherever they are standing on the frame it opens --
+            // so where they stand *is* the composition, and a scene that let
+            // the run put them at the default spawn would photograph the seal
+            // hanging off the bottom of the field every time.
+            //
+            // Low and left of centre, which is where a danmaku player actually
+            // lives, and far enough off centre to prove the clamp is doing
+            // something.
+            _g.player.x = FIELD_CX - 210;
+            _g.player.y = FIELD_Y1 - 300;
+            // **And it does not dodge, so it is not asked to survive.** These
+            // are the five longest scenes in the tool -- sixteen seconds of a
+            // spell rather than the three or four every other one takes -- and
+            // a player standing still under aimed volleys for that long is hit
+            // four times and dies before the last of them.
+            //
+            // Health is the least of it. A hit sweeps a 190-pixel circle of
+            // bullets away (see `player_hit`), so a posed player being hit
+            // *takes a bite out of the ward being photographed* -- out of the
+            // one pattern in the game whose entire claim is where its gaps
+            // are. Every one of these pictures taken at less than full life
+            // was quietly lying, and the seal is redrawn twice a cycle so
+            // nothing was left to notice by the next movement.
+            //
+            // Set here rather than in `shot_tick` because it is a flag and not
+            // a countdown, and set on these five rather than on every scene
+            // because `hit` exists to photograph a hit and `player_hit` is a
+            // no-op on somebody who cannot be touched.
+            _g.player.untouchable = true;
+            return shot_hex_frame(_scene) + PRACTICE_READY + BOSS_SPELL_LEAD;
+    }
+    return 40;
+}
+
+/// @desc The frame a stage's turn reaches `_at`, given it starts on the next
+///       one.
+///
+///       `bg_omen_step` moves the turn by one part in `BG_OMEN_TIME` a frame
+///       and nothing can write to it directly without lying about how the
+///       stage actually plays -- which is the point. So a scene that wants the
+///       wood half way through its eclipse asks for the *frame* that is, and
+///       the two cannot drift apart when the constant is retuned.
+function shot_omen_frame(_at) {
+    return 3 + round(clamp(_at, 0, 1) * BG_OMEN_TIME);
+}
+
+/// @desc Which frame of `Demon Sealing Hex` each of its four pictures wants.
+///
+///       Written out here rather than inline so the four sit next to each
+///       other and the gaps between them are legible: the four beats of the
+///       attack, caught one apiece.
+function shot_hex_frame(_scene) {
+    switch (_scene) {
+        // Half drawn. **The claim being photographed is that seven traces of
+        // four different lengths are all half done at once** -- five arms
+        // creeping out from their points while the two rings race round -- and
+        // it is only visible while the seal is unfinished.
+        case "hex_draw":  return HEX_DRAW div 2;
+
+        // Closed, turned, and being fired into. This is the one that says
+        // whether the red ward is fair: the player is sealed in a cell of
+        // their own, and what has to read is where the walls are and where the
+        // fan is going.
+        case "hex_seal":  return HEX_RED_FAN0 + 130;
+
+        // The red ward coming apart. **Every bead goes its own way**, which is
+        // the movement that changed most and the only claim here a count
+        // cannot check: thrown outward the figure keeps its shape and leaves
+        // the room it was enclosing empty, and what has to be visible is that
+        // half of it is coming back through the middle. Far enough in for the
+        // beads to have travelled and near enough that it still reads as a
+        // pentagram that has failed.
+        case "hex_scatter": return HEX_SCATTER_AT + 120;
+
+        // The blue ward, whose whole design is that it has gaps in it. If they
+        // cannot be *seen* they may as well not be there, and no assertion
+        // about their width can say whether they can.
+        case "hex_gaps":  return HEX_BLUE_FAN0 + 110;
+
+        // A moment after the collapse lands: the seal gone into a point and
+        // the detonation coming back out of it.
+        //
+        // **The one claim here is that it looks like something breaking.** It
+        // used to be one shape at one of three speeds, which photographs as
+        // three expanding rings -- an arithmetically fine burst that reads as a
+        // firework, and it took a person looking at this picture to say so.
+        // What has to be visible now is chunks and grit in the same cloud,
+        // unevenly spaced, with the heavy pieces still near the middle. Far
+        // enough in that the speeds have pulled it apart and near enough that
+        // the slow half has not left.
+        //
+        // **And near enough that the shockwave is still on screen.** The rings
+        // and the sparks are the half of a detonation that carries its size
+        // and none of the half that carries its danger, so a picture taken
+        // after they have faded is a picture of the debris alone -- which is
+        // the more useful frame for judging the pattern and the less useful
+        // one for judging whether the complaint that started this was
+        // answered. Twenty-six frames in has both.
+        case "hex_burst": return HEX_BURST_AT + 26;
     }
     return 40;
 }

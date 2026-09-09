@@ -20,8 +20,11 @@ second against a moving, lit, arbitrarily-coloured background, and a flat
 coloured disc does not: over dark ground it is a dark shape, over bright ground
 it is a light one, and the player finds out which by dying. A white core
 carries *luminance* that survives a bright background and a saturated rim
-carries *hue* that survives a dark one, so the shape reads against both. Every
-bullet generator here goes through `orb_field`, which builds exactly that.
+carries *hue* that survives a dark one, so the shape reads against both. The
+bullets and the shards get it from `cut_shade` and a hard dark contour over
+the top; `orb_field` and `shade_shape` are the older, softer version of the
+same idea and are what the scenery and the enemies still use. See "Cut bodies"
+below for why nothing a *player* has to dodge is drawn with them any more.
 
 The last rule is about numpy: **the per-pixel Python loop does not scale.** At
 SS=4 a 52px bubble is 208x208, times fourteen colours, times eighteen shapes --
@@ -498,6 +501,354 @@ def trace_outline(img, width=1, colour=(0, 0, 0, 255)):
     ring = ImageChops.subtract(grown, a)
     out = Image.new("RGBA", img.size, tuple(colour[:3]) + (0,))
     out.putalpha(ring.point(lambda v: int(v * colour[3] / 255)))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Cut bodies: bullets, and anything else that has to read as an object
+#
+# **`orb_field` and `shade_shape` make sweets, and that is not a matter of
+# taste.** Both light a silhouette the way a photographer lights a bead: a
+# smooth radial ramp from a large white centre out to a hue, plus a specular
+# kicked up and to the left. Those two moves together are the entire visual
+# grammar of a boiled sweet. An off-centre gloss says *polished convex plastic
+# under a studio lamp*; a ramp with no internal edge anywhere in it says
+# *moulded rather than made*. Fourteen hues of that is a bag of jelly beans,
+# which is what a screen of them looked like.
+#
+# A magical projectile is not a lit object. It is a **cut** object lit from
+# inside, and three things separate the two:
+#
+# - **No light direction.** Nothing here has a highlight in a corner. What
+#   brightness there is is concentric or axial, because the source is the
+#   thing itself and not a lamp off to one side.
+# - **Bands of constant width, not ramps.** A dark lip, a saturated rim, a lit
+#   interior -- each a fixed number of *final* pixels deep. That is what a
+#   sprite artist draws, and it is the one thing `depth_field` cannot express:
+#   normalising by the shape's own maximum makes every band a fraction of the
+#   thickness, which inflates every shape into a pillow and is why a ring and
+#   a sphere came back looking like the same material.
+# - **Authored internal structure.** A facet break, an engraved line, a gem's
+#   table, a glyph. This is the whole of the difference between a shape that
+#   looks generated and one that looks designed, and no shading model buys it
+#   -- it has to be drawn.
+#
+# So a shape hands `cut_shade` up to four masks rather than one silhouette:
+# `body` is what exists, `groove` is cut into it dark, `bevel` is the planes
+# that face the light, and `core` is the small hot centre. `cut_finish` then
+# lays the dark contour and a tight bloom round the outside.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Drawing the masks a cut body is made of
+#
+# Everything here is in FINAL pixels -- `Cut` scales on the way in, so a shape
+# function never has to think about the supersample factor. Same bargain
+# `Canvas` makes, for the same reason.
+# ---------------------------------------------------------------------------
+
+def ngon_pts(cx, cy, r, n, turn=-90.0):
+    return [(cx + math.cos(math.radians(turn + i * 360.0 / n)) * r,
+             cy + math.sin(math.radians(turn + i * 360.0 / n)) * r)
+            for i in range(n)]
+
+
+def star_pts(cx, cy, r, points, inner, turn=-90.0):
+    pts = []
+    for i in range(points * 2):
+        ang = math.radians(turn + i * 180.0 / points)
+        rad = r if i % 2 == 0 else r * inner
+        pts.append((cx + math.cos(ang) * rad, cy + math.sin(ang) * rad))
+    return pts
+
+
+def polar(cx, cy, ang, r):
+    return (cx + math.cos(math.radians(ang)) * r,
+            cy + math.sin(math.radians(ang)) * r)
+
+
+class Cut:
+    """The masks of one bullet: what exists, what is cut into it, what catches
+    the light, and where the hot centre is.
+
+    `body` is always drawn. The other three are optional and are dropped on the
+    way out if nothing was ever put in them, so a shape that wants no facets
+    does not pay for an empty array.
+    """
+
+    NAMES = ("body", "groove", "bevel", "core")
+
+    def __init__(self, w, h):
+        self.w, self.h = w, h
+        self.cx, self.cy = (w - 1) / 2.0, (h - 1) / 2.0
+        self.L = {n: Image.new("L", (w * SS, h * SS), 0) for n in self.NAMES}
+        self.D = {n: ImageDraw.Draw(v) for n, v in self.L.items()}
+
+    # -- primitives ---------------------------------------------------------
+
+    def _p(self, pts):
+        return [(x * SS, y * SS) for x, y in pts]
+
+    def _w(self, wid):
+        return max(1, int(round(wid * SS)))
+
+    def poly(self, layer, pts, v=255):
+        self.D[layer].polygon(self._p(pts), fill=v)
+
+    def disc(self, layer, cx, cy, r, v=255):
+        self.D[layer].ellipse([(cx - r) * SS, (cy - r) * SS,
+                               (cx + r) * SS, (cy + r) * SS], fill=v)
+
+    def annulus(self, layer, cx, cy, r_out, r_in, v=255):
+        self.disc(layer, cx, cy, r_out, v)
+        self.disc(layer, cx, cy, r_in, 0)
+
+    def hoop(self, layer, cx, cy, r, wid, v=255):
+        """A ring *centred* on `r`, not inscribed in it -- PIL draws an
+        ellipse's outline inward from the bounding box, so a hoop asked for at
+        a radius would sit half a width inside the thing it is meant to trace.
+        """
+        rr = r + wid / 2.0
+        self.D[layer].ellipse([(cx - rr) * SS, (cy - rr) * SS,
+                               (cx + rr) * SS, (cy + rr) * SS],
+                              outline=v, width=self._w(wid))
+
+    def line(self, layer, pts, wid, v=255):
+        self.D[layer].line(self._p(pts), fill=v, width=self._w(wid),
+                           joint="curve")
+
+    def ngon(self, layer, cx, cy, r, n, turn=-90.0, v=255):
+        self.poly(layer, ngon_pts(cx, cy, r, n, turn), v)
+
+    def ngon_line(self, layer, cx, cy, r, n, wid, turn=-90.0, v=255):
+        pts = ngon_pts(cx, cy, r, n, turn)
+        self.line(layer, pts + [pts[0]], wid, v)
+
+    def star(self, layer, cx, cy, r, points, inner, turn=-90.0, v=255):
+        self.poly(layer, star_pts(cx, cy, r, points, inner, turn), v)
+
+    def spoke(self, layer, cx, cy, ang, r0, r1, wid, v=255):
+        self.line(layer, [polar(cx, cy, ang, r0), polar(cx, cy, ang, r1)],
+                  wid, v)
+
+    def blur(self, layer, r):
+        self.L[layer] = self.L[layer].filter(
+            ImageFilter.GaussianBlur(r * SS))
+        self.D[layer] = ImageDraw.Draw(self.L[layer])
+
+    def parts(self):
+        return {n: v for n, v in self.L.items()
+                if n == "body" or v.getbbox() is not None}
+
+
+def _shrink(a, diag):
+    """One pixel of erosion: 4-neighbour, or 8-neighbour when `diag`."""
+    p = np.pad(a, 1, mode="constant", constant_values=0.0)
+    out = p[1:-1, 1:-1].copy()
+    np.minimum(out, p[:-2, 1:-1], out=out)
+    np.minimum(out, p[2:, 1:-1], out=out)
+    np.minimum(out, p[1:-1, :-2], out=out)
+    np.minimum(out, p[1:-1, 2:], out=out)
+    if diag:
+        np.minimum(out, p[:-2, :-2], out=out)
+        np.minimum(out, p[:-2, 2:], out=out)
+        np.minimum(out, p[2:, :-2], out=out)
+        np.minimum(out, p[2:, 2:], out=out)
+    return out
+
+
+_edge_cache = {}
+
+
+def edge_dist(mask, max_px, ss=SS):
+    """Distance from the nearest edge, inside `mask`, in FINAL pixels.
+
+    **Unnormalised, which is the whole point of it.** `depth_field` answers
+    "how deep is this pixel as a fraction of the deepest pixel in the shape",
+    which is the right question for a shading ramp and the wrong one for a
+    band: it turns a 2-pixel rim on a 24-pixel pellet into a 7-pixel rim on an
+    88-pixel sphere, and a set whose rims scale with the shape is a set that
+    reads as inflated rubber. Every band drawn off this one is a fixed number
+    of pixels wide whatever it is drawn on.
+
+    Counted rather than solved, because there is no `scipy` here: erode by a
+    pixel and add what survives. **The erosion alternates 4- and 8-neighbour**,
+    which is what makes the metric octagonal rather than Chebyshev -- a plain
+    square kernel is 41% generous along the diagonals, and a rim 41% thicker
+    at four points of a circle is a rim that visibly is not a circle.
+
+    Stops at `max_px`, so the cost is the depth actually wanted rather than
+    the shape's half-thickness. Cached on the mask, because a shape is drawn
+    fourteen times and its geometry does not know about hue.
+    """
+    key = (mask.size, mask.tobytes(), round(float(max_px), 3), ss)
+    hit = _edge_cache.get(key)
+    if hit is not None:
+        return hit
+
+    cur = (np.asarray(mask, dtype=np.float32) >= 128).astype(np.float32)
+    acc = np.zeros_like(cur)
+    for i in range(int(math.ceil(max_px * ss)) + 1):
+        if cur.max() <= 0.0:
+            break
+        acc += cur
+        cur = _shrink(cur, diag=(i % 2 == 1))
+
+    out = acc / float(ss)
+    _edge_cache[key] = out
+    return out
+
+
+# How deep `cut_shade` bothers to measure. Past this every shape is interior,
+# so a sphere and a bubble's wall get the same rim -- see `edge_dist`.
+CUT_PROBE = 15.0
+
+
+def _cut_layer(parts, name, alpha):
+    """One structure mask as a 0..1 field, clipped to the body it belongs to.
+
+    Clipped by multiplication rather than by a threshold: PIL resizes RGBA
+    unpremultiplied, so colour outside the silhouette bleeds into the edge
+    pixels on the way down, and a groove drawn a hair past the outline would
+    arrive as a dark notch in the contour.
+    """
+    layer = parts.get(name)
+    if layer is None:
+        return None
+    return (np.asarray(layer, dtype=np.float32) / 255.0) * alpha
+
+
+def cut_shade(parts, rim, ss=SS, lip=None, band=None, lit_t=0.22,
+              bevel_t=0.34, groove_k=0.70, deep_t=0.28):
+    """Shade one cut body from its masks. Returns RGBA at the masks' size.
+
+    Three bands out of `body`, all measured in final pixels:
+
+    - a **lip** of `rim * deep_t` right at the edge, which is the bevel;
+    - the **hue** at full chroma for `band` pixels, which is what carries the
+      colour at a distance and is why a lit interior is allowed to be pale;
+    - the **interior**, `lit_t` of the way to white -- a lighter hue, never
+      white, because white is what the core is for.
+
+    **`lit_t` and `bevel_t` are both deliberately small.** The first pass ran
+    them at a third and two thirds of the way to white, and what came back was
+    a set of pale lozenges with a thin coloured edge: past the band every pixel
+    of an eighty-eight pixel sphere is interior, so a generous interior is a
+    generous *wash*, and fourteen hues told apart by a two-pixel rim are three
+    hues. The body stays saturated and the small drawn core carries the
+    luminance, which is the arrangement the whole core-inside-rim rule assumes.
+
+    Then `bevel`, `groove` and `core`, in that order, because a groove cut
+    through a lit plane is an engraved line and a groove painted over by a
+    core is nothing at all.
+    """
+    body = parts["body"]
+    w, h = body.size
+    alpha = np.asarray(body, dtype=np.float32) / 255.0
+
+    hue = np.array(rim, dtype=np.float32)
+    deep = hue * deep_t
+    lit = hue + (255.0 - hue) * lit_t
+    bright = hue + (255.0 - hue) * bevel_t
+    white = np.array((255.0, 255.0, 255.0), dtype=np.float32)
+
+    d = edge_dist(body, CUT_PROBE, ss)
+    half = float(d.max())
+    if lip is None:
+        lip = min(4.0, max(0.85, half * 0.17))
+    if band is None:
+        band = min(12.0, max(1.5, half * 0.34))
+
+    col = np.empty((h, w, 3), dtype=np.float32)
+    col[:] = deep
+    col += (hue - deep) * (np.clip(d / lip, 0, 1) ** 0.85)[..., None]
+    inner = np.clip((d - (lip + band)) / max(0.7, band * 0.42), 0, 1)
+    col += (lit - col) * inner[..., None]
+
+    bevel = _cut_layer(parts, "bevel", alpha)
+    if bevel is not None:
+        col += (bright - col) * bevel[..., None]
+    groove = _cut_layer(parts, "groove", alpha)
+    if groove is not None:
+        col *= (1.0 - groove_k * groove)[..., None]
+    core = _cut_layer(parts, "core", alpha)
+    if core is not None:
+        col += (white - col) * core[..., None]
+
+    return from_arrays(col, alpha)
+
+
+def cut_pad(contour=2.0, bloom_r=2.2):
+    """How much empty canvas a cut body needs around it.
+
+    **A sprite's edge is a hard clip and both of the things `cut_finish` lays
+    round a body run past the silhouette.** The contour grows outward by its
+    own width, and the bloom is a Gaussian, so a shape drawn to within a pixel
+    of its canvas comes back with its outline sliced flat along that side and
+    its glow ending in a straight line. Four of the eighteen bullets shipped
+    exactly that way and the give-away was the *glow* -- reported as "their
+    transparent glow visibly cuts off at the image border", which is the only
+    part of it big enough to see.
+
+    Two sigmas of blur puts the bloom under one part in two hundred of its
+    peak, which is invisible over anything; `cut_finish` windows the last two
+    pixels to zero on top of that, because a margin is arithmetic that can be
+    got wrong and a window cannot -- the same bargain `BG_NEAR_EDGE` makes one
+    layer out.
+    """
+    return int(math.ceil(contour + 2.2 * bloom_r))
+
+
+def cut_finish(img, w, h, rim, contour=2.0, bloom=0.30, bloom_r=2.2,
+               threshold=140, pad=None):
+    """Downsample one cut body and lay its contour and its bloom round it.
+
+    **The contour is traced at the final size, not at SS and shrunk with
+    everything else.** A two-pixel ring drawn at four times scale and resized
+    is a two-pixel ring at a quarter of its alpha, which over a bright
+    background is not a contour but a smudge; being crisp at 1x is the whole
+    of what makes it read as an edge.
+
+    **And traced around the body rather than around the alpha**, because the
+    bloom trails off over several pixels and a ring drawn round fog is both in
+    the wrong place and too faint to see.
+
+    The ring goes *under* the body, so it takes the pixels outside the
+    silhouette rather than eating into the saturated rim -- the one band
+    carrying the hue, and the difference between fourteen colours and three.
+
+    The contour is the hue at an eighth rather than black. It is still
+    near-black and still a mark additive scenery cannot make, and it keeps a
+    crimson bullet warm to its very edge instead of ringing every hue in the
+    same grey.
+    """
+    if pad is None:
+        pad = cut_pad(contour, bloom_r)
+    ww, hh = w + 2 * pad, h + 2 * pad
+
+    small = Image.new("RGBA", (ww, hh), (0, 0, 0, 0))
+    small.alpha_composite(img.resize((w, h), Image.LANCZOS), (pad, pad))
+
+    solid = small.getchannel("A").point(lambda v: 255 if v >= threshold else 0)
+    body = small.copy()
+    body.putalpha(solid)
+
+    ring = trace_outline(body, width=contour,
+                         colour=tuple(int(c * 0.13) for c in rim) + (242,))
+    out = over(ring.filter(ImageFilter.GaussianBlur(0.42)), small)
+
+    if bloom > 0:
+        grown = solid.filter(ImageFilter.MaxFilter(int(contour) * 2 + 1))
+        a = np.asarray(grown.filter(ImageFilter.GaussianBlur(bloom_r)),
+                       dtype=np.float32) * bloom
+        # The window: zero on the border whatever the blur did, so no sprite
+        # can ever ship with its glow ending in a straight line again.
+        ys, xs = np.mgrid[0:hh, 0:ww]
+        edge = np.minimum.reduce([xs, ys, ww - 1 - xs, hh - 1 - ys])
+        a *= np.clip(edge.astype(np.float32) / 2.0, 0, 1)
+        glow = Image.new("RGBA", (ww, hh), tuple(int(c) for c in rim) + (0,))
+        glow.putalpha(Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "L"))
+        out = over(glow, out)
     return out
 
 

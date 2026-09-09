@@ -97,6 +97,11 @@ function laser_beam(_x, _y, _dir, _len, _wid, _col, _warn, _hot, _fade = 18) {
     _l.len = _len; _l.wid = _wid;
     _l.col = _col;
     _l.warn = _warn; _l.hot = _hot; _l.fade = _fade;
+    // **The charge sounds on the warning, not on the beam.** The telegraph is
+    // the whole of what makes a wall of light fair, and a cue that waited for
+    // the beam would be announcing it at the moment it is already lethal --
+    // which is the audible version of `_warn` being zero.
+    sfx(Sfx.LaserCharge);
     return _l;
 }
 
@@ -112,6 +117,9 @@ function laser_ray(_x, _y, _dir, _spd, _len, _wid, _col, _life) {
     _l.spd = _spd; _l.len = _len; _l.wid = _wid;
     _l.col = _col;
     _l.warn = 0; _l.hot = _life; _l.fade = 14;
+    // A ray has no warning phase -- it is a projectile rather than a wall, so
+    // it fires the moment it exists.
+    sfx(Sfx.LaserFire);
     return _l;
 }
 
@@ -128,6 +136,7 @@ function laser_curve(_x, _y, _dir, _spd, _turn, _wid, _col, _life) {
     _l.col = _col;
     _l.warn = 0; _l.hot = _life; _l.fade = CURVE_NODES;
     _l.node_n = 0;
+    sfx(Sfx.LaserFire);
     return _l;
 }
 
@@ -167,6 +176,7 @@ function laser_step_beam(_l) {
         _l.phase = LaserPhase.Fire;
         _l.t = 0;
         fx_flash_at(_l.x, _l.y, global.bullet_colour[_l.col], 0.35);
+        sfx(Sfx.LaserFire);
     } else if (_l.phase == LaserPhase.Fire && _l.t >= _l.hot) {
         _l.phase = LaserPhase.Fade;
         _l.t = 0;

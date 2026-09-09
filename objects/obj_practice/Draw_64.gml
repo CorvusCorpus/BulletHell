@@ -30,10 +30,37 @@ draw_text_fit(GAME_CX, 176, stage.name, 1100,
               merge_colour(COL_PARCHMENT, COL_GILT, 0.3), 0.9, 2);
 
 // ---- the plate -----------------------------------------------------------
+//
+// **It is measured before it is drawn.** The height used to be a constant, and
+// the constant was the height of Ziggy's stage: a midboss, a boss and eleven
+// attacks between them, which fills it to within a row. Anything shorter got
+// the same plate with the difference left as a hole -- and the drafting table,
+// which starts at five, got two thirds of one. A list is as tall as its list.
+//
+// The old height is kept as the *ceiling* rather than as the value, so a long
+// list still stops where it always did and the two bottom hint lines never
+// have a plate landing on them. When a stage has more attacks than fit, this
+// is the line that has to learn to scroll.
+var _row_pitch = 52;
+var _row_head = 74;
+var _list_top = 220 + 66;
+
+var _list_h = 0;
+for (var _i = 0; _i < array_length(rows); _i++) {
+    if (rows[_i].header) {
+        if (_i > 0) _list_h += _row_head - _row_pitch;
+        _list_h += _row_head;
+    } else {
+        _list_h += _row_pitch;
+    }
+}
+
 var _x1 = 300;
 var _x2 = GAME_W - 300;
 var _y1 = 220;
-var _y2 = GAME_H - 150;
+// The last row's centre sits a pitch above where the walk finishes, so the ink
+// ends about half a row higher again; 40 is the margin under it.
+var _y2 = min(GAME_H - 150, _list_top + _list_h - _row_pitch + 40);
 draw_plate(_x1, _y1, _x2, _y2, 1);
 draw_corners(_x1, _y1, _x2, _y2, COL_GILT, 0.8, -4, 0.6);
 
@@ -50,9 +77,9 @@ if (array_length(picks) <= 0) {
     // **The cursor is a lit band behind the row, not a marker beside it.** A
     // caret at the left of a 1300-pixel row leaves the far end of that row
     // looking unselected, and the far end is where the numbers are.
-    var _y = _y1 + 66;
-    var _pitch = 52;
-    var _head = 74;
+    var _y = _list_top;
+    var _pitch = _row_pitch;
+    var _head = _row_head;
 
     for (var _i = 0; _i < array_length(rows); _i++) {
         var _r = rows[_i];
@@ -116,9 +143,17 @@ if (array_length(picks) <= 0) {
     }
 }
 
+// **The controls follow the plate up.** Pinned to the foot of the screen they
+// were right for a list that filled it and left a short one stranded, with the
+// hole simply moved from inside the plate to underneath it. Under the plate
+// they read as its controls; the slack falls at the bottom of the screen,
+// which is where a margin is supposed to be. A full-length list lands on the
+// old coordinate exactly, so nothing about the stage's own screen moves.
+var _hint_y = min(GAME_H - 84, _y2 + 74);
+
 draw_set_halign(fa_center);
 draw_set_font(fnt_ui());
-draw_text_outline(GAME_CX, GAME_H - 84,
+draw_text_outline(GAME_CX, _hint_y,
                   "ARROWS  CHOOSE      Z  BEGIN      X  BACK",
                   merge_colour(COL_PARCHMENT, COL_GILT, 0.4), 0.7, 2);
 
@@ -127,7 +162,7 @@ draw_text_outline(GAME_CX, GAME_H - 84,
 // not know the meters start full will read the first attempt as the game being
 // generous rather than as the mode being what it is.
 draw_set_font(fnt_small());
-draw_text_outline(GAME_CX, GAME_H - 40,
+draw_text_outline(GAME_CX, _hint_y + 44,
                   "FULL LIFE AND FULL SIGIL, EVERY ATTEMPT",
                   merge_colour(COL_PARCHMENT, COL_ARCANE_LIT, 0.4), 0.6, 1);
 

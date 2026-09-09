@@ -43,9 +43,10 @@ def main():
         return 1
 
     try:
-        proc = subprocess.run([EXE, "-selftest"], capture_output=True,
-                              text=True, errors="replace", timeout=TIMEOUT,
-                              cwd=os.path.dirname(EXE))
+        # **Minimised and un-activated.** The suites draw nothing anybody
+        # looks at and this runs every few minutes while somebody is working
+        # on something else. See `build.run_game`.
+        proc = build.run_game([EXE, "-selftest"], TIMEOUT)
     except subprocess.TimeoutExpired:
         print("FAILED: the self-test did not finish within %ds" % TIMEOUT)
         print("A run-time throw is a MODAL BOX, which from here is a hang and "

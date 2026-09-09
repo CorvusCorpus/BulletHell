@@ -30,16 +30,36 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 | `tools/build.py` | The GML compiles. Reports real diagnostics with line numbers. |
 | `tools/test.py` | The GML is *correct*: builds, runs with `-selftest`, grades the suites in `scripts/selftest` off stdout. |
 | `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, and no bare `draw_sprite` inheriting the draw state. |
-| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. Nineteen scenes; `--all` does the lot. |
+| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Thirty-two scenes; `--all` does the lot. |
 
 **`shot.py` is not a nicety, and in this genre it is the most important of the
 four.** A bullet pattern that is arithmetically perfect and illegible is a bug,
-and no assertion can see it. It renders nineteen scenes and **fails on a game
+and no assertion can see it. It renders twenty-two scenes and **fails on a game
 error even when a screenshot appeared** — `obj_shot` calls `screen_save` from
 its Step event and `game_end()` lets the current frame finish, so a throw in the
 Draw event that follows happens *after* the file is on disk. The first crash
 this project shipped did exactly that, and an early version of the harness
 reported fifteen successes over it.
+
+That check spent a long stretch **written down and never called**: `GAME_ERROR`
+was compiled, commented at length, and matched against nothing, so the tool was
+back to grading a crashed scene by whether it had photographed itself before
+dying. A guard nobody invokes is indistinguishable from no guard, and the
+comment above it is what makes that hard to notice — it reads exactly like a
+guard that works.
+
+**A posed player does not dodge, so it cannot be asked to survive.**
+`player.untouchable` is the harness's flag and nothing in play ever sets it.
+It is not a convenience: a hit sweeps a 190-pixel circle of bullets off the
+field, which is right in play and means a posed player being hit *takes a bite
+out of the pattern being photographed*. Every picture of `Demon Sealing Hex`
+taken at less than full life had a hole in the ward whose entire claim is where
+its gaps are, and nothing said so — the seal is redrawn twice a cycle, so the
+evidence was gone by the next movement. What finally reported it was a scene
+running long enough for the fourth hit to kill the player outright. It is
+distinct from `iframe` rather than expressed with it, because `iframe`
+*flickers*, and a screenshot of a half-transparent Szuix is a screenshot of a
+state nobody is posing for.
 
 Everything below was found by looking at a screenshot and by nothing else:
 
@@ -333,32 +353,57 @@ which is why it survived: the whole screen scales together. It was reported as
 "an awkward windowed mode", and the give-away was in `tools/_preview` the whole
 time, where every screenshot was 1864x1048.
 
-`option_windows_start_fullscreen` is on and so is
-`option_windows_allow_fullscreen_switching`, which is what gives the player F4
-back -- a game that seizes the display with no way out is worse than a small
-window. Aspect is kept rather than stretched, so a display that is not 16:9
-letterboxes.
+`option_windows_allow_fullscreen_switching` is on, which is what gives the
+player F4 back -- a game that seizes the display with no way out is worse than
+a small window. Aspect is kept rather than stretched, so a display that is not
+16:9 letterboxes.
 
-**Neither harness takes the display, and that reverses a decision.**
-`-selftest` always dropped back to a window — the suites draw nothing anybody
-looks at and `tools/test.py` runs every few minutes. `-shot` did not, on the
-reasoning that there the display *is* the output: full screen makes a
-screenshot 1920x1080 exactly, so a design pixel and a photographed pixel are
-the same pixel and a HUD box can be measured off the PNG.
+**Neither harness takes the display, and the way that is arranged had to be
+turned inside out.** It was `option_windows_start_fullscreen`, with `obj_boot`
+calling `window_set_fullscreen(false)` on any run started by a tool. Both
+halves of that are right about pixels and the second is too late about
+everything else: **the option is read by the runner before a line of GML
+executes**, so a harness run had already changed the display mode, raised a
+borderless window over every other window on the desktop and taken the
+foreground by the time `obj_boot` got a say. Giving the pixels back a frame
+later does not give any of that back.
 
-What that reasoning left out is who is at the machine. Both tools are run while
-somebody is working on something else, and a harness that seizes the display —
-changing the display mode, rearranging every other window, stealing focus for a
-few seconds, nineteen times over for `--all` — costs far more than it buys.
-Reported, in those words, as a nightmare to work alongside.
+It was reported as the game window being forced to the front and blocking
+whatever was being worked on -- and the tell was that the Wordsearch project
+has the same two tools, run the same way, and has never once done it. The
+whole of the difference was that one option.
 
-The price is that a screenshot comes back at 1864x1048, because a 1920x1080
-window does not fit on a 1920x1080 desktop. That is 97% of design size,
-everything in the picture scales together, and **nothing in the tooling
-measures a screenshot** — `check_bg_keepout` and its neighbours measure the
+So the option is **off** and the *player* asks for the display: `obj_boot`
+calls `window_set_fullscreen(true)` when no harness flag was passed. The test
+that used to say "a tool drops out of full screen" now says "only the game
+enters it", which is the same rule with the exception removed rather than
+inverted.
+
+**And the window is opened minimised, from the Python side.** Not taking the
+display is not the same as not appearing: a run launched from a terminal the
+user is looking at inherits the right to raise a window and take the
+foreground, and a windowed game flashing up twenty-two times over for `--all`
+is the same complaint one notch quieter. `build.run_game` is the one place
+either tool starts the game, and it passes a `STARTUPINFO` asking Windows for
+`SW_SHOWMINNOACTIVE`. Nothing is given up: `screen_save` reads the game's own
+surface and never the desktop, and a `-shot` run launched this way was measured
+to save the same 1864x1048 picture with the same content.
+
+**`window_set_visible(false)` is the version of this that does not work**, and
+it was tried first because for `-selftest` it looks free. GameMaker stops
+stepping a window it is not showing, so `room_test` never ran, nothing reached
+stdout, and what came back was `tools/test.py`'s 180-second timeout -- the
+exact failure mode the note about modal boxes is about, produced this time by
+the fix. Minimising from outside the process is a different thing and the
+runner is happy with it.
+
+The price of all of it is that a screenshot comes back at 1864x1048, because a
+1920x1080 window does not fit on a 1920x1080 desktop. That is 97% of design
+size, everything in the picture scales together, and **nothing in the tooling
+measures a screenshot** -- `check_bg_keepout` and its neighbours measure the
 PNGs the generators write, not these. `tools/shot.py --fullscreen` passes
-`-fullscreen` through for the times a photographed pixel really does have to be
-a design pixel.
+`-fullscreen` through *and* shows the window, for the times a photographed
+pixel really does have to be a design pixel.
 
 ### Gilt on indigo, and why the console is allowed to be rich
 
@@ -570,7 +615,7 @@ because it would turn three pure functions into one that does everything.
 
 `fire` is `CreateShotA1`: a position, a speed, an angle, a graphic and a delay.
 Everything else is built out of it — `fire_ring`, `fire_fan`, `fire_stack`,
-`fire_ring_stack`, `fire_spray`. `fire` returns the bullet so a caller can set a
+`fire_ring_stack`, `fire_fan_stack`, `fire_spray`. `fire` returns the bullet so a caller can set a
 turn rate or a modifier on it; the pattern helpers return nothing, because the
 single-shot case is the one that wants tweaking afterwards and the pattern case
 never does.
@@ -845,8 +890,70 @@ draw.
 That is the Touhou rule and it is the right one: a bonus for merely surviving
 rewards hiding in a corner.
 
-**A boss drifts.** One that stood still would fire every aimed pattern from the
-same pixel and the player would learn the pixel rather than the pattern.
+**A boss drifts, and that is a default rather than a rule.** One that stood
+still would fire every aimed pattern from the same pixel and the player would
+learn the pixel rather than the pattern, so the wander is right for nearly
+everything — and it stops being right the moment the player *cannot chase it*.
+
+`Demon Sealing Hex` is what found that. It draws a ward round wherever the
+player is standing and pins them inside it for seconds at a time, and a boss
+that wandered 430 pixels off during those seconds was a boss nobody could
+shoot: an attack whose whole idea is confinement quietly became one that could
+only ever end on its clock. It was not too hard. It was **unanswerable**, which
+is a different defect, and no assertion about the pattern could have seen it
+because nothing about the pattern was wrong.
+
+So movement is a column in the attack table — `move`, a `BossMove` — and
+`boss_move` dispatches on it. **It belongs to the attack rather than to the
+boss**, because the same caster wants different answers within one fight: a
+wide non-spell wants the wander, and the spell after it may not.
+
+- **`Drift`** is the lissajous wander, and it is what a phase that names
+  nothing still gets. Every attack in the game was written before the column
+  existed, so the read is `_p[$ "move"] ?? BossMove.Drift` — a bare `.move`
+  would not merely default wrongly, it would *raise*, which is the same trap
+  the `spell_bg` read one function over is about.
+- **`Track`** trends toward the player's column while still wandering on top
+  of it. For an attack that traps the player: the boss comes to them because
+  they cannot come to it.
+- **`Fixed`** takes the station and holds it, for an attack whose shape is
+  measured from its own origin. `Seed & Bloom` is the case — the only draft
+  with nothing aimed in it, so a moving origin buys it nothing and costs it its
+  symmetry, smearing one rosette into a comma.
+
+**The station walks at a capped speed rather than easing, and that is the whole
+of what "loose" means.** A proportional ease is *fastest when the player is
+furthest away*, which is a boss that runs with you; a cap at `BOSS_TRACK_SPD` —
+a third of `PLAYER_SPD`, and within a whisker of how fast the drift's own
+wander point already travels — is a boss that arrives eventually. A player who
+crosses the field genuinely gets out from under it and keeps that for the
+seconds it takes to walk back.
+
+**And it still wanders while it tracks**, or the fix reintroduces the thing
+drifting exists to prevent: a boss parked exactly overhead fires every aimed
+pattern straight down. `BOSS_TRACK_SWAY` is about ten degrees either way
+against a player near the bottom of the field. Only the horizontal axis tracks;
+a boss that tracked in y would sink toward the player and off its own station,
+which is a fight moving rather than a boss moving.
+
+**The sway is squashed against the edge of the field rather than the station
+being held off it.** Holding the station back by a whole sway would leave a
+cornered player with the boss 240 pixels away and unhittable, which is the
+exact situation tracking was added for. Clamped this way the wander flattens as
+the boss reaches the side and it still passes over the corner.
+
+**Nothing had to be added to make a `Fixed` attack open on its station.** The
+pauses move for `next_phase` and the attack moves for `phase`, so a boss takes
+up position during the pause and the declaration before an attack rather than
+sliding into place across the first second of its own pattern. The ceremony was
+already exactly the breathing room repositioning wants.
+
+**The tracked column is dragged along behind the boss whenever anything else is
+moving it**, so an attack that starts tracking picks up from where the boss
+actually is. Without that, an attack following a tracking one opens by lurching
+across the field to wherever that one left the column — which is the same shape
+of bug as `run_clear_field`'s note, state inherited from the last thing that
+used it.
 
 **Every enemy is drawn out of the pool, bosses included.** `enemy_draw` used
 to skip anything carrying a `boss` struct on the grounds that "the boss draws
@@ -1060,6 +1167,283 @@ same attack in the past tense. And the panel's own menu ran into the hint line
 at the foot of the field, which is a failure no assertion can see: every one of
 those coordinates is inside the field and none of them overlaps a console box.
 
+### The drafting table
+
+**A pattern is an idea long before it is a character**, and there was nowhere
+to put one. Adding an attack meant adding it to a boss, and adding a boss means
+a phase table, a name, a title, a sprite, a background and a place on the rack
+— so the cheapest way to find out whether a pattern was any fun was to bolt it
+onto Ziggy, play it out of context, and take it off again. That disturbs a
+fight that is already tuned *and* judges the new pattern against a boss it was
+never written for.
+
+So there is one more card on the rack, it is not a stage, and every attack
+filed under it is one nobody has claimed. It is `scripts/stage_drafts` and
+**it is written as content rather than as a debug menu**, on the same terms the
+practice mode itself is: a draft played through the game's own console,
+ceremony, background and grading is a draft somebody has actually seen, where a
+draft played through a diagnostic view has to be judged twice.
+
+**Its whole surface is a row in `draft_list`** — a name, a hue, a clock, a
+function of `_t`, and optionally a `move`. Everything else is derived:
+
+- **A name is what makes it a spell.** Named, it gets the banner, the eye card,
+  the wash and a taller notch; unnamed, it is a non-spell and opens at once.
+  Writing `kind` and `bg` out as well would be saying one thing three times and
+  getting it wrong once.
+- **Every draft owns an equal share of the bar**, computed from how many there
+  are. A hand-written `hp_end` column would mean the second thing you do after
+  having an idea is arithmetic, and an idea inserted in the middle would
+  silently reprice every one below it.
+- **The boss's health is `DRAFT_SLOT_HP` times the number of drafts**, so one
+  slot is worth the same however many there are. An attack tuned last week must
+  not get shorter because somebody added one underneath it. The number is
+  Ziggy's opening non-spell, near enough, so a draft takes about as long to
+  break as the first attack in the game — a draft that could only ever end on
+  its clock would leave "was that beatable" unanswered, which is half of what
+  is being asked.
+
+**Ziggy's sprite stands in for the caster**, because a placeholder that is
+obviously a placeholder beats a new one nobody drew. What is *not* borrowed is
+his hue or his arena: the aura is violet, which nothing on his stage fires, and
+the background is `SPELLBG_SIGIL` rather than the forge. That fallback exists
+for a caster with no place of its own, which is exactly what a draft is — and a
+draft arriving in his colours in his forge would read as an attack of his that
+had gone wrong.
+
+**`build` is `undefined`, so the table is practice-only**, and that is the one
+decision worth arguing. A one-line timeline putting the boss on the field would
+work and is tempting. But a run of a whole *stage* is the path that reaches
+`progress_record`, and the one thing a scratchpad must never be able to do is
+write to somebody's save. `id` is empty for the same reason `practice_new`'s
+is; the two locks agree, and Z on the card opens the attack list rather than
+refusing — there is nothing else it could mean, and a refusal would be teaching
+a rule about a card that exists to be opened.
+
+**`rack_list` is the rack and `stage_list` is still the roster.** The drafting
+table goes in the first and not the second, because `stage_list`'s docstring
+says "every stage in the game" and this is not one — no waves, no place, no
+clear to earn, no line in the save. A screen is allowed to show a superset of
+what exists; the count under the title still counts stages, so it reads 8 and
+not 9. The card appears only while `draft_list` has something in it, so
+shipping is deleting rows rather than remembering to hide a menu.
+
+**The first five are seed content and are meant to be thrown away.** What
+they are for, beyond giving the card something to hold on its first day, is
+that between them they use every verb the engine has and the stage does not
+— the Cartesian model, a split, a wake, a lifetime, a mid-flight change of
+graphic and a homing modifier. All of those were listed under "engine, tested,
+and never played", and a verb nobody has felt is a verb nobody can judge. The
+first row is deliberately the plainest thing in the file, because starting an
+idea should be renaming a copy.
+
+### Demon Sealing Hex, and what a composed attack costs
+
+**The sixth draft is not a verb demonstration, and it is the first thing on
+this table that had to be designed rather than exercised.** A ward is drawn
+round wherever the player is standing, they are shot at inside it, and it comes
+apart — first thrown outward, then, on a second ward with gaps in it, pulled
+back in to a point and detonated. Four movements on a twelve-second loop, and
+the shape on screen means something for the whole of it rather than for the
+second a bullet takes to cross.
+
+**A pattern with a shape needs one thing this engine had no habit for:
+somewhere to remember.** Every other attack in the game is a pure function of
+`_t`, and that is the right default. This one is not, because a seal takes
+fifty-four frames to inscribe and the player moves during them: read their
+position every frame and the pentagram smears into a comet. It is one `static`
+struct inside the attack function, which is the smallest scope that works — a
+global would have to be declared in `obj_boot` and would outlive a draft whose
+whole point is being deleted, and a field bolted onto the boss or onto the
+phase table would be writing state into somebody else's data.
+
+Three techniques in it are worth writing down, because each is something the
+engine could always do and nothing had asked it to:
+
+- **A rigid rotation is a speed and a turn rate that agree.** Give a bullet a
+  tangent heading, a speed proportional to its distance from a centre, and one
+  turn rate shared by every bullet in the figure, and the whole figure revolves
+  as one object. Nothing has to store the centre or the angle, and the
+  pentagram is still a pentagram a thousand frames later. Get the speed and the
+  turn out of step and it opens into a spiral over the three seconds it stands
+  for — which is why `test_hex_seal` measures the radius twice rather than
+  once, and why a screenshot of the frame it closes on could not have caught
+  it.
+- **Traces of different lengths finish together by taking shares, not steps.**
+  Seven pens draw at once — five arms of 563 pixels and two rings of 1860 and
+  2237 — and a pen laying down one rune a frame would have the arms finished
+  four times over before the rings were half round. Each lays down the runes
+  whose index falls in *this frame's share of its own length*, so the arms
+  crawl, the rings race, and every one of them puts its last rune down on the
+  same frame.
+- **A synchronised collapse is arithmetic, and it is the only part of this that
+  is.** Runes 120 and 356 pixels out have to reach the middle on the same frame
+  or what lands is a smear instead of a point, so the speed *and* the
+  acceleration are proportional to the distance and scaled to sum to exactly
+  it. That makes the contraction self-similar: the seal keeps its shape all the
+  way down. The sum is `T*c0 + ca*T*(T+1)/2` rather than `(T-1)/2` because
+  `bullet_step` applies the acceleration before it moves, which is a fencepost
+  with a visible consequence — get it wrong and the whole seal overshoots the
+  point it is collapsing onto.
+
+**And a bullet cannot be found again, which is the constraint that shapes all
+of it.** There is no query that answers "the bullets of this seal" and there
+should not be, so every rune is told its entire future at the moment it is
+placed: stop turning, then move, then either scatter or collapse, then either
+burst or go out. That is four or five `BQ` entries against a ceiling of eight,
+and it is the first pattern in the game to use the queue as anything but a
+convenience.
+
+**Three things about it were wrong and only a screenshot said so.** The red
+ward's arms were spaced to leave an eleven-pixel corridor, which is a real
+crossing arithmetically and *invisible* — a bead is drawn about as wide as the
+gap, so at that spacing the arms overlap into rope and the player is being
+asked to take the gap on faith. The two ring layers were thirty-four pixels
+apart and merged into one thick band, so the counter-rotating pair that is the
+whole motif read as a single circle. And the fans fired into the red ward were
+ember, which is a few steps from crimson, so the one thing on the field that
+had to be dodged right now was the hardest thing on it to find; they are white
+in both movements now, because the seal is the room and the fan is the threat
+and the colour should say which is which before the shape does.
+
+**They were not, and the paragraph saying they were is what made that hard to
+see.** `HEX_COL_FAN` read `BCOL_VIOLET` under a docstring explaining at length
+why it had to be white — so against the *blue* ward the volleys were doing
+precisely what the ember ones did against the red, with the argument against it
+printed directly above the line. It is the same shape as the `GAME_ERROR`
+guard: a comment that describes a fix is the hardest possible place to notice
+the fix is not there. Nothing in the tooling could see it either — every hue in
+the table is a legal argument, the build is clean, and `test_hex_seal` picks
+the volleys out by shape. It was found by sampling the pixels of a screenshot.
+
+**And the ring did not close, which is the one worth keeping.** The ward turns
+while it is being inscribed, and a bead only starts turning when it goes live —
+so the bead the ring comes back to has moved off the top since it was placed,
+and what that leaves is one gap at the seam four times the width of every other
+one, frozen in at the moment the last bead goes live, in a ward whose entire
+claim is that it has no gap in it. Every number in the placement is uniform;
+the *placing* is what is not. The fix is to lay the figure out in the ward's
+own turning frame — add back the rotation each bead is going to miss, so the
+pen runs slightly ahead of the figure and every bead turns into place behind
+it. It was reported off a screenshot, and the assertion that now holds it down
+had to be taught to wait `HEX_SEAL_DELAY` frames before measuring, because the
+fix makes the ring *deliberately* not round on the frame it finishes.
+
+**The ward is drawn in beads rather than in stones, and that was a legibility
+call rather than a scale one.** The first version used `BSHAPE_RUNE`: fifty-odd
+pixels of picture, two hundred of them, each big enough to be looked at
+individually — which is the drawing of a seal rather than a seal. Halving the
+bead doubles the count in the same figure and the figure is what the eye gets
+instead of the pieces. The pellet is one step too far; a ward made of those
+stops reading as an object at all, which matters here more than anywhere
+because this is the only pattern in the game the player is asked to look *at*
+rather than through.
+
+**The broken ward goes everywhere, and it does not tidy itself.** Thrown
+outward along their own radii the beads keep the figure's shape all the way off
+the screen, which looks like the ward being lifted — and worse, leaves the room
+it was enclosing as the one place in the field nothing is travelling through,
+so a player who spent three seconds learning to stand in the middle of it is
+rewarded with three more seconds of standing in the middle of it. Scattered
+across the whole circle, half of it comes back through that room. **The
+scattering is a hash of the bead's index, not `fire_spray`** — what makes noise
+unlearnable is that it differs every attempt, not that it is irregular, and a
+hash gives the same two hundred and seventy directions on the tenth attempt as
+on the first.
+
+They also carry no lifetime. An earlier pass expired them so the red ward was
+certain to be gone before the blue one closed; it bought tidiness and paid for
+it in the only currency this genre has, because a bullet that winks out
+mid-field is one the player learnt to respect and was then told not to bother
+with. `CULL_MARGIN` removes them like everything else, and a cap of two and a
+half — under half what the stage's own waves travel at — is what makes that
+affordable and what makes the debris something that can be outrun rather than a
+second attack.
+
+**The boss goes quiet before the ward moves.** Both breaks are things the
+*ward* does rather than things the boss visibly does, so both need the player
+looking at the ward; firing into the last frames before one means they are
+reading a volley when the wall starts moving and find out about the collapse
+from the health bar. It is the only way the blue half's question can be asked
+honestly, too — the player is being told to leave, and being told while under
+fire is being told to do two things at once.
+
+**The two halves need different amounts of it, and one number could only ever
+be right for one of them.** It was one number, and it was right for the red
+half: that break is a *scatter*, the player is already standing in the safest
+place there is, and what eighty frames of quiet buys them is a look at the ward
+before it comes loose. The blue half's hold is not for looking. It is the
+window in which the player has to find a gap, cross the ring and be outside it
+— up to three hundred and fifty pixels through a wall with corridors thirty
+wide — and eighty frames of that made the attack's honest answer "already be
+leaving when the last volley is fired", which is asking somebody to act on a
+cue that has not been given. `HEX_HOLD_RED` is eighty and `HEX_HOLD_BLUE` is a
+hundred and twenty, with `HEX_BLUE_FAN` grown by the same amount so this is
+time added rather than volleys taken away — both halves still fire four.
+
+**And the collapse opens too slowly to be a lurch, which is the other half of
+the same complaint.** `HEX_IMPLODE_RAMP` is the trade: every bead has to cross
+its own distance in exactly `HEX_IMPLODE` frames, so a gentler start has to be
+paid for by a steeper finish, and the number is how much. At twelve the outer
+ring left at eight tenths of a pixel a frame and had covered nineteen in the
+first twelve — which is a ward that has *plainly begun to move*, on a movement
+whose only cue is the ward beginning to move. A player reading it correctly
+still learnt about the collapse from the collapse. At twenty-six it leaves at a
+quarter of a pixel a frame and has covered under seven after twelve, so the
+first thing that happens is the figure going soft exactly as the scatter's
+does. `HEX_IMPLODE` grew from 66 to 108 alongside it, so the finish did not
+have to steepen to pay for the start: it arrives at six and a third rather than
+at ten, and the whole gap between the last volley and the detonation went from
+two and a half seconds to four.
+
+**The detonation is seven kinds of debris and not one.** It was a hundred
+pellets at one of three speeds, and what that draws is three expanding rings —
+an arithmetically fine burst that reads as a *firework*. Reported, accurately,
+as pathetic. The first attempt at fixing it had cut the *count*, which was
+treating the symptom: three solid rings are a wall, and fewer of them is a
+smaller wall rather than a detonation.
+
+`hex_debris` is the fix and it is one table: a ball, a six-pointed star, a
+rune, a crystal, an orb, a mote and a pellet, all cyan, **graded so the heavy
+pieces are the slow ones**. That grading is doing three jobs at once. It reads
+as mass, which is what makes a cloud look like something breaking rather than
+something being fired. It sorts the burst along the radius by itself, so the
+gaps in it are gaps something has *left* rather than gaps somebody authored.
+And it pays out by distance: the player who answered the blue half and got out
+is reached by the sparks, and the one still standing in the middle gets
+everything — which is the one thing that half of the attack is asking for.
+
+Everything else about it comes off three independent hashes of the rune's own
+index — which way it throws, how hard, and what it throws — so the burst is
+irregular, has no hole in it, and is the *same* burst on the tenth attempt as
+on the first. **`frac` keeps its sign in GML**, so the hash had to be folded
+into `[0, 1)`: `hex_spray_dir` never noticed, because a negative fraction of a
+turn is the same heading as its complement, but an index into a table is not an
+angle and half the runes would have come off as the table's first row. Which is
+one shape at one speed, which is the shell the whole change exists to remove.
+
+**The size is carried by the effects and the danger by the debris**, and
+separating those is what lets the burst read as enormous at a count that is
+still dodgeable — three rings, a flash and fifty sparks, none of which can hurt
+anybody. Adding bullets to make it feel bigger is the move that produced three
+solid rings the first time round.
+
+**And a fan is a volley, which is `fire_ring_stack`'s missing sibling.** One
+fan is a wall that arrives all at once and is answered with one sidestep;
+`fire_fan_stack` sends the same fan at three speeds, so it arrives as three
+arcs a beat apart and the answer is a move and then two more. Each row is
+turned half a step off the one in front, because three rows down identical
+headings put their gaps on the same radial lines and the whole volley has one
+answer again.
+
+**The attack list is measured before it is drawn, and that came out of this.**
+Its plate was a constant, and the constant was the height of Ziggy's eleven
+attacks; the drafts got the same plate with the difference left as a hole. It
+is sized to its rows now, with the old height as the ceiling, and the two hint
+lines follow it up — pinned to the foot of the screen they only moved the hole
+from inside the plate to underneath it.
+
+
 ## Stages
 
 **A stage is a list of `{at, fn}` and nothing else.** A stage runs for minutes
@@ -1209,6 +1593,584 @@ non-spells are wide and slow, `Cinder Waltz` is survivable by standing in the
 right place because nothing in it is aimed, and only `No Mere Pawn` plays for
 real.
 
+## Stage two: the Hollow Grove
+
+Briar — a fox who keeps a wood's dead, in a bone mask under antlers. **The
+fight is a placeholder and the background is the work.** Five plain attacks
+built out of helpers that already existed, so that there is something to look
+at the wood *through*; when she is written for real it is `briar_phases` that
+gets replaced and nothing else on the screen has to change.
+
+### A corridor, not a parallax stack
+
+**Stage one is a floor and this is a corridor, and the difference is the
+projection rather than the art.** The brimstone stage is three sprites the size
+of the field sliding down the screen, which is exactly right for a pavement
+seen from above: everything in it is the same distance away, so everything in
+it moves at one rate and the depth is bought with parallax between three flat
+plates.
+
+A forest cannot be drawn that way. The player is flying *through* it at head
+height, so a tree fifty metres off and a tree five metres off are not two
+layers, they are one object at two depths — and the whole of what makes the
+shot read is that a tree grows, slides outward, and leaves past the edge of the
+frame, accelerating the entire time. That is one divide per prop and it cannot
+be got from a parallax rate.
+
+`scripts/bg_corridor` is the projection and the prop pool and knows nothing
+about forests; `scripts/bg_grove` is what is arranged in it. The camera sits at
+the origin looking down +z, `CORRIDOR_CAM_H` above a ground plane, and
+everything comes off one quotient — `k = FOCAL / z`, the screen pixels one
+world unit covers at depth z. A prop's position, its scale, how fast it crosses
+the frame and how much air is in front of it are all that number, which is why
+`corridor_k` is the one projection function and not four.
+
+`bg_new` carries a `kind`, and `bg_step`, `bg_draw_back` and `bg_draw_front`
+dispatch on it. Three entry points is the whole of what the two kinds share.
+
+**There is a ring buffer, and the reason is depth order.** `bg_draw_embers`
+derives its motes from the clock — a phase and a rate, and where a mote is this
+frame is `frac` of the two — which is the right shape and does not work here.
+The corridor accelerates half way through the stage, so a position derived from
+`t` would teleport every prop on the frame the speed changed; that half is
+fixable by deriving from an accumulated distance instead. The other half is
+not: these props *overlap*, so they have to be drawn far to near, and a set of
+positions derived by `frac` is sorted only up to a rotation that moves every
+frame. So the order is kept — props live in a ring, `head` is the nearest, and
+one that passes the camera is pushed to the back and becomes the farthest.
+
+**The slots are evenly spaced in z and jittered inside their own slot**, and
+the jitter is the ring's rather than the content's. Perfectly even slots keep
+the order true for ever and read as a picket fence; the jitter breaks that and
+is bounded by half a slot precisely so it cannot reorder anything. It was
+applied inside the content's recycle hook first, where every lap added another
+one — so over a couple of minutes the props wandered out of their slots, then
+out of each other's order, and the depth sorting the whole corridor rests on
+quietly stopped being true. `test_corridor` flies four thousand frames and
+checks the order every thirty-seven of them, because that is a claim no
+screenshot can make: a tree drawn in the wrong depth order looks like a tree.
+
+**Every ring is drawn in one merged depth-sorted pass, not one pass per
+ring.** Rings are separate because their depths are — the trees run out to the
+far plane, the trunks to half of it, the ferns to less, and giving them one
+shared span would either crowd the near ground with trees or spread the ferns
+over four times the depth they belong in. For three passes that turned into
+four sequential draw loops, which means **every trunk in the wood was drawn
+over every tree in it whatever their depths**. Reported as a big tree fading in
+*in front of* a small tree that was already closer, which is exactly what it
+was. Depth order is a property of the frame, not of a ring. Each ring is
+already sorted, so `corridor_merge_step` is a k-way merge — one linear pass, no
+comparisons beyond the heads, output array allocated once. `test_corridor`
+asserts the merged walk is monotonic in z and covers every prop.
+
+**The canopy is a ring too, and it is the tree sprite upside down.** A canopy
+drawn as a band sliding sideways is the one piece of this stage that could not
+be right: in a corridor nothing distant slides, it grows. Reported as flat
+transparent branches moving horizontally in front of the moon — a *sideways*
+motion the camera is not making, which the eye reads as a sheet of acetate
+being pulled across the picture. Boughs are ordinary props with their anchor
+*above* the camera instead of on the ground and their sprite hung downward from
+it, so they come at the lens and sweep off the top of the frame as the trunks
+sweep off the sides. It costs no new art — a tree flipped in y about its own
+root is a bough — and because they are props they sort correctly against
+everything else for free. What is left of the bands behind them is a slow sway,
+which is the wind, and the far treeline is opaque now: a wall of wood does not
+slide and you cannot see through it.
+
+**Every ring has to be stepped, and there is a suite that counts them.** The
+trunks were built, placed, depth-sorted, lit, given ivy and drawn for several
+passes with nothing advancing them — so the nearest and largest things in the
+wood held station while the entire world went past, and what reached a player
+was "those are static images lazily slapped on the background". They were.
+Nothing about a prop's *drawing* says whether it moves; the only thing that
+does is whether something calls `corridor_ring_step` on its ring, and a ring
+nobody steps looks exactly like a ring somebody does until the second frame.
+
+`test_corridor` walks the background struct, finds everything carrying a
+`props` array, and refuses one that has not recycled anything after a lap.
+Named individually the assertion would have passed the day it was written and
+gone stale the day a fourth ring was added — which is the shape of the bug it
+exists for.
+
+**And a ring's far plane is not a free choice: it has to be far enough back
+that the *air* does the arriving.** A prop's alpha is zero at its own ring's
+far plane, so nothing ever appears out of nothing — and that is only half of
+arriving unseen. Its *colour* has to already be the fog's too, or what fades up
+is a shape in its own colour at a distance where a thing that size can still be
+made out. The trunks recycled at 2800 units, where more than half the air is
+still clear, so what faded up was a four-hundred-pixel shape: reported twice as
+big trees popping in in front of smaller ones that were further back. Sorting
+them correctly did not help, because they genuinely *were* in front — the fault
+was the distance they arrived at, not the order they were drawn in.
+`CORRIDOR_ARRIVE_HAZE` is the budget and `test_corridor` measures every ring
+against it, which is what stops the next ring being the one that forgot.
+
+**A prop fades in at *its* far plane, not at the corridor's.** `corridor_haze`
+is measured against `CORRIDOR_Z_FAR`, the back of the whole world; a ring that
+only reaches a third of the way out there was recycling its props into a place
+where the air was still two thirds clear, so every fern and every trunk snapped
+into existence at about seventy per cent opacity. It was reported as bad pop-in
+on the grass, which is exactly what it was. `corridor_ring_fade` is a property
+of the ring, so a ring added later cannot be the one that forgot.
+
+**Everything a prop becomes is a hash of its lap, never `random`.** A wood
+whose trees stand somewhere else on the second attempt is a wood nobody can
+build a memory of — the same argument `hex_spray_dir` makes one file over, and
+`corridor_hash` folds `frac`'s sign for the same reason `hex_debris` had to.
+
+**And the corridor has a back wall.** The inverse of a perspective divide has
+no far end: a row one pixel under the horizon reports a quarter of a million
+units and a row *on* it reports infinity, so every reader of that number has to
+cope with a depth no prop can ever have — and one of them did not. What it drew
+was a thin dark red line across the field, a couple of pixels under the
+horizon, in a stage that had not turned and would not for another two minutes:
+the blood wavefront is parked *beyond* the far plane to mean "nothing has
+happened yet", and the only thing further away than the parked wavefront was
+the ground under the horizon. It read as a rendering artefact because that is
+what it was, and no assertion was going to see it — every number involved was
+inside its own range. `corridor_depth_at` clamps at `CORRIDOR_Z_FAR` now.
+
+### What is in the picture
+
+Eight layers at seven rates, which is the argument the forge is built on: each
+of them is cheap and the depth is in there being eight.
+
+| | |
+|---|---|
+| the sky | a vertical ramp, and stars that go out |
+| the moon | on the horizon, centred, eclipsed once |
+| the canopy | two bands of bough closing the top of the frame |
+| the treeline | the far wall of wood, sliding sideways |
+| the floor | leaf litter, roots and moss, laid down the corridor |
+| the mist | drifting bands, ground fog and dappled moonlight |
+| the trees | forty billboards, hung with charms |
+| the trunks | eleven more, taller than the screen, close to the path |
+
+**Everything is drawn as luminance and tinted at draw time** — the same
+decision `make_ui.py` records, load-bearing twice over here. The grove is lit
+by one moon and half way through the stage that moon turns to blood, so every
+tree, charm, fern and mist bank has to change colour together; a painted-in hue
+would mean a second copy of the entire stage. Each solid thing ships as a body
+and a **rim** — the moonward edge, drawn additively — because a dark mass with
+no rim is a hole in the picture, and splitting them lets the body be night-blue
+while the light on it is bone-white and then crimson without redrawing
+anything.
+
+**The trunks are the layer that makes it a forest rather than a clearing.** The
+wood was six frames of whole tree at every distance and it was reported as
+looking like a pond: at any depth where a *whole* tree fits inside the frame
+nothing in the picture is near, so however many of them there are the camera is
+always across a field from all of them. A trunk is a fragment — it leaves the
+top of its own frame, so the tree it belongs to is always bigger than the
+screen — and it passes the camera rather than standing in front of it.
+`GROVE_TRUNK_HALF` is measured from a trunk's *inner edge* rather than its
+centre, which is the difference between framing the field and walling it: at
+the first number the two nearest trunks met in the middle of the screen and the
+picture was a pair of black slabs with a keyhole between them.
+
+**Eight silhouettes and two numbers, because a frame drawn at one size is a
+frame the eye learns in four seconds.** Four near-identical heavy columns were
+reported as the same tree pasted over and over, and they were: the generator
+varied a lean and a width, and every frame came out a slightly different post.
+What tells two trunks apart across a screen is the silhouette — whether it
+forks, whether it leans and recovers, whether it is squat or slender, where its
+boughs leave — so `TRUNK_KINDS` is a list of those and the randomness fills
+each one in. On top of that every prop carries its own `scale` and `aspect`, so
+the same trunk comes past squat and then tall and narrow; eight frames become
+effectively eight hundred for two multiplies at draw time.
+
+**Which is why a trunk is placed by its inner edge rather than by its
+middle.** `GROVE_TRUNK_HALF` is the clearance the *nearest edge* of a trunk
+keeps from the centre line and `grove_make_trunk` adds the prop's own
+half-width to it. Measured from the middle, the widest trunk would stand
+exactly where the narrowest does and wall the field — the bug that constant was
+already rewritten once to fix, waiting to come back the moment the widths
+stopped being uniform. `test_corridor` walks the ring and asserts the
+clearance, rather than a comment claiming it.
+
+**A billboard has a flat bottom and the ground does not.** A trunk is drawn as
+a fragment that leaves the top of its own frame, so its sprite necessarily ends
+in a ruled horizontal line at the base — and at the size the near ones are
+drawn, that line is the give-away: it reads as a cardboard cutout standing on a
+floor rather than as something growing out of it. There is no fix for it in the
+art, because the cut is the sprite's own edge. What fixes it is what fixes it
+in a real wood: litter and roots bank up around a trunk, so the join is never a
+line anywhere. `grove_draw_mound` is one soft dark bank at the foot of every
+prop whose foot is on screen.
+
+**And it is drawn as a strip, not as a bloom, which is worth writing down.**
+The first version used `spr_fx_bloom` — the obvious choice, and wrong for a
+reason that is easy to miss: `soft_glow` has a falloff of 2.9, so its alpha is
+above four fifths only within seven per cent of its radius. That is exactly
+right for a light and useless as a fill. Drawn at the width of a trunk it
+covered the cut at about eight per cent opacity and the ruled line was still
+plainly there. A triangle strip with per-vertex alpha — opaque along the ground
+line, dissolving downward, tapering to nothing at both ends — is the shape that
+was wanted, and it is one primitive.
+
+**The palette is saturated, and that took a correction.** The first pass built
+it by taking the brimstone rule — scenery stays dark, because every point of
+value spent on it is a point the bullets no longer have — and applying it to
+the *chroma* as well. What came back was reported as "all black and white".
+Value and saturation are not the same budget: a deep teal at the same value as
+a neutral grey costs the danmaku exactly nothing and is the difference between
+a wood at night and a photocopy of one. It is the finding the console records
+about gilt on indigo, one layer further in. The ivy is the one thing out here
+that is a *hue* rather than a temperature, and it is why the stage is not two
+colours.
+
+**The moon is held at about half of white, and that is a fairness number.** It
+sits behind the middle of the playfield, where the boss stands and the danmaku
+is thickest, and the first pass of it was a pale disc at nearly full value —
+which photographed as the brightest thing on the screen with bullets crossing
+it. It carries its reading in maria and craters instead. A moon that has to be
+a lamp to be a moon is a moon this stage cannot have.
+
+**The charms are the one place allowed a second hue and they are bigger than
+they look like they should be.** A hex at a seventh of a tree's height is
+arithmetically a reasonable ornament and photographs as a two-pixel green
+spark; the tree it hangs in is four hundred pixels tall at the distance anybody
+looks at it. Where each one hangs is not a guess: `make_grove.py` works out
+every tree's branch tips as it draws them and writes them into
+`scripts/grove_table`, exactly as `bullet_table` carries a bullet's hit radius
+beside the sprite it belongs to.
+
+### The floor, which took three goes
+
+**A ground plane shaded per screen row can draw nothing but horizontal bands**,
+because in this projection a row *is* a depth. However carefully those bands
+are tuned, what they draw is a set of stripes across the screen, and what the
+eye makes of that is water. It was reported twice — first as a pond, then as a
+flat expanse with props tossed on it — and both were right: there was nothing
+on the floor that had a *position*.
+
+So the floor is one tile of leaf litter, roots, moss and twigs, **periodic in
+both axes**, laid down the corridor in bands. `fbm_field` wraps in y, which is
+all a scrolling parallax layer needs; a floor tiled sideways as well needs the
+first column repeated too, and it has to be the *grid* that is made periodic
+rather than the upsampled field — which is the finding that function's own
+docstring already records about cross-fading.
+
+Three things about the laying-down are worth keeping:
+
+- **The bands are a constant screen height, not a constant world depth.** A
+  band is textured affinely — one `draw_sprite_part` stretched between two
+  screen rows — where the perspective it is standing in wants the texture to
+  compress as one over the depth. Over twenty-six pixels that error is under a
+  pixel; over a band of fixed world depth, which is a quarter of the screen
+  tall by the time it comes close, the near half of the tile is stretched to
+  nearly twice its length and the texture visibly swims.
+- **There is a mip chain and it is cross-faded.** A tile at one scale has to be
+  faded out well before the vanishing point, and what that leaves is a hard
+  horizontal line with a textured floor below it and nothing above. The tile is
+  periodic, so laying it out at twice the world size is legal and halves how
+  much of it a band has to show; doing that in doubling steps and blending two
+  adjacent steps is a mip map by hand. The blend is the part that matters,
+  because a *step* in texture scale across the floor is the same visible line
+  the fade was there to remove.
+- **The ground at infinity is the sky, because that is what a horizon is.**
+  Aerial perspective removes most of the join on its own, and "most" is not
+  enough for a line the full width of the field. Fading the far floor toward
+  the same colour the sky is drawn in makes the two meet by construction rather
+  than by tuning.
+
+The colour ramp under all of it is the *air*, not the ground, so the floor is
+drawn opaque where it is drawn at all — laid over at half alpha it was a floor
+seen through half a screen of fog, which photographed as a flat green expanse
+with a suggestion of something under it. And the tint is the floor's *brightest*
+value rather than its average, because the texture carries its own range and
+multiplying it by a mid colour halves the contrast it was drawn to have.
+
+**And the ground flickered, which was a Nyquist failure.** The colour bands
+under the texture are periodic in depth: one is many rows wide under the camera
+and a fraction of a row near the horizon, and a pattern sampled below its own
+rate does not draw finely, it draws a *coarse* pattern that crawls as the
+camera moves. `corridor_draw_ground` hands each row how many world units it
+covers, so anything periodic can fade itself out before it starts to alias.
+There is no texture to mip there, so the fade lives in the function that makes
+the pattern.
+
+### The turn
+
+Half way through, the stage changes. `bg_set_omen` starts it — **one line in
+the timeline**, because the stage clock is already held while a boss is on the
+field, so an event written just after the midboss's gate fires on the frame
+that midboss is finished and not before. A stage says when its own second half
+begins, in its own running order, where somebody reading it can see it. `omen`
+lives on the *base* background struct so a run can say "the stage turns"
+without knowing what kind of world it is saying it to; stage one never asks.
+
+Four movements over `BG_OMEN_TIME`:
+
+1. **The quiet.** The mist stills, the stars begin to go out.
+2. **The eclipse.** A shadow crosses the moon left to right — one interval
+   sliding, with a leading edge that covers and a trailing edge that uncovers,
+   because an eclipse is a body going past and that is one movement to write
+   where a darken-and-reverse is two.
+
+   **It is drawn as slices of the moon's own sprite, and it took three goes to
+   get there.** The first subtracted the moon's disc from itself with
+   `bm_subtract`, which shipped a grey rectangle gliding across the screen:
+   GameMaker's subtract blend does not weight the source by its alpha, and a
+   PNG keeps its colour channels in fully transparent pixels — so a luminance
+   field generated across a whole canvas with a *disc-shaped alpha channel* is,
+   to that blend, a bright grey **square**. Found by rendering the frame twice
+   with the umbra on and off and differencing the two: the affected region came
+   back a filled rectangle rather than a circle, which is the kind of question
+   a screenshot can be *measured* for even when looking at one only says
+   "something is wrong there".
+
+   The second drew the same disc in black through normal blending. That is
+   artefact-free, and it was reported as looking weird in motion — correctly,
+   because a disc darkens the *sky* wherever it is not over the moon, so what
+   actually travels across the frame is a black circle. An eclipse is not a
+   black circle passing in front of a wood.
+
+   **What passes is a shadow, and it is only ever on the moon.** So the moon is
+   drawn again in vertical slices of its own sprite, one `draw_sprite_part_ext`
+   each, with a per-slice alpha, and the shadow is a soft-edged band in x
+   sweeping across them. Clipped to the disc by construction, because the disc
+   *is* the thing being drawn — the same difference in kind as a window versus
+   a margin. The diff that caught the first version now comes back as a
+   circular arc with a soft edge inside it and nothing anywhere else.
+
+   **And the shadow is copper, not black.** A total lunar eclipse turns the
+   moon dark red, because the only light reaching it has been bent through the
+   whole of an atmosphere — which is to say the eclipse is not something that
+   happens *before* the blood moon, it is the reason for it. Two movements of
+   the turn collapse into one fact.
+3. **The relighting.** The moon comes out of the shadow red and brighter than
+   it went in, and a ring leaves it.
+4. **The wavefront.** The red travels *down the corridor* toward the player.
+
+**The wave is a depth, not a screen radius, and that is the whole trick.**
+Every prop and every row of ground already knows its own z, so "has the wave
+reached this yet" is one compare — and what it draws is red arriving out of the
+distance and rolling over the wood toward the camera, the far trees first and
+the near ones last, every charm flaring as it passes. A ring expanding across
+the *screen* would have been the obvious version and it would have turned the
+near trees first, which is backwards. `test_grove_turn` asserts that something
+far is redder than something near at every moment of the wave, because that is
+the claim and a still frame is the thing least able to make it.
+
+**The wood is darker than its palette says, and the number is
+`GROVE_NIGHT_LIGHT`.** The palette was tuned against a frame with the moon in
+full, and it came out hazier and flatter than the *same wood half way through
+its eclipse* — where the mist stops glowing, the rims come down, the floor goes
+nearer the colour of the air, and the hanging charms become the brightest
+things in the picture. That frame was the better one, and it was better for a
+reason worth keeping: a night wood is not short of *colour*, it is short of
+*light*. So the light the stage runs at by default is three quarters, and the
+moon — which is not dimmed by it — is left as the one bright thing in the
+frame. Turning the palette down instead would have taken the chroma with it,
+which is the mistake this stage already made once.
+
+**And totality takes the light out of the wood, not just off the moon.**
+`_b.light` is one number because there is one source: at totality the mist
+stops glowing, the rims go out, the floor goes to the colour of the air, and
+the only things left burning are the hexes in the trees and the wisps between
+them. Dimming the moon alone — which is what the first pass did — photographed
+as a wood in full moonlight with the moon missing.
+
+The corridor also speeds up behind the wave, which is the cheapest way a
+background has of saying the second half is worse: nothing about the fight
+changed and the room is going past half again as fast.
+
+### The one rule the foreground keeps
+
+**Every draw in `grove_draw_front` is additive, and that is a fairness rule
+rather than a look.** Stage one's near layer is opaque art held down to
+`BG_NEAR_ALPHA` and kept out of the middle by a window, because an opaque
+foreground over live danmaku does not hide scenery, it hides *bullets* — which
+reached a player as "I am taking damage and there is nothing on screen".
+
+A corridor cannot keep out of the middle: the whole idea is that things come at
+the camera. So it takes the stronger rule instead. Light can only ever brighten
+what is behind it, so an additive foreground cannot conceal a bullet at any
+alpha, at any size, in any arrangement — a guarantee the keep-out window only
+ever approximated. What is given up is the ability to put a solid branch in
+front of the player, and that is not a loss worth arguing about.
+
+**Nothing in this stage is `spr_bg_*`, and that is deliberate.**
+`check_bg_seams` and `check_bg_keepout` measure every sprite under that prefix
+and both are asking questions about a *scrolling tile*: does its last row match
+its first, and does it keep out of the middle of a layer drawn over the field.
+Neither means anything about a tree. The prefix here is `spr_scn_` — scenery —
+and the rules those checks enforce are enforced for this stage where they can
+be, by the additive foreground above.
+
+## The sound
+
+**Nothing plays a sound. `sfx` casts a vote and `sfx_step` counts them**, once
+a frame, and that inversion is the whole of the audio system.
+
+A boss non-spell fires a hundred and twenty bullets on a single frame and a
+spell that opens with a wall fires three hundred. If `fire` played a sound,
+that frame would start a hundred and twenty voices of the same 75-millisecond
+cue within a few samples of each other — which is not a hundred and twenty
+shots, it is one shot at a hundred and twenty times the amplitude,
+comb-filtered by its own copies into a burst of noise. It would also exhaust
+the mixer's voice pool, so the *next* thing that mattered — the hit, the graze,
+the spell being named — would be the thing that failed to sound.
+
+The usual answer is a cooldown checked at the call site, and it is the wrong
+shape three times over: it puts the rule in a hundred places, it fires on
+whichever bullet happened to be first rather than on the volley, and it cannot
+know that a hundred and twenty went out rather than four. So instead:
+
+- **`sfx(cue)` is free.** It increments a counter. Every bullet, every shard,
+  every grazed bullet may call it as often as it likes and nothing can go
+  wrong — which is why the call sits inside `fire`, the hottest function in
+  the game, with no guard around it.
+- **`sfx_step()` resolves the frame.** At most one voice per cue, at most
+  `SFX_VOICES` cues in total, and the *count* is what sets the gain and the
+  pitch — so a volley of a hundred and twenty sounds bigger and lower than a
+  volley of four, out of one voice.
+
+That makes "a pattern must not machine-gun the mixer" a property of the API
+rather than a rule every caller has to remember, which is the same bargain the
+delay marks and the near layer's keep-out window make: a thing that cannot be
+got wrong beats a thing that has to be got right. `test_audio_budget` states
+it as a ratio — three hundred requests, one voice.
+
+**Louder and lower together, because either alone reads as the wrong thing.**
+Gain on its own is the same shot turned up; pitch on its own is a different,
+larger object firing once. Together they are more of the same object, which is
+what a volley is. The swell is logarithmic, because loudness is: a linear ramp
+would put a forty-bullet volley off the top of the mix and leave four and eight
+sounding identical.
+
+**The backlog is dropped, not held.** A request that could not be afforded this
+frame is about something that has already happened, so carrying it forward
+would sound the shot after the bullet had crossed half the field — and would
+let one busy second play out over the quiet one after it.
+
+**Votes do not cross a room boundary, and the guard has to be in `sfx` as well
+as in `sfx_step`.** That second half cost the boss's arrival cue. Entering
+`room_game` runs `obj_game`'s Create — which in attack practice calls
+`boss_spawn`, which asks for `BossAppear` — and only *then* the first Step.
+With the check living in `sfx_step` alone, that first step saw a room it had
+not seen before and cleared the request Create had just made: a cue requested
+*after* the change, thrown away by the guard against requests made *before* it.
+`sfx_sync_room` is called from both ends now, which is one integer compare in
+the hottest path and puts the votes on either side of a room boundary on the
+correct side of it. It was found by a suite rather than by ear.
+
+**`sfx_step` is called from the top of a controller's Step, before anything
+that might `exit`.** That costs one frame of latency — sixteen milliseconds,
+well under the ear's ability to bind a sound to a picture — and buys that no
+early return can skip it. `obj_game`'s Step has five `exit`s and three of them
+are states where a cue most needs to sound: the pause menu, the result panel,
+and the menu on it.
+
+### Neither harness makes a sound
+
+Same reasoning as neither taking the display, and the same shape of fix.
+`tools/test.py` runs the game once and `tools/shot.py --all` runs it
+thirty-two times, minimised, while somebody is working on something else — and
+a build that played a boss dying through their speakers thirty-two times is the
+complaint about the window coming to the front, one notch louder. `audio_init`
+reads the command-line mode, so silence is expressed as *the game asking for
+sound* rather than as a tool switching it off, and there is no frame in which
+it was on.
+
+**The flag is checked at the single point where a voice would start**, so
+everything above that line runs under a harness exactly as it does in play and
+`test_audio_budget` grades the real decision. And `audio_master_gain` is set to
+zero *as well as* the flag — which is what lets `test_audio_playback` make the
+real `audio_play_sound` call, silently, for all twenty-eight cues. Without it
+the one statement that actually ships would be the one statement no suite ever
+executes, and a wrong argument count there is not a compile error in GML: it
+binds the missing one to `undefined` and throws when it is used, which under
+either tool is a modal box and therefore a *hang*.
+
+### What the set is
+
+Touhou's shape rather than Touhou's content: cues are tiny, they are dry, they
+are all clearly different from each other, and the enemy shot is the quietest
+thing in the game despite being the most frequent.
+
+- **Short, and dry.** A tail is a voice that outlives its own event. At the
+  rate this game fires, a shot cue with a 400ms tail is a drone — and it is
+  loudest exactly when the screen is fullest, which is when the player most
+  needs to hear the one cue that matters.
+- **Narrow, and in different bands.** Anything in the set can sound on the same
+  frame as anything else, so two cues sharing a band mask each other. The shots
+  live at 400–2500Hz, the graze sits at 3–5kHz where nothing else goes, the
+  player's own shot is deliberately thinner than the enemy's, and the ceremony
+  is the only thing allowed below 200Hz. Same argument the bullets' art makes
+  about a bright core inside a saturated rim: a cue has to be identifiable in a
+  fifth of a second against everything else, and being *loud* is not how that
+  is bought.
+- **Levelled in the generator, not at the call site**, so the gains in
+  `audio_functions` mean what they say — and so a replacement set has something
+  to match.
+
+Three shot cues across eighteen shapes, grouped by what a shape reads as rather
+than by what it is: round things puff, pointed things tick, the big drawn ones
+land. `sfx_for_shape` is in `audio_functions` rather than in the generated
+`bullet_table` — which is the other defensible home, since `SPIN` is a property
+of a shape for exactly the reason a voice might be. The deciding argument is
+what re-running `make_bullets.py` costs: it redraws eighteen sprites and
+rewrites every frame of them, which is the operation this project has twice
+shipped a blank sprite through. **A change to how a bullet sounds must not be
+able to blank a bullet.**
+
+**Broken and survived are different cues, not one cue at two volumes** — the
+same three-outcomes rule the practice panel keeps. And a capture plays *over*
+the break rather than instead of it, which is why it is drawn thin and high:
+the break already said the attack ended.
+
+Two envelope bugs were found by measuring rather than by listening, and both
+were invisible to every other check. `snd_boss_die` held an RMS of 0.65 for
+seven hundred milliseconds — a sustained roar rather than a boom, because
+`soft_clip` was applied to the whole mix and tanh lifts everything behind the
+transient it is compressing. And the first `snd_bomb` opened with a rising
+swell, which put 250ms of near-silence between the player pressing X and
+anything happening: a bomb heard a quarter of a second late is a bomb pressed
+twice. The transient is at sample zero now and the bloom follows it, which is
+the same shape the drawing already had.
+
+A third was found the same way and is the reason `finish` fades its two ends
+differently. At two milliseconds each, the head fade was eating the attack of
+every plucked cue, and `snd_enemy_hit` came out at 0.08 against a designed
+0.26 — a 26ms click is *all* attack, so blunting its first eight per cent is
+blunting the thing itself. The head gets 0.4ms now and the tail keeps 3ms, and
+the normalising happens after both, so the peak a cue is finished at is the
+peak the file actually holds.
+
+### The ward cues, and a telegraph that costs no pixels
+
+`Demon Sealing Hex` gets four of its own — `WardClose`, `WardScatter`,
+`WardPull`, `WardBurst` — and `WardPull` is the one worth writing down.
+
+The collapse's whole difficulty is that its only cue is the ward beginning to
+move, and `HEX_IMPLODE_RAMP` deliberately makes that gentle: a quarter of a
+pixel a frame for the first fifth of a second, so the movement does not open as
+a lurch. The cost, already written down beside the constant, is that a player
+reading it correctly still learns about the collapse *from* the collapse.
+
+A rising, tightening tone that arrives at the top exactly as the ward reaches
+the middle says the same thing a second and a half earlier and spends not one
+pixel of the field to do it — which is the trade the ramp could not make,
+because a visual cue big enough to read is a visual cue that has already moved
+the ward. So `snd_ward_pull` is written to `HEX_IMPLODE`'s own length, 108
+frames, and resolves onto `snd_ward_burst`.
+
+That is one fact in two files and nothing in the build would notice it
+drifting: a cue half a second short resolves onto nothing, a cue half a second
+long is still climbing when the detonation lands, and both are perfectly valid
+audio. `test_audio_budget` asserts the two agree.
+
+**They are named for the figure rather than for the attack**, because drafts
+are meant to be thrown away and a cue called `HexImplode` would be four sounds
+to rename the day the pattern moves to a real boss.
+
+The inscription needed nothing added. Every rune goes through `fire`, so two
+hundred beads laid down over ninety frames coalesce into one soft shot cue
+every four frames — which is a pen on stone, and is what the coalescing sounds
+like when it is handed something that genuinely is one continuous event.
+
 ## The art
 
 **All of it is generated** at 1920x1080 by the `tools/make_*.py` scripts, except
@@ -1218,16 +2180,18 @@ once, because PIL's draw calls are hard-edged and a bevel drawn at 1x reads as
 
 | Script | Output |
 |---|---|
-| `tools/art_common.py` | Palette, `Canvas`, the distance-field shader, glows, fbm noise, preview sheets |
+| `tools/art_common.py` | Palette, `Canvas`, `Cut` and the cut-body shader, the distance-field shader, glows, fbm noise, preview sheets |
 | `tools/make_palette.py` | `scripts/palette` — the palette, in GML |
 | `tools/make_bullets.py` | Every bullet sprite **and** `scripts/bullet_table` |
-| `tools/make_fx.py` | Sparks, blooms, rings, laser textures, shards, the hitbox, the boss sigil |
+| `tools/make_fx.py` | Sparks, blooms, rings, laser textures, the shards, the hitbox, the boss sigil |
 | `tools/make_fonts.py` | The six sprite-font atlases |
 | `tools/make_enemies.py` | The four fodder shapes |
 | `tools/make_boss.py` | Ziggy and his eye card — **placeholder, see below** |
-| `tools/make_bg.py` | The three parallax layers |
+| `tools/make_bg.py` | Stage one's three parallax layers |
+| `tools/make_grove.py` | Stage two's scenery: trunks, trees, ivy, hanging charms, ferns, the moon, the forest floor, the far treeline, the canopy, mist — **and `scripts/grove_table`** |
 | `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint |
 | `tools/make_player.py` | Szuix, from the commissioned sheet |
+| `tools/make_sfx.py` | Every sound effect, and the preview WAV and sheet |
 
 Each writes a preview to `tools/_preview/`. Look at it.
 
@@ -1255,10 +2219,13 @@ is drawn additively, and additive light cannot make a dark edge** — it can onl
 ever brighten what is behind it. A dark ring is therefore a mark the background
 is structurally incapable of producing, and a shape wearing one reads as an
 object in front of the world rather than as a light shining out of it.
-`CONTOUR` in `make_bullets.py` is two pixels, traced at the final size rather
-than at SS and shrunk with everything else, and traced around the *thresholded*
-body rather than the alpha — every bullet has a soft halo, so tracing the alpha
-draws a ring around the fog and not around the bullet.
+`cut_finish`'s contour is two pixels, traced at the final size rather than at
+SS and shrunk with everything else, and traced around the *thresholded* body
+rather than the alpha — every bullet has a soft bloom, so tracing the alpha
+draws a ring around the fog and not around the bullet. It is the hue at an
+eighth rather than flat black, which is still near-black and still a mark
+additive scenery cannot make, and it keeps a crimson bullet warm to its very
+edge instead of ringing all fourteen hues in the same grey.
 
 The shapes also grew by about half. The hitboxes grew by a third, deliberately
 less: the picture's job is to be seen and the hitbox's job is to be fair, and
@@ -1266,6 +2233,147 @@ growing them together would have turned a legibility fix into a difficulty
 change.
 
 The same contour goes on the fodder, for the same reason.
+
+### A bullet is *cut*, not lit — and that is the second time this was wrong
+
+The core-inside-rim rule above is correct and was never the problem. What was
+wrong is the *way* the three bands were laid down, and it took a second report
+to see it: the whole set was **reported as belonging in a match-three game
+rather than in a fantasy shooter** — smooth, bubbly, candy.
+
+Two things did that, and neither is a matter of taste:
+
+- **A specular highlight kicked up and to the left.** `orb_field` and
+  `shade_shape` both add one, because both were written to light a shape the
+  way a photographer lights a bead. An off-centre gloss says *polished convex
+  plastic under a studio lamp*, and nothing else says it as loudly.
+- **Bands that are a fraction of the shape rather than a number of pixels.**
+  `depth_field` normalises by the shape's own deepest point, so a two-pixel rim
+  on a 24-pixel pellet becomes a seven-pixel rim on an 88-pixel sphere, and
+  every shape inflates into a pillow of its own hue.
+
+A magical projectile is not a lit object. It is a **cut** object lit from
+inside, so `art_common`'s "Cut bodies" section replaces both for anything the
+player has to dodge:
+
+- **No light direction anywhere.** What brightness there is is concentric or
+  axial, because the source is the thing itself.
+- **`edge_dist` is unnormalised**, in final pixels, so a lip is a lip and a rim
+  is a rim at every size. It alternates 4- and 8-neighbour erosion to get an
+  octagonal metric, because a square kernel is 41% generous on the diagonals
+  and a rim 41% thicker at four points of a circle is visibly not a circle.
+- **The interior stays saturated and a small drawn core carries the
+  luminance.** The first pass ran the interior a third of the way to white and
+  came back as pale lozenges with a coloured edge, which is fourteen hues
+  reduced to three.
+
+**And a shape is no longer a silhouette.** It is up to four masks — `body`,
+`groove` cut into it dark, `bevel` for the planes that face the light, and
+`core` — because **authored internal structure is the whole of the difference
+between a shape that looks generated and one that looks designed**, and no
+shading model buys it. So every bullet is a made object: a bead in a bezel with
+a hoop engraved round it, a kunai with a collar and a lit spine, a talisman
+with an inscription burning along it, a rune tile with a sigil struck into it.
+
+Three failures found by looking at the sheet, all of them the same mistake at
+different scales — **a structure that repeats the silhouette's own symmetry,
+at the silhouette's own scale, all the way to its edge, panels the shape
+instead of cutting it**:
+
+- The round family was a brilliant cut seen from above: a hexagonal table with
+  six facet breaks running out to the girdle. Six equal panels round a hexagon
+  is a **football**. What replaced it is concentric — a bezel, a hoop, and
+  small ticks that stop well short of the core.
+- The moth was a delta wing swept hard back on a long thin body with a bright
+  line down all of it and two streamers off the front, which is a **fighter
+  jet**. Broad wing tips, a short thorax, a short lit axis and two antennae
+  fixed it; the antennae are three pixels of sprite and the cheapest thing in
+  the set.
+- The ofuda was dark ink on a pale field in a frame with one clipped corner,
+  which is a **luggage tag** — and the marks were not the problem, the
+  silhouette was. It is a swallowtailed pennant now, with lit writing on a
+  coloured strip, which is also what stopped its hue living in two pixels.
+
+**`heart` is gone and `rune` is in its slot.** A heart is the most cute-coded
+shape in the genre and there is no rendering of one that reads as somebody's
+warding sigil. Nothing outside the generated table referenced it, so the swap
+cost one line in a file `make_bullets.py` writes anyway — and it bought the set
+a second glyph-bearing shape, which is deliberately *not* the ofuda's idea
+twice: a talisman is paper somebody wrote on, and a rune is a stone somebody
+charged.
+
+**And the pickup took four goes, each of which drew a bullet a different
+way.** It began as five flat polygons with a highlight line — a pentagon token
+in three tints, the same structureless read, on the one object the player
+actively chases. Then a cut quartz point, which was simply a bullet that
+happened to be collectable: the same `Cut`, the same saturated hue, the same
+hot core, and photographed against Ziggy's amber volleys **a gold one and an
+amber bullet were the same colour at the same size with the same finish**.
+Then a jewelled pendant, where being handsome was the problem twice over — it
+was **bright and pointed downward**, which is to say pointed at the player,
+which is what a bullet *is*; and at 42x46 it was larger than every bullet on
+the field, so a shower of them after a bomb hid the pattern underneath. Then
+flat enamel, which fixed all of that and stopped reading as a gemstone at all.
+
+What ships is a **dark cut stone in a gilt bezel**, and every property of it is
+load-bearing:
+
+- **Small.** Thirty by twenty-four of drawing, under half the pendant and
+  smaller than the `orb` half this boss's patterns are made of. It is drawn
+  *over* the field, so the near-parallax rule applies to it: nothing that is
+  not a bullet may be big enough to hide one.
+- **Blunt.** No point anywhere on it. A shape coming to a point aimed down the
+  screen is aimed at the player, and nobody stops mid-dodge to check whether
+  this particular one is friendly.
+- **Dark.** The stone is the hue at under half strength, which puts the whole
+  token below the value of anything being dodged.
+- **Lit rather than emissive, which is the rule worth keeping.** Every bullet
+  is a light: no direction to its brightness and a white core burning in the
+  middle. The pickup has no core at all and one small hard glint up and to the
+  left — an *object catching* light. That is exactly the specular this redesign
+  took off the bullets, put back on the one thing that should always have had
+  it, and it inverts a bullet's most recognisable property in four pixels.
+- **Two materials**, which no bullet in the set has. `COL_GILT` is a muted
+  brass and every bullet hue is above 240 in its dominant channel, so the
+  bezel is a family nothing a boss fires can reach — and the right family,
+  since gilt on indigo is the console's, the console is the player's, and a
+  pickup is loot Szuix is taking off somebody.
+
+It is two `cut_shade` passes composited, because that function takes one hue
+and the point of the shape is that it has two.
+
+**What makes it findable is not the token.** It is the soft additive bloom
+`item_draw` already lays under it, and that division of labour is why the token
+itself is allowed to be this quiet: a coloured glow is a mark the scenery makes
+constantly and no bullet can make at all, so it attracts the eye without ever
+being mistaken for something to dodge.
+
+### The sprite's edge is a hard clip
+
+Both things `cut_finish` lays round a body run *past* the silhouette — the
+contour grows outward by its own width, and the bloom is a Gaussian. A shape
+drawn to within a pixel of its canvas therefore comes back with its outline
+sliced flat along that side and its glow ending in a straight line.
+
+Four of the eighteen bullets shipped exactly that way. The give-away was not
+the sliced contour, which is two pixels and looks like a design choice; it was
+the *glow*, reported as "their transparent glow visibly cuts off at the image
+border" — the only part of the defect big enough to see. Measured afterwards,
+`card`, `crystal`, `dart` and `rice` all had border alpha 245, which is the
+body itself against the edge, and every other sprite in the set had 40 to 68.
+
+`cut_pad` is the fix and it is derived rather than chosen: two sigmas of blur
+puts the bloom under one part in two hundred of its peak. `cut_finish` pads the
+canvas by that much before it draws anything, so **no shape function has to
+know**, and it windows the last two pixels to zero on top — because a margin is
+arithmetic that can be got wrong and a window cannot, which is the same bargain
+`BG_NEAR_EDGE` makes one layer out. The sprites are correspondingly larger and
+`global.bshape_w` / `_h` record the padded size; nothing in the game reads
+either, and `hit` is unchanged, so the padding costs atlas and nothing else.
+
+`orb_field`, `shade_shape` and `depth_field` are all still here and still
+right — for the scenery, the fodder and the boss, none of which have to be told
+apart from a bullet at a glance while being dodged.
 
 ### One sprite per shape, one frame per colour
 
@@ -1283,18 +2391,38 @@ to compute it. `test_bullet_table` asserts every sprite holds exactly
 carrying a `- 90`, and the one that forgets it is a bullet that is visually
 sideways while being mechanically correct.
 
+**A star-shaped bullet turns, and the rate is a property of the shape.** The
+engine has always had a per-bullet `spin` and exactly two hand-written patterns
+ever set it; `SPIN` in `make_bullets.py` writes a default per shape into
+`bullet_table.gml`, and `fire` reads it. Making it the caller's business would
+mean a spell with half its stars spinning and half not, which reads as a bug in
+the spell rather than as a choice.
+
+The phase comes free: `fire` starts `angle` at the firing direction, so a ring
+of stars is scattered rather than turning in lockstep — thirty synchronised
+stars read as one object rotating. **Nothing oriented may carry one**, because
+there `angle` *is* the heading and `bullet_step` overwrites it from `dir` every
+frame; `test_bullet_table` asserts that rather than trusting the table, and
+asserts the value reaches a fired bullet as well, because a default nothing
+reads is not a default. A delayed bullet does not turn — the warning mark holds
+still and the live bullet starts moving, which is the delay rule getting the
+answer right for free.
+
 **`make_bullets.py` is the single source of truth for a bullet's hit radius**,
 not just its picture, and it generates `scripts/bullet_table/bullet_table.gml`
 to say so. The radius and the sprite have to agree; if the number lived in GML
 while the picture lived in Python the two would be edited apart within a week.
-The flame is the case that proves it — 46x30 of picture and 7 of hitbox, because
-the tail is not the bullet.
+The flame is the case that proves it — 66x42 of picture and 9.5 of hitbox,
+because the tail is not the bullet.
 
 ### The distance field, and why a blurred mask is not one
 
-`orb_field` shades a round bullet off a radius it can compute in closed form.
-Everything else — an ofuda, a dart, a butterfly, a rock — goes through
+`orb_field` shades a round shape off a radius it can compute in closed form.
+Everything else — a fodder gem, a boss's horn, a rock — goes through
 `shade_shape`, which needs to know how deep inside the shape each pixel is.
+(The bullets and the shards used to and no longer do; see "A bullet is *cut*,
+not lit" above for the band that has to be a number of pixels rather than a
+fraction of a shape.)
 
 The first version approximated that by **blurring the mask**, which is fine for
 a blob and useless for anything thinner than the blur radius: a ring wall, a
@@ -1708,33 +2836,69 @@ re-running a generator writes byte-identical files and produces no diff.
 To add a **stage**: a `stage_def` in `stage_list()`, a script beside
 `stage_ziggy` with its timeline and its boss's phase table, a provisional
 `encounters` count for the console's ledger, a `bosses` list of
-`{name, spawn, phases}` so its attacks can be practised, and a palette entry in
-`make_bg.py`. The rack lays itself out from the list and draws every unbuilt
+`{name, spawn, phases}` so its attacks can be practised, and a background —
+either a palette entry in `make_bg.py` for a parallax stack, or a `bg_*`
+function returning a `BGKIND_CORRIDOR` struct and the scenery to fill it. A
+stage whose second half looks different puts `wave_bg_omen()` in its running
+order. The rack lays itself out from the list and draws every unbuilt
 entry as locked, and the attack list lays itself out from `bosses`, so filling
 one in changes no screen code.
 
-To add a **bullet shape**: an entry in `SHAPES` in `make_bullets.py` and a mask
-function. Re-run it and `bullet_table.gml` follows.
+To add a **bullet shape**: an entry in `SHAPES` in `make_bullets.py` and a
+function returning a `Cut` — its `body`, and whatever `groove`, `bevel` and
+`core` it wants. Re-run it and `bullet_table.gml` follows.
 
 To add a **spell**: a row in the boss's phase table and a function of `_t`. It
 appears in the attack list by itself, because that list is read off the same
-table the fight is.
+table the fight is. Add a `move` to the row only if the pattern is fighting the
+drift — see `BossMove`; saying nothing is saying `Drift`, which is right for
+nearly every attack.
+
+To add an **attack with no boss yet**: a row in `draft_list()` in
+`stage_drafts` — a name (or `""` for a non-spell), a hue, a clock and a
+function, plus a `move` in the one case where the drift is wrong for it — and
+the function beside it. The span of the bar, the kind, the
+background and the caster's health all follow, and it is on the drafting table
+the next time the game runs. Moving it to a real boss later is moving the
+function and writing a proper `hp_end`.
 
 ## Current state
 
 Playable end to end: the stage rack, stage one from its first wave through a
-midboss to Ziggy's seven attacks, the result screen, and permanent progress —
-plus attack practice, which drills any one of the nine attacks on its own.
-252 assertions pass; all nineteen screenshot scenes render.
+midboss to Ziggy's seven attacks, stage two through a wood that turns to blood
+half way down it, the result screen, and permanent progress —
+plus attack practice, which drills any one of the nine attacks on its own, and
+the drafting table, which does the same for six attacks that have no boss yet.
+399 assertions pass; all thirty-two screenshot scenes render.
 
 Not done, in rough order of how much it is missed:
 
-- **No audio at all.** No sound assets, no `audio_functions`. This is the
-  largest single gap in how the game feels — a bullet hell without a shot sound,
-  a graze tick and a spell-declaration sting is missing most of its feedback.
-- **Only one stage exists.** Seven more are named on the rack and marked
-  unbuilt. Everything needed to add one is listed above; what is missing is the
-  bosses, and each is a phase table and a character.
+- **There is sound, and none of it has been heard by anybody playing.** The
+  mixer is right and the cues are placeholders: twenty-eight synthesised WAVs
+  drawn to designed peaks, which is enough to tune a *mix* against and is not
+  the same thing as a sound somebody recorded. Replacing one is a file drop —
+  see `tools/make_sfx.py`'s note on the contract. **No music**, which is the
+  larger of the two remaining gaps and is not this file's shape at all: a cue
+  is at most a second and a half and streams nothing, where a track loops for
+  five minutes and wants `compression` and `preload` pointed the other way.
+- **Six more stages are named on the rack and marked unbuilt.** Everything
+  needed to add one is listed above; what is missing is the bosses, and each is
+  a phase table and a character.
+- **Stage two is unlocked from the start, and that is temporary.** The rack's
+  locks pace a first playthrough, and pacing a playthrough of a stage that
+  exists to be *looked at* is a circle — the same one the drafting table's
+  gating note is about. `needs` goes back to `1` on the day Briar has a fight
+  worth reaching, and it is one number.
+- **Stage two's fight is a placeholder and says so.** The Hollow Grove exists
+  for its background: Briar has a name, a title, a colour, a caster's
+  background and five attacks that are deliberately the plainest things this
+  engine can produce, because a background cannot be judged from a still and
+  there had to be something to look at the wood through. Her handwriting is the
+  next piece, and it is one table.
+- **The grove's own art is still generated rather than drawn.** The trunks are
+  four silhouettes and read as trunks; nobody has painted a tree. It improves
+  the same way the boss art does, and the contract is the same — two sprites, a
+  body and a moonward rim, tinted at draw time.
 - **The boss art is a placeholder** and is expected to be commissioned. Ziggy
   is drawn from primitives and reads as "a red winged imp with horns"; the
   contract a painted replacement has to keep is in `tools/make_boss.py` — size,
@@ -1802,12 +2966,44 @@ Not done, in rough order of how much it is missed:
   settable auto-delete clip — `CULL_MARGIN` is one number for the whole game, so
   **a pattern that legitimately leaves the field and comes back cannot be
   written**, which is the one of these that would be missed first.
-- **Nothing in the stage uses most of the new bullet kinds.** The arc, the wake,
-  the timed fade and the mid-flight graphic change are all engine and all
-  tested, and Ziggy is written the way he always was — a boss balanced against
-  nobody is not made better by being rebalanced against nobody with more
-  verbs in it. They are photographed by the `motion` scene rather than by a
-  fight, which is where they should stay until somebody has played one.
+- **Nothing in the *stage* uses most of the new bullet kinds, and that is now
+  the right answer rather than a gap.** The arc, the wake, the timed fade, the
+  mid-flight graphic change and the homing modifier are all engine and all
+  tested, and Ziggy is still written the way he always was — a boss balanced
+  against nobody is not made better by being rebalanced against nobody with
+  more verbs in it. What was missing was anywhere to *play* them; the drafting
+  table is that, and its first five drafts use all of them between them.
+  Whether any is fun is still a question for somebody holding the keyboard,
+  which is what the mode is for.
+- **The drafts are as unplayed as everything else, and the drafting table does
+  not make them less so** — it makes them *playable*, which is a different
+  thing. Five patterns picked to exercise five engine verbs are five patterns
+  chosen by what they demonstrate rather than by what they are like to dodge,
+  and at least two of them are visibly too dense on a screenshot. That is the
+  mode working: they are on a table because nobody has decided about them.
+  **`Demon Sealing Hex` is the least played of the six and the most in need
+  of it**, because it is the only one whose difficulty is a *shape* rather
+  than a rate — and it is the one that turned out to be unanswerable rather
+  than hard, which is why `BossMove` exists: whether the red ward's cell is small enough to make five
+  aimed fans hard and large enough to make them survivable, whether ninety
+  frames is long enough to find a corridor out of the blue one, and whether
+  a player who reads the collapse coming can actually beat it out are three
+  questions four screenshots cannot answer between them. The numbers they
+  turn on — `HEX_R_IN`, the three gaps and the two fan beats — are one line
+  each.
+- **`BossMove`'s numbers are as unplayed as everything else.** That an
+  attack which pins the player needs the boss to come to them is an argument
+  about the rules and holds without being played; whether
+  `BOSS_TRACK_SPD` at a third of the player's speed is *loose* rather than
+  sluggish, and whether `BOSS_TRACK_SWAY` varies an aimed fan enough to
+  matter, are questions for somebody holding the keyboard. A screenshot can
+  say the boss is over the player, which is what the pictures of the hex now
+  say; it cannot say how it felt getting there.
+- **The attack list does not scroll.** Its plate is sized to its rows with the
+  old fixed height as a ceiling, so a boss with more attacks than fit would run
+  off the bottom rather than paging. Nine attacks across two bosses is a short
+  walk and the drafting table has six; the line to change is the one that
+  computes `_y2` in `obj_practice`'s Draw.
 - **No options screen**: no volume, no window mode, no key remapping, no way to
   clear progress.
 - **The three fodder behaviours are `wave_line` and `wave_cross` and nothing

@@ -358,6 +358,38 @@
 #macro BOSS_DRIFT_Y 74
 #macro BOSS_DRIFT_RATE 0.075   // how sharply it chases its wander point
 
+// **Loose horizontal tracking**: `BossMove.Track`. The station walks toward
+// the player's column at a bounded speed rather than easing proportionally,
+// and that is the whole difference between "trends toward" and "follows". A
+// proportional ease moves *fastest* when the player is furthest away, which is
+// the opposite of loose; a speed cap means a player who crosses the field
+// genuinely gets out from under the boss and keeps that advantage for the
+// couple of seconds it takes to walk back.
+//
+// A third of `PLAYER_SPD`, and within a whisker of how fast the drift's own
+// wander point already travels -- 430 pixels of amplitude at 0.55 degrees a
+// frame peaks at about 4.1 -- so a tracking boss reads as the same creature
+// moving at the same pace, just with somewhere to be.
+#macro BOSS_TRACK_SPD 4.0
+
+// How far it still wanders either side of the tracked column. **A tracking
+// boss that sat exactly above the player would fire every aimed pattern
+// straight down**, which is the thing drifting exists to prevent, reintroduced
+// by the fix for it. At the station's height against a player near the bottom
+// of the field this is about ten degrees either way, which is enough to make
+// an aimed fan arrive somewhere different each time.
+#macro BOSS_TRACK_SWAY 120
+
+// How close the boss's centre may come to the side of the field: half the
+// widest boss sprite, so the sprite stays inside the picture.
+//
+// **The sway is squashed against this rather than the station being held off
+// it.** Holding the station back by a whole sway would leave a cornered player
+// with the boss 240 pixels away and unhittable, which defeats the point of
+// tracking a player who is pinned. Clamped this way the wander flattens as the
+// boss reaches the edge and it still passes over the corner.
+#macro BOSS_TRACK_EDGE 130
+
 // Where a boss holds station, measured down the field. A boss's station is a
 // fact about the arena rather than about the readouts, which is why it is here
 // and not among the HUD constants.
@@ -715,3 +747,327 @@ enum AttackKind {
     NonSpell,   // a basic attack: no banner, no background change
     Spell,      // named, with a banner, an eye card and a background of its own
 }
+
+/// **How the boss carries itself during one attack**, because the drift is not
+/// one size fits all. It is a property of the *attack* rather than of the boss:
+/// the same caster wants to wander through a wide non-spell and hold still
+/// through a radial spell, and a boss-wide setting could not say that.
+///
+/// A phase that names none of these drifts, so every attack written before
+/// this existed still reads correctly. See `boss_move`.
+enum BossMove {
+    Drift,      // the default: a wide lissajous wander round its station
+    Track,      // trends toward the player's column, loosely, still wandering
+    Fixed,      // takes its station and holds it
+}
+
+// ---------------------------------------------------------------------------
+// Backgrounds that are corridors
+//
+// **Stage one is a floor and stage two is a corridor**, and the difference is
+// the projection rather than the art. See `scripts/bg_corridor` for the whole
+// argument; what lives here is the camera it is drawn through and the numbers
+// the grove is arranged with.
+//
+// The camera sits at the origin looking down +z, `CORRIDOR_CAM_H` above a
+// ground plane, and everything comes off one quotient: `k = FOCAL / z` is the
+// screen pixels one world unit covers at depth z. A prop's position, its
+// scale, how fast it crosses the frame and how much air is in front of it are
+// all that number.
+// ---------------------------------------------------------------------------
+
+// The lens. Bigger is longer -- less spread between near and far, and a
+// flatter picture. 900 against a field 1360 wide is about a 75-degree
+// horizontal field of view, which is wide enough that a tree passing the
+// camera visibly *accelerates* and narrow enough that the far end of the
+// corridor is not a dot.
+#macro CORRIDOR_FOCAL 900
+
+// How high the camera flies. It is what decides where the ground meets a
+// prop's feet, so it is also what decides how much of the picture is floor.
+#macro CORRIDOR_CAM_H 250
+
+// The vanishing point, as a share of the view's height. **Low enough to leave
+// room for a floor**: the ground is where the sense of speed comes from, and a
+// horizon at the middle of the frame gives it half a screen to do that in
+// while giving the sky half a screen of nothing.
+// **Half way down, not two fifths.** The floor of a corridor is where the
+// speed lives, so the first pass gave it three fifths of the frame -- and
+// what that produced was a picture that was mostly ground, which is a picture
+// of a lake. A forest is read off what is *over* the camera; the room the
+// horizon gives back goes to the canopy.
+#macro CORRIDOR_HORIZON 0.52
+
+// The near plane a prop is recycled at, the clamp that stops the projection
+// dividing by nothing, and the far plane it fades in from.
+//
+// **Nothing is ever seen at `CORRIDOR_Z_MIN`.** Props are set out well off the
+// centre line, so they leave the frame *sideways* -- at the near plane a tree
+// three hundred units off the path projects two thousand pixels from the
+// middle of a field six hundred and eighty pixels wide. The clamp exists for
+// the frame that arithmetic is wrong on, not for one anybody will see.
+#macro CORRIDOR_Z_MIN 60
+#macro CORRIDOR_Z_NEAR 200
+#macro CORRIDOR_Z_CLEAR 900     // no haze at all closer than this
+#macro CORRIDOR_Z_FAR 5200
+
+// **How much of the air may still be clear where a ring recycles its props.**
+// A prop's alpha is zero at its own ring's far plane, so nothing ever
+// *appears* -- but that is only half of arriving unseen. The other half is
+// that its colour has to already be the fog's, and `corridor_haze` only
+// reaches that at `CORRIDOR_Z_FAR`. The trunks recycled at 2800, where more
+// than half the air is still clear, so what faded up was a four-hundred-pixel
+// shape in nearly its own colour: reported, twice, as big trees popping in in
+// front of smaller ones that were further back. Sorting them correctly did not
+// help, because they genuinely were in front -- the fault was that they
+// arrived at a distance where a thing that size can be seen at all.
+//
+// So a ring's far plane is not a free choice: it has to be far enough back
+// that the air does the arriving. `test_corridor` measures every ring against
+// this rather than trusting the numbers below.
+#macro CORRIDOR_ARRIVE_HAZE 0.45
+
+#macro BGKIND_PARALLAX 0
+#macro BGKIND_CORRIDOR 1
+
+// **How long a stage takes to turn.** A background may have a second half --
+// see `bg_set_omen` -- and four and a half seconds is what the grove's blood
+// moon needs: a beat of quiet, an eclipse, and a wavefront rolling down the
+// corridor toward the player. Short enough to be an event; long enough that
+// none of the three is over before the eye has found it.
+#macro BG_OMEN_TIME 270
+
+// ---------------------------------------------------------------------------
+// The Hollow Grove
+//
+// **One moon lights this stage and half way through it turns to blood.** Every
+// piece of scenery is therefore drawn as luminance and tinted, and every
+// colour below comes in a pair -- see `tools/make_grove.py`. Nothing here is
+// painted into a sprite.
+// ---------------------------------------------------------------------------
+
+// How fast the world comes at you, in world units a frame, before and after.
+// **The stage speeds up rather than the danmaku doing**, which is the cheapest
+// way a background has of saying the second half is worse: nothing about the
+// fight changed and the room is going past half again as fast.
+#macro GROVE_SPEED 6
+#macro GROVE_SPEED_FAST 9.5
+
+// The moon. It sits on the horizon in the middle of the frame, which is
+// exactly where the boss stands and exactly where the danmaku is thickest --
+// so its *value* is held well under white and it carries its structure in
+// maria and craters instead. A pale disc bright enough to read as a lamp is a
+// disc no bullet reads against.
+// **How much light there is in this wood on an ordinary night**, before the
+// eclipse takes any of it away. One is "everything the palette says", and the
+// palette was tuned against a frame with the moon in full -- which came out
+// hazier and flatter than the same wood half way through its eclipse, where
+// the mist stops glowing and the charms become the brightest things in the
+// picture. That frame was the better one, so this is the number that moves the
+// default toward it: the mist quietens, the rims come down, the floor goes
+// nearer the colour of the air, and the moon -- which is not dimmed by it --
+// is left as the one bright thing.
+#macro GROVE_NIGHT_LIGHT 0.74
+
+// The shadow that crosses the moon. **Copper rather than black**, because a
+// total lunar eclipse turns the moon dark red: the eclipse is not something
+// that happens before the blood moon, it is the reason for it.
+#macro GROVE_UMBRA_COL make_colour_rgb(44, 9, 7)
+#macro GROVE_UMBRA_RAMP 0.75     // the penumbra, as a share of the moon's radius
+#macro GROVE_UMBRA_SLICES 72
+
+#macro GROVE_MOON_R 168
+#macro GROVE_MOON_RISE 44       // how far its centre sits above the horizon
+
+// The trees, in world units: how tall one is and how far off the path the
+// nearest may stand.
+//
+// **The path half-width is what makes the near plane safe, and it is measured
+// from a tree's *edge* rather than from its centre.** At 300 the arithmetic
+// looked right and was wrong by exactly one tree half-width: a trunk on the
+// path's own edge still had four hundred pixels of itself inside the field
+// when the ring recycled it, so the nearest tree in the wood winked out in
+// plain sight once a second. A tree is about 215 units wide either side of
+// its trunk, and it has to clear the field's half-width *plus* that before
+// `CORRIDOR_Z_NEAR` -- which is what `test_corridor` measures rather than
+// this comment claiming it.
+#macro GROVE_TREE_H 700
+#macro GROVE_PATH_HALF 470
+#macro GROVE_TREE_OUT 1600
+#macro GROVE_TREE_N 40
+
+// The trunks. **Taller than the screen at any distance worth drawing one
+// at**, which is what makes them read as something the camera is going past
+// rather than something it is looking at.
+// **The half-width is measured from the trunk's inner edge, and getting it
+// from its centre is what made them walls.** A trunk is about three hundred
+// and forty units wide either side of itself; standing the nearest one three
+// hundred and sixty units off the path put its inner edge twenty units from
+// the centre line, so the two nearest trunks in the wood met in the middle of
+// the screen and the picture was a pair of black slabs with a keyhole between
+// them. At five hundred and sixty the same trunk frames the field instead of
+// filling it.
+// **How much a billboard's own size is allowed to vary from its kind's.**
+// Six tree frames and eight trunk frames drawn at exactly nominal size read as
+// six trees and eight trunks -- which is what "the same sprite pasted over and
+// over" means. Height and width vary independently, so a frame is effectively
+// never seen twice: the same trunk comes past squat, then tall and narrow.
+//
+// Bounded rather than free, because the placement rules downstream are built
+// on how wide a prop can get. See `GROVE_TRUNK_HALF` and `test_corridor`.
+#macro GROVE_VARY_H 0.20
+#macro GROVE_VARY_W 0.16
+#macro GROVE_VARY_MAX ((1 + GROVE_VARY_H) * (1 + GROVE_VARY_W))
+
+#macro GROVE_TRUNK_H 1500
+// **The clearance a trunk's inner *edge* keeps from the centre line**, which
+// is not the same thing as where its middle stands once trunks come in eight
+// widths. `grove_make_trunk` adds the prop's own half-width to this.
+#macro GROVE_TRUNK_HALF 230
+#macro GROVE_TRUNK_OUT 1400      // ...and how much further out it may go
+// **Far enough back that they arrive out of the fog.** At nineteen hundred a
+// trunk was recycled into a place the air was still three quarters clear, so
+// even with a fade it had barely a second of distance to arrive across. It is
+// also what gives the layer its depth: a trunk should be a dark shape at the
+// vanishing point long before it is a wall going past the camera.
+// **Out to the corridor's own far plane**, so a trunk emerges from the fog
+// rather than fading up in the middle distance. The count goes up with the
+// span so the spacing between them is what it was.
+#macro GROVE_TRUNK_Z CORRIDOR_Z_FAR
+#macro GROVE_TRUNK_N 22
+
+#macro GROVE_IVY_H 190
+
+// **What kind of thing a prop is.** It has to be on the prop rather than
+// implied by which loop is drawing it, because every ring is drawn in one
+// merged depth-sorted pass -- see `corridor_merge_new`.
+#macro GROVE_KIND_TREE 0
+#macro GROVE_KIND_TRUNK 1
+#macro GROVE_KIND_BUSH 2
+#macro GROVE_KIND_BOUGH 3
+
+// The boughs overhead: the tree sprite hung upside down from a point above the
+// camera. `GROVE_BOUGH_UP` is how far above, and it is varied per prop or the
+// canopy is a ceiling at one height.
+// **High and few.** At twelve boughs hanging four hundred units over the
+// camera the canopy came down over half the field and the moon was behind a
+// thicket -- which is a wood the player is inside rather than one they are
+// flying under. The point of the layer is that something passes overhead, and
+// eight of them doing it near the top of the frame says that better than
+// twelve filling it.
+#macro GROVE_BOUGH_H 440
+#macro GROVE_BOUGH_UP 950
+#macro GROVE_BOUGH_OUT 1300
+#macro GROVE_BOUGH_Z 4200
+#macro GROVE_BOUGH_N 14
+
+#macro GROVE_BUSH_H 130
+#macro GROVE_BUSH_Z 3400
+#macro GROVE_BUSH_N 50
+
+// A charm hangs on about two trees in five. Every one of them is drawn from
+// the branch tips `tools/make_grove.py` wrote into `scripts/grove_table`.
+// **Bigger than it looks like it should be.** A charm at a seventh of a
+// tree's height is arithmetically a reasonable hanging ornament and
+// photographs as a two-pixel green spark: the tree it is hanging in is four
+// hundred pixels tall at the distance anybody looks at it, and a hex nobody
+// can make out is a hex that is not in the picture. It is the one thing in
+// this wood that says somebody lives here.
+#macro GROVE_CHARM_ODDS 0.55
+#macro GROVE_CHARM_H 200
+#macro GROVE_CHARM_SWAY 7        // degrees either way
+
+// Where the fog sits, as a share of the view height below the horizon, and how
+// far the ground's own banding reaches before the air swallows it.
+// The forest floor, laid down the corridor in bands.
+//
+// **`GROVE_FLOOR_ROW` is a screen height, and everything else about the floor
+// follows from it.** A band is textured *affinely* -- one `draw_sprite_part`
+// stretched between two screen rows -- where the perspective it is standing in
+// wants the texture to compress as one over the depth. Over a band twenty-six
+// pixels tall that difference is under a pixel; over one of constant world
+// depth, which is a quarter of the screen tall by the time it comes close, the
+// near half of the tile is stretched to nearly twice its length and the
+// texture visibly swims under the camera.
+//
+// So the floor is cut into bands of constant *screen* height and each one is
+// told which slice of the tile it is showing. It is the same trick every
+// pseudo-3D racing game of the period used, for the same reason.
+// **The tile is square in the world as well as in the sprite**, which is
+// why there is one number here and not two. Six hundred and sixty units of
+// forest floor stretched across five hundred and twelve pixels of texture put
+// every leaf in it at thirty pixels on screen, and thirty-pixel leaves are not
+// litter, they are lily pads -- which is most of why the first version of this
+// floor still read as water even with a texture on it.
+#macro GROVE_FLOOR_W 270         // world units across one tile
+#macro GROVE_FLOOR_Z GROVE_FLOOR_W   // ...and along it. Square, deliberately.
+#macro GROVE_FLOOR_ROW 26        // screen pixels per band
+
+// **How the floor survives the distance, and it is a mip map by hand.** A
+// band a fixed number of world units across is many pixels wide under the
+// camera and a fraction of one near the horizon, so a floor drawn at one
+// scale has to be faded out well before the vanishing point -- and what that
+// leaves is a hard horizontal line across the field with a textured floor
+// below it and nothing above.
+//
+// The tile is periodic in both axes, so laying it out at twice the world size
+// is a legal thing to do and halves how much of it a band has to show. Doing
+// that in doubling steps, and cross-fading between two adjacent steps rather
+// than switching, is exactly what a mip chain is -- and the cross-fade is the
+// part that matters, because a *step* in texture scale across the floor is
+// the same visible line the fade was there to remove.
+//
+// `GROVE_FLOOR_NYQ` is the share of a tile one band may show before the next
+// level takes over. Comfortably under a half, because a pattern sampled at
+// its own period does not draw finely, it crawls.
+#macro GROVE_FLOOR_NYQ 0.34
+#macro GROVE_FLOOR_MIPS 4
+
+#macro GROVE_MIST_Y 0.10
+#macro GROVE_GROUND_BAND 130     // world units between root ridges
+
+// The blood wavefront. It launches from the moon -- which is at infinity --
+// and travels *down the corridor toward the player*, so the red arrives at the
+// far trees first and reaches the near ones last. `GROVE_WAVE_FEATHER` is how
+// deep the front is and `GROVE_WAVE_FLARE` is how far either side of it a
+// hanging charm catches light from it.
+#macro GROVE_WAVE_START 0.30     // the share of the omen it launches at
+#macro GROVE_WAVE_Z0 6400
+#macro GROVE_WAVE_FEATHER 900
+#macro GROVE_WAVE_FLARE 700
+
+// How close a tree has to be before its lit edge is drawn *over* the field as
+// well as behind it. See `grove_draw_front`: that pass is additive without
+// exception, so it cannot hide a bullet at any alpha.
+#macro GROVE_NEAR_Z 560
+
+#macro SPELLBG_GROVE 2         // the grove's caster: a ring of bone and ivy
+
+// ---------------------------------------------------------------------------
+// Sound
+//
+// The three global knobs. Everything else about a cue -- its gain, how often
+// it may sound, what it outranks -- is a row in `audio_functions`' table,
+// because a mix is a set of numbers that only mean anything relative to each
+// other and splitting them across two files would mean tuning one against the
+// other with a scroll bar in between.
+// ---------------------------------------------------------------------------
+
+// **The per-frame voice budget.** Not a performance limit -- GameMaker will
+// happily start far more -- but a legibility one: past about five simultaneous
+// cues nothing is distinguishable from anything else, and what the player
+// hears on the busiest frame in the game should be the five most important
+// things rather than an average of twenty. `sfx_step` spends it in priority
+// order.
+#macro SFX_VOICES 5
+
+// The count at which a coalesced volley is as big as it is allowed to get.
+// Thirty-two is about a full ring-stack; past it a pattern is not audibly
+// larger, it is just louder, which is the thing the swell exists to avoid.
+#macro SFX_SWELL_FULL 32
+
+// One number over everything, so the whole mix can be pulled down without
+// re-levelling twenty-four rows. Below 1 deliberately: these cues are drawn to
+// their designed peaks in `tools/make_sfx.py` and the headroom is what keeps
+// five of them at once from clipping the master bus.
+#macro SFX_MASTER 0.72

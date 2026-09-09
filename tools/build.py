@@ -38,6 +38,51 @@ IGOR = os.path.join(RUNTIME, "bin", "igor", "windows", "x64", "Igor.exe")
 
 BUILD = os.path.join(tempfile.gettempdir(), "bullethell_build")
 
+# Windows' CreateProcess show-window request. **This is where "the harness does
+# not take over the screen" actually lives**, and both tools go through it.
+#
+# `option_windows_start_fullscreen` used to be on, so every harness run changed
+# the display mode and raised a borderless window over everything else before a
+# line of GML could object -- see `obj_boot`'s Create for that half. Turning it
+# off stops the game seizing the *display*; it does not stop the window
+# appearing and taking the foreground, and a run launched from a terminal the
+# user is looking at inherits the right to do exactly that.
+#
+# So the process is started minimised and un-activated. GameMaker keeps
+# rendering into it -- measured: a `-shot` run launched this way saves the same
+# 1864x1048 screenshot with the same content, because `screen_save` reads the
+# game's own surface and never the desktop -- so nothing is given up.
+#
+# **`window_set_visible(false)` is the version of this that does not work.**
+# From inside GML it stops the game stepping at all, so `room_test` never runs
+# and `tools/test.py` reports its timeout. Minimising from outside is a
+# different thing and the runner is happy with it.
+SW_SHOWMINNOACTIVE = 7
+
+
+def _background_startupinfo():
+    """STARTUPINFO that opens the game minimised, without stealing focus."""
+    if os.name != "nt":
+        return None
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = SW_SHOWMINNOACTIVE
+    return si
+
+
+def run_game(cmd, timeout, show=False):
+    """Run the built game and hand back the finished process.
+
+    ``show`` opens it normally, for the rare run somebody actually wants to
+    watch -- `shot.py --fullscreen` is the one that asks, because a minimised
+    full screen is a contradiction.
+    """
+    return subprocess.run(cmd, capture_output=True, text=True,
+                          errors="replace", timeout=timeout,
+                          cwd=os.path.dirname(cmd[0]),
+                          startupinfo=None if show else _background_startupinfo())
+
+
 
 def project_name():
     for fn in os.listdir(ROOT):

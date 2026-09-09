@@ -34,6 +34,25 @@ function player_new() {
         anim: 0,
         entry: 0,         // > 0 while flying in at the start of a stage
 
+        // **Nothing in play ever sets this.** It is the harness's flag: a
+        // posed player does not dodge, so it cannot be asked to survive.
+        //
+        // It is not a convenience. A hit sweeps a 190-pixel circle of bullets
+        // off the field -- see `player_hit`, and the reason is sound -- so a
+        // posed player being hit does not merely spend health, it *punches a
+        // hole in the thing being photographed*. Every picture of `Demon
+        // Sealing Hex` taken at less than full life had a bite out of the ward
+        // whose whole claim is where its gaps are, and nothing said so: the
+        // seal is redrawn twice a cycle, so the evidence was gone by the next
+        // movement. What finally reported it was a scene running long enough
+        // for the fourth hit to kill the player outright.
+        //
+        // Distinct from `iframe` rather than expressed with it, because
+        // `iframe` *flickers* -- it is the game telling the player they are
+        // briefly safe, and a screenshot of a half-transparent Szuix is a
+        // screenshot of a state nobody is posing for.
+        untouchable: false,
+
         graze_n: 0,
         hit_n: 0,
         bomb_n: 0,
@@ -62,7 +81,7 @@ function input_idle() {
 
 /// @desc Is the player untouchable right now?
 function player_invulnerable(_p) {
-    return _p.iframe > 0 || _p.bomb_t > 0 || _p.entry > 0;
+    return _p.untouchable || _p.iframe > 0 || _p.bomb_t > 0 || _p.entry > 0;
 }
 
 /// @desc One frame. `_g` is the controller, for the things a player does that
@@ -143,6 +162,11 @@ function player_fire(_p) {
     pshot_fire(_p.x + _off, _p.y - PSHOT_MUZZLE, PSHOT_SPD, 90 - _spread,
                PSHOT_DMG);
     fx_spark(_p.x, _p.y - PSHOT_MUZZLE + 6, 90, 1.4, COL_SZUIX_LIT, 8, 18);
+    // One cue for the volley, not one per barrel. The two bolts leave on the
+    // same frame from twenty pixels apart, which is one sound by any measure
+    // the ear applies -- and asking twice would only make it louder, since
+    // `sfx_step` reads the count as size. See `audio_functions`.
+    sfx(Sfx.PShot);
 }
 
 /// @desc Cast the special: spend the meter, take the grace, start the sweep.
@@ -159,6 +183,7 @@ function player_bomb(_p, _g) {
     fx_ring(_p.x, _p.y, 20, BOMB_CLEAR_R * 0.7, 30, c_white, 0.7);
     fx_burst(_p.x, _p.y, 40, 4, 15, COL_SZUIX_LIT, 40, 20);
     fx_text(_p.x, _p.y - 90, "SIGIL BREAK", COL_SZUIX_LIT, 60, 1.4);
+    sfx(Sfx.Bomb);
 
     if (_g != undefined) _g.tally += 0;   // the bomb is not worth points
 }
@@ -191,6 +216,7 @@ function player_hit(_p) {
     fx_shake(20);
     fx_ring(_p.x, _p.y, 10, 300, 34, COL_LIFE, 1.0);
     fx_burst(_p.x, _p.y, 26, 3, 11, COL_LIFE, 34, 18);
+    sfx(Sfx.Hit);
 
     // **A hit scatters shards.** Touhou drops your power on death and this is
     // the same idea turned round: losing a quarter of the bar puts a handful
@@ -210,6 +236,14 @@ function player_hit(_p) {
     if (_p.hp <= 0) {
         _p.hp = 0;
         _p.alive = false;
+        // **Both, and in this order.** The hit is what happened and the death
+        // is what it meant, and they are different lengths in different bands
+        // -- so they layer rather than mask, and the frame the run ends on
+        // sounds like an ending instead of like one more hit. `sfx_step`
+        // spends its budget in priority order and `PlayerDown` outranks
+        // everything, so the pair survives even on a frame where the field is
+        // also popping.
+        sfx(Sfx.PlayerDown);
     }
     return true;
 }
@@ -250,6 +284,9 @@ function player_collide(_p, _g) {
             + laser_graze(_p.x, _p.y, PLAYER_R);
     if (_gz > 0) {
         _p.graze_n += _gz;
+        // `sfx_many` rather than a call per bullet: this already knows how
+        // many were passed, and the count is what sets the cue's size.
+        sfx_many(Sfx.Graze, _gz);
         if (_g != undefined) _g.tally += _gz * TALLY_GRAZE;
         for (var _k = 0; _k < min(_gz, 3); _k++) {
             fx_spark(_p.x + random_range(-18, 18), _p.y + random_range(-18, 18),

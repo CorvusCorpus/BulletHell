@@ -532,9 +532,8 @@ function ziggy_no_mere_pawn(_e, _g, _t) {
 ///       change to the screen. The same argument the Wordsearch roster makes
 ///       for drawing twelve character slots from the first build.
 function stage_list() {
-    var _list = [stage_ziggy_def()];
+    var _list = [stage_ziggy_def(), stage_grove_def()];
     var _planned = [
-        ["THE HOLLOW GROVE", "a kitsune's lantern-lit wood", 1],
         ["THE RED CHAPEL", "something old, and thirsty", 2],
         ["THE GLASS DESERT", "a palace under moving sand", 3],
         ["THE ROOKERY", "the birdmen's high nests", 4],

@@ -112,6 +112,10 @@ function item_step(_px, _py) {
             _got.tally += TALLY_ITEM;
             _got.n++;
             fx_spark(_it.x, _it.y, random(360), 2, item_colour(_it.kind), 16, 14);
+            // Once per shard, and a bomb can put fifty on the field. One voice
+            // comes out of it, bigger for having been fifty -- see
+            // `audio_functions`, which exists for exactly this shape of call.
+            sfx(Sfx.Item);
             item_kill_at(_i);
             continue;
         }

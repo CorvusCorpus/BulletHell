@@ -4,7 +4,13 @@
 ///       progression this game takes over Touhou's: every stage is a thing you
 ///       go and do, and the screen that lists them is the game's front door.
 
-stages = stage_list();
+// **The rack, not the roster.** `rack_list` is every stage plus the drafting
+// table, which is a card that is not a place -- see `stage_drafts`. The count
+// under the title is kept separately because it counts *stages*, and a
+// scratchpad that could never be cleared would make "0 OF 9" wrong the moment
+// it appeared.
+stages = rack_list();
+stage_n = array_length(stage_list());
 pick = clamp(global.stage_pick, 0, array_length(stages) - 1);
 t = 0;
 enter_t = 0;          // > 0 while diving into the chosen stage

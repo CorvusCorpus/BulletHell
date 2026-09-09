@@ -587,3 +587,75 @@ def delete(name, kind):
         lines = [ln for ln in read(f).split("\n") if '"%s"' % path not in ln]
         write(f, "\n".join(lines))
         validate(f)
+
+
+# ---------------------------------------------------------------------------
+# Sounds
+# ---------------------------------------------------------------------------
+
+SOUND_YY = """{
+  "$GMSound":"",
+  "%%Name":"%(name)s",
+  "audioGroupId":{
+    "name":"audiogroup_default",
+    "path":"audiogroups/audiogroup_default",
+  },
+  "bitDepth":1,
+  "bitRate":128,
+  "compression":%(compression)d,
+  "conversionMode":0,
+  "duration":%(duration).8f,
+  "name":"%(name)s",
+  "parent":{
+    %(parent)s
+  },
+  "preload":%(preload)s,
+  "resourceType":"GMSound",
+  "resourceVersion":"2.0",
+  "sampleRate":%(rate)d,
+  "soundFile":"%(name)s.wav",
+  "type":0,
+  "volume":1.0,
+}"""
+
+
+def sound(name, samples, rate=44100, folder=None, order=0, preload=True):
+    """Create or overwrite a sound from mono float samples in [-1, 1].
+
+    Written as **16-bit PCM WAV, uncompressed and preloaded**, which is the
+    right answer for every sound in this project and the wrong one for exactly
+    none of them: these are all short cues, a decode on first play is a stutter
+    at the worst possible moment, and `compression` 0 with `preload` true is
+    what says "this lives in memory". Music, if it ever arrives, wants the
+    opposite and should not come through here without saying so.
+
+    The `.yy` carries the duration, and GameMaker believes it rather than
+    measuring the file -- so it is computed from the samples that were actually
+    written rather than passed in.
+    """
+    import struct
+    import wave
+
+    clipped = bytearray()
+    for s in samples:
+        v = int(round(max(-1.0, min(1.0, s)) * 32767))
+        clipped += struct.pack("<h", v)
+
+    d = os.path.join(ROOT, "sounds", name)
+    os.makedirs(d, exist_ok=True)
+    wav = os.path.join(d, name + ".wav")
+    with wave.open(wav, "wb") as fh:
+        fh.setnchannels(1)
+        fh.setsampwidth(2)
+        fh.setframerate(rate)
+        fh.writeframes(bytes(clipped))
+
+    write(os.path.join(d, name + ".yy"), SOUND_YY % {
+        "name": name,
+        "parent": _parent(folder),
+        "duration": len(samples) / float(rate),
+        "rate": rate,
+        "compression": 0,
+        "preload": "true" if preload else "false",
+    })
+    register(name, "sounds/%s/%s.yy" % (name, name), order)

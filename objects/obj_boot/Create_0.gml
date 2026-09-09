@@ -21,6 +21,7 @@ display_set_gui_size(GAME_W, GAME_H);
 // The generated tables first: everything else indexes into them.
 palette_init();
 bullet_table_init();
+grove_table_init();
 
 danmaku_init();
 laser_init();
@@ -28,6 +29,9 @@ item_init();
 enemy_init();
 fx_init();
 ui_init();
+// `audio_init` is NOT here -- it is below the command line, because whether
+// the game makes any sound at all depends on which flag was passed. See the
+// call site.
 
 global.progress_readonly = false;
 progress_load();
@@ -83,33 +87,61 @@ for (var _i = 1; _i <= _argc; _i++) {
     }
 }
 
-// **Neither harness takes the display, and that reverses a decision.** The
-// game starts full screen, which is right for playing it. It was right for
-// `tools/shot.py` too on the reasoning that there the display *is* the output:
-// at full screen a screenshot is 1920x1080 exactly, so a design pixel and a
-// photographed pixel are the same pixel and a HUD box can be measured off the
-// PNG.
+// **Neither harness takes the display, and the *option* is what makes that
+// true rather than a line of GML.** The game is played full screen -- a
+// 1920x1080 window does not fit on a 1920x1080 desktop, so a windowed run
+// draws every pixel at 0.97 of its design size -- and for a long time that
+// was `option_windows_start_fullscreen`, with the harnesses dropping back out
+// of it here.
 //
-// What that reasoning left out is who is at the machine. Both tools are run
-// every few minutes while somebody is working on something else, and a
-// harness that seizes the display -- changing the display mode, rearranging
-// every other window, stealing focus for a few seconds, eighteen times over
-// for `--all` -- is a far worse cost than the one it was buying. Reported, in
-// those words, as a nightmare to work alongside.
+// **Dropping back out is too late.** The option is read by the runner before
+// a line of GML executes, so a harness run had already changed the display
+// mode, raised a topmost borderless window over everything else and taken the
+// foreground by the time this file got a say. Switching back a frame later
+// gives the pixels back and does not give the focus back -- and both tools are
+// run every few minutes while somebody is working on something else. Reported,
+// in those words, as forcing the game window to the front and blocking
+// whatever they were doing. The Wordsearch project has the same two tools and
+// has never done it, and the whole of the difference was that one option.
 //
-// The price is that a screenshot comes back at 1864x1048: a 1920x1080 window
-// does not fit on a 1920x1080 desktop, so GameMaker clamps it. That is 97% of
-// design size, everything in the picture scales together, and nothing in the
-// tooling measures a screenshot -- `check_bg_keepout` and its neighbours
-// measure the PNGs the generators write, not these. Pass `-fullscreen` when a
-// photographed pixel really does have to be a design pixel; `tools/shot.py
-// --fullscreen` is the way to ask for it.
-// **`_mode != ""` is load-bearing.** This is the harnesses' rule and not the
-// game's: a player gets the full screen the options file asks for, and only a
-// run that was started by a tool drops out of it.
-if (_mode != "" && !_want_full) window_set_fullscreen(false);
+// So the option is off and the *player* asks for the display, which is the
+// only path that wants it. A harness never mentions it, and there is no frame
+// in which it held it.
+//
+// The price is unchanged: a harness screenshot comes back at 1864x1048, which
+// is 97% of design size with everything in the picture scaling together, and
+// nothing in the tooling measures a screenshot -- `check_bg_keepout` and its
+// neighbours measure the PNGs the generators write, not these. Pass
+// `-fullscreen` when a photographed pixel really does have to be a design
+// pixel; `tools/shot.py --fullscreen` is the way to ask for it.
+//
+// **`_mode == ""` is load-bearing** and points the other way from the test it
+// replaced: full screen is the game's, not the harnesses'.
+if (_mode == "" || _want_full) window_set_fullscreen(true);
+
+// **Neither harness makes a sound, on the same reasoning as neither taking
+// the display.** `tools/test.py` runs the game once and `tools/shot.py --all`
+// runs it thirty-two times, minimised, while somebody is working on something
+// else -- and a build that played a boss dying through their speakers thirty
+// two times is the same complaint as the window coming to the front, one
+// notch louder.
+//
+// It is read from `_mode` for the same reason the full-screen line above is:
+// silence is the *harness's*, not the game's, and expressing it as "the game
+// asks for sound" rather than "a tool switches it off" leaves no frame in
+// which it was on. Everything in `audio_functions` still runs either way --
+// only the statement that starts a voice is skipped -- so `test_audio_budget`
+// grades the real decision.
+audio_init(_mode == "");
 
 if (_mode == "selftest") {
+    // **A hidden window is not the answer, and it was tried.** The suites draw
+    // nothing anybody looks at, so `window_set_visible(false)` here looks free
+    // -- and it hangs. GameMaker stops stepping a window it is not showing, so
+    // `room_test` never runs, nothing reaches stdout, and what `tools/test.py`
+    // reports is its 180-second timeout: the exact failure mode the note about
+    // modal boxes is about, caused this time by the fix rather than by a bug.
+    // Where the window *is* is the Python side's business; see `tools/run.py`.
     room_goto(room_test);
     exit;
 }

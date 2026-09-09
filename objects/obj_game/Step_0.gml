@@ -12,6 +12,15 @@
 // `obj_shot`, posing a scene with the shot button held, and tomorrow is a
 // replay or a demo attract mode. A harness that drove the player by writing
 // positions would be photographing a state the game cannot reach.
+// **The frame's sound is resolved here, at the top, before anything that
+// might `exit`.** There are five early returns below this line and three of
+// them are states where a cue most needs to sound -- the pause menu, the
+// result panel and the menu on it. Resolving last frame's requests rather
+// than this frame's costs sixteen milliseconds, which is well under the
+// ear's ability to bind a sound to a picture, and buys that no path
+// through this event can skip it. See `audio_functions`.
+sfx_step();
+
 var _in = (input_override != undefined) ? input_override : input_gather();
 
 // ---------------------------------------------------------------------------
@@ -21,18 +30,28 @@ var _in = (input_override != undefined) ? input_override : input_gather();
 if (keyboard_check_pressed(vk_escape)) {
     if (phase == Phase.Paused) {
         phase = phase_before_pause;
+        sfx(Sfx.Pause);
     } else if (phase == Phase.Playing || phase == Phase.BossDeclare
                || phase == Phase.PhaseClear) {
         phase_before_pause = phase;
         phase = Phase.Paused;
         pause_row = 0;
+        sfx(Sfx.Pause);
     }
 }
 
 if (phase == Phase.Paused) {
+    if (keyboard_check_pressed(vk_up) || keyboard_check_pressed(vk_down)) {
+        sfx(Sfx.UiMove);
+    }
     if (keyboard_check_pressed(vk_up))   pause_row = (pause_row + 2) mod 3;
     if (keyboard_check_pressed(vk_down)) pause_row = (pause_row + 1) mod 3;
     if (keyboard_check_pressed(ord("Z"))) {
+        // **The resume row says `Pause` and the other two say `UiSelect`.**
+        // Leaving the menu the way it was entered is the same event twice,
+        // and a confirm chime on it would say a choice was made where what
+        // actually happened is a choice being declined.
+        sfx(pause_row == 0 ? Sfx.Pause : Sfx.UiSelect);
         switch (pause_row) {
             case 0: phase = phase_before_pause; break;
             case 1: game_reset_stage(); break;
@@ -80,6 +99,9 @@ if (phase == Phase.Won || phase == Phase.Lost) {
     // starting one does.
     if (practice != undefined) {
         if (result_t > 24) {
+            if (keyboard_check_pressed(vk_up) || keyboard_check_pressed(vk_down)) {
+                sfx(Sfx.UiMove);
+            }
             if (keyboard_check_pressed(vk_up)) {
                 result_row = (result_row + 2) mod 3;
             }
@@ -87,6 +109,7 @@ if (phase == Phase.Won || phase == Phase.Lost) {
                 result_row = (result_row + 1) mod 3;
             }
             if (keyboard_check_pressed(ord("Z"))) {
+                sfx(Sfx.UiSelect);
                 switch (result_row) {
                     case 0: room_restart(); break;
                     case 1: room_goto(room_practice); break;
@@ -98,6 +121,7 @@ if (phase == Phase.Won || phase == Phase.Lost) {
     }
 
     if (result_t > 30 && keyboard_check_pressed(ord("Z"))) {
+        sfx(Sfx.UiSelect);
         room_goto(room_title);
     }
     exit;

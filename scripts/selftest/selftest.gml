@@ -38,16 +38,24 @@ function selftest_run() {
     test_spell_resist();
     test_player();
     test_items();
+    test_untouchable();
     test_boss_table();
     test_boss_phases();
+    test_boss_move();
     test_stage_table();
     test_stage_run();
+    test_corridor();
+    test_grove_turn();
     test_marks();
     test_practice();
+    test_drafts();
+    test_hex_seal();
     test_hud_layout();
     test_run_starts_clean();
     test_boss_is_never_invisible();
     test_save_atomicity();
+    test_audio_budget();
+    test_audio_playback();
     test_bullet_cost();
 
     show_debug_message("SELFTEST DONE " + string(global.st_pass) + " passed, "
@@ -159,6 +167,36 @@ function test_bullet_table() {
     ok("every shape has a positive hit radius", _bad_radius == 0);
     ok("every sprite holds colours x animation frames", _bad_frames == 0);
 
+    // **An oriented shape may not carry a default spin.** For those, `angle`
+    // *is* the heading -- `bullet_step` overwrites it from `dir` every frame --
+    // so a spin on one is either silently thrown away or, if the two ever swap
+    // order, a dart drawn pointing somewhere it is not going. The rule lives
+    // here rather than in the generator that writes the table, because a table
+    // is data and data is exactly what stops being right without telling you.
+    var _spun = 0;
+    for (var _s = 0; _s < BSHAPE_COUNT; _s++) {
+        if (global.bshape_oriented[_s] && global.bshape_spin[_s] != 0) _spun++;
+    }
+    ok("no oriented shape carries a default spin", _spun == 0);
+    ok("the star shapes turn on their own",
+       global.bshape_spin[BSHAPE_STAR] > 0
+       && global.bshape_spin[BSHAPE_STAR6] > 0
+       && global.bshape_spin[BSHAPE_MOTE] > 0);
+
+    // ...and that the table reaches a bullet, which is the half of this a
+    // check on the data cannot see. A default nothing reads is not a default.
+    st_reset();
+    var _spinner = fire(500, 500, 3, 0, BSHAPE_STAR, BCOL_GOLD, 0);
+    var _plain = fire(500, 500, 3, 0, BSHAPE_DART, BCOL_GOLD, 0);
+    ok("fire gives a star its shape's spin",
+       _spinner.spin == global.bshape_spin[BSHAPE_STAR]);
+    ok("fire gives an oriented bullet none", _plain.spin == 0);
+
+    var _was = _spinner.angle;
+    bullet_step(0, 0);
+    ok("a spinning bullet turns as it flies", _spinner.angle != _was);
+    st_reset();
+
     // The last frame of the last colour must exist, which is the one index
     // `bullet_frame` can produce that a smaller sprite would not hold.
     var _worst = 0;
@@ -244,6 +282,27 @@ function test_fire_patterns() {
     st_reset();
     fire_ring_stack(500, 500, 8, 3, 2, 0.4, 0, BSHAPE_ORB, BCOL_ROSE, 0);
     ok("a ring-stack is n x rings", bullet_count() == 24);
+
+    st_reset();
+    fire_fan_stack(500, 500, 5, 3, 2, 0.5, 90, 40, BSHAPE_RICE, BCOL_BONE, 0);
+    ok("a fan-stack is n x rows", bullet_count() == 15);
+    // Row by row, in order, so a caller can reason about which arc is which.
+    ok_near("its rows rise by the step", bullet_get(10).spd, 3, 0.001);
+    // **Every row is still a fan**, which is the property the whole helper
+    // exists for: the odd-count rule has to survive being stacked, or an aimed
+    // volley has a hole down the middle of two rows out of three.
+    ok_near("and every row keeps a bullet on the aim line",
+            bullet_get(12).dir, 90, 0.001);
+
+    // **The skew turns each row off the one in front.** Without it three rows
+    // put their gaps on the same radial lines and the volley has one answer;
+    // it defaults to zero so a caller who wants the columns aligned still has
+    // that.
+    st_reset();
+    fire_fan_stack(500, 500, 3, 2, 2, 0.5, 90, 40, BSHAPE_RICE, BCOL_BONE, 0,
+                   6);
+    ok_near("a skewed row is turned off the one in front",
+            bullet_get(4).dir - bullet_get(1).dir, 6, 0.001);
 
     // Aiming is pure and takes its target explicitly, which is what makes it
     // assertable at all.
@@ -739,6 +798,45 @@ function test_player() {
     st_reset();
 }
 
+/// @desc The harness's invulnerability flag. See `player_new`.
+///
+///       **Asserted for two things, and the second is the one that matters.**
+///       That an untouchable player keeps its health is obvious. That being
+///       hit sweeps the field is not -- it is `player_hit`'s mercy clear, it
+///       is correct in play, and it is what made a posed screenshot lie about
+///       the pattern it was taking a picture of.
+function test_untouchable() {
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_CY);
+    var _p = _g.player;
+
+    // A wall of bullets across the player, of the kind a posed scene stands in
+    // the middle of for sixteen seconds.
+    fire_ring(_p.x, _p.y, 24, 0.01, 0, BSHAPE_ORB, BCOL_AZURE, 0);
+    var _wall = bullet_count();
+    ok("there is something to be hit by", _wall >= 20);
+
+    _p.untouchable = true;
+    ok("an untouchable player cannot be touched", player_invulnerable(_p));
+    ok("and a hit on one does nothing", !player_hit(_p));
+    ok("so it keeps its health", _p.hp == HP_MAX);
+    // **The half that is not about health.** A hit clears a circle 190 wide,
+    // which in a posed scene is a hole in the ward being photographed.
+    ok("and nothing is swept off the field", bullet_count() == _wall);
+
+    // And it is off by default, or every suite that drives the player would be
+    // proving the wrong thing.
+    _p.untouchable = false;
+    _p.iframe = 0;
+    ok("an ordinary player is touchable", !player_invulnerable(_p));
+    ok("and a hit on one lands", player_hit(_p));
+    ok("and costs health", _p.hp < HP_MAX);
+    ok("and clears what was on top of them", bullet_count() < _wall);
+    ok("a fresh player is not untouchable", !player_new().untouchable);
+
+    st_reset();
+}
+
 function test_items() {
     st_reset();
     item_spawn(500, 500, ItemKind.Health);
@@ -880,6 +978,171 @@ function test_boss_phases() {
     st_reset();
 }
 
+/// @desc A boss that fires nothing, so a movement kind can be driven without a
+///       pattern in the way of the measurement.
+function st_still(_e, _g, _t) {}
+
+/// @desc Ziggy, on the field, on one endless attack with the given movement.
+///
+///       **The table is replaced rather than the fight being played**, because
+///       what is under test is the movement column and not any pattern that
+///       happens to name it -- and a suite that drove `Demon Sealing Hex` to
+///       assert on tracking would fail the day somebody retimed the ward.
+function st_boss_on_move(_g, _move) {
+    var _b = ziggy_spawn(_g);
+    _b.boss.phases = [{
+        kind: AttackKind.NonSpell, name: "", col: BCOL_EMBER, bg: -1,
+        hp_end: 0.0, time: 1000000, move: _move, attack: st_still,
+    }];
+    _b.boss.entry_t = 0;
+    _b.boss.declare_t = 0;
+    _b.boss.started = true;
+    boss_enter_phase(_b, _g, 0);
+    return _b;
+}
+
+/// @desc How a boss carries itself through an attack. See `boss_move`.
+function test_boss_move() {
+    st_reset();
+
+    // **The default has to survive the column being added.** Every attack in
+    // the game was written before this existed and none of them names a
+    // movement, so a phase with no `move` member must go on drifting -- and a
+    // bare `.move` read would not merely get that wrong, it would raise on the
+    // first frame of the fight.
+    var _g = st_game_at(GAME_CX, GAME_H - 300);
+    var _zb = ziggy_spawn(_g);
+    var _drifts = true;
+    for (var _i = 0; _i < array_length(_zb.boss.phases); _i++) {
+        if (boss_move_kind(_zb.boss, _i) != BossMove.Drift) _drifts = false;
+    }
+    ok("an attack that names no movement drifts", _drifts);
+    // Either end of the table is ceremony rather than an attack -- the arrival
+    // and the pause after the last one -- and an index off the end must answer
+    // rather than reaching past the array.
+    ok("and so does the ceremony either side of the table",
+       boss_move_kind(_zb.boss, -1) == BossMove.Drift
+       && boss_move_kind(_zb.boss, array_length(_zb.boss.phases))
+          == BossMove.Drift);
+
+    // ---- Fixed ------------------------------------------------------------
+    st_reset();
+    _g = st_game_at(FIELD_X0 + FIELD_MARGIN, GAME_H - 300);
+    var _b = st_boss_on_move(_g, BossMove.Fixed);
+    _b.x = FIELD_X0 + 100;                  // well off station
+    _b.y = FIELD_Y0 + 700;
+    for (var _i = 0; _i < 240; _i++) boss_act(_b, _g);
+    ok("a fixed attack takes its station",
+       abs(_b.x - _b.boss.home_x) < 2 && abs(_b.y - _b.boss.home_y) < 2);
+
+    // **And holds it.** A residual wobble would be the drift put back under
+    // another name, and the attacks that ask for this ask because their shape
+    // is measured from their own origin.
+    var _lo = _b.x, _hi = _b.x;
+    for (var _i = 0; _i < 600; _i++) {
+        boss_act(_b, _g);
+        _lo = min(_lo, _b.x);
+        _hi = max(_hi, _b.x);
+    }
+    ok("and holds it", _hi - _lo < 1);
+    ok("whatever the player does", abs(_b.x - _b.boss.home_x) < 2);
+
+    // ---- Track ------------------------------------------------------------
+    st_reset();
+    _g = st_game_at(GAME_CX, GAME_H - 300);
+    _b = st_boss_on_move(_g, BossMove.Track);
+
+    _g.player.x = FIELD_X0 + FIELD_MARGIN;
+    for (var _i = 0; _i < 900; _i++) boss_act(_b, _g);
+    ok("a tracking attack comes to a player in the left corner",
+       _b.x < FIELD_CX - 300);
+
+    _g.player.x = FIELD_X1 - FIELD_MARGIN;
+    for (var _i = 0; _i < 900; _i++) boss_act(_b, _g);
+    ok("and to one in the right corner", _b.x > FIELD_CX + 300);
+
+    // **Loosely, which is the whole of the difference between this and a
+    // homing boss.** The station walks at a capped speed rather than easing
+    // toward the player, so a player who crosses the field genuinely gets out
+    // from under the boss and keeps that for the seconds it takes to walk
+    // back. An ease would be fastest exactly when they were furthest away.
+    _g.player.x = FIELD_X0 + FIELD_MARGIN;
+    for (var _i = 0; _i < 30; _i++) boss_act(_b, _g);
+    ok("but loosely -- half a second on it is still half a field behind",
+       abs(_b.x - _g.player.x) > FIELD_W * 0.5);
+
+    // **It still wanders while it tracks.** A boss parked exactly above the
+    // player fires every aimed pattern straight down, which is the thing the
+    // drift exists to prevent, reintroduced by the fix for it.
+    _g.player.x = FIELD_CX;
+    for (var _i = 0; _i < 400; _i++) boss_act(_b, _g);
+    _lo = _b.x;
+    _hi = _b.x;
+    for (var _i = 0; _i < 700; _i++) {
+        boss_act(_b, _g);
+        _lo = min(_lo, _b.x);
+        _hi = max(_hi, _b.x);
+    }
+    ok("and wanders while it tracks", _hi - _lo > BOSS_TRACK_SWAY);
+
+    // The sway is squashed against the edge rather than the station being held
+    // off it, so a cornered player still gets a boss over them -- and neither
+    // half of that may put the sprite off the side of the picture.
+    var _inside = true;
+    for (var _i = 0; _i < 1200; _i++) {
+        _g.player.x = ((_i div 300) mod 2 == 0)
+            ? FIELD_X0 + FIELD_MARGIN : FIELD_X1 - FIELD_MARGIN;
+        boss_act(_b, _g);
+        if (_b.x < FIELD_X0 + BOSS_TRACK_EDGE - 1
+            || _b.x > FIELD_X1 - BOSS_TRACK_EDGE + 1) _inside = false;
+    }
+    ok("and never carries itself off the side of the field", _inside);
+
+    // **A tracking attack starts from where the boss is.** The tracked column
+    // is dragged along behind the boss whenever anything else is moving it; if
+    // it were not, an attack following one that tracked would open by lurching
+    // across the field to wherever that one had left the column.
+    st_reset();
+    _g = st_game_at(FIELD_X0 + FIELD_MARGIN, GAME_H - 300);
+    _b = st_boss_on_move(_g, BossMove.Track);
+    for (var _i = 0; _i < 900; _i++) boss_act(_b, _g);   // parked hard left
+    _b.boss.phases[0].move = BossMove.Fixed;
+    for (var _i = 0; _i < 400; _i++) boss_act(_b, _g);   // back to station
+    _b.boss.phases[0].move = BossMove.Track;
+    var _was = _b.x;
+    boss_act(_b, _g);
+    ok("and picks up from where the boss is rather than lurching",
+       abs(_b.x - _was) < 20);
+
+    // ---- the ceremony repositions -----------------------------------------
+    //
+    // **A Fixed attack takes its station during the pause before it**, because
+    // the pauses move for `next_phase` and the attack moves for `phase`. That
+    // is what stops it sliding into place across the first second of its own
+    // pattern, and it needed nothing added to get it.
+    st_reset();
+    _g = st_game_at(GAME_CX, GAME_H - 300);
+    _b = st_boss_on_move(_g, BossMove.Drift);
+    _b.boss.phases = [
+        { kind: AttackKind.NonSpell, name: "", col: BCOL_EMBER, bg: -1,
+          hp_end: 0.5, time: 1000000, attack: st_still },
+        { kind: AttackKind.NonSpell, name: "", col: BCOL_EMBER, bg: -1,
+          hp_end: 0.0, time: 1000000, move: BossMove.Fixed, attack: st_still },
+    ];
+    boss_enter_phase(_b, _g, 0);
+    for (var _i = 0; _i < 300; _i++) boss_act(_b, _g);
+    ok("the drifting attack before it is off station",
+       abs(_b.x - _b.boss.home_x) > 60);
+    _b.hp = _b.hp_max * 0.5;                  // break it
+    boss_act(_b, _g);
+    ok("breaking it opens the pause", _b.boss.clear_t > 0);
+    while (_b.boss.clear_t > 0) boss_act(_b, _g);
+    ok("and the fixed attack opens already on its station",
+       _b.boss.phase == 1 && abs(_b.x - _b.boss.home_x) < 8);
+
+    st_reset();
+}
+
 function test_stage_table() {
     var _e = stage_ziggy_script();
     ok("the stage has a timeline", array_length(_e) > 8);
@@ -904,20 +1167,60 @@ function test_stage_table() {
     ok("the roster has eight stages", array_length(_list) == 8);
     ok("stage one is built", stage_is_built(_list[0]));
     ok("and needs nothing to unlock", _list[0].needs == 0);
-    var _rest_locked = true;
-    for (var _i = 1; _i < array_length(_list); _i++) {
-        if (stage_is_built(_list[_i])) _rest_locked = false;
+    ok("stage two is built", stage_is_built(_list[1]));
+    // **No assertion about what stage two costs to unlock.** It is open while
+    // the fight in it is a placeholder -- see `stage_grove_def` -- and a suite
+    // that pinned that number would have to be edited on the day it goes back
+    // to one, which is a suite reporting the roster rather than checking it.
+    ok("and the rack can say what it costs", is_real(_list[1].needs));
+
+    // **The built stages are a prefix of the roster**, which is the honest
+    // form of "the rest are marked unbuilt": the rack draws every entry and
+    // the locks pace a first playthrough, so a built stage sitting after an
+    // unbuilt one would be a stage nothing can reach. Written as a scan
+    // rather than as an index, because this assertion was a hard-coded `1`
+    // and it went stale the day a second stage was added -- which is a suite
+    // reporting the roster rather than checking it.
+    var _built = 0;
+    var _prefix = true;
+    for (var _i = 0; _i < array_length(_list); _i++) {
+        if (stage_is_built(_list[_i])) {
+            if (_i != _built) _prefix = false;
+            _built++;
+        }
     }
-    ok("and the rest are honestly marked unbuilt", _rest_locked);
+    ok("and the built ones are the front of the rack", _prefix);
+    ok("with the rest honestly marked unbuilt", _built < array_length(_list));
+
+    // Stage two's own table, on the same terms as stage one's -- and one
+    // thing stage one has nothing to say about: it turns half way through.
+    var _e2 = stage_grove_script();
+    var _sorted2 = true;
+    for (var _i = 1; _i < array_length(_e2); _i++) {
+        if (_e2[_i].at < _e2[_i - 1].at) _sorted2 = false;
+    }
+    ok("stage two's timeline is in order too", _sorted2);
 }
 
 function test_stage_run() {
+    st_stage_run(stage_ziggy_def(), "the stage");
+    st_stage_run(stage_grove_def(), "stage two");
+}
+
+/// @desc Play a whole stage headlessly, killing everything a second after it
+///       arrives. **The gates are what this is testing** -- one that released
+///       early would collapse the timeline into a single frame, and one that
+///       never released would hang the stage.
+function st_stage_run(_def, _label) {
     st_reset();
     var _g = st_game_at(GAME_CX, GAME_H - 300);
     _g.boss_ref = undefined;
     _g.phase = Phase.Playing;
+    // The timeline reaches for `_g.bg` -- stage two turns its background half
+    // way through -- so the run has to have one, exactly as a real run does.
+    _g.bg = _def.make_bg();
 
-    var _s = stage_new(stage_ziggy_def());
+    var _s = stage_new(_def);
 
     // Play the stage the way a competent player does: everything on the field
     // dies about a second after it arrives. **The gates are what this is
@@ -935,11 +1238,306 @@ function test_stage_run() {
         }
         if (_s.done) break;
     }
-    ok("the stage reaches its end", _s.done);
-    ok("and puts a boss on the field on the way", _boss_seen);
-    ok("without leaking enemies past its own cap",
+    ok(_label + " reaches its end", _s.done);
+    ok(_label + " puts a boss on the field on the way", _boss_seen);
+    ok(_label + " leaks no enemies past its own cap",
        enemy_count() <= ENEMY_MAX);
     st_reset();
+}
+
+/// @desc The corridor projection, the prop ring, and the grove's turn.
+///
+///       **Everything in here is invisible in a screenshot**, which is the
+///       whole reason it is written down. A tree drawn in the wrong depth
+///       order looks like a tree. A tree that is a pixel too big looks like a
+///       tree. What a picture cannot say is whether the order is still right
+///       after four minutes of flying, whether the wood is the same wood on
+///       the second attempt, or whether the red arrives out of the distance
+///       rather than everywhere at once.
+function test_corridor() {
+    var _v = corridor_view(false);
+    var _hy = corridor_horizon(_v);
+
+    // **The projection and its inverse have to agree**, because the ground is
+    // drawn through one and every prop standing on it through the other. If
+    // they disagreed the trees would float or sink, and a forest of floating
+    // trees is a thing you notice and cannot name.
+    var _agree = true;
+    for (var _i = 1; _i <= 6; _i++) {
+        var _z = 300 * _i;
+        var _sy = _hy + corridor_k(_z) * CORRIDOR_CAM_H;
+        if (abs(corridor_depth_at(_v, _sy) - _z) > 0.5) _agree = false;
+    }
+    ok("the ground's depth and a prop's footing agree", _agree);
+    // **The corridor has a back wall.** Unclamped, a row a pixel under the
+    // horizon reports a quarter of a million units -- further away than
+    // anything the world contains, including the parked blood wavefront,
+    // which drew a red line across a stage that had not turned.
+    ok("the horizon is the far plane, not a divide by zero",
+       corridor_depth_at(_v, _hy) == CORRIDOR_Z_FAR);
+    ok("and nothing under it reports further than that",
+       corridor_depth_at(_v, _hy + 1) <= CORRIDOR_Z_FAR
+       && corridor_depth_at(_v, _hy + 0.2) <= CORRIDOR_Z_FAR);
+
+    // Nearer is bigger and further from the middle. One line, and it is the
+    // entire claim the picture rests on.
+    ok("nearer is bigger", corridor_k(400) > corridor_k(1600));
+    ok("and further out from the centre",
+       abs(corridor_k(400) * 600) > abs(corridor_k(1600) * 600));
+
+    // **A tree leaves the frame sideways, and that is what makes the near
+    // plane safe.** Nothing in this stage is ever seen at `CORRIDOR_Z_MIN`,
+    // because the trees stand off the path -- so the clamp in `corridor_k` is
+    // a guard against arithmetic rather than something the eye relies on. If
+    // this ever failed, a tree would grow to fill the screen and wink out.
+    // Measured from the tree's *inner edge*, not from its trunk: the whole
+    // sprite has to have left the field, and a tree is as wide as it is.
+    // The *widest* a tree can be, not the nominal one: a prop carries its own
+    // size, so the clearance has to hold for the biggest a hash can produce.
+    var _half_w = corridor_prop_half_w(spr_scn_tree, GROVE_TREE_H,
+                                       1 + GROVE_VARY_H, 1 + GROVE_VARY_W);
+    var _edge = corridor_k(CORRIDOR_Z_NEAR) * (GROVE_PATH_HALF - _half_w);
+    ok("a tree is off the side of the field before it reaches the camera",
+       _edge > FIELD_W * 0.5);
+
+    // The hash. `frac` keeps its sign in GML, so an unfolded hash comes back
+    // in (-1, 1) and half of everything indexed by it lands on entry zero --
+    // which is the bug `hex_debris` already shipped once.
+    var _in_range = true;
+    var _spread = 0;
+    for (var _i = 0; _i < 400; _i++) {
+        var _h = corridor_hash(_i, 17);
+        if (_h < 0 || _h >= 1) _in_range = false;
+        if (_h > 0.5) _spread++;
+    }
+    ok("the hash answers in [0, 1)", _in_range);
+    ok("and does not pile up in one half", _spread > 140 && _spread < 260);
+    ok("and is the same answer every time",
+       corridor_hash(9, 4) == corridor_hash(9, 4));
+
+    // ---- the ring ---------------------------------------------------------
+    var _b = bg_grove();
+    ok("the grove is a corridor", _b.kind == BGKIND_CORRIDOR);
+    ok("and stage one is not", bg_brimstone().kind == BGKIND_PARALLAX);
+
+    // **The order has to survive the whole stage.** The ring's claim is that
+    // recycling a prop to the back of the queue keeps it sorted for ever, and
+    // "for ever" is the part a screenshot cannot check. Four thousand frames
+    // is about a minute of flying and several laps of the corridor.
+    var _ordered = true;
+    var _inside = true;
+    for (var _f = 0; _f < 4000; _f++) {
+        bg_step(_b);
+        if ((_f mod 37) != 0) continue;
+        var _o = corridor_ring_order(_b.trees);
+        var _last = 999999999;
+        for (var _j = 0; _j < _b.trees.n; _j++) {
+            var _p = _b.trees.props[_o[_j]];
+            if (_p.z > _last) _ordered = false;
+            _last = _p.z;
+            if (_p.z < CORRIDOR_Z_MIN || _p.z > CORRIDOR_Z_FAR * 1.2) {
+                _inside = false;
+            }
+        }
+    }
+    ok("the ring is still in depth order a minute in", _ordered);
+    ok("and every prop is still inside the corridor", _inside);
+
+    // **The same wood on the second attempt.** Every recycled prop is a hash
+    // of its lap, never `random`, for the same reason the hex's scatter is:
+    // noise that differs every attempt is noise nobody can learn.
+    var _a1 = bg_grove();
+    var _a2 = bg_grove();
+    for (var _f = 0; _f < 900; _f++) {
+        bg_step(_a1);
+        bg_step(_a2);
+    }
+    var _same = true;
+    for (var _j = 0; _j < _a1.trees.n; _j++) {
+        if (_a1.trees.props[_j].wx != _a2.trees.props[_j].wx
+            || _a1.trees.props[_j].frame != _a2.trees.props[_j].frame
+            || _a1.trees.props[_j].scale != _a2.trees.props[_j].scale
+            || _a1.trees.props[_j].tag != _a2.trees.props[_j].tag) {
+            _same = false;
+        }
+    }
+    ok("two flights through the grove are the same flight", _same);
+
+    // **Every ring on the background has to be stepped, and this walks them
+    // rather than naming them.** The trunks were built, drawn, depth-sorted
+    // and lit for several passes with nothing advancing them -- so the
+    // nearest and largest things in the wood held station while the world
+    // went past, and what reached a player was "those are static images
+    // slapped on the background". Nothing about a prop's drawing says whether
+    // it moves.
+    //
+    // Named individually this assertion would have passed the day it was
+    // written and gone stale the day a fourth ring was added, which is the
+    // shape of the bug it exists for. So it finds them: anything on the
+    // background carrying a `props` array is a ring, and a ring that has not
+    // recycled anything after a lap of the corridor is not being stepped.
+    var _c2 = bg_grove();
+    var _names = variable_struct_get_names(_c2);
+    var _rings = 0;
+    var _stalled = "";
+    for (var _f = 0; _f < 2000; _f++) bg_step(_c2);
+    for (var _i = 0; _i < array_length(_names); _i++) {
+        var _val = _c2[$ _names[_i]];
+        if (!is_struct(_val) || !variable_struct_exists(_val, "props")) {
+            continue;
+        }
+        _rings++;
+        if (_val.lap <= 0) _stalled += _names[_i] + " ";
+    }
+    ok("the grove has more than one ring of props", _rings >= 3);
+
+    // **Nothing may arrive in clear air.** A prop's alpha is zero at its own
+    // ring's far plane, so nothing ever appears out of nothing -- and that is
+    // only half of arriving unseen. Its *colour* has to already be the fog's
+    // too, or what fades up is a shape in its own colour at a distance where a
+    // thing that size can still be made out. The trunks recycled where more
+    // than half the air was clear and it was reported twice, both times as big
+    // trees popping in in front of smaller ones further back. Sorting them
+    // correctly did not help: they really were in front.
+    var _clear = "";
+    for (var _i = 0; _i < array_length(_names); _i++) {
+        var _cv = _c2[$ _names[_i]];
+        if (!is_struct(_cv) || !variable_struct_exists(_cv, "props")) continue;
+        if (corridor_haze(_cv.z1) > CORRIDOR_ARRIVE_HAZE) {
+            _clear += _names[_i] + " ";
+        }
+    }
+    ok("and no ring recycles its props into clear air: " + _clear,
+       _clear == "");
+
+    // **No trunk may wall the field**, however wide the hash makes it. The
+    // clearance is measured from a prop's inner edge for exactly this reason,
+    // and this is the assertion that says so rather than the comment.
+    var _walled = false;
+    for (var _j = 0; _j < _c2.trunks.n; _j++) {
+        var _tp = _c2.trunks.props[_j];
+        var _thw = corridor_prop_half_w(spr_scn_trunk, GROVE_TRUNK_H,
+                                        _tp.scale, _tp.aspect);
+        if (abs(_tp.wx) - _thw < GROVE_TRUNK_HALF - 1) _walled = true;
+    }
+    ok("and no trunk stands closer to the path than its clearance",
+       !_walled);
+
+    // **One depth order over every ring, not one per ring.** Four rings drawn
+    // as four sequential loops put every trunk in the wood in front of every
+    // tree in it whatever their depths -- which reaches a player as a big tree
+    // fading in *in front of* a small tree that was already closer. Depth
+    // order is a property of the frame.
+    corridor_merge_step(_c2.merge);
+    var _count = 0;
+    var _names2 = variable_struct_get_names(_c2);
+    for (var _i = 0; _i < array_length(_names2); _i++) {
+        var _rv = _c2[$ _names2[_i]];
+        if (is_struct(_rv) && variable_struct_exists(_rv, "props")) {
+            _count += _rv.n;
+        }
+    }
+    ok("the merged pass covers every prop in every ring",
+       _c2.merge.total == _count);
+
+    var _mono = true;
+    var _prev = 999999999;
+    for (var _i = 0; _i < _c2.merge.total; _i++) {
+        var _mp = _c2.merge.out[_i];
+        if (_mp == undefined || _mp.z > _prev + 0.001) _mono = false;
+        _prev = (_mp == undefined) ? _prev : _mp.z;
+    }
+    ok("and it is in one depth order, far to near", _mono);
+    ok("and every one of them is being stepped: " + _stalled, _stalled == "");
+
+    // Every charm hangs off a branch the sprite actually has.
+    var _hangs_ok = true;
+    for (var _f = 0; _f < sprite_get_number(spr_scn_tree); _f++) {
+        for (var _i = 0; _i < grove_hang_count(_f); _i++) {
+            var _h = grove_hang_at(_f, _i);
+            if (_h[0] < 0 || _h[0] > 1 || _h[1] < 0 || _h[1] > 1) {
+                _hangs_ok = false;
+            }
+        }
+    }
+    ok("every hang point is inside its own tree", _hangs_ok);
+    var _tagged = true;
+    for (var _j = 0; _j < _a1.trees.n; _j++) {
+        var _p = _a1.trees.props[_j];
+        if (_p.tag >= 0 && _p.hang >= grove_hang_count(_p.frame)) {
+            _tagged = false;
+        }
+    }
+    ok("and no charm hangs off a branch its tree has not got", _tagged);
+}
+
+/// @desc The blood moon: what turns, in what order, and what stage one does
+///       about it (nothing).
+function test_grove_turn() {
+    var _b = bg_grove();
+    ok("a stage opens with nothing having happened", _b.omen == 0);
+    ok("and the wave is past the far end of the corridor",
+       grove_blood_at(_b, CORRIDOR_Z_FAR) == 0);
+
+    var _speed_before = _b.spd;
+
+    bg_set_omen(_b);
+    for (var _f = 0; _f < BG_OMEN_TIME; _f++) bg_step(_b);
+    ok("the turn reaches exactly one and stops", _b.omen == 1);
+    for (var _f = 0; _f < 60; _f++) bg_step(_b);
+    ok("and stays there", _b.omen == 1);
+    ok("the corridor is faster afterwards", _b.spd > _speed_before);
+    ok("and it is the speed it was asked for",
+       abs(_b.spd - GROVE_SPEED_FAST) < 0.01);
+
+    // **The red arrives out of the distance.** This is the one claim the
+    // whole transition is built on and the one a still frame is least able to
+    // make: at every moment during the wave, something far away is redder
+    // than something near. A ring expanding across the *screen* would have
+    // turned the near trees first, which is the obvious version of this
+    // effect and is backwards.
+    var _c = bg_grove();
+    bg_set_omen(_c);
+    var _far_leads = true;
+    var _seen_partial = false;
+    for (var _f = 0; _f < BG_OMEN_TIME; _f++) {
+        bg_step(_c);
+        var _far = grove_blood_at(_c, 4200);
+        var _near = grove_blood_at(_c, 400);
+        if (_far < _near) _far_leads = false;
+        if (_far > 0.02 && _near < 0.98) _seen_partial = true;
+    }
+    ok("the far wood turns before the near wood does", _far_leads);
+    ok("and there is a moment when only half of it has", _seen_partial);
+    ok("by the end the whole corridor has turned",
+       grove_blood_at(_c, CORRIDOR_Z_FAR) == 1
+       && grove_blood_at(_c, CORRIDOR_Z_NEAR) == 1);
+
+    // The eclipse is a body going past, so its coverage rises to totality and
+    // comes back. A version that ran to the end and reversed would be two
+    // movements to write and one to get wrong.
+    var _d = bg_grove();
+    bg_set_omen(_d);
+    var _low = 1, _high = 0;
+    for (var _f = 0; _f < BG_OMEN_TIME; _f++) {
+        bg_step(_d);
+        var _e = grove_eclipse(_d);
+        _low = min(_low, _e);
+        _high = max(_high, _e);
+    }
+    ok("the umbra crosses the moon completely", _high >= 0.999);
+    ok("and the wavefront launches after it is total",
+       GROVE_WAVE_START <= 1);
+
+    // **Stage one never turns**, and it must not raise for being asked
+    // whether it has. The field is on the base struct precisely so that a run
+    // can say "the stage turns" without knowing what kind of world it is
+    // saying it to.
+    var _brim = bg_brimstone();
+    ok("a parallax stage starts unturned", _brim.omen == 0);
+    bg_set_omen(_brim);
+    for (var _f = 0; _f < BG_OMEN_TIME; _f++) bg_step(_brim);
+    ok("and turns harmlessly when asked", _brim.omen == 1 && _brim.t > 0);
 }
 
 function test_marks() {
@@ -1025,9 +1623,21 @@ function test_practice() {
 
     // An unbuilt stage has no bosses and must say so rather than raising: a
     // bare `_def.bosses` on one of those is the missing-member trap.
+    //
+    // **Found rather than indexed.** This read `_list[1]`, which was an
+    // unbuilt stage until the day stage two was written and then quietly
+    // became an assertion about a built one.
     var _list = stage_list();
+    var _unbuilt = undefined;
+    for (var _i = 0; _i < array_length(_list); _i++) {
+        if (!stage_is_built(_list[_i])) {
+            _unbuilt = _list[_i];
+            break;
+        }
+    }
+    ok("the roster still has an unbuilt stage in it", _unbuilt != undefined);
     ok("an unbuilt stage offers nothing to practise",
-       !practice_available(_list[1]));
+       !practice_available(_unbuilt));
     ok("and stage one does", practice_available(_stage));
 
     // ---- the request ------------------------------------------------------
@@ -1142,6 +1752,470 @@ function test_practice() {
         == "DEFEATED");
     ok("with no mark to show for it", practice_outcome(
         _b, PracticeEnd.Died, rank_ledger_new()).tier < 0);
+
+    st_reset();
+}
+
+/// @desc The drafting table: attacks with no boss yet. See `stage_drafts`.
+///
+///       **What is worth asserting here is the derivation, not the patterns.**
+///       Whether a draft is any fun is exactly the question the mode exists to
+///       ask a person, and no suite can answer it. What a suite can hold down
+///       is the machinery underneath: that adding a row cannot silently break
+///       the ladder, that the table is not a stage in any of the ways that
+///       touch a save, and that every slot is worth the same.
+function test_drafts() {
+    st_reset();
+
+    // ---- the rack ---------------------------------------------------------
+    var _stages = stage_list();
+    var _rack = rack_list();
+    ok("the rack carries the roster and the drafting table",
+       array_length(_rack) == array_length(_stages) + 1);
+    ok("and the table is the last card",
+       stage_is_draft(_rack[array_length(_rack) - 1]));
+    // A bare `_def.draft` on any of the eight would raise rather than answer,
+    // which is the trap `practice_bosses` is written around one file over.
+    var _none = true;
+    for (var _i = 0; _i < array_length(_stages); _i++) {
+        if (stage_is_draft(_stages[_i])) _none = false;
+    }
+    ok("and no stage claims to be one", _none);
+    ok("nor does nothing at all", !stage_is_draft(undefined));
+
+    // ---- what it is, and is not -------------------------------------------
+    var _def = draft_stage_def();
+    ok("it can be practised", practice_available(_def));
+    // **Not built, deliberately.** A run of a whole stage is the path that
+    // reaches `progress_record`, and a scratchpad must not be able to write to
+    // somebody's save. The empty id is the second lock on the same door.
+    ok("but it is not a stage to play", !stage_is_built(_def));
+    ok("and has no stage to file a clear against", _def.id == "");
+    ok("a blank id reads back as nothing cleared",
+       !progress_stage(_def.id).cleared);
+
+    // ---- the ladder -------------------------------------------------------
+    var _l = draft_list();
+    var _ph = draft_phases();
+    var _n = array_length(_l);
+    ok("there is a phase per draft", array_length(_ph) == _n);
+
+    var _descends = true;
+    var _even = true;
+    var _prev = 1.0;
+    var _span = 1 / _n;
+    for (var _i = 0; _i < _n; _i++) {
+        if (_ph[_i].hp_end >= _prev) _descends = false;
+        if (abs((_prev - _ph[_i].hp_end) - _span) > 0.001) _even = false;
+        _prev = _ph[_i].hp_end;
+    }
+    ok("the table descends", _descends);
+    // **Equal shares are the point.** An attack tuned last week must not get
+    // shorter because somebody added an idea underneath it.
+    ok("and every draft owns the same span of the bar", _even);
+    ok("and the last one lands exactly on zero",
+       _ph[_n - 1].hp_end == 0);
+
+    // The kind follows the name and nothing else says it twice.
+    var _kinds = true;
+    for (var _i = 0; _i < _n; _i++) {
+        var _named = (_l[_i].name != "");
+        if (_named != (_ph[_i].kind == AttackKind.Spell)) _kinds = false;
+        if (_named != (_ph[_i].bg != -1)) _kinds = false;
+    }
+    ok("a name is what makes a draft a spell", _kinds);
+
+    // A table built once would be shared by every run that read it, and a
+    // phase struct is mutable -- the same trap `ziggy_phases` is written
+    // around.
+    ok("and each call hands back a fresh table", draft_phases() != _ph);
+
+    // ---- the caster -------------------------------------------------------
+    //
+    // The boss's health is derived from how many drafts there are, so one
+    // slot is worth `DRAFT_SLOT_HP` whatever else is on the table.
+    var _g = st_game_at(GAME_CX, GAME_H - 300);
+    var _b = draft_boss_spawn(_g);
+    ok("the draft boss reaches the field", _b != undefined);
+    ok_near("and one slot is worth a fixed amount of health",
+            _b.hp_max / _n, DRAFT_SLOT_HP, 0.001);
+    ok("it wears the placeholder art", _b.boss.def.sprite == spr_boss_ziggy);
+    // Not Ziggy's hue and not Ziggy's arena: a draft borrows the drawing and
+    // nothing else. See the note at the top of `stage_drafts`.
+    ok("but not Ziggy's colour", _b.boss.def.col != ziggy_def().col);
+    ok("nor his forge", _b.boss.def.spell_bg == SPELLBG_SIGIL);
+
+    // ---- practising one ---------------------------------------------------
+    st_reset();
+    _g = st_game_at(GAME_CX, GAME_H - 300);
+    var _p = practice_new(_def, 0, 1);
+    ok("a named draft is listed under its own name",
+       _p.label == _l[1].name);
+    _g.practice = _p;
+    _b = practice_begin(_g);
+    ok("practice puts the draft boss on the field", _b != undefined);
+    ok("on the attack that was chosen", _b.boss.next_phase == 1);
+    ok_near("with the bar starting where that attack does",
+            _b.hp, _b.hp_max * _ph[0].hp_end, 1);
+
+    st_reset();
+}
+
+/// @desc **Demon Sealing Hex**: the ward, and the two ways it comes apart.
+///
+///       See the section at the foot of `stage_drafts`. What is asserted here
+///       is only the part of it that is arithmetic, and every one of those is
+///       invisible in a screenshot of any single frame -- which is the test
+///       for whether an assertion in this project is worth writing.
+///
+///       **The ward keeps its radius.** Every bead is set turning about the
+///       middle with a speed proportional to its own distance from it, and
+///       that is a circle only if the speed and the turn rate agree. Get
+///       either wrong and the seal opens into a spiral over the three seconds
+///       it stands for -- and a picture taken on the frame it closes would
+///       show a perfect pentagram either way.
+///
+///       **The ring closes on itself.** The ward turns while it is being
+///       inscribed, so the bead the ring comes back to has moved off the top
+///       since it was placed; the first version left one gap at the seam four
+///       times the width of every other one, and it was reported from a
+///       screenshot rather than caught here.
+///
+///       **The collapse arrives together.** A bead on the outer ring is 356
+///       pixels out and one at the waist of an arm is a third of that; both
+///       have to reach the middle on the same frame, or what lands is a smear
+///       rather than a point.
+///
+///       **The inscription finishes together.** Seven traces of four very
+///       different lengths, all of which have to put their last bead down on
+///       the same frame -- which is the one thing about this attack the player
+///       is being asked to watch.
+function test_hex_seal() {
+    st_reset();
+    // Dead centre, so the clamp is a no-op and none of the ward is off the
+    // field to be culled while it is being measured.
+    var _g = st_game_at(FIELD_CX, FIELD_CY);
+    // The attack reads a position off its caster and nothing else, so this is
+    // the whole of what a boss is to it.
+    var _e = { x: FIELD_CX, y: BOSS_HOME_Y };
+
+    // ---- the inscription --------------------------------------------------
+    //
+    // **The game's own order**: bullets move, then the boss fires. See
+    // `obj_game`'s Step. Running it the other way round here would put every
+    // scheduled event one frame out and quietly prove the wrong thing.
+    var _was = 0;
+    var _last = 0;
+    for (var _f = 0; _f < HEX_DRAW; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+        draft_demon_sealing_hex(_e, _g, _f);
+        _last = bullet_count() - _was;
+        _was = bullet_count();
+    }
+    var _drawn = bullet_count();
+
+    ok("the ward is a ward by the time it closes", _drawn > 180);
+    // One bead from each of the five arms and each of the two rings. A trace
+    // that had run out early would leave this short, which is the failure the
+    // slice arithmetic exists to prevent.
+    ok("and all seven traces are still writing on the last frame of it",
+       _last >= 7);
+
+    var _far = 0;
+    var _outside = false;
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        var _d = point_distance(FIELD_CX, FIELD_CY, _u.x, _u.y);
+        _far = max(_far, _d);
+        if (_d > HEX_R_OUT + 1) _outside = true;
+    }
+    ok("nothing of it stands outside the ward", !_outside);
+    ok_near("and the outer ring is the boundary", _far, HEX_R_OUT, 1);
+
+    // ---- the seam ---------------------------------------------------------
+    //
+    // **Measured only once every bead of the ring is turning.** The fix runs
+    // the pen ahead of the figure, so the ring is deliberately *not* round on
+    // the frame the last bead is placed -- it is round `HEX_SEAL_DELAY` frames
+    // later, when that bead has gone live and caught up. Measuring too early
+    // would fail an attack that was working.
+    //
+    // Widest gap against narrowest, rather than against a count, because that
+    // is the shape of the defect and it saves this test having to know how
+    // many beads there are meant to be.
+    var _lit = HEX_DRAW + HEX_SEAL_DELAY + 12;
+    for (var _f = HEX_DRAW; _f < _lit; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+        draft_demon_sealing_hex(_e, _g, _f);
+    }
+
+    var _ang = [];
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        // Shape as well as radius: the volleys are crossing this annulus by
+        // now, and a fan bullet counted as a bead is a gap that is not there.
+        if (_u.shape != HEX_BEAD || _u.col != BCOL_CRIMSON) continue;
+        if (abs(point_distance(FIELD_CX, FIELD_CY, _u.x, _u.y) - HEX_R_OUT)
+            > 4) continue;
+        array_push(_ang, point_direction(FIELD_CX, FIELD_CY, _u.x, _u.y));
+    }
+    array_sort(_ang, true);
+    var _wide = 0;
+    var _tight = 360;
+    for (var _i = 0; _i < array_length(_ang); _i++) {
+        var _next = (_i == array_length(_ang) - 1)
+                    ? _ang[0] + 360 : _ang[_i + 1];
+        _wide = max(_wide, _next - _ang[_i]);
+        _tight = min(_tight, _next - _ang[_i]);
+    }
+    ok("the outer ring is a whole ring", array_length(_ang) > 90);
+    ok("and its beads are evenly apart the whole way round",
+       _wide < _tight * 1.25);
+
+    // ---- it turns, and turning is not drifting ----------------------------
+    for (var _f = _lit; _f < HEX_SCATTER_AT; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+        draft_demon_sealing_hex(_e, _g, _f);
+    }
+
+    var _far2 = 0;
+    var _held = 0;
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        if (_u.shape != HEX_BEAD || _u.col != BCOL_CRIMSON) continue;
+        _held++;
+        _far2 = max(_far2, point_distance(FIELD_CX, FIELD_CY, _u.x, _u.y));
+    }
+    ok("the ward is still standing three seconds later", _held > 180);
+    ok_near("and has turned without opening", _far2, HEX_R_OUT, 1);
+
+    // **The boss goes quiet before the ward moves**, which is the only warning
+    // either break gets that is not the break itself.
+    //
+    // Asserted by looking at what is in the air on the frame it breaks rather
+    // than by restating the condition in the attack: a volley fired inside the
+    // hold would still be young, and none of them is. A bullet's age is its
+    // life plus however much of its delay it has already spent, because `life`
+    // does not start until the mark does -- see `bullet_step`.
+    var _young = 9999;
+    var _fans = 0;
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        if (_u.shape != BSHAPE_RICE) continue;
+        _fans++;
+        _young = min(_young, _u.life + _u.delay0 - _u.delay);
+    }
+    ok("the last volley is in the air rather than being fired", _fans > 0);
+    ok("and the boss has been quiet for the whole hold",
+       _young >= HEX_HOLD_RED);
+
+    // ---- the red seal comes apart -----------------------------------------
+    //
+    // **Not outward.** Thrown along their own radii the beads keep the
+    // figure's shape all the way off the screen and the room the ward was
+    // enclosing is the one place in the field nothing travels through -- so
+    // the player who spent three seconds learning to stand in the middle of it
+    // gets three more seconds of standing in the middle of it. Scattered
+    // across the whole circle, the middle is the busiest place there is, and
+    // that is what this counts.
+    for (var _f = HEX_SCATTER_AT; _f < HEX_SCATTER_AT + 140; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+        draft_demon_sealing_hex(_e, _g, _f);
+    }
+
+    var _crossing = 0;
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        if (_u.shape != HEX_BEAD || _u.col != BCOL_CRIMSON) continue;
+        if (point_distance(FIELD_CX, FIELD_CY, _u.x, _u.y) < HEX_R_IN * 0.6) {
+            _crossing++;
+        }
+    }
+    ok("the broken ward goes back through the room it was enclosing",
+       _crossing > 25);
+
+    // ---- the blue seal is pulled inwards ----------------------------------
+    //
+    // All the way to the frame the collapse lands on, which is one after
+    // `HEX_BURST_AT`: a bead spends `HEX_SEAL_DELAY` frames as a mark, its
+    // queue is read on the step *before* it moves, and the attack fires after
+    // the step rather than before it. Every bead carries the same three, so
+    // they still arrive together -- but the frame they arrive on is not the
+    // one the beat is named for, and a test that assumed it was would fail on
+    // an attack that was working.
+    // **The collapse has to open too slowly to be a lurch**, which is the
+    // whole job of `HEX_IMPLODE_RAMP` and the one property of this movement no
+    // screenshot can show: a still frame of a ward that has moved seven pixels
+    // and a still frame of one that has moved nineteen are the same picture.
+    // What the player is owed is a beat in which the figure visibly goes
+    // *soft* -- beads drifting off the line they stood on -- before anything
+    // has crossed any distance, because that beat is the only warning the
+    // collapse gives and the answer to it is to already be leaving.
+    //
+    // A band rather than a ceiling: it has to have started, or the notice is a
+    // freeze, and it has to have barely started, or the notice is the
+    // collapse.
+    for (var _f = HEX_SCATTER_AT + 140; _f <= HEX_IMPLODE_AT + 13; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+        draft_demon_sealing_hex(_e, _g, _f);
+    }
+
+    var _edge = 0;
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        if (_u.shape != HEX_BEAD || _u.col != BCOL_AZURE) continue;
+        _edge = max(_edge, point_distance(FIELD_CX, FIELD_CY, _u.x, _u.y));
+    }
+    ok("the collapse has begun a fifth of a second in", _edge < HEX_R_OUT - 1);
+    ok("and has barely begun", _edge > HEX_R_OUT - 12);
+
+    for (var _f = HEX_IMPLODE_AT + 14; _f <= HEX_BURST_AT + 1; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+        draft_demon_sealing_hex(_e, _g, _f);
+    }
+
+    var _landed = 0;
+    var _adrift = 0;
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        if (_u.shape != HEX_BEAD || _u.col != BCOL_AZURE) continue;
+        _landed++;
+        if (point_distance(FIELD_CX, FIELD_CY, _u.x, _u.y) > 1.5) _adrift++;
+    }
+    ok("the collapse brings the whole seal in", _landed > 50);
+    ok("and every bead of it lands on the same point on the same frame",
+       _adrift == 0);
+
+    // The quarter of it that bursts is gone from the pool -- a split kills its
+    // parent -- and what stands in its place is the detonation.
+    //
+    // **Found by colour and not by shape**, which is the change: the burst is
+    // seven kinds of debris now and the one thing every piece of it has in
+    // common is the hue. Nothing else in this attack is cyan -- the seals are
+    // crimson and azure, the volleys are bone -- so the colour is the whole
+    // test, and it is also the property that says the seven kinds are one
+    // object breaking rather than seven things arriving.
+    var _burst = 0;
+    var _fast = 0;
+    var _slow = 9999;
+    var _seen = array_create(BSHAPE_COUNT, false);
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        if (_u.col != BCOL_CYAN) continue;
+        _burst++;
+        _fast = max(_fast, _u.spd);
+        _slow = min(_slow, _u.spd);
+        _seen[_u.shape] = true;
+    }
+    var _kinds_out = 0;
+    for (var _i = 0; _i < BSHAPE_COUNT; _i++) if (_seen[_i]) _kinds_out++;
+
+    ok("and throws a burst out of the point it lands on", _burst > 50);
+
+    // **A detonation is a thing coming apart, not a thing being fired.** One
+    // shape at one of three speeds is a firework however many of it there are,
+    // and that is what this used to be -- reported, accurately, as pathetic.
+    // Both halves are asserted because either alone puts it back: seven sizes
+    // all travelling together is a sorted wall, and one size at seven speeds
+    // is rings again.
+    ok("made of several different kinds of debris", _kinds_out >= 5);
+    ok("at a wide spread of speeds", _fast > _slow * 2);
+
+    // **A ring with a wedge missing is not a burst.** Every child's heading is
+    // worked back from a heading its parent only acquires at the moment it
+    // fires, so a sign slip or an off-by-one in the share does not throw and
+    // does not change the count -- it just piles the whole detonation into one
+    // side of the field, which is a thing only the shape on screen can say.
+    var _sector = array_create(12, 0);
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        if (_u.col != BCOL_CYAN) continue;
+        _sector[((floor(_u.dir / 30) mod 12) + 12) mod 12]++;
+    }
+    var _thinnest = 9999;
+    for (var _i = 0; _i < 12; _i++) _thinnest = min(_thinnest, _sector[_i]);
+    ok("and it goes out in every direction", _thinnest >= 3);
+
+    // ---- and the debris leaves by leaving ---------------------------------
+    //
+    // **Nothing in the scatter carries a lifetime**, because a bullet that
+    // winks out mid-field is one the player was taught to respect and then
+    // told not to bother with. So what has to be true instead is that the
+    // geometry removes it: every bead travels in a straight line at a cap low
+    // enough to be outrun, and `CULL_MARGIN` does the rest.
+    //
+    // **Nearly all rather than all, and the slack is the honest part.** A bead
+    // thrown from the far side of the ward toward the far corner of the cull
+    // box has about sixteen hundred pixels to cover and will still be in the
+    // air when the cycle turns over. That is fine and is what it should look
+    // like -- debris outlasting the thing it came off. What would not be fine
+    // is a bead with no exit at all, which is what this catches: one direction
+    // that never leaves means the pool fills up over a fight and the attack
+    // quietly stops firing.
+    for (var _f = HEX_BURST_AT + 2; _f < HEX_CYCLE; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+        draft_demon_sealing_hex(_e, _g, _f);
+    }
+
+    var _left = 0;
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        if (_u.shape == HEX_BEAD && _u.col == BCOL_CRIMSON) _left++;
+    }
+    ok("and nearly all of the broken ward has left by the end of the cycle",
+       _left * 4 < _drawn);
+
+    // ---- the debris table -------------------------------------------------
+    //
+    // **The grading is the design and not a garnish**, so it is asserted on the
+    // table rather than on a sample of what came out of one detonation: the
+    // per-rune speed jitter is deliberately wide enough that two neighbouring
+    // kinds overlap, which is what stops the cloud reading as sorted, and it
+    // would make a measurement taken off fired bullets noisy for a reason that
+    // is correct.
+    //
+    // Walked as a hash in `[0, 1)` rather than as an index, because that is the
+    // only way in and the suite has no business knowing how many kinds there
+    // are -- adding one should not touch this.
+    var _prev_r = 9999;
+    var _prev_s = 0;
+    var _kinds = 0;
+    var _graded = true;
+    var _last = -1;
+    for (var _i = 0; _i < 400; _i++) {
+        var _d = hex_debris(_i / 400);
+        if (_d.shape == _last) continue;
+        _last = _d.shape;
+        _kinds++;
+        if (global.bshape_radius[_d.shape] >= _prev_r) _graded = false;
+        if (_d.spd <= _prev_s) _graded = false;
+        _prev_r = global.bshape_radius[_d.shape];
+        _prev_s = _d.spd;
+    }
+    ok("the debris table has several kinds in it", _kinds >= 5);
+    // Heavy and slow, light and fast. It reads as mass, it grades the cloud
+    // along the radius for free, and it is what pays the player who answered
+    // the blue half and left: the sparks reach them and the chunks do not.
+    ok("and the heavier a piece is the slower it comes off", _graded);
+
+    // **A hash, not a random.** The same detonation on the tenth attempt as on
+    // the first is the whole reason this is not `fire_spray` -- and it has to
+    // be in `[0, 1)` rather than in `(-1, 1)`, because GML's `frac` keeps the
+    // sign and an unfolded hash would put half the runes on the first row of
+    // the table. Which is one shape at one speed, which is the shell this
+    // whole change exists to get rid of.
+    var _bounded = true;
+    var _spread = 0;
+    for (var _i = 0; _i < 200; _i++) {
+        var _h = hex_hash(_i, 27.611);
+        if (_h < 0 || _h >= 1) _bounded = false;
+        if (_h > 0.5) _spread++;
+    }
+    ok("the hash behind it is bounded", _bounded);
+    ok("and does not sit in one half of its range",
+       _spread > 60 && _spread < 140);
+    ok("and answers the same thing twice",
+       hex_hash(17, 27.611) == hex_hash(17, 27.611));
 
     st_reset();
 }
@@ -1497,6 +2571,187 @@ function test_save_atomicity() {
     save_delete(_name);
     if (file_exists(_name + ".bad")) file_delete(_name + ".bad");
     ok("the scratch file is cleaned up", !file_exists(_name));
+}
+
+function test_audio_budget() {
+    // **The claim this suite exists for**: a pattern may ask for a sound once
+    // per bullet, and one frame produces one voice. Nothing else in the audio
+    // system matters if this is not true -- a boss non-spell fires a hundred
+    // and twenty bullets on a single frame, and a hundred and twenty voices of
+    // the same 75ms cue is not a volley, it is a burst of comb-filtered noise
+    // with the mixer's pool exhausted behind it.
+    st_reset();
+    sfx_reset();
+
+    var _n = 300;
+    for (var _i = 0; _i < _n; _i++) sfx(Sfx.ShotSoft);
+    ok("three hundred bullets make three hundred requests",
+       global.sfx_requests == _n);
+
+    sfx_step();
+    ok("...and exactly one voice", global.sfx_voices == 1);
+    ok("...which is the cue they asked for", sfx_sounded(Sfx.ShotSoft));
+    ok("...and nothing is left pending", global.sfx_want[Sfx.ShotSoft] == 0);
+
+    // **The backlog is dropped, not held.** A request that could not be
+    // afforded is about something that has already happened, so carrying it
+    // forward would sound the shot after the bullet had crossed the field --
+    // and would let one busy second play out over the quiet one after it.
+    var _table = global.sfx_table;
+    for (var _i = 0; _i < 400; _i++) sfx(Sfx.ShotSoft);
+    sfx_step();
+    ok("a cue on cooldown drops its requests rather than queueing them",
+       global.sfx_voices == 1 && global.sfx_want[Sfx.ShotSoft] == 0);
+
+    // ...and it comes back once the gap has run.
+    var _gap = _table[Sfx.ShotSoft].gap;
+    for (var _f = 0; _f < _gap; _f++) {
+        sfx(Sfx.ShotSoft);
+        sfx_step();
+    }
+    ok("and sounds again once its gap has run", global.sfx_voices == 2);
+
+    // Firing flat out for a second: the ratio is what a player actually hears
+    // against what the patterns asked for.
+    sfx_reset();
+    for (var _f = 0; _f < 60; _f++) {
+        for (var _i = 0; _i < 120; _i++) sfx(Sfx.ShotSoft);
+        sfx_step();
+    }
+    var _want = 60 div _table[Sfx.ShotSoft].gap;
+    ok("a second of flat-out firing is " + string(global.sfx_voices)
+       + " voices, not " + string(global.sfx_requests),
+       global.sfx_voices <= _want + 1 && global.sfx_voices >= _want - 1);
+
+    // **The per-frame budget, spent in priority order.** The busiest frame in
+    // the game is a spell ending -- the whole field pops into shards, a
+    // capture is awarded and the next attack is named -- and what has to
+    // survive that is the ceremony rather than forty collected shards.
+    sfx_reset();
+    for (var _c = 0; _c < Sfx.COUNT; _c++) sfx(_c);
+    sfx_step();
+    ok("every cue at once spends the budget and no more",
+       global.sfx_voices == SFX_VOICES);
+
+    var _lowest = 9999;
+    var _dropped_prio = -1;
+    for (var _i = 0; _i < global.sfx_played_n; _i++) {
+        _lowest = min(_lowest, _table[global.sfx_played[_i]].prio);
+    }
+    for (var _c = 0; _c < Sfx.COUNT; _c++) {
+        if (!sfx_sounded(_c)) _dropped_prio = max(_dropped_prio, _table[_c].prio);
+    }
+    ok("...on the highest-priority cues", _lowest >= _dropped_prio);
+
+    // The swell: one bullet is not a volley, and a volley is capped.
+    ok("one request carries no swell", sfx_swell(1) == 0);
+    ok("more is bigger", sfx_swell(8) > sfx_swell(2));
+    ok("...and it stops growing", sfx_swell(SFX_SWELL_FULL * 8) <= 1);
+
+    // **Votes do not cross a room boundary.** A cue requested on the last
+    // partial frame of a run -- the death, say -- must not be resolved by the
+    // first `sfx_step` of the title screen and announced there.
+    sfx_reset();
+    sfx(Sfx.PlayerDown);
+    global.sfx_room = -999;                  // stand in for "we changed room"
+    sfx_step();
+    ok("a request does not survive a room change",
+       global.sfx_voices == 0 && !sfx_sounded(Sfx.PlayerDown));
+
+    // The table itself. **A cue with no row is a crash in a Draw event no
+    // suite reaches**, which is the same trap `check_call_arity` exists for --
+    // and the enum and the table are written in two places that have to agree.
+    var _holes = 0;
+    var _bad_gap = 0;
+    for (var _c = 0; _c < Sfx.COUNT; _c++) {
+        if (_table[_c] == undefined) { _holes++; continue; }
+        if (!audio_exists(_table[_c].snd)) _holes++;
+        // A gap of zero is a cue that may sound sixty times a second, which is
+        // the exact failure this whole file is built to make impossible.
+        if (_table[_c].gap < 1) _bad_gap++;
+    }
+    ok("every cue has a row and a real sound", _holes == 0);
+    ok("and no cue may sound every frame", _bad_gap == 0);
+
+    // **Every bullet shape has a voice**, and it is one of the three shot cues
+    // rather than, say, the boss dying. The fallthrough in `sfx_for_shape`
+    // makes a missing shape quietly wrong instead of loudly broken, which is
+    // right for decoration and is exactly why it needs asserting here.
+    var _bad_voice = 0;
+    for (var _s = 0; _s < BSHAPE_COUNT; _s++) {
+        var _v = sfx_for_shape(_s);
+        if (_v != Sfx.ShotSoft && _v != Sfx.ShotSharp && _v != Sfx.ShotHeavy) {
+            _bad_voice++;
+        }
+    }
+    ok("every bullet shape maps to a shot cue", _bad_voice == 0);
+
+    // And the end-to-end path: firing a real ring through the real pool asks
+    // for the real cue. Asserted rather than assumed, because the call lives
+    // in `fire` -- the hottest function in the game -- and is exactly the kind
+    // of line somebody removes while optimising.
+    st_reset();
+    sfx_reset();
+    fire_ring(FIELD_CX, FIELD_CY, 30, 3, 0, BSHAPE_NEEDLE, BCOL_CRIMSON, 0);
+    ok("a ring of needles asks for the sharp cue",
+       global.sfx_want[Sfx.ShotSharp] == 30);
+    sfx_step();
+    ok("...and gets one voice for the ring", global.sfx_voices == 1);
+
+    // **The collapse's telegraph has to be as long as the collapse.**
+    // `snd_ward_pull` is a rising tone written to arrive at the top exactly as
+    // the ward reaches the middle, which is the whole of why it is a telegraph
+    // rather than a noise -- and its length is a number in `tools/make_sfx.py`
+    // while `HEX_IMPLODE` is a number in `stage_drafts`. Two files, one fact,
+    // and nothing in the build would notice them drifting: a cue half a second
+    // short resolves onto nothing and a cue half a second long is still
+    // climbing when the detonation lands, and both are perfectly valid audio.
+    ok_near("the collapse cue is as long as the collapse",
+            audio_sound_length(snd_ward_pull), HEX_IMPLODE / FPS, 0.05);
+
+    // **Silence under a harness is the flag, not the arithmetic.** Everything
+    // above this line ran with `global.audio_on` false, which is how the
+    // suites can grade the whole decision without anybody hearing it -- so
+    // this asserts the flag is actually off, or every number above is a
+    // measurement of a different code path than the one that ships.
+    ok("and the suite ran silent", global.audio_on == false);
+}
+
+function test_audio_playback() {
+    // **The one line the rest of the audio suite cannot reach.**
+    // `global.audio_on` is false under both harnesses, which is what lets
+    // `test_audio_budget` grade every decision without anybody hearing it --
+    // and the cost of that is that `audio_play_sound` itself, the single
+    // statement that ships, is never executed by any suite. A wrong argument
+    // count there is not a compile error in GML: it binds the missing one to
+    // `undefined` and throws when it is used, which under `tools/test.py` is a
+    // modal box and therefore a *hang* rather than a failure.
+    //
+    // `audio_init` set the master gain to zero alongside the flag, so the real
+    // call can be made here and heard by nobody. That is the whole reason the
+    // gain is set as well as the flag rather than instead of it.
+    var _was = global.audio_on;
+    global.audio_on = true;
+    sfx_reset();
+
+    var _played = 0;
+    for (var _c = 0; _c < Sfx.COUNT; _c++) {
+        sfx_play_now(_c, 1);
+        if (audio_is_playing(global.sfx_table[_c].snd)) _played++;
+    }
+    ok("every cue loads and plays through the real path",
+       _played == Sfx.COUNT);
+
+    // And the swelled path, which passes a different gain and a pitch off 1.0
+    // -- the arguments a plain call never exercises.
+    sfx_play_now(Sfx.ShotSoft, 240);
+    ok("...including a coalesced volley's gain and pitch",
+       audio_is_playing(snd_shot_soft));
+
+    audio_stop_all();
+    global.audio_on = _was;
+    sfx_reset();
+    ok("and the suite is silent again", global.audio_on == false);
 }
 
 function test_bullet_cost() {

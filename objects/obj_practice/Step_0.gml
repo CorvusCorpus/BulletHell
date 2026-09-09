@@ -1,4 +1,5 @@
 t++;
+sfx_step();
 bg_step(bg);
 fx_step();
 
@@ -17,6 +18,9 @@ if (enter_t > 0) {
 
 var _n = array_length(picks);
 if (_n > 0) {
+    if (keyboard_check_pressed(vk_down) || keyboard_check_pressed(vk_up)) {
+        sfx(Sfx.UiMove);
+    }
     if (keyboard_check_pressed(vk_down)) pick = (pick + 1) mod _n;
     if (keyboard_check_pressed(vk_up))   pick = (pick + _n - 1) mod _n;
 
@@ -24,6 +28,7 @@ if (_n > 0) {
     // only shortcut the list needs: nine attacks is a short walk and the one
     // long walk in it is from the midboss's first to the boss's first.
     if (keyboard_check_pressed(vk_right) || keyboard_check_pressed(vk_left)) {
+        sfx(Sfx.UiMove);
         var _dir = keyboard_check_pressed(vk_right) ? 1 : -1;
         var _here = rows[picks[pick]].boss_i;
         var _want = (_here + _dir + array_length(bosses))
@@ -40,6 +45,7 @@ cursor += (pick - cursor) * 0.3;
 
 if (_n > 0 && keyboard_check_pressed(ord("Z"))) {
     enter_t = 26;
+    sfx(Sfx.UiSelect);
     fx_flash_screen(COL_SZUIX_LIT, 0.4);
     fx_ring(GAME_CX, GAME_CY, 40, 780, 30, COL_SZUIX_LIT, 1);
 }
@@ -48,6 +54,7 @@ if (_n > 0 && keyboard_check_pressed(ord("Z"))) {
 // hand is already on -- it is the special in play, and there is nothing here
 // to spend one on.
 if (keyboard_check_pressed(vk_escape) || keyboard_check_pressed(ord("X"))) {
+    sfx(Sfx.UiBack);
     // **`global.practice` is deliberately left set.** It is what Create reads
     // to put the cursor back on the attack that was practised last, and
     // clearing it here would be clearing it in the wrong place: what a stale

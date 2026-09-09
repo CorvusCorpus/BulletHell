@@ -24,7 +24,7 @@
 #macro BSHAPE_STAR 11
 #macro BSHAPE_STAR6 12
 #macro BSHAPE_CRYSTAL 13
-#macro BSHAPE_HEART 14
+#macro BSHAPE_RUNE 14
 #macro BSHAPE_BUTTERFLY 15
 #macro BSHAPE_FLAME 16
 #macro BSHAPE_MOTE 17
@@ -63,7 +63,7 @@ function bullet_table_init() {
         spr_bul_star,
         spr_bul_star6,
         spr_bul_crystal,
-        spr_bul_heart,
+        spr_bul_rune,
         spr_bul_butterfly,
         spr_bul_flame,
         spr_bul_mote,
@@ -78,10 +78,13 @@ function bullet_table_init() {
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4,
     ];
     global.bshape_w = [
-        24, 34, 54, 88, 46, 76, 34, 48, 46, 64, 46, 44, 54, 44, 42, 58, 66, 30,
+        38, 48, 68, 108, 60, 90, 48, 62, 60, 76, 60, 56, 68, 58, 54, 70, 80, 42,
     ];
     global.bshape_h = [
-        24, 34, 54, 88, 46, 76, 22, 30, 30, 18, 30, 44, 54, 32, 38, 48, 42, 30,
+        38, 48, 68, 108, 60, 90, 36, 44, 44, 30, 44, 56, 68, 46, 54, 60, 56, 42,
+    ];
+    global.bshape_spin = [
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 2.20, 1.50, 0.00, 0.00, 0.00, 0.00, 2.80,
     ];
 }
 

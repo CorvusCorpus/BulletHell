@@ -69,6 +69,19 @@ SCENES = (
     "bullets",      # every bullet kind and colour, laid out as a chart
     "motion",       # every behaviour a bullet can be given: arcs, wakes,
                     # splits, timed fades, a graphic change in flight
+    "drafts",       # the rack with the drafting table selected
+    "draft_attacks",   # its attack list: the unclaimed patterns
+    "draft_spell",  # one of them being fought, through the game's own machinery
+    "hex_draw",     # `Demon Sealing Hex`: the ward half inscribed
+    "hex_seal",     # ...closed, turning, and being fired into
+    "hex_scatter",  # ...coming apart, every bead its own way
+    "hex_gaps",     # ...the blue one, whose gaps are the whole design
+    "hex_burst",    # ...and the collapse detonating
+    "grove",         # stage two by moonlight: the corridor, and fodder in it
+    "grove_turn",    # ...at totality, with the wood's only light gone
+    "grove_blood",   # ...with the wavefront part way down the corridor
+    "grove_boss",    # Briar over the turned wood, danmaku across the moon
+    "grove_spell",   # her caster's background: bone circle, antlers, wash
 )
 
 EXE = os.path.join(build.BUILD, "out", build.project_name() + ".exe")
@@ -150,13 +163,25 @@ def take(scene, out, fullscreen=False):
             cmd = [EXE, "-shot", scene]
             if fullscreen:
                 cmd.append("-fullscreen")
-            proc = subprocess.run(cmd, capture_output=True,
-                                  text=True, errors="replace", timeout=TIMEOUT,
-                                  cwd=os.path.dirname(EXE))
+            # Minimised and un-activated unless somebody asked to watch it.
+            # `--fullscreen` is the one run that wants the display, so it is
+            # the one run that gets shown. See `build.run_game`.
+            proc = build.run_game(cmd, TIMEOUT, show=fullscreen)
+            output = (proc.stdout or "") + (proc.stderr or "")
             if not os.path.exists(shot):
                 print("FAILED (%s): no screenshot at %s" % (scene, shot))
-                tail = ((proc.stdout or "") + (proc.stderr or "")).splitlines()[-25:]
-                print("\n".join(tail))
+                print("\n".join(output.splitlines()[-25:]))
+                return 1
+            # **The screenshot is not the verdict**, for the reason spelled
+            # out above `GAME_ERROR`: `screen_save` runs in Step and a throw
+            # in the Draw event that follows lands after the file is on
+            # disk. That check was written down and never called, so this
+            # tool has been grading a crashed scene by whether it managed to
+            # photograph itself before dying -- which is the exact failure
+            # the comment says once cost fifteen false successes.
+            if GAME_ERROR.search(output):
+                print("FAILED (%s): the game threw" % scene)
+                print("\n".join(output.splitlines()[-25:]))
                 return 1
             os.makedirs(os.path.dirname(out), exist_ok=True)
             shutil.copyfile(shot, out)

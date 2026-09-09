@@ -232,6 +232,7 @@ function enemy_take_shots(_g) {
 
             _e.hp -= _sh.dmg;
             _e.flash = ENEMY_FLASH;
+            sfx(Sfx.EnemyHit);
             fx_spark(_sh.x, _sh.y, _sh.dir + 180 + random_range(-40, 40),
                      random_range(1, 3.4), COL_SZUIX_LIT, 10, 12);
             pshot_kill_at(_s);
@@ -255,6 +256,7 @@ function enemy_die(_e, _g) {
         return 0;
     }
     var _col = global.bullet_colour[_e.col];
+    sfx(Sfx.EnemyDie);
     fx_burst(_e.x, _e.y, ENEMY_DEATH_BITS, 2, 8, _col, 26, 16);
     fx_ring(_e.x, _e.y, 8, 84, 20, _col, 0.8);
     fx_flash_at(_e.x, _e.y, _col, 0.18);

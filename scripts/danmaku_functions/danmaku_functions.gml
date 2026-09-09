@@ -184,7 +184,16 @@ function fire(_x, _y, _spd, _dir, _shape, _col, _delay = BULLET_DELAY_DEFAULT) {
     _b.r = global.bshape_radius[_shape];
     _b.scale = 1;
     _b.angle = _dir;
-    _b.spin = 0;
+    // **A star-shaped bullet turns on its own, and the rate is a property of
+    // the shape rather than of the caller.** Every danmaku game in the genre
+    // spins its stars, and a pattern that had to remember to ask would have
+    // half its stars spinning and half not. `angle` starts at the firing
+    // direction, so a ring of them is phase-scattered for free -- which is
+    // what stops thirty spinning stars reading as one turning object.
+    //
+    // Zero for everything oriented, because there `angle` *is* the heading
+    // and adding to it would aim the sprite somewhere the bullet is not going.
+    _b.spin = global.bshape_spin[_shape];
     _b.delay = _delay;
     _b.delay0 = max(1, _delay);
     _b.fade_t = 0;
@@ -197,6 +206,19 @@ function fire(_x, _y, _spd, _dir, _shape, _col, _delay = BULLET_DELAY_DEFAULT) {
     _b.q_i = 0;
     _b.resist = false;
     _b.grazed = false;
+
+    // **Every bullet asks for a sound and the frame gets one.** `sfx` costs an
+    // array increment and nothing else; `sfx_step` turns however many arrived
+    // this frame into a single voice whose gain and pitch say how many there
+    // were. That is why this can sit in the hottest function in the game
+    // without a cooldown, a counter or a rule at the call site -- see the
+    // docstring on `audio_functions`, which is entirely about this line.
+    //
+    // On fire rather than when the delay expires, because the mark *is* the
+    // telegraph: what the player has to react to appears now, and a cue that
+    // waited for the bullet to go live would arrive after the moment it was
+    // warning about.
+    sfx(sfx_for_shape(_shape));
     return _b;
 }
 
@@ -341,6 +363,29 @@ function fire_ring_stack(_x, _y, _n, _rings, _spd0, _spd_step, _dir0,
     for (var _s = 0; _s < _rings; _s++) {
         fire_ring(_x, _y, _n, _spd0 + _s * _spd_step, _dir0, _shape, _col,
                   _delay);
+    }
+}
+
+/// @desc A fan of stacks: `_rows` speeds, `_n` across `_arc` in each.
+///
+///       **`fire_ring_stack`'s missing sibling, and the difference between a
+///       fan and a volley.** One fan is a wall that arrives all at once: the
+///       player steps out of one gap and is done with it. The same fan sent at
+///       three speeds arrives as three arcs a beat apart, so the answer is a
+///       move and then two more moves -- which is what `fire_stack` does for a
+///       single line, one dimension up.
+///
+///       **Each row is turned by `_skew` from the one in front**, because
+///       three rows fired down identical headings put their gaps on the same
+///       radial lines and the whole volley has one answer. Half a step is the
+///       useful value and the default is zero, so a caller who wants the
+///       columns to line up can still have that.
+function fire_fan_stack(_x, _y, _n, _rows, _spd0, _spd_step, _dir, _arc,
+                        _shape, _col, _delay = BULLET_DELAY_DEFAULT,
+                        _skew = 0) {
+    for (var _r = 0; _r < _rows; _r++) {
+        fire_fan(_x, _y, _n, _spd0 + _r * _spd_step, _dir + _r * _skew, _arc,
+                 _shape, _col, _delay);
     }
 }
 
@@ -568,6 +613,10 @@ function bullet_run_queue(_u, _tx, _ty) {
                 _u.shape = _e.a;
                 _u.col = _e.b;
                 _u.r = global.bshape_radius[_e.a];
+                // The new shape's default spin, for the same reason `fire`
+                // takes it: a pellet that becomes a star mid-flight should
+                // turn like every other star on the field.
+                _u.spin = global.bshape_spin[_e.a];
                 break;
 
             case BQ.Fade:

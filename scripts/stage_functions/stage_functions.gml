@@ -214,6 +214,25 @@ function wave_boss(_maker) {
     });
 }
 
+/// @desc **The stage turns.** One line in a running order, and after it the
+///       background has a second half -- see `bg_set_omen`.
+///
+///       It is a wave shape rather than a hook off `on_boss_beaten` because
+///       the timeline is already the right place to say when a stage's second
+///       half begins, and putting it there means somebody reading the running
+///       order can see it happen. It also comes free: the stage clock is held
+///       while a boss is on the field, so an event written just after a
+///       midboss's gate fires on the frame that midboss is finished and not
+///       one before.
+///
+///       A stage whose background has nothing to say about a turn may still
+///       call it. `bg_omen_step` eases a number nobody reads.
+function wave_bg_omen() {
+    return function(_g) {
+        bg_set_omen(_g.bg);
+    };
+}
+
 /// @desc Sweep the field so the next section starts clean.
 function wave_sweep_field() {
     return function(_g) {

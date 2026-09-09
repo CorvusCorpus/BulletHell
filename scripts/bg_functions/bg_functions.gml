@@ -21,6 +21,23 @@
 ///       pixels a frame at the middle layer.
 function bg_new(_ground, _rock, _near, _air, _speed) {
     return {
+        // **Which kind of world this is**, and it is the one field every
+        // background has. Stage one is a floor scrolling down the screen and
+        // stage two is a corridor flown into -- see `bg_corridor` -- and the
+        // two have almost nothing in common but the three entry points below,
+        // so the dispatch is here rather than either kind pretending to be
+        // the other.
+        kind: BGKIND_PARALLAX,
+
+        // **A stage may have a second half.** `bg_set_omen` starts it, it
+        // eases over `BG_OMEN_TIME`, and a background that has nothing to say
+        // about it simply never reads it -- which is stage one. It lives on
+        // the base struct rather than on the corridor because "the stage
+        // turns" is a fact about a *run*, and the run has to be able to say
+        // it without knowing what kind of world it is saying it to.
+        omen: 0,
+        omen_on: false,
+
         ground: _ground,
         rock: _rock,
         near: _near,
@@ -76,7 +93,33 @@ function bg_seed_embers(_b, _n, _col) {
 }
 
 function bg_step(_b) {
+    bg_omen_step(_b);
+    if (_b.kind == BGKIND_CORRIDOR) {
+        grove_step(_b);
+        return;
+    }
     _b.t++;
+}
+
+/// @desc **The stage turns.** Called once, from the timeline, and after that
+///       the background has a second half.
+///
+///       It is a request rather than a state, because the turn takes four and
+///       a half seconds and the thing that asks for it -- a line in a stage's
+///       running order -- happens on one frame. Idempotent on purpose: asking
+///       twice is what a restarted timeline would do.
+///
+///       **On the base struct rather than on the corridor**, so a stage can
+///       say it without knowing what kind of world it is saying it to.
+function bg_set_omen(_b) {
+    _b.omen_on = true;
+}
+
+/// @desc Ease the turn along. One line, and every background gets it.
+function bg_omen_step(_b) {
+    if (_b.omen_on && _b.omen < 1) {
+        _b.omen = min(1, _b.omen + 1 / BG_OMEN_TIME);
+    }
 }
 
 /// @desc Where a layer's top edge is this frame.
@@ -101,6 +144,10 @@ function bg_offset(_b, _rate) {
 ///       trade one visible seam for another. Behind the rack's own scrim the
 ///       enlargement is invisible.
 function bg_draw_back(_b, _fill = false) {
+    if (_b.kind == BGKIND_CORRIDOR) {
+        grove_draw_back(_b, _fill);
+        return;
+    }
     draw_clear(_b.air);
 
     var _s  = _fill ? (GAME_W / FIELD_W) : 1;
@@ -152,6 +199,10 @@ function bg_draw_back(_b, _fill = false) {
 ///       dramatic. `_spell` is the same eased 0..1 the wash uses, so the two
 ///       move together.
 function bg_draw_front(_b, _spell = 0, _fill = false) {
+    if (_b.kind == BGKIND_CORRIDOR) {
+        grove_draw_front(_b, _spell, _fill);
+        return;
+    }
     var _a = BG_NEAR_ALPHA * (1 - 0.86 * clamp(_spell, 0, 1));
     if (_a <= 0.01) return;
     var _s  = _fill ? (GAME_W / FIELD_W) : 1;
@@ -232,6 +283,7 @@ function spell_bg_draw(_style, _col, _t, _fade) {
     if (_fade <= 0.01) return;
     switch (_style) {
         case SPELLBG_BRIMSTONE: spell_bg_brimstone(_col, _t, _fade); break;
+        case SPELLBG_GROVE:     spell_bg_grove(_col, _t, _fade); break;
         default:                spell_bg_sigil(_col, _t, _fade); break;
     }
 }

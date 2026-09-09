@@ -47,8 +47,8 @@ draw_sprite_ext(spr_ui_crest, 0, GAME_CX - _cw2 * 0.5, 190, _cs2, _cs2, 0,
 
 draw_set_font(fnt_ui());
 draw_text_outline(GAME_CX, 318,
-                  string(progress_cleared_count()) + " OF " + string(_n)
-                  + " STAGES CLEARED",
+                  string(progress_cleared_count()) + " OF "
+                  + string(stage_n) + " STAGES CLEARED",
                   merge_colour(COL_PARCHMENT, COL_GILT, 0.35), 0.85, 2);
 
 // ---- the rack -----------------------------------------------------------
@@ -71,7 +71,12 @@ for (var _i = 0; _i < _shown; _i++) {
     var _def = stages[_idx];
     var _sel = (_idx == pick);
     var _built = stage_is_built(_def);
-    var _open = _built && stage_is_unlocked(_def);
+    // **The drafting table is always open and is never cleared.** It is not a
+    // stage: it has no waves to play and no line in the save, so the two
+    // questions the rack asks about a card -- is it built, has it been beaten
+    // -- both have to be answered differently for it. See `stage_drafts`.
+    var _draft = stage_is_draft(_def);
+    var _open = _draft || (_built && stage_is_unlocked(_def));
     var _rec = progress_stage(_def.id);
 
     var _x = _x0 + _i * (_cw + _gap) + _slide;
@@ -109,7 +114,18 @@ for (var _i = 0; _i < _shown; _i++) {
                       merge_colour(COL_PARCHMENT, COL_ARCANE_LIT, 0.3),
                       0.8, 1);
 
-        if (_rec.cleared) {
+        if (_draft) {
+            // How many ideas are on the table, and the one rule of the card:
+            // there is nothing here to play through, only attacks to try.
+            draw_set_font(fnt_ui());
+            draw_text_outline(_x + _cw * 0.5, _cy + 176,
+                              string(array_length(draft_list())) + " UNCLAIMED",
+                              COL_MANA, 0.9, 2);
+            draw_set_font(fnt_small());
+            draw_text_outline(_x + _cw * 0.5, _cy + 216, "PRACTICE ONLY",
+                              merge_colour(COL_PARCHMENT, COL_ARCANE_LIT,
+                                           0.45), 0.8, 1);
+        } else if (_rec.cleared) {
             draw_set_font(fnt_ui());
             draw_text_outline(_x + _cw * 0.5, _cy + 176,
                               "BEST  " + string(_rec.best), COL_GRAZE, 0.9, 2);
