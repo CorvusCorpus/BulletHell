@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":0.48000000,
+  "duration":0.54000000,
   "exportDir":"",
   "name":"snd_spell_survive",
   "parent":{

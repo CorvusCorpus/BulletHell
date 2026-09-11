@@ -21,8 +21,8 @@ function shot_scene_list() {
             "motion", "drafts", "draft_attacks", "draft_spell",
             "hex_draw", "hex_seal", "hex_scatter", "hex_gaps",
             "hex_burst",
-            "grove", "grove_turn", "grove_blood", "grove_boss",
-            "grove_spell"];
+            "grove", "grove_arrive", "grove_turn", "grove_blood",
+            "grove_boss", "grove_spell"];
 }
 
 function shot_scene_known(_name) {
@@ -90,6 +90,7 @@ function shot_scene_prepare(_name) {
             break;
 
         case "grove":
+        case "grove_arrive":
         case "grove_turn":
         case "grove_blood":
         case "grove_boss":
@@ -121,9 +122,12 @@ function shot_scene_prepare(_name) {
             // behind them. A ward that closes into a perfect pentagram and is
             // unreadable against a dark field is exactly the bug this tool
             // exists for.
-            global.stage_def = draft_stage_def();
-            global.practice = practice_new(draft_stage_def(), 0,
-                                           array_length(draft_list()) - 1);
+            // **Practised as Velka's, which is what it is.** It is her last
+            // attack, so it is found by being last rather than by an index
+            // somebody will forget to move when she gets a seventh.
+            global.stage_def = stage_grove_def();
+            global.practice = practice_new(stage_grove_def(), 1,
+                                           array_length(velka_phases()) - 1);
             break;
     }
 }
@@ -369,6 +373,17 @@ function shot_pose(_scene, _g) {
             _g.player.y = FIELD_Y1 - 260;
             return 430;
 
+        case "grove_arrive":
+            // **The fog the stage comes out of.** Photographed part way
+            // through the arrival rather than at either end of it, because
+            // both ends are pictures of something else -- the first frame is
+            // a flat rectangle and the last is the `grove` shot. What this
+            // has to show is the wood becoming visible through cloud with the
+            // moon already in it.
+            _g.player.x = FIELD_CX + 30;
+            _g.player.y = FIELD_Y1 - 210;
+            return round(GROVE_INTRO_TIME * 0.42);
+
         case "grove":
             // The stage at its plainest: night, the moon on the horizon, and
             // a wave of fodder over it. **Wound to the same place stage one's
@@ -397,6 +412,14 @@ function shot_pose(_scene, _g) {
             // claiming it was an eclipse.
             _g.player.x = FIELD_CX + 60;
             _g.player.y = FIELD_Y1 - 220;
+            // **Every scene posed inside the turn skips the arrival.** The
+            // stage opens in fog that takes `GROVE_INTRO_TIME` frames to
+            // lift, and the omen frames below land inside it -- so without
+            // this the eclipse would be photographed through cloud and the
+            // picture would be of the veil rather than of the moon. `grove`
+            // waits the arrival out honestly and `grove_arrive` is a picture
+            // of it; these three are about something else.
+            _g.bg.intro = 1;
             _g.bg.omen_on = true;
             return shot_omen_frame(GROVE_WAVE_START * 0.5);
 
@@ -408,17 +431,19 @@ function shot_pose(_scene, _g) {
             // picture of a red forest.
             _g.player.x = FIELD_CX - 60;
             _g.player.y = FIELD_Y1 - 240;
+            _g.bg.intro = 1;
             _g.bg.omen_on = true;
             return shot_omen_frame(GROVE_WAVE_START + 0.34);
 
         case "grove_boss":
-            // Briar's opening non-spell over the turned wood, which is what
+            // Velka's opening non-spell over the turned wood, which is what
             // the stage actually looks like when it is being played. The moon
             // is directly behind her and the danmaku is over both -- the one
             // question no still of the background alone can answer.
-            shot_boss(_g, 0, briar_spawn);
+            shot_boss(_g, 0, velka_spawn);
             _g.player.x = FIELD_CX - 120;
             _g.player.y = FIELD_Y1 - 260;
+            _g.bg.intro = 1;
             _g.bg.omen_on = true;
             _g.bg.omen = 1;
             return 200;
@@ -428,9 +453,10 @@ function shot_pose(_scene, _g) {
             // antlers out of the corners. Photographed on a spell whose
             // pattern is beams, so the picture has something in it as well as
             // the ceremony.
-            shot_boss(_g, 1, briar_spawn);
+            shot_boss(_g, 1, velka_spawn);
             _g.player.x = FIELD_CX + 140;
             _g.player.y = FIELD_Y1 - 280;
+            _g.bg.intro = 1;
             _g.bg.omen_on = true;
             _g.bg.omen = 1;
             _g.player.untouchable = true;

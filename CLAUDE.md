@@ -11,6 +11,14 @@ stages open as clears accumulate. So a stage is five to ten minutes of the same
 shape as a Touhou Extra: waves, a midboss, more waves, and a boss with a table
 of named attacks. Nothing is lost by failing one.
 
+**Every attack in the game except `Demon Sealing Hex` is a placeholder.** In
+their finished versions, all spells are meant to be at the Hex's level of
+artistry and complexity. The simple fans, rings and spirals in Ziggy's and
+Velka's tables will be replaced -- they are there so the stages have something
+to play through, not as the design. The point is for this to be worth playing
+rather than another basic bullet hell, outshone by Touhou and the Danmakufu
+fangames.
+
 Grown out of the tooling and the working discipline of the `Wordsearch` project
 in the same folder, which is referenced throughout because most of what is
 written down here was learned there first.
@@ -30,11 +38,11 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 | `tools/build.py` | The GML compiles. Reports real diagnostics with line numbers. |
 | `tools/test.py` | The GML is *correct*: builds, runs with `-selftest`, grades the suites in `scripts/selftest` off stdout. |
 | `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, and no bare `draw_sprite` inheriting the draw state. |
-| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Thirty-two scenes; `--all` does the lot. |
+| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Thirty-three scenes; `--all` does the lot. |
 
 **`shot.py` is not a nicety, and in this genre it is the most important of the
 four.** A bullet pattern that is arithmetically perfect and illegible is a bug,
-and no assertion can see it. It renders twenty-two scenes and **fails on a game
+and no assertion can see it. It renders thirty-three scenes and **fails on a game
 error even when a screenshot appeared** — `obj_shot` calls `screen_save` from
 its Step event and `game_end()` lets the current frame finish, so a throw in the
 Draw event that follows happens *after* the file is on disk. The first crash
@@ -352,6 +360,14 @@ being drawn at 0.97 of the size it was designed at. Nothing looked broken,
 which is why it survived: the whole screen scales together. It was reported as
 "an awkward windowed mode", and the give-away was in `tools/_preview` the whole
 time, where every screenshot was 1864x1048.
+
+**It is borderless fullscreen, not exclusive.** A plain `window_set_fullscreen`
+on Windows is exclusive, and Windows drops an exclusive app out of fullscreen
+whenever something else takes focus -- the screenshot overlay does, and so does
+alt-tab -- and the runner never goes back in. It was reported as the game
+leaving full screen every time a screenshot was taken. `obj_boot` calls
+`window_enable_borderless_fullscreen(true)` before the switch, which makes it
+a borderless window the size of the display with no mode to lose.
 
 `option_windows_allow_fullscreen_switching` is on, which is what gives the
 player F4 back -- a game that seizes the display with no way out is worse than
@@ -834,6 +850,13 @@ unreadable at exactly the moment it is being read — and a matrix in the Draw
 event leaves the GUI event untouched for free, with no view to configure and no
 surface to own.
 
+## The bar
+
+`Demon Sealing Hex` is the reference for what a finished spell looks like --
+see its own section under the drafting table for what went into it. New spells
+are written on the drafting table (`stage_drafts`) and move to their caster
+when they are done, which is how the Hex came to be Velka's.
+
 ## The boss
 
 **One health bar, with the thresholds notched on it.** Touhou gives a boss a
@@ -1239,8 +1262,21 @@ idea should be renaming a copy.
 
 ### Demon Sealing Hex, and what a composed attack costs
 
-**The sixth draft is not a verb demonstration, and it is the first thing on
-this table that had to be designed rather than exercised.** A ward is drawn
+**It is Velka's now, and it was the sixth draft.** It was written on the
+drafting table before anybody had said whose it was, and it moved to her fight
+the way that table says an attack should: the function and its helpers into
+`stage_grove`, a row in `velka_phases` with a real `hp_end`, and nothing else.
+It is her last spell, because it is the one attack she has that was designed.
+It keeps `DRAFT_SLOT_HP` of the bar, which is what it was played against, and
+every attack before it keeps the health it had — her total grew by the Hex's
+share rather than five attacks being squeezed to fit a sixth. The ward cues did
+not have to be renamed, which is the argument `audio_functions` made for naming
+them after the figure. `test_drafts` asserts it is on her table and off the
+drafting one, because an attack in two places is two copies that will be tuned
+apart.
+
+**It is not a verb demonstration, and it was the first thing on the drafting
+table that had to be designed rather than exercised.** A ward is drawn
 round wherever the player is standing, they are shot at inside it, and it comes
 apart — first thrown outward, then, on a second ward with gaps in it, pulled
 back in to a point and detonated. Four movements on a twelve-second loop, and
@@ -1582,24 +1618,22 @@ Ziggy — short, stocky, red, Szuix's friend and rival. Seven attacks: three
 non-spells and four spells, descending 1.00 → 0.90 → 0.75 → 0.65 → 0.50 → 0.40 →
 0.20 → 0.
 
-**All three non-spells are the same idea at three speeds**, which is what a
-non-spell is for: it is the boss's handwriting, and the spells are the
-sentences. The spells each introduce exactly one thing — a spiral, a splitting
-bullet, a telegraphed beam — and the last one is everything the stage has taught
-run at once, which is why nothing in it is new.
-
-He is written as a *first* boss and a tutorial for the whole genre: his
-non-spells are wide and slow, `Cinder Waltz` is survivable by standing in the
-right place because nothing in it is aimed, and only `No Mere Pawn` plays for
-real.
+**He is the tutorial boss, and all seven attacks are placeholders.** He stays
+the tutorial and gets cooler attacks later -- see "The bar". What is there now:
+the three non-spells are one idea at three speeds, the spells each add one
+thing (a spiral, a splitting bullet, a telegraphed beam) and the last combines
+them. They are wide and slow, `Cinder Waltz` has nothing aimed in it, and only
+`No Mere Pawn` presses the player.
 
 ## Stage two: the Hollow Grove
 
-Briar — a fox who keeps a wood's dead, in a bone mask under antlers. **The
-fight is a placeholder and the background is the work.** Five plain attacks
-built out of helpers that already existed, so that there is something to look
-at the wood *through*; when she is written for real it is `briar_phases` that
-gets replaced and nothing else on the screen has to change.
+Velka — a fox who keeps a wood's dead, in a bone mask under antlers. **The
+fight is mostly a placeholder and the background is the work.** Five plain
+attacks built out of helpers that already existed, so that there is something
+to look at the wood *through*, and then `Demon Sealing Hex` as her last spell —
+the one attack she has that was designed, moved from the drafting table. When
+she is written for real it is the five placeholder rows of `velka_phases` that
+get replaced and nothing else on the screen has to change.
 
 ### A corridor, not a parallax stack
 
@@ -1671,11 +1705,25 @@ motion the camera is not making, which the eye reads as a sheet of acetate
 being pulled across the picture. Boughs are ordinary props with their anchor
 *above* the camera instead of on the ground and their sprite hung downward from
 it, so they come at the lens and sweep off the top of the frame as the trunks
-sweep off the sides. It costs no new art — a tree flipped in y about its own
-root is a bough — and because they are props they sort correctly against
+sweep off the sides. Because they are props they sort correctly against
 everything else for free. What is left of the bands behind them is a slow sway,
 which is the wind, and the far treeline is opaque now: a wall of wood does not
 slide and you cannot see through it.
+
+**A bough is a tree with its trunk taken off, and it keeps to the sides.**
+Both halves were found in front of the moon. Hung upside down, the tree sprite
+ends in its root — a ruled line that the right way up is buried in a mound of
+litter and upside down is a trunk sawn off flat in the middle of the sky — so
+`bough_from` in `make_grove.py` fades the root and the foot of the trunk out
+and the crown hangs out of darkness. And the boughs were spread right across
+the corridor, on the reasoning that the place a bough is most wanted is
+directly ahead; a bough directly ahead and far away hangs straight down the
+middle of the moon, and one did, in the frame that was reported as a tangle.
+`GROVE_BOUGH_IN` is measured from a bough's inner edge exactly as
+`GROVE_TRUNK_HALF` is, and it has to hold at the *back* of the ring, because
+that is where a bough is level with the moon — `test_corridor` does the
+arithmetic and then walks the ring. Kept to the sides, the boughs frame the
+moon as an arch and sweep up and out of the top corners as they come.
 
 **Every ring has to be stepped, and there is a suite that counts them.** The
 trunks were built, placed, depth-sorted, lit, given ivy and drawn for several
@@ -1732,19 +1780,21 @@ inside its own range. `corridor_depth_at` clamps at `CORRIDOR_Z_FAR` now.
 
 ### What is in the picture
 
-Eight layers at seven rates, which is the argument the forge is built on: each
-of them is cheap and the depth is in there being eight.
+Ten layers at eight rates, which is the argument the forge is built on: each
+of them is cheap and the depth is in there being ten.
 
 | | |
 |---|---|
 | the sky | a vertical ramp, and stars that go out |
 | the moon | on the horizon, centred, eclipsed once |
 | the canopy | two bands of bough closing the top of the frame |
-| the treeline | the far wall of wood, sliding sideways |
+| the treeline | the far wall of wood, standing on uneven ground |
+| the scrub | two rows of hedgerow along the foot of it |
 | the floor | leaf litter, roots and moss, laid down the corridor |
 | the mist | drifting bands, ground fog and dappled moonlight |
 | the trees | forty billboards, hung with charms |
-| the trunks | eleven more, taller than the screen, close to the path |
+| the verge | seventy-eight clumps of undergrowth, both sides, all depths |
+| the trunks | twenty-two more, taller than the screen, close to the path |
 
 **Everything is drawn as luminance and tinted at draw time** — the same
 decision `make_ui.py` records, load-bearing twice over here. The grove is lit
@@ -1755,6 +1805,33 @@ and a **rim** — the moonward edge, drawn additively — because a dark mass wi
 no rim is a hole in the picture, and splitting them lets the body be night-blue
 while the light on it is bone-white and then crimson without redrawing
 anything.
+
+**The far wood is a row of whole trees, and it used to be a lace.** It sits
+directly behind the moon, so it is the one part of the wood that is always
+looked at, and it was the messiest thing in it: thirty trunks and forty-six
+separate branch systems, each rising from the ground independently. The
+trunks tapered to a third of their width and simply stopped in mid-air, and
+the branches were a second, unrelated thicket laid over the top — reported,
+in front of the moon, as tangled and piled on rather than designed, with
+posts visibly cut off half way up the disc. `_treeline_draw` draws a *tree*
+twenty-two times now: a trunk that carries its width up to a fork, and two or
+three limbs out of the fork that carry on from it, dividing twice and
+tapering to nothing. **Nothing ends bluntly, because everything is the
+continuation of something.** One tree to a stratum of the tile, so the moon
+shows *between* trees rather than through a mesh, half the wobble, because a
+branch that curves is a branch and one that zig-zags is a scribble, and a
+window on the band's top edge so a tall crown fades rather than being sliced.
+
+**The canopy got the same treatment for the same reason.** Its heavy boughs
+were vertical wedges ending at a third of their width half way down the band —
+sawn off in mid-air — and tapering them to a point made them a row of black
+icicles, which is a different wrong. They are `limb`s now, leaving the top
+edge at thirty-five to sixty-five degrees off vertical and forking twice,
+because a bough overhead reaches *sideways* out of the dark. Thirty twigs that
+hung to within a few rows of the band's bottom edge — which is a line across
+the lower third of the moon — are fifteen that stop half way, and the fade is
+eased over the lower half instead of dropping in the last tenth: a fade a few
+rows long is a cut.
 
 **The trunks are the layer that makes it a forest rather than a clearing.** The
 wood was six frames of whole tree at every distance and it was reported as
@@ -1889,6 +1966,259 @@ camera moves. `corridor_draw_ground` hands each row how many world units it
 covers, so anything periodic can fade itself out before it starts to alias.
 There is no texture to mip there, so the fade lives in the function that makes
 the pattern.
+
+### The horizon, which was a ruled line
+
+**A ruled horizontal line at the vanishing point is the single most
+generated-looking thing a corridor can have**, and this one had one: the
+ground's top row is a straight edge the full width of the field and the far
+wood was a band sprite drawn at one y, which is a wood standing on a spirit
+level. It was reported as the horizon looking unnaturally flat, and the fix is
+not more raggedness in the art — the art is already ragged. It is that the
+*ground the wood stands on* is not level either, and that something has to be
+drawn over the ground rather than under it.
+
+Three things do it and they are three different distances:
+
+- **The far wood's crown rides up and down.** `corridor_draw_band_wave` draws
+  a band as one textured triangle strip per tile, each column of vertices
+  dropped by `corridor_band_wave` of its position along the tile. Two
+  properties of the wave are load-bearing and neither is obvious. **Downward only**, because the ground is painted over the band's
+  foot, so a slice *lifted* shows a strip of sky underneath a wood — every
+  term is a raised cosine, which is in `[0, 1]` by construction rather than by
+  being clamped, since a clamp would hide a sign error rather than make one
+  impossible. And **periodic in the tile**, or the displacement puts a step at
+  every seam, which is the defect `fbm_field`'s `wrap_y` exists to prevent one
+  dimension over. The two copies get different amplitudes and seeds, so the
+  near wood and the far wood disagree about where the hills are.
+- **A hedgerow stands on the line itself**, drawn *over* the floor, which is
+  the only way a foot can be visible at all. It **crosses the foot of the
+  moon** and only dips where the path runs into it — see below for the
+  version that parted there instead.
+- **The verge props stand along it in their own right**, being ordinary
+  billboards at the far end of a ring that reaches the far plane.
+
+**The hedgerow took three goes and the first two are the useful part.** The
+first was the treeline sprite reused at a third of its size — and that sprite
+is a lace of two-pixel twigs whose alpha is ramped away down its own height,
+because it is drawn as a *distance* with the moon behind it. Laid small over a
+lit floor the same art is a smear, and it was reported as transparent
+messiness thrown at the problem. A hedgerow is a mass with no light through
+it.
+
+The second was a filled silhouette computed at draw time — a row of
+overlapping lobes in one triangle strip. That is solid, which was the
+complaint answered, and it was still the wrong answer: a row of arcs is a row
+of arcs, and **a new layer means new art**, which is how it was put. So
+`make_scrub` draws one: brambles and canes over a mass of overlapping domes,
+with the odd sapling standing out of the top so the crown is broken rather
+than scalloped. It is authored at **twice the field's width**, because it is
+drawn at a fraction of its height — a hedge is sixty pixels, not three hundred
+— and a band scaled to a third is a band that repeats three times across the
+field, which is a rhythm the eye finds in about two seconds.
+
+Its **crown is hard and its foot dissolves**, which is one alpha ramp doing
+two jobs: a crown against the sky has to be hard or it is fog, and a foot on
+the litter has to not be, or it is the cardboard-cutout edge
+`grove_draw_mound` exists to remove. And it ships with a rim like everything
+else, because this is the one opaque layer sitting on the horizon and a hedge
+in front of a moonlit sky with no lit edge is a black bar across the picture.
+
+**And then it could not be found on the screen, for three separate reasons at
+once.** It was reported as "I'm not seeing any hedgerow here, just a bunch of
+weird glitchy 1-pixel-wide vertical lines in front of the moon", and every
+word of that was a different bug.
+
+- **It parted at the moon.** The first version parted for the path wider than
+  the moon is round, on the reasoning that undergrowth over the stage's
+  centrepiece would be losing it. What that left was the most-looked-at
+  stretch of horizon in the stage, under the brightest thing in the picture,
+  ruled dead straight — the complaint the layer was built for. And it was the
+  *only* place the hedge could have been seen: everywhere else it is dark
+  against dark, and against the moon it is a silhouette. It dips there now
+  (`GROVE_SCRUB_DIP`), and `test_corridor` holds the dip short of a parting.
+- **Its crown was flat.** Fifty-odd narrow domes that mostly agreed about
+  their height, with two-pixel canes over them: ninety-four per cent solid in
+  its body and nearly level across its top, so across the moon it read as a
+  straight edge with sticks on it. `make_scrub` builds it out of bushes now —
+  clusters of lobes with a leafy fringe, spaced along the band and each a
+  different height — because a hedge at a distance is read off the rhythm of
+  its crowns.
+- **The vertical lines were the band drawing, and they had nothing to do
+  with the hedge.** The wave was first drawn as forty-eight
+  `draw_sprite_part_ext` slices a tile, each a pixel wider than its share on
+  the reasoning that a seam between two slices is a hairline of whatever is
+  behind it. That holds for an opaque sprite and is exactly wrong for a
+  translucent one: the extra pixel is a column the band is **blended twice**
+  in, so every slice boundary of the mist bank at 17 per cent became a line at
+  31. The far wood's foot is ramped translucent too, and both lie across the
+  bottom of the moon, which is where a doubled column shows most. A strip has
+  neither overlap nor gap, because neighbouring columns share their vertices.
+
+**The strip then drew nothing recognisable, and that one is a trap worth
+keeping.** Fed `sprite_get_uvs` — which answers in texture-*page* space and is
+the obvious thing to hand a primitive — it drew the top-left patch of each
+sprite stretched across the whole band: the treeline became a few blocky
+trunks and the hedge became half a dozen tall bumps with flat-cut feet. **In
+this runtime a primitive textured with `sprite_get_texture` reads its
+coordinates in the sprite's own 0-to-1 space**, not the page's. It was pinned
+down by drawing one quad both ways beside `draw_sprite_ext` — which is also
+how "the hedge is invisible" was separated from "the hedge is covered": the
+hedge drawn *last*, in magenta, was still only bumps. The trim in
+`sprite_get_uvs` is still used, for placement; its first four entries are not.
+
+`test_band_strip` is the guard, and **it is the one suite that draws**. It
+renders a band at rest and the same sprite through `draw_sprite_ext` to two
+surfaces from `obj_selftest`'s Create event and compares them a pixel at a
+time: eleven of seven hundred samples differ from filtering, and with the page
+coordinates put back, four hundred and nine do. Nothing else could have caught
+it — `tools/test.py` never draws a *frame*, and the bug was arithmetically
+spotless.
+
+**One more, found on the way: the mist said "additive without exception" and
+was neither.** Nothing in `grove_draw_mist` set a blend mode, so both passes
+inherited `bm_normal` — which in the front pass meant a translucent sheet laid
+over live danmaku, the one thing `grove_draw_front`'s rule forbids. It is the
+`HEX_COL_FAN` trap again: a comment that describes the fix is the hardest
+place to notice the fix is not there. The front pass is additive now. The
+back pass stays normal on purpose and now says so, because that bank lies
+across the moon, and added to a moon held at half of white for the bullets'
+sake it would push the moon back toward the lamp it is not allowed to be.
+
+### The edges of the frame, which went bare
+
+**A fair coin over forty trees produces a run of six on one side about as
+often as not**, and what a run of six looks like from inside a corridor is one
+edge of the picture empty for two seconds. It was reported as the far left and
+far right going bare depending on spawn luck. The wood was never too sparse.
+It was *clumped*, which is what randomness does and what nobody ever means by
+it.
+
+`grove_side` places props in **stratified pairs** — two consecutive laps are
+one prop on each side, and which of the two goes left is the hash. A run is
+bounded at two by construction, both sides get exactly half of everything, and
+there is nothing to predict, because the order within a pair is noise and how
+far out and how deep each one stands is a hash of its own. It is the argument
+`fire_fan_stack` makes about turning each row half a step: regular where the
+regularity cannot be seen, random where it can.
+
+**A weaker version shipped for one build and the measurement is why it did not
+stay.** It alternated and let about one lap in three repeat, on the reasoning
+that strict alternation would be a picket fence — and over four hundred laps
+it produced runs of *ten*, barely better than the coin it replaced.
+`corridor_hash` is the classic one-line shader hash, built for fractional
+coordinates and visibly correlated along consecutive integers: whole stretches
+of laps fall the same side of a threshold, so the "occasional" repeat arrives
+in clumps. A stratum cannot have that failure, because it never asks the hash
+whether to balance — only which way round. `test_corridor` measures the
+longest run in the ring as it is actually drawn and refuses more than two; a
+coin flip measures six there and nine to twelve over four hundred laps.
+
+**And the verge is the layer that fills the space whatever the trees do.**
+Seventy-eight clumps of undergrowth, from the edge of the path out past where
+the trees stop, all the way back to the far plane, biased outward by a square
+root because a uniform draw puts as many clumps in the first two hundred units
+as in the last two thousand and the first two hundred are off the side of the
+frame within a second.
+
+**It is its own art, and that took saying twice.** The first version drew the
+existing fern at two and a half times its size, which was reported as the same
+sprite thrown at things over and over — a layer built out of another layer's
+art scaled up is a layer the eye reads as the same thing twice, however many
+of them there are. Which is the `TRUNK_KINDS` finding again. So `make_brush`
+draws six *plants* rather than six seeds of one: a bramble mound, a bracken
+clump, a fallen log, a stand of saplings, a grass tussock and a mass of dock.
+The log is the one wide, low silhouette in the set and it is there for that
+reason before any other — five upright plants at six sizes are still five
+upright plants.
+
+**All six start from a base of overlapping ellipses.** The existing fern is a
+scribble of fronds with a small clump at its foot, which is right for
+something a metre from the lens and wrong for a mass at the edge of a wood: at
+any distance a lacy silhouette is a smear. And the spread of that base is held
+well inside the frame, because **`soft_border` is not enough on its own** — it
+fades the last few per cent of the canvas to nothing, which turns a hard cut
+into a soft one, and a soft cut through the middle of a solid mass is still a
+cut. A window fixes a branch that overshoots; it cannot fix a body that was
+never going to fit.
+
+### The arrival
+
+**The stage used to begin at full speed on its first frame**, which is the one
+moment in it nobody composed: the rack cuts and the wood is already rushing
+past at a rate the player took no time at all to reach. So the corridor opens
+deep in fog and nearly still, and the fog lifts as the flight picks up — one
+number, `intro`, driving both, and the whole of the effect is that they are
+the same number. It is the turn's own movement run once at the beginning and
+in the other direction.
+
+`GROVE_INTRO_SPD` is not zero, deliberately: a world that is completely
+stopped for half a second reads as a frozen frame, as the game having hung
+rather than as a flight beginning.
+
+The veil is the one **opaque** thing this stage draws over the world, and it
+is affordable because it is the *back* pass — every bullet is drawn over it,
+and nothing has been fired yet on the frames it is dense. The moon is left
+showing through it as a bloom, because a fog with nothing behind it is a grey
+rectangle: what makes the opening read as a wood rather than as a loading
+screen is that there is plainly something in there. `grove_draw_front` keeps
+the additive rule without exception.
+
+Three of the five grove screenshot scenes set `intro = 1` before they run,
+because they are posed at a frame inside the arrival and would otherwise be
+photographs of the veil. `grove` waits it out honestly and `grove_arrive` is a
+picture of it.
+
+### The camera
+
+**Nothing was flying the camera, and that is what made the corridor read as a
+slideshow.** A constant speed down a straight line is arithmetically a flight
+and looks like a dolly on rails: there is no cadence in it and nothing the eye
+can attribute to a body. What is there now is two things:
+
+- **A swell**, which is a slow sinusoid on the *speed* and nothing else. It
+  is kept off `spd` and applied through `rush`, because `spd` is the speed the
+  stage is flying at — the number the turn sets and the number a suite can ask
+  about — and folding one into the other would mean no assertion could ever
+  say what the turn did. `test_corridor` asserts that four swells travel what
+  four flat ones would, so a flight with a rhythm has not quietly changed how
+  long the stage is.
+
+  **It was a wingbeat, and too much of one.** A fifth of the speed either way
+  every second and a quarter was reported as a little jarring, and it was: the
+  eye reads speed off the trunks nearest the lens, which cross the frame in
+  about half a second, and a change it can catch inside that is a lurch rather
+  than a rhythm. What matters is not the size of the swing but how fast it
+  happens, so that is what is asserted — the speed may not change by half a
+  per cent in a frame. The wingbeat changed it by 1.65; the swell, at under a
+  tenth either way over four seconds, by 0.24.
+- **A slow wander in both axes**, two periods each and no two of the four
+  sharing a factor, so the camera never comes back to where it was and never
+  traces a line while it is away.
+
+Both are **rotations rather than translations**, and that distinction is the
+whole of why a moving camera reads as a camera: under a small yaw everything
+on screen shifts by the same number of pixels — the moon at infinity, the far
+wood, a tree ten metres off and the ground under it — because they have all
+turned through the same angle. Sliding sideways instead would move the near
+trees and leave the moon where it was, which is a world on rails behind a pane
+of glass. So the offsets go into the two numbers every position in the
+corridor is measured from, `cx` and the horizon, and nothing that draws a prop
+has to know the camera exists. The three tiled bands are the exception,
+because they are laid out from the edge of the view rather than from its
+middle, and they take `-ox` off their own drift.
+
+**The pitch was a wingbeat first and that came out twice.** At nine pixels a
+beat it is what flying looks like, and it was reported as overkill and as a
+clash with the genre — this horizon is also the level a danmaku player reads
+the field against, so whatever it does at a beat's rate, every bullet on
+screen appears to do with it. The *rate* was the worse half of it: what a
+corridor wants overhead is not a cadence but a rise and fall on the same
+timescale as the meander, so that the two axes are one movement and what the
+camera is doing is drifting through a wood rather than flapping through one.
+`test_corridor` asserts that a second of it moves the horizon by almost
+nothing, which is a claim about the rate and the only part of it a still frame
+could never show.
 
 ### The turn
 
@@ -2102,12 +2432,19 @@ thing in the game despite being the most frequent.
   about a bright core inside a saturated rim: a cue has to be identifiable in a
   fifth of a second against everything else, and being *loud* is not how that
   is bought.
-- **Levelled in the generator, not at the call site**, so the gains in
-  `audio_functions` mean what they say — and so a replacement set has something
-  to match.
+- **Levelled in the generator by loudness, not by peak.** This was got wrong
+  first and it is the single reason the first set was inaudible. A 26ms click
+  and a 1.7-second boom normalised to the same *peak* are nowhere near the same
+  loudness — the click has one sample up there and the boom has eighty thousand
+  — so a mix levelled on peaks makes every short cue vanish. Measured, the
+  hex's fan volleys were arriving at **-17.5 dBFS**: not quiet by design, quiet
+  by measurement error. `finish` normalises to the RMS of the loudest 100ms
+  window with a peak ceiling as a guard, and the gain column in
+  `audio_functions` is then *computed* from the measured files rather than
+  guessed.
 
 Three shot cues across eighteen shapes, grouped by what a shape reads as rather
-than by what it is: round things puff, pointed things tick, the big drawn ones
+than by what it is: round things puff, pointed things ring, the big drawn ones
 land. `sfx_for_shape` is in `audio_functions` rather than in the generated
 `bullet_table` — which is the other defensible home, since `SPIN` is a property
 of a shape for exactly the reason a voice might be. The deciding argument is
@@ -2121,23 +2458,73 @@ same three-outcomes rule the practice panel keeps. And a capture plays *over*
 the break rather than instead of it, which is why it is drawn thin and high:
 the break already said the attack ended.
 
-Two envelope bugs were found by measuring rather than by listening, and both
-were invisible to every other check. `snd_boss_die` held an RMS of 0.65 for
-seven hundred milliseconds — a sustained roar rather than a boom, because
-`soft_clip` was applied to the whole mix and tanh lifts everything behind the
-transient it is compressing. And the first `snd_bomb` opened with a rising
-swell, which put 250ms of near-silence between the player pressing X and
-anything happening: a bomb heard a quarter of a second late is a bomb pressed
-twice. The transient is at sample zero now and the bloom follows it, which is
-the same shape the drawing already had.
+### The first set sounded like a match-three game
 
-A third was found the same way and is the reason `finish` fades its two ends
-differently. At two milliseconds each, the head fade was eating the attack of
-every plucked cue, and `snd_enemy_hit` came out at 0.08 against a designed
-0.26 — a 26ms click is *all* attack, so blunting its first eight per cent is
-blunting the thing itself. The head gets 0.4ms now and the tail keeps 3ms, and
-the normalising happens after both, so the peak a cue is finished at is the
-peak the file actually holds.
+Reported in exactly those words — which is the same complaint the bullets
+themselves once got, and it had the same root cause one medium over: a thing
+lit by a generic model instead of built as a made object.
+
+Measured, the diagnosis was unambiguous. The shot cues came out at crest factor
+11.7 and tonality 0.05, which is the arithmetic definition of a click: nearly
+all the energy in one transient spike, spread flat across the spectrum, nothing
+ringing. The cause was that **every filter in the file was at Q around 1**. A
+non-resonant filter shapes noise and lets it die; it never sings. There was no
+resonator anywhere in a set of sounds whose entire subject is struck and
+charged objects.
+
+So the toolkit gained the audio equivalent of `art_common`'s cut bodies.
+`struck` is a bank of *inharmonic* partials — harmonic ratios sound like a
+plucked string, and the arcane and stone ratios used here sound like something
+with mass being hit, which is what every bullet in this game is drawn as. `zap`
+is a rich waveform swept downward through a *resonant* filter, which is the
+difference between a puff of air and a projectile leaving. And saturation is
+used far harder, because it is what fills in the harmonics that make a
+synthesised hit sound struck rather than typed.
+
+`snd_shot_sharp` — the cue the hex's fan volleys fire with, and the one that
+was reported — went from crest 11.7 / tonality 0.05 to crest 3.9 / tonality
+0.34, and about 11 dB louder.
+
+**The set is laid out by spectral centroid and the gaps are checked**, because
+two cues in one band mask each other and the shots are the ones that cannot
+afford it: 453Hz (a shot landing), 940Hz (heavy shots), 1.5kHz (round shots),
+3.0kHz (the player's bolt), 4.4kHz (the graze), 5.3kHz (needles). The player's
+own bolt took two attempts to place — a hard-driven sweep up at 1.7kHz measured
+*less* tonal than the click it replaced, and dropping its fundamental to fix
+that put it at 2.2kHz, directly on top of the enemy's round bullets.
+
+### A cue that does not decay
+
+`check_envelopes` refuses one, and it has caught the same bug three times.
+
+A cue whose level is still near its peak when the file ends does not sound like
+a long sound — it sounds like a sound that was *cut off* — and nothing else can
+see it: the peak is right, the duration is right, the spectrum is right, and
+the waveform on the preview sheet looks like a confident block rather than a
+mistake.
+
+It found `snd_boss_die` holding an RMS of 0.65 for seven hundred milliseconds,
+because `soft_clip` over a whole mix lifts everything behind the transient it
+is compressing. It found `snd_boss_appear`'s arrival hit running at full
+amplitude into the end of the file, because its `zap` had simply been written
+without an envelope — one missing term in one expression, in a file where every
+other `zap` has one. And it found `snd_hit` still at 68% of peak on its last
+window, which for the one cue the player has to go straight back to dodging
+through is the worst place in the game to spend a mix.
+
+**And the guard was tested against a deliberately flat cue before being
+believed**, which is the lesson `GAME_ERROR` taught: a check that is compiled,
+commented at length and matched against nothing is indistinguishable from no
+check at all, and the comment above it is what makes that hard to notice.
+
+The other two envelope findings are worth keeping beside it. The first
+`snd_bomb` opened with a rising swell, which put 250ms of near-silence between
+the player pressing X and anything happening — a bomb heard a quarter of a
+second late is a bomb pressed twice; the transient is at sample zero now and
+the bloom follows it, which is the shape the drawing already had. And `finish`
+fades its two ends by very different amounts: at two milliseconds each the head
+fade was eating the attack of every plucked cue, and a 26ms click is *all*
+attack, so the head gets 0.4ms and the tail keeps 3ms.
 
 ### The ward cues, and a telegraph that costs no pixels
 
@@ -2686,7 +3073,8 @@ the leaf rule, because setting the state *is* what it is for -- which is why the
 rule cannot simply be "no function leaves the draw state set".
 
 **Nothing in the tooling could see it and nothing was going to.**
-`tools/test.py` never draws a frame. Every scene `tools/shot.py` poses is
+`tools/test.py` never draws a frame (one suite draws to a surface, and it
+is about something else — see `test_band_strip`). Every scene `tools/shot.py` poses is
 photographed long after the splash has gone, so all fifteen were clean. It was
 found by a person watching the game start, and confirmed by photographing every
 frame of the opening and plotting the red channel of the field -- which climbed
@@ -2867,11 +3255,17 @@ function and writing a proper `hp_end`.
 Playable end to end: the stage rack, stage one from its first wave through a
 midboss to Ziggy's seven attacks, stage two through a wood that turns to blood
 half way down it, the result screen, and permanent progress —
-plus attack practice, which drills any one of the nine attacks on its own, and
-the drafting table, which does the same for six attacks that have no boss yet.
-399 assertions pass; all thirty-two screenshot scenes render.
+plus attack practice, which drills any one of the seventeen attacks across
+four casters on its own, and the drafting table, which does the same for five
+attacks that have no boss yet.
+421 assertions pass; all thirty-three screenshot scenes render.
 
 Not done, in rough order of how much it is missed:
+
+- **Every attack but `Demon Sealing Hex` is a placeholder.** Ziggy's seven,
+  Velka's other five and both midbosses' attacks are simple shapes, all to be
+  replaced; finished spells are meant to be at the Hex's level. See "The
+  bar".
 
 - **There is sound, and none of it has been heard by anybody playing.** The
   mixer is right and the cues are placeholders: twenty-eight synthesised WAVs
@@ -2887,16 +3281,17 @@ Not done, in rough order of how much it is missed:
 - **Stage two is unlocked from the start, and that is temporary.** The rack's
   locks pace a first playthrough, and pacing a playthrough of a stage that
   exists to be *looked at* is a circle — the same one the drafting table's
-  gating note is about. `needs` goes back to `1` on the day Briar has a fight
+  gating note is about. `needs` goes back to `1` on the day Velka has a fight
   worth reaching, and it is one number.
-- **Stage two's fight is a placeholder and says so.** The Hollow Grove exists
-  for its background: Briar has a name, a title, a colour, a caster's
-  background and five attacks that are deliberately the plainest things this
-  engine can produce, because a background cannot be judged from a still and
-  there had to be something to look at the wood through. Her handwriting is the
-  next piece, and it is one table.
+- **Stage two's fight is mostly a placeholder and says so.** The Hollow
+  Grove exists for its background: Velka has a name, a title, a colour, a
+  caster's background, five attacks that are deliberately the plainest things
+  this engine can produce — because a background cannot be judged from a still
+  and there had to be something to look at the wood through — and `Demon
+  Sealing Hex` as her last spell. Her handwriting is the next piece, and it is
+  five rows.
 - **The grove's own art is still generated rather than drawn.** The trunks are
-  four silhouettes and read as trunks; nobody has painted a tree. It improves
+  eight silhouettes and read as trunks; nobody has painted a tree. It improves
   the same way the boss art does, and the contract is the same — two sprites, a
   body and a moonward rim, tinted at draw time.
 - **The boss art is a placeholder** and is expected to be commissioned. Ziggy
@@ -2966,24 +3361,20 @@ Not done, in rough order of how much it is missed:
   settable auto-delete clip — `CULL_MARGIN` is one number for the whole game, so
   **a pattern that legitimately leaves the field and comes back cannot be
   written**, which is the one of these that would be missed first.
-- **Nothing in the *stage* uses most of the new bullet kinds, and that is now
-  the right answer rather than a gap.** The arc, the wake, the timed fade, the
-  mid-flight graphic change and the homing modifier are all engine and all
-  tested, and Ziggy is still written the way he always was — a boss balanced
-  against nobody is not made better by being rebalanced against nobody with
-  more verbs in it. What was missing was anywhere to *play* them; the drafting
-  table is that, and its first five drafts use all of them between them.
-  Whether any is fun is still a question for somebody holding the keyboard,
-  which is what the mode is for.
+- **Nothing in the stages uses most of the newer bullet kinds yet.** The arc,
+  the wake, the timed fade, the mid-flight graphic change and the homing
+  modifier are all engine and all tested; the placeholder attacks do not use
+  them, and the drafting table's first five drafts use all of them between
+  them.
 - **The drafts are as unplayed as everything else, and the drafting table does
   not make them less so** — it makes them *playable*, which is a different
   thing. Five patterns picked to exercise five engine verbs are five patterns
   chosen by what they demonstrate rather than by what they are like to dodge,
   and at least two of them are visibly too dense on a screenshot. That is the
   mode working: they are on a table because nobody has decided about them.
-  **`Demon Sealing Hex` is the least played of the six and the most in need
-  of it**, because it is the only one whose difficulty is a *shape* rather
-  than a rate — and it is the one that turned out to be unanswerable rather
+  **`Demon Sealing Hex` — Velka's now, and a draft when this was written — is
+  the least played attack in the game and the most in need of it**, because
+  it is the only one whose difficulty is a *shape* rather than a rate — and it is the one that turned out to be unanswerable rather
   than hard, which is why `BossMove` exists: whether the red ward's cell is small enough to make five
   aimed fans hard and large enough to make them survivable, whether ninety
   frames is long enough to find a corridor out of the blue one, and whether
@@ -3001,9 +3392,9 @@ Not done, in rough order of how much it is missed:
   say; it cannot say how it felt getting there.
 - **The attack list does not scroll.** Its plate is sized to its rows with the
   old fixed height as a ceiling, so a boss with more attacks than fit would run
-  off the bottom rather than paging. Nine attacks across two bosses is a short
-  walk and the drafting table has six; the line to change is the one that
-  computes `_y2` in `obj_practice`'s Draw.
+  off the bottom rather than paging. The longest list is Ziggy's seven,
+  Velka's six is next and the drafting table has five; the line to change is
+  the one that computes `_y2` in `obj_practice`'s Draw.
 - **No options screen**: no volume, no window mode, no key remapping, no way to
   clear progress.
 - **The three fodder behaviours are `wave_line` and `wave_cross` and nothing

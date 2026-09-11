@@ -53,9 +53,10 @@ enum Sfx {
     LaserFire,
 
     // **The ward cues are not hex-specific and are deliberately not named for
-    // it.** `Demon Sealing Hex` is a draft and drafts are meant to be thrown
-    // away, so a cue called `HexImplode` would be four sounds to delete or
-    // rename the day the attack moves to a real boss. What these describe is a
+    // it.** `Demon Sealing Hex` was a draft when these were written, and a cue
+    // called `HexImplode` would have been four sounds to rename the day it
+    // moved to a real boss. It has moved -- it is Velka's -- and not one of
+    // these had to change, which is the argument made. What they describe is a
     // *figure* being closed, thrown out, pulled in and detonated, which is a
     // shape any attack of that kind wants.
     WardClose,
@@ -143,12 +144,19 @@ function audio_init(_on = true) {
     global.sfx_table = array_create(Sfx.COUNT, undefined);
     var _t = global.sfx_table;
 
+    // **The gain column is computed, not guessed.** Every WAV is normalised
+    // to a target loudness by `tools/make_sfx.py` -- RMS of its loudest 100ms
+    // window, not its peak -- so a gain here is a straight statement about
+    // where a cue sits in the mix, and the numbers were derived by measuring
+    // each file and solving for the effective level wanted. Re-derive them
+    // rather than nudging them if the generator's levels change.
+    //
     //                          sound              gain  gap  prio swell vary
-    _t[Sfx.ShotSoft]    = sfx_cue(snd_shot_soft,    0.30,  4,  20, 0.55, 0.05);
-    _t[Sfx.ShotSharp]   = sfx_cue(snd_shot_sharp,   0.28,  4,  20, 0.55, 0.06);
-    _t[Sfx.ShotHeavy]   = sfx_cue(snd_shot_heavy,   0.34,  6,  22, 0.50, 0.04);
-    _t[Sfx.LaserCharge] = sfx_cue(snd_laser_charge, 0.42, 26,  55, 0.20, 0.03);
-    _t[Sfx.LaserFire]   = sfx_cue(snd_laser_fire,   0.50, 14,  60, 0.25, 0.03);
+    _t[Sfx.ShotSoft]    = sfx_cue(snd_shot_soft,    0.52,  4,  20, 0.55, 0.05);
+    _t[Sfx.ShotSharp]   = sfx_cue(snd_shot_sharp,   0.54,  4,  20, 0.55, 0.06);
+    _t[Sfx.ShotHeavy]   = sfx_cue(snd_shot_heavy,   0.52,  6,  22, 0.50, 0.04);
+    _t[Sfx.LaserCharge] = sfx_cue(snd_laser_charge, 0.43, 26,  55, 0.20, 0.03);
+    _t[Sfx.LaserFire]   = sfx_cue(snd_laser_fire,   0.42, 14,  60, 0.25, 0.03);
 
     // **The ward's own moments, and they outrank the volleys landing over
     // them.** Each says something the player has to act on and each happens
@@ -156,36 +164,36 @@ function audio_init(_on = true) {
     // belongs to is right -- `WardPull` at 100 frames cannot retrigger inside
     // its own 108-frame collapse, which would otherwise stack two copies of a
     // rising tone and turn a telegraph into a chord.
-    _t[Sfx.WardClose]   = sfx_cue(snd_ward_close,   0.55, 30,  62, 0.00, 0.00);
-    _t[Sfx.WardScatter] = sfx_cue(snd_ward_scatter, 0.70, 40,  86, 0.00, 0.00);
-    _t[Sfx.WardPull]    = sfx_cue(snd_ward_pull,    0.62,100,  87, 0.00, 0.00);
-    _t[Sfx.WardBurst]   = sfx_cue(snd_ward_burst,   0.88, 40,  91, 0.00, 0.00);
+    _t[Sfx.WardClose]   = sfx_cue(snd_ward_close,   0.44, 30,  62, 0.00, 0.00);
+    _t[Sfx.WardScatter] = sfx_cue(snd_ward_scatter, 0.45, 40,  86, 0.00, 0.00);
+    _t[Sfx.WardPull]    = sfx_cue(snd_ward_pull,    0.46,100,  87, 0.00, 0.00);
+    _t[Sfx.WardBurst]   = sfx_cue(snd_ward_burst,   0.54, 40,  91, 0.00, 0.00);
 
     // **The player's own shot is the quietest thing in the game.** It fires
     // twenty volleys a second for the whole of a stage; anything audible
     // enough to notice once is unbearable by the third minute.
-    _t[Sfx.PShot]       = sfx_cue(snd_pshot,        0.17,  5,  10, 0.00, 0.05);
-    _t[Sfx.Graze]       = sfx_cue(snd_graze,        0.40,  5,  45, 0.35, 0.07);
-    _t[Sfx.Item]        = sfx_cue(snd_item,         0.32,  4,  30, 0.40, 0.08);
-    _t[Sfx.EnemyHit]    = sfx_cue(snd_enemy_hit,    0.22,  4,  15, 0.45, 0.09);
-    _t[Sfx.EnemyDie]    = sfx_cue(snd_enemy_die,    0.52,  5,  50, 0.35, 0.06);
+    _t[Sfx.PShot]       = sfx_cue(snd_pshot,        0.47,  5,  10, 0.00, 0.05);
+    _t[Sfx.Graze]       = sfx_cue(snd_graze,        0.67,  5,  45, 0.35, 0.07);
+    _t[Sfx.Item]        = sfx_cue(snd_item,         0.53,  4,  30, 0.40, 0.08);
+    _t[Sfx.EnemyHit]    = sfx_cue(snd_enemy_hit,    0.49,  4,  15, 0.45, 0.09);
+    _t[Sfx.EnemyDie]    = sfx_cue(snd_enemy_die,    0.56,  5,  50, 0.35, 0.06);
 
-    _t[Sfx.Hit]         = sfx_cue(snd_hit,          0.95, 20,  95, 0.00, 0.02);
-    _t[Sfx.Bomb]        = sfx_cue(snd_bomb,         0.85, 30,  92, 0.00, 0.00);
-    _t[Sfx.PlayerDown]  = sfx_cue(snd_player_down,  0.85, 60,  98, 0.00, 0.00);
+    _t[Sfx.Hit]         = sfx_cue(snd_hit,          0.53, 20,  95, 0.00, 0.02);
+    _t[Sfx.Bomb]        = sfx_cue(snd_bomb,         0.68, 30,  92, 0.00, 0.00);
+    _t[Sfx.PlayerDown]  = sfx_cue(snd_player_down,  0.59, 60,  98, 0.00, 0.00);
 
-    _t[Sfx.BossAppear]  = sfx_cue(snd_boss_appear,  0.80, 60,  90, 0.00, 0.00);
-    _t[Sfx.SpellDeclare]= sfx_cue(snd_spell_declare,0.80, 45,  94, 0.00, 0.00);
-    _t[Sfx.SpellBreak]  = sfx_cue(snd_spell_break,  0.72, 30,  88, 0.00, 0.00);
-    _t[Sfx.SpellSurvive]= sfx_cue(snd_spell_survive,0.62, 30,  88, 0.00, 0.00);
-    _t[Sfx.Capture]     = sfx_cue(snd_capture,      0.70, 30,  93, 0.00, 0.00);
-    _t[Sfx.BossDie]     = sfx_cue(snd_boss_die,     0.95, 90,  99, 0.00, 0.00);
+    _t[Sfx.BossAppear]  = sfx_cue(snd_boss_appear,  0.45, 60,  90, 0.00, 0.00);
+    _t[Sfx.SpellDeclare]= sfx_cue(snd_spell_declare,0.51, 45,  94, 0.00, 0.00);
+    _t[Sfx.SpellBreak]  = sfx_cue(snd_spell_break,  0.48, 30,  88, 0.00, 0.00);
+    _t[Sfx.SpellSurvive]= sfx_cue(snd_spell_survive,0.51, 30,  88, 0.00, 0.00);
+    _t[Sfx.Capture]     = sfx_cue(snd_capture,      0.52, 30,  93, 0.00, 0.00);
+    _t[Sfx.BossDie]     = sfx_cue(snd_boss_die,     0.81, 90,  99, 0.00, 0.00);
 
-    _t[Sfx.UiMove]      = sfx_cue(snd_ui_move,      0.42,  4,  70, 0.00, 0.03);
-    _t[Sfx.UiSelect]    = sfx_cue(snd_ui_select,    0.55, 10,  80, 0.00, 0.00);
-    _t[Sfx.UiBack]      = sfx_cue(snd_ui_back,      0.50, 10,  80, 0.00, 0.00);
-    _t[Sfx.UiDeny]      = sfx_cue(snd_ui_deny,      0.50, 14,  80, 0.00, 0.00);
-    _t[Sfx.Pause]       = sfx_cue(snd_pause,        0.55, 10,  85, 0.00, 0.00);
+    _t[Sfx.UiMove]      = sfx_cue(snd_ui_move,      0.54,  4,  70, 0.00, 0.03);
+    _t[Sfx.UiSelect]    = sfx_cue(snd_ui_select,    0.45, 10,  80, 0.00, 0.00);
+    _t[Sfx.UiBack]      = sfx_cue(snd_ui_back,      0.41, 10,  80, 0.00, 0.00);
+    _t[Sfx.UiDeny]      = sfx_cue(snd_ui_deny,      0.41, 14,  80, 0.00, 0.00);
+    _t[Sfx.Pause]       = sfx_cue(snd_pause,        0.52, 10,  85, 0.00, 0.00);
 
     global.sfx_want = array_create(Sfx.COUNT, 0);
     global.sfx_cool = array_create(Sfx.COUNT, 0);

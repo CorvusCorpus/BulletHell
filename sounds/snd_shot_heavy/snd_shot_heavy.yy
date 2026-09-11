@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":0.11000000,
+  "duration":0.23000000,
   "exportDir":"",
   "name":"snd_shot_heavy",
   "parent":{

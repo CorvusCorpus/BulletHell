@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":1.05000000,
+  "duration":1.10000000,
   "exportDir":"",
   "name":"snd_boss_appear",
   "parent":{

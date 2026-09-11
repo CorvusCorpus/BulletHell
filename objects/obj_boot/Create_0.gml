@@ -117,6 +117,16 @@ for (var _i = 1; _i <= _argc; _i++) {
 //
 // **`_mode == ""` is load-bearing** and points the other way from the test it
 // replaced: full screen is the game's, not the harnesses'.
+//
+// **Borderless, not exclusive.** A plain `window_set_fullscreen` on Windows is
+// exclusive fullscreen, and Windows drops an exclusive app out of that mode the
+// moment anything else takes focus -- which the screenshot overlay does, and
+// so does alt-tab -- and the runner does not go back in afterwards. Reported
+// as the game leaving full screen every time a screenshot was taken, which is
+// exactly when somebody is trying to show what it looks like. A borderless
+// window the size of the display has no mode to lose. It is set before the
+// switch because it decides what the switch does, and it covers F4 as well.
+window_enable_borderless_fullscreen(true);
 if (_mode == "" || _want_full) window_set_fullscreen(true);
 
 // **Neither harness makes a sound, on the same reasoning as neither taking

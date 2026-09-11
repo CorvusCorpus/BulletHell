@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":1.70000000,
+  "duration":1.75000000,
   "exportDir":"",
   "name":"snd_boss_die",
   "parent":{

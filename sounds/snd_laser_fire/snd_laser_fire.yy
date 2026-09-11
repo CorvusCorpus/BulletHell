@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":0.34000000,
+  "duration":0.38000000,
   "exportDir":"",
   "name":"snd_laser_fire",
   "parent":{

@@ -78,9 +78,10 @@ SCENES = (
     "hex_gaps",     # ...the blue one, whose gaps are the whole design
     "hex_burst",    # ...and the collapse detonating
     "grove",         # stage two by moonlight: the corridor, and fodder in it
+    "grove_arrive",  # ...the fog it opens in, half lifted
     "grove_turn",    # ...at totality, with the wood's only light gone
     "grove_blood",   # ...with the wavefront part way down the corridor
-    "grove_boss",    # Briar over the turned wood, danmaku across the moon
+    "grove_boss",    # Velka over the turned wood, danmaku across the moon
     "grove_spell",   # her caster's background: bone circle, antlers, wash
 )
 

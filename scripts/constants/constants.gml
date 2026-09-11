@@ -827,6 +827,13 @@ enum BossMove {
 // this rather than trusting the numbers below.
 #macro CORRIDOR_ARRIVE_HAZE 0.45
 
+// How many columns of vertices a wave band's strip has, per tile. See
+// `corridor_draw_band_wave`: the wave is interpolated between them, so this
+// is a smoothness and not a step size, and it costs two vertices a column.
+// It used to be a slice count, and slices are what drew a row of one-pixel
+// lines across the moon.
+#macro CORRIDOR_BAND_COLS 64
+
 #macro BGKIND_PARALLAX 0
 #macro BGKIND_CORRIDOR 1
 
@@ -957,7 +964,18 @@ enum BossMove {
 // twelve filling it.
 #macro GROVE_BOUGH_H 440
 #macro GROVE_BOUGH_UP 950
-#macro GROVE_BOUGH_OUT 1300
+// **Where a bough may hang, measured from its inner edge -- and it may not
+// hang across the moon.** They were spread right across the corridor on the
+// reasoning that the place a bough is most wanted is directly ahead, and a
+// bough directly ahead and far away hangs straight down the middle of the
+// moon: an upside-down tree in front of the one thing everybody looks at,
+// which was most of what was reported as a tangle there. Kept to the sides,
+// they frame the moon as an arch and sweep up and out of the top corners as
+// they come. `GROVE_BOUGH_IN` is what that costs in world units at the far
+// end of the ring, which is where a bough is level with the moon, and
+// `test_corridor` does the arithmetic rather than this comment.
+#macro GROVE_BOUGH_IN 900
+#macro GROVE_BOUGH_OUT 1700
 #macro GROVE_BOUGH_Z 4200
 #macro GROVE_BOUGH_N 14
 
@@ -1040,6 +1058,151 @@ enum BossMove {
 // well as behind it. See `grove_draw_front`: that pass is additive without
 // exception, so it cannot hide a bullet at any alpha.
 #macro GROVE_NEAR_Z 560
+
+// ---------------------------------------------------------------------------
+// The arrival
+//
+// **A stage used to begin at full speed on its first frame**, which is the
+// one moment in it that nobody composed: the rack cuts and the wood is
+// already rushing past. So the corridor opens deep in fog and nearly still,
+// and the fog lifts as the flight picks up -- which is the turn's own
+// movement run once at the beginning and in the other direction, and it costs
+// one number on the background and one veil at the end of the back pass.
+//
+// `GROVE_INTRO_SPD` is not zero, deliberately. A world that is completely
+// stopped for half a second reads as a frozen frame -- as the game having
+// hung rather than as a flight beginning -- where one that is barely creeping
+// reads as coming out of cloud.
+// ---------------------------------------------------------------------------
+#macro GROVE_INTRO_TIME 170      // frames the fog takes to lift
+#macro GROVE_INTRO_SPD 0.12      // the share of full speed the flight opens at
+
+// ---------------------------------------------------------------------------
+// The camera
+//
+// **Nothing was flying the camera, and that is what made the corridor read as
+// a slideshow.** A constant speed down a straight line is arithmetically a
+// flight and looks like a dolly on rails: there is no cadence in it and
+// nothing the eye can attribute to a body. So the flight *swells* -- a slow
+// sinusoid on the speed and nothing else -- and the path gets a slow meander
+// in both axes, so the wood is not permanently dead ahead and the flight is
+// not permanently level.
+//
+// **It was a wingbeat first, and it was too much of one twice.** The first
+// pass surged the speed a fifth either way every second and a quarter and
+// pitched the camera on the same beat. The pitch came out first -- see below
+// -- and the surge was then reported as "a little bit jarring": a fifth of
+// the speed in six-tenths of a second is a *lurch* on anything near the lens,
+// which is where a player sees speed at all. What is left is under a tenth
+// either way over four seconds, which changes the speed by a quarter of a
+// per cent a frame at most where the wingbeat changed it by more than one and
+// a half, and `test_corridor` holds that number. A glide, not a stroke.
+//
+// **The wingbeat used to pitch the camera as well, and that was wrong twice
+// over.** It ran at nine pixels a beat, which is what flying looks like and
+// was reported as overkill and as a clash with the genre: this horizon is
+// also the level a danmaku player reads the field against, so whatever it
+// does at a beat's rate, every bullet on screen appears to do with it. And
+// the *rate* was the worse half. What a corridor wants overhead is not a
+// cadence, it is a slow rise and fall on the same timescale as the meander --
+// so the two axes are one movement, and what the camera is doing is drifting
+// through a wood rather than flapping through one.
+//
+// **Both are rotations rather than translations**, because a rotation moves
+// everything on screen by the same number of pixels: the moon at infinity,
+// the far wood, the near trees and the ground all go together. See
+// `corridor_view`, which is where the two numbers land.
+//
+// Small on purpose. This is the background of a danmaku stage and the player
+// is reading bullets across it; a camera with character is worth having and a
+// camera that has to be fought is not.
+// ---------------------------------------------------------------------------
+#macro GROVE_SWELL 240           // frames in one swell of the glide
+#macro GROVE_SWELL_SURGE 0.09    // ...and the share of the speed it adds
+#macro GROVE_SWAY 30             // how far the path wanders either way
+#macro GROVE_RISE 14             // ...and how far the flight rises and falls
+// Two periods, neither a multiple of the other, so the meander never comes
+// back to the same place -- the same argument the floor's two band periods
+// make one file over.
+#macro GROVE_SWAY_P1 1130
+#macro GROVE_SWAY_P2 431
+// ...and the rise gets two more of its own, longer again and sharing no
+// factor with the sway's. Matched periods would have the camera tracing one
+// diagonal line for ever, which is a movement with a shape and therefore a
+// movement the eye can learn.
+#macro GROVE_RISE_P1 1670
+#macro GROVE_RISE_P2 709
+
+// ---------------------------------------------------------------------------
+// The verge
+//
+// **Undergrowth, and it is answering two complaints with one ring.** The
+// first is that the far left and right of the frame went bare in stretches:
+// the trees pick a side by coin flip, and a fair coin over forty trees
+// produces a run of six on one side about as often as not -- which is one
+// edge of the picture empty for two seconds. `grove_side` fixes the runs; the
+// verge is what fills the space between the trunks whatever the run does,
+// because it is dense, low, and spread from the edge of the path out past
+// where the trees stop.
+//
+// The second is the horizon. A verge prop at the far end of the corridor is
+// sixty pixels of ragged silhouette standing exactly on the line where the
+// wood meets the ground, and there are enough of them that the line is never
+// bare for long.
+// ---------------------------------------------------------------------------
+#macro GROVE_VERGE_H 320         // world units tall: bracken, not a fern
+#macro GROVE_VERGE_IN 300        // ...how close to the path it may grow
+#macro GROVE_VERGE_OUT 2400      // ...and how far out it goes
+#macro GROVE_VERGE_N 78
+#macro GROVE_KIND_VERGE 4
+
+// How far the far wood's foot dips, in screen pixels. See
+// `corridor_draw_band_wave`: downward only, because the ground is painted
+// over the foot and a slice lifted above the horizon shows sky underneath a
+// wood.
+#macro GROVE_RIDGE_H 58
+#macro GROVE_MIST_WAVE 44
+
+// ---------------------------------------------------------------------------
+// The scrub
+//
+// **Solid, and that is the whole specification.** The first version of this
+// layer was the treeline sprite reused at a third of its size -- and that
+// sprite is a lace of two-pixel twigs with its alpha ramped away down its own
+// height, because it is drawn as a *distance* and its feet are meant to go
+// into haze. Laid small over a lit floor the same art is a smear. Reported,
+// accurately, as transparent messiness thrown at the problem.
+//
+// A hedgerow at the foot of a wood is a **mass**: opaque, with a lumpy top and
+// no light through it at all.
+//
+// **A second version drew it as a filled silhouette at run time** -- a row of
+// overlapping lobes in one triangle strip, which is solid and needs no art at
+// all. It answered the complaint and it was still the wrong answer: a row of
+// arcs is a row of arcs, and what a new layer wants is new *art*. `make_scrub`
+// is that, and it is a hedge rather than a shape.
+//
+// Two things about how it is drawn are not decoration:
+//
+//   * **It dips where the path runs into it, and it does not part.** It did
+//     part, wider than the moon is round, on the reasoning that undergrowth
+//     across the stage's centrepiece would be losing it -- and what that
+//     left was the one stretch of horizon everybody looks at, under the
+//     brightest thing in the picture, ruled dead straight. That was the
+//     complaint the layer was built to answer. Worse, it was the only place
+//     the hedge could be *seen*: everywhere else it is dark on dark, and
+//     against the moon it is a silhouette. Reported as "I'm not seeing any
+//     hedgerow", which was accurate. A hedge crossing the foot of a moon is
+//     the oldest composition there is; `test_corridor` holds the dip short
+//     of a parting.
+//   * **Its foot dissolves and its crown does not**, which is one alpha ramp
+//     in `make_scrub` doing two jobs: a crown against the sky has to be hard
+//     or it is fog, and a foot on the litter has to not be, or it is the
+//     cardboard-cutout edge `grove_draw_mound` exists to remove.
+// ---------------------------------------------------------------------------
+#macro GROVE_SCRUB_WAVE 26       // how far its baseline rides up and down
+#macro GROVE_SCRUB_DIP 0.22      // how much lower it stands where the path is
+#macro GROVE_SCRUB_DIP_W 320     // ...and over how many pixels either side
 
 #macro SPELLBG_GROVE 2         // the grove's caster: a ring of bone and ivy
 

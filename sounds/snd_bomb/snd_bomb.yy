@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":0.90000000,
+  "duration":0.95000000,
   "exportDir":"",
   "name":"snd_bomb",
   "parent":{

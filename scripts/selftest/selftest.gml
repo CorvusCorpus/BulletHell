@@ -45,6 +45,7 @@ function selftest_run() {
     test_stage_table();
     test_stage_run();
     test_corridor();
+    test_band_strip();
     test_grove_turn();
     test_marks();
     test_practice();
@@ -1279,6 +1280,62 @@ function test_corridor() {
        corridor_depth_at(_v, _hy + 1) <= CORRIDOR_Z_FAR
        && corridor_depth_at(_v, _hy + 0.2) <= CORRIDOR_Z_FAR);
 
+    // **The camera turns, it does not slide, and that is a claim about
+    // every depth at once.** Under a small yaw everything on screen shifts by
+    // the same number of pixels -- the moon at infinity, the far wood and a
+    // tree ten metres off -- because they have all turned through the same
+    // angle. A camera that *translated* would move the near trees and leave
+    // the moon where it was, which reads as a world sliding behind glass
+    // rather than as a flyer looking somewhere else. Nothing about a single
+    // frame could say which of the two is happening.
+    var _v0 = corridor_view(false, 0, 0);
+    var _v1 = corridor_view(false, 30, -12);
+    var _alike = true;
+    for (var _i = 1; _i <= 6; _i++) {
+        var _zz = 400 * _i;
+        var _dx = (_v1.cx + corridor_k(_zz) * 500)
+                  - (_v0.cx + corridor_k(_zz) * 500);
+        if (abs(_dx - 30) > 0.001) _alike = false;
+    }
+    ok("a yaw shifts every depth by the same amount", _alike);
+    ok("and the horizon goes with it",
+       abs((corridor_horizon(_v1) - corridor_horizon(_v0)) + 12) < 0.001);
+
+    // **A wave band's baseline only ever dips.** The far wood's foot is drawn
+    // at the vanishing point and the ground is painted over the top of it, so
+    // a slice lifted even slightly shows a band of sky under a wood -- and
+    // periodicity is what keeps the displacement from putting a step at every
+    // tile seam, which is the defect `fbm_field`'s `wrap_y` exists to prevent
+    // one dimension over.
+    var _lifts = false;
+    var _over = false;
+    for (var _i = 0; _i <= 240; _i++) {
+        var _wv = corridor_band_wave(_i / 240, GROVE_RIDGE_H, 137);
+        if (_wv < 0) _lifts = true;
+        if (_wv > GROVE_RIDGE_H + 0.001) _over = true;
+    }
+    // **The hedgerow crosses the foot of the moon, and that reverses a
+    // decision.** It used to part for the path wider than the moon is round,
+    // on the reasoning that undergrowth over the centrepiece would be losing
+    // it -- and what that left was the most-looked-at stretch of horizon in
+    // the stage ruled dead straight, under the brightest thing in the
+    // picture, which is the complaint the layer was built for. It was also
+    // the only place the hedge could be seen at all. It dips for the path now
+    // and this is what stops the next tidy-up turning the dip back into a
+    // parting.
+    ok("the hedgerow dips for the path rather than parting for it",
+       GROVE_SCRUB_DIP > 0 && GROVE_SCRUB_DIP < 0.75);
+    var _vc = corridor_view(false, 0);
+    ok("and the dip is whole on the centre line and gone past its width",
+       corridor_band_dip(_vc, _vc.cx, GROVE_SCRUB_DIP_W) == 1
+       && corridor_band_dip(_vc, _vc.cx + GROVE_SCRUB_DIP_W + 1,
+                            GROVE_SCRUB_DIP_W) == 0);
+    ok("the ridge dips the far wood's foot and never lifts it", !_lifts);
+    ok("and never further than it was asked to", !_over);
+    ok("and it is periodic in its own tile, so the band still tiles",
+       abs(corridor_band_wave(0, GROVE_RIDGE_H, 137)
+           - corridor_band_wave(1, GROVE_RIDGE_H, 137)) < 0.001);
+
     // Nearer is bigger and further from the middle. One line, and it is the
     // entire claim the picture rests on.
     ok("nearer is bigger", corridor_k(400) > corridor_k(1600));
@@ -1319,6 +1376,66 @@ function test_corridor() {
     var _b = bg_grove();
     ok("the grove is a corridor", _b.kind == BGKIND_CORRIDOR);
     ok("and stage one is not", bg_brimstone().kind == BGKIND_PARALLAX);
+
+    // **The stage arrives rather than starting.** It used to open at full
+    // speed on its first frame, which is the one moment in it nobody
+    // composed. The claim here is that the opening is slow *and* that it
+    // finishes -- a fog that lifted to 96% would be a stage permanently a
+    // little foggy and permanently a little slow, which is the failure nobody
+    // would ever notice by looking.
+    var _i0 = bg_grove();
+    bg_step(_i0);
+    ok("a flight opens far slower than it settles", _i0.spd < GROVE_SPEED * 0.5);
+    for (var _f = 0; _f < GROVE_INTRO_TIME + 4; _f++) bg_step(_i0);
+    ok("and the fog has lifted by the time it is over", _i0.intro == 1);
+    ok_near("and it settles at exactly the speed it was asked for",
+            _i0.spd, GROVE_SPEED, 0.001);
+
+    // **The swell is a modulation and not a speed.** It rides on top of
+    // `spd` rather than inside it precisely so this can be asked: four swells
+    // have to travel what four of the flat speed would, or the flight having
+    // a rhythm has quietly changed how long the stage is.
+    //
+    // **And it is gentle, which is a number rather than a feeling.** The
+    // wingbeat before it changed the speed by more than one and a half per
+    // cent a frame, and was reported as a little jarring; what matters is
+    // not the size of the swing but how fast it happens, because the eye
+    // reads speed off the things nearest the lens and a change it can catch
+    // inside the half-second one of those takes to cross is a lurch.
+    var _lo = 999999999;
+    var _hi = 0;
+    var _sum = 0;
+    var _jolt = 0;
+    var _was = _i0.rush;
+    for (var _f = 0; _f < GROVE_SWELL * 4; _f++) {
+        bg_step(_i0);
+        _lo = min(_lo, _i0.rush);
+        _hi = max(_hi, _i0.rush);
+        _sum += _i0.rush;
+        _jolt = max(_jolt, abs(_i0.rush - _was) / _i0.spd);
+        _was = _i0.rush;
+    }
+    ok("the swell never puts the corridor into reverse", _lo > 0);
+    ok("and it is a rhythm rather than a constant", _hi > _lo * 1.1);
+    ok_near("and four swells travel what four flat ones would",
+            _sum / (GROVE_SWELL * 4), GROVE_SPEED, GROVE_SPEED * 0.03);
+    ok("and it never changes the speed by half a per cent in a frame: "
+       + string_format(_jolt * 100, 1, 2) + "%", _jolt < 0.005);
+    ok("and the camera stays inside its own throw",
+       abs(_i0.cam_x) <= GROVE_SWAY + 0.001
+       && abs(_i0.cam_y) <= GROVE_RISE + 0.001);
+
+    // **The horizon drifts, it does not bob.** A pitch on a wingbeat was
+    // written, looked at and taken out: at that rate this line is a level
+    // that visibly rises and falls, and a danmaku player is measuring every
+    // bullet on screen against it. What replaced it is a wander on the
+    // meander's own timescale -- so a second of it has to move the horizon
+    // by almost nothing, which is a claim about the *rate* and the only part
+    // of it a still frame could never show.
+    var _cy0 = _i0.cam_y;
+    for (var _f = 0; _f < 60; _f++) bg_step(_i0);
+    ok("and the horizon drifts rather than bobbing",
+       abs(_i0.cam_y - _cy0) < GROVE_RISE * 0.5);
 
     // **The order has to survive the whole stage.** The ring's claim is that
     // recycling a prop to the back of the queue keeps it sorted for ever, and
@@ -1410,6 +1527,61 @@ function test_corridor() {
     ok("and no ring recycles its props into clear air: " + _clear,
        _clear == "");
 
+    // **Neither edge of the frame may go bare, and that is a claim about
+    // runs rather than about counts.** A fair coin over forty trees produces
+    // a run of six on one side about as often as not, and a run of six is one
+    // edge of the picture empty for two seconds -- which is exactly how it
+    // was reported. The wood was never too sparse; it was clumped, which is
+    // what randomness does and what nobody means by it. `grove_side` places
+    // them in stratified pairs -- one either side, in a hashed order -- so a
+    // run is bounded at two by construction. Walked in depth order, because
+    // that is the order they arrive in, and measured on the ring rather than
+    // on the function so that a ring with an odd number of props, whose pairs
+    // would break at the wrap, would be caught here.
+    //
+    // The number is the assertion. A coin flip measures nine to twelve.
+    var _worst = 0;
+    var _run = 0;
+    var _prev = 0;
+    var _ord = corridor_ring_order(_c2.trees);
+    for (var _j = 0; _j < _c2.trees.n; _j++) {
+        var _sd = sign(_c2.trees.props[_ord[_j]].wx);
+        if (_sd == _prev) {
+            _run++;
+        } else {
+            _run = 1;
+            _prev = _sd;
+        }
+        _worst = max(_worst, _run);
+    }
+    ok("no stretch of the wood stands all down one side: " + string(_worst),
+       _worst <= 2);
+
+    // **No bough can hang across the moon.** At the far end of their ring
+    // they are level with it, so that is where the clearance has to hold --
+    // and it is measured from the inner edge of the widest bough the hash can
+    // make, then checked against every bough actually in the ring.
+    var _bk = corridor_k(GROVE_BOUGH_Z * 1.05);
+    ok("no bough can hang across the moon, even at the back of its ring",
+       _bk * GROVE_BOUGH_IN > GROVE_MOON_R);
+    var _across = 0;
+    for (var _j = 0; _j < _c2.boughs.n; _j++) {
+        var _bp = _c2.boughs.props[_j];
+        var _bw = corridor_prop_half_w(spr_scn_bough, GROVE_BOUGH_H,
+                                       _bp.scale, _bp.aspect);
+        if (abs(_bp.wx) - _bw < GROVE_BOUGH_IN - 1) _across++;
+    }
+    ok("and none in the ring stands inside that clearance", _across == 0);
+
+    // ...and the understorey is on both sides of the path at once, which is
+    // the layer that fills the periphery whatever the trees are doing.
+    var _left = 0;
+    for (var _j = 0; _j < _c2.verge.n; _j++) {
+        if (_c2.verge.props[_j].wx < 0) _left++;
+    }
+    ok("the verge stands on both sides of the path",
+       _left > _c2.verge.n * 0.35 && _left < _c2.verge.n * 0.65);
+
     // **No trunk may wall the field**, however wide the hash makes it. The
     // clearance is measured from a prop's inner edge for exactly this reason,
     // and this is the assertion that says so rather than the comment.
@@ -1469,6 +1641,62 @@ function test_corridor() {
         }
     }
     ok("and no charm hangs off a branch its tree has not got", _tagged);
+}
+
+/// @desc A wave band at rest draws the same picture its sprite does.
+///
+///       **The one suite here that draws, and it has to.** `tools/test.py`
+///       never draws a frame, which is exactly why the strip's first version
+///       survived: it fed a primitive page-space texture coordinates, the
+///       runtime read them in sprite space, and the band came out as a
+///       stretched patch of its own top-left corner -- arithmetically
+///       spotless, and invisible to every assertion in the file. It was found
+///       by the hedgerow it drew not being on the screen.
+///
+///       So the band is drawn to a surface with no wave and no dip, the same
+///       sprite is drawn beside it with `draw_sprite_ext`, and the two are
+///       compared a pixel at a time. Surfaces can be drawn to from a Create
+///       event, which is where this runs. What it would catch is the runtime
+///       changing its mind about texture space, and anybody "fixing" the
+///       coordinates back to `sprite_get_uvs` because that is what they look
+///       like they should be.
+function test_band_strip() {
+    var _w = 256;
+    var _h = 80;
+    var _sc = _w / sprite_get_width(spr_scn_treeline);
+    var _v = { x0: 0, y0: 0, w: _w, h: _h, cx: _w / 2, x1: _w, y1: _h,
+               ox: 0 };
+    var _ref = surface_create(_w, _h);
+    var _got = surface_create(_w, _h);
+
+    surface_set_target(_ref);
+    draw_clear_alpha(c_black, 1);
+    draw_sprite_ext(spr_scn_treeline, 0, 0, 0, _sc, _sc, 0, c_white, 1);
+    surface_reset_target();
+
+    surface_set_target(_got);
+    draw_clear_alpha(c_black, 1);
+    corridor_draw_band_wave(_v, spr_scn_treeline, 0, 0, _sc, c_white, 1, 0, 0);
+    surface_reset_target();
+
+    // A grid of samples over the band, clear of its two ends where the strip
+    // tiles and the reference does not.
+    var _bh = sprite_get_height(spr_scn_treeline) * _sc;
+    var _n = 0;
+    var _off = 0;
+    for (var _x = 6; _x < _w - 6; _x += 7) {
+        for (var _y = 2; _y < _bh - 2; _y += 3) {
+            var _a = surface_getpixel(_ref, _x, _y);
+            var _b = surface_getpixel(_got, _x, _y);
+            _n++;
+            if (abs(colour_get_red(_a) - colour_get_red(_b)) > 48) _off++;
+        }
+    }
+    surface_free(_ref);
+    surface_free(_got);
+    ok("a wave band at rest draws the picture its sprite does: "
+       + string(_off) + " of " + string(_n) + " samples differ",
+       _n > 100 && _off < _n * 0.06);
 }
 
 /// @desc The blood moon: what turns, in what order, and what stage one does
@@ -1830,6 +2058,21 @@ function test_drafts() {
     // around.
     ok("and each call hands back a fresh table", draft_phases() != _ph);
 
+    // **An attack is claimed once.** `Demon Sealing Hex` moved from this
+    // table to Velka's, and an attack in two places is two copies that will
+    // be tuned apart -- which is the whole of why the drafting table says
+    // moving one is moving the function, not copying the row.
+    var _claimed = false;
+    for (var _i = 0; _i < _n; _i++) {
+        if (_l[_i].name == "Demon Sealing Hex") _claimed = true;
+    }
+    var _vp = velka_phases();
+    var _hex = _vp[array_length(_vp) - 1];
+    ok("Demon Sealing Hex is Velka's last spell and off the drafting table",
+       !_claimed && _hex.name == "Demon Sealing Hex"
+       && _hex.kind == AttackKind.Spell && _hex.hp_end == 0
+       && _hex.move == BossMove.Track);
+
     // ---- the caster -------------------------------------------------------
     //
     // The boss's health is derived from how many drafts there are, so one
@@ -1908,7 +2151,7 @@ function test_hex_seal() {
     var _last = 0;
     for (var _f = 0; _f < HEX_DRAW; _f++) {
         bullet_step(_g.player.x, _g.player.y);
-        draft_demon_sealing_hex(_e, _g, _f);
+        velka_demon_sealing_hex(_e, _g, _f);
         _last = bullet_count() - _was;
         _was = bullet_count();
     }
@@ -1946,7 +2189,7 @@ function test_hex_seal() {
     var _lit = HEX_DRAW + HEX_SEAL_DELAY + 12;
     for (var _f = HEX_DRAW; _f < _lit; _f++) {
         bullet_step(_g.player.x, _g.player.y);
-        draft_demon_sealing_hex(_e, _g, _f);
+        velka_demon_sealing_hex(_e, _g, _f);
     }
 
     var _ang = [];
@@ -1975,7 +2218,7 @@ function test_hex_seal() {
     // ---- it turns, and turning is not drifting ----------------------------
     for (var _f = _lit; _f < HEX_SCATTER_AT; _f++) {
         bullet_step(_g.player.x, _g.player.y);
-        draft_demon_sealing_hex(_e, _g, _f);
+        velka_demon_sealing_hex(_e, _g, _f);
     }
 
     var _far2 = 0;
@@ -2020,7 +2263,7 @@ function test_hex_seal() {
     // that is what this counts.
     for (var _f = HEX_SCATTER_AT; _f < HEX_SCATTER_AT + 140; _f++) {
         bullet_step(_g.player.x, _g.player.y);
-        draft_demon_sealing_hex(_e, _g, _f);
+        velka_demon_sealing_hex(_e, _g, _f);
     }
 
     var _crossing = 0;
@@ -2057,7 +2300,7 @@ function test_hex_seal() {
     // collapse.
     for (var _f = HEX_SCATTER_AT + 140; _f <= HEX_IMPLODE_AT + 13; _f++) {
         bullet_step(_g.player.x, _g.player.y);
-        draft_demon_sealing_hex(_e, _g, _f);
+        velka_demon_sealing_hex(_e, _g, _f);
     }
 
     var _edge = 0;
@@ -2071,7 +2314,7 @@ function test_hex_seal() {
 
     for (var _f = HEX_IMPLODE_AT + 14; _f <= HEX_BURST_AT + 1; _f++) {
         bullet_step(_g.player.x, _g.player.y);
-        draft_demon_sealing_hex(_e, _g, _f);
+        velka_demon_sealing_hex(_e, _g, _f);
     }
 
     var _landed = 0;
@@ -2154,7 +2397,7 @@ function test_hex_seal() {
     // quietly stops firing.
     for (var _f = HEX_BURST_AT + 2; _f < HEX_CYCLE; _f++) {
         bullet_step(_g.player.x, _g.player.y);
-        draft_demon_sealing_hex(_e, _g, _f);
+        velka_demon_sealing_hex(_e, _g, _f);
     }
 
     var _left = 0;

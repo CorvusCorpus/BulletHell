@@ -81,8 +81,16 @@ function corridor_k(_z) {
 }
 
 /// @desc Where the eye is looking: the vanishing point of the corridor.
+///
+///       **`oy` is the camera's pitch, and it is added here rather than at
+///       the call sites.** The horizon is what every other position in this
+///       file is measured from -- a prop's footing, the ground's rows, the
+///       moon, the far wood -- so putting the pitch in it once is what makes
+///       the whole picture move as one body. Added anywhere else it would be
+///       a list of layers that each had to remember, and the one that forgot
+///       would be a layer sliding against the rest of the world.
 function corridor_horizon(_v) {
-    return _v.y0 + _v.h * CORRIDOR_HORIZON;
+    return _v.y0 + _v.h * CORRIDOR_HORIZON + _v.oy;
 }
 
 /// @desc The depth of the ground under a given screen row. The inverse of the
@@ -122,11 +130,37 @@ function corridor_depth_at(_v, _sy) {
 ///       parallax stack by scaling a sprite; here there is no sprite to scale
 ///       -- every position is computed -- so what the arithmetic needs is the
 ///       box, and it needs it in one place rather than at forty call sites.
-function corridor_view(_fill) {
-    if (_fill) return { x0: 0, y0: 0, w: GAME_W, h: GAME_H,
-                        cx: GAME_W / 2, x1: GAME_W, y1: GAME_H };
+///       **`_ox` and `_oy` are where the camera is pointing, in screen
+///       pixels, and they are a rotation rather than a translation.** That
+///       distinction is the whole of why a moving camera reads as a camera:
+///       under a small yaw *everything* on screen shifts by the same number
+///       of pixels -- the moon at infinity, the far wall of wood, a tree ten
+///       metres off and the ground under it -- because they have all turned
+///       through the same angle. Sliding the camera sideways instead would
+///       move the near trees and leave the moon where it was, which is not a
+///       flyer looking somewhere else, it is a world on rails behind a pane
+///       of glass.
+///
+///       So the offsets go into the two numbers every position in the
+///       corridor is measured from, `cx` and the horizon, and nothing that
+///       draws a prop has to know the camera exists. The exception is the
+///       three bands -- the treeline, the canopy and the mist -- which are
+///       tiled from the edge of the view rather than from its centre and so
+///       take `-ox` off their own drift; `ox` is kept on the view for exactly
+///       that.
+function corridor_view(_fill, _ox = 0, _oy = 0) {
+    if (_fill) {
+        // The world is authored at the field's size, so a view that covers
+        // the whole screen has to scale the camera's throw with everything
+        // else or the bob is a third of what it is in play.
+        var _s = GAME_W / FIELD_W;
+        return { x0: 0, y0: 0, w: GAME_W, h: GAME_H,
+                 cx: GAME_W / 2 + _ox * _s, x1: GAME_W, y1: GAME_H,
+                 ox: _ox * _s, oy: _oy * _s };
+    }
     return { x0: FIELD_X0, y0: FIELD_Y0, w: FIELD_W, h: FIELD_H,
-             cx: FIELD_CX, x1: FIELD_X1, y1: FIELD_Y1 };
+             cx: FIELD_CX + _ox, x1: FIELD_X1, y1: FIELD_Y1,
+             ox: _ox, oy: _oy };
 }
 
 // ---------------------------------------------------------------------------
@@ -486,4 +520,153 @@ function corridor_draw_band(_v, _spr, _drift, _sy, _sc, _col, _a) {
         draw_sprite_ext(_spr, 0, _x, _sy, _sc, _sc, 0, _col, _a);
         _x += _w;
     }
+}
+
+/// @desc How far down a wave band's baseline has dropped, `_u` along its own
+///       tile.
+///
+///       **Downward only, and periodic in the tile.** Both halves are
+///       load-bearing and neither is obvious.
+///
+///       Downward, because the bands this displaces stand *on* the horizon:
+///       the far wood's foot is drawn at the vanishing point and the ground
+///       is painted over the top of it, so a slice lifted even slightly shows
+///       a band of sky underneath the wood. Every term below is a raised
+///       cosine, which is in `[0, 1]` by construction rather than by being
+///       clamped -- a clamp would hide a sign error rather than make one
+///       impossible.
+///
+///       Periodic, because the band it is displacing is tiled: a displacement
+///       with any other period would put a step at every tile seam, which is
+///       the defect `fbm_field`'s `wrap_y` exists to prevent one dimension
+///       over. So the harmonics are whole multiples of the tile and nothing
+///       else, and `test_corridor` checks the two ends agree.
+function corridor_band_wave(_u, _amp, _seed) {
+    return _amp * ((0.5 - 0.5 * dcos(_u * 360)) * 0.54
+                   + (0.5 - 0.5 * dcos(_u * 720 + _seed)) * 0.30
+                   + (0.5 - 0.5 * dcos(_u * 1440 + _seed * 2)) * 0.16);
+}
+
+/// @desc The same band, with its baseline undulating -- drawn as one textured
+///       triangle strip per tile.
+///
+///       **A ruled horizontal line at the vanishing point is the single most
+///       generated-looking thing a corridor can have**, and the far wood was
+///       one: a band sprite drawn at one y is a wood standing on a spirit
+///       level. It was reported exactly that way -- the horizon looking
+///       unnaturally flat -- and the fix is not more raggedness in the art,
+///       because the art is already ragged. It is that the *ground the wood
+///       stands on* is not level either.
+///
+///       **It was drawn in slices first, and that shipped a row of glitchy
+///       vertical lines across the moon.** Forty-eight `draw_sprite_part_ext`
+///       calls a tile, each dropped by the wave and each drawn a pixel wider
+///       than its share on the reasoning that a seam between two slices is a
+///       hairline of whatever is behind it. That reasoning holds for an
+///       opaque sprite and is exactly wrong for a translucent one: the extra
+///       pixel is a column the band is *blended twice* in, so every slice
+///       boundary of a layer at 17 per cent became a one-pixel line at 31.
+///       The far wood's foot is ramped translucent and the mist bank is
+///       translucent everywhere, and both lie across the bottom of the moon
+///       -- the brightest thing in the picture, which is where a doubled
+///       column shows most. Each slice also sat at its own height, so every
+///       boundary was a step as well as a line.
+///
+///       **A strip has neither failure, by construction.** Neighbouring
+///       columns share their vertices, so there is no overlap to blend twice
+///       and no gap to show through, and the wave is interpolated between
+///       columns rather than held flat across a slice, so there is no step.
+///       It is the answer `laser_draw_curve` declined as more than a curved
+///       laser needed, and it is the right one here because the thing being
+///       bent is a picture rather than a glow.
+///
+///       Four details make it hold:
+///
+///       - **Its texture coordinates run 0 to 1 across the sprite, not
+///         across the texture page -- and that was measured, because the
+///         first version assumed the other.** `sprite_get_uvs` answers in
+///         page space, and it is the obvious thing to feed a primitive; in
+///         this runtime a primitive textured with `sprite_get_texture` reads
+///         its coordinates in the *sprite's* space instead. Fed page
+///         coordinates, the strip drew the top-left patch of each sprite
+///         stretched across the whole band: the treeline became a few blocky
+///         trunks and the hedgerow became half a dozen isolated tall bumps
+///         with their feet cut off flat, which is why a hedge that was solid
+///         in its own art could not be found on the screen. It was pinned
+///         down by drawing one quad both ways beside `draw_sprite_ext`, and
+///         `test_band_strip` now does that comparison on a surface every run,
+///         because a runtime that changes its mind about this again would
+///         otherwise say so only in a screenshot.
+///       - **The trim still places it.** GameMaker crops a sprite's empty
+///         border when it packs it and `sprite_get_uvs` says by how much, so
+///         the strip is laid over the part that was kept rather than over
+///         the rectangle that was drawn.
+///       - **Half a texel in from every edge.** Bilinear sampling exactly on
+///         the edge of a packed sprite blends in whatever is beside it on the
+///         page, and at a tile seam that is a one-pixel line of somebody
+///         else's art -- this bug again, one level down. Inset, the seam
+///         samples the last column and then the first, which are neighbours
+///         because the band tiles.
+///       - **`_dip` squashes the band toward its own foot** either side of the
+///         view's centre line, by up to that share of its height, eased over
+///         `_dip_w` pixels. A band standing on the ground across the whole
+///         width of a corridor is a wall at the end of it; one that dips
+///         where the path runs into it is undergrowth with a track through
+///         it. It follows the camera because `cx` does.
+function corridor_draw_band_wave(_v, _spr, _drift, _sy, _sc, _col, _a,
+                                 _amp, _seed, _dip = 0, _dip_w = 1) {
+    if (_a <= 0.004) return;
+    var _tw = sprite_get_width(_spr);
+    var _th = sprite_get_height(_spr);
+    var _uv = sprite_get_uvs(_spr, 0);
+    var _tex = sprite_get_texture(_spr, 0);
+
+    // The part of the sprite that survived packing, in its own pixels. Only
+    // the trim is read off `_uv`; its first four entries are page space, and
+    // the strip does not want page space. See above.
+    var _kx0 = _uv[4];
+    var _kx1 = _uv[4] + _tw * _uv[6];
+    var _ky0 = _uv[5];
+    var _ky1 = _uv[5] + _th * _uv[7];
+    var _hu = 0.5 / max(1, _kx1 - _kx0);
+    var _hv = 0.5 / max(1, _ky1 - _ky0);
+    var _u0 = _hu;
+    var _u1 = 1 - _hu;
+    var _v0 = _hv;
+    var _v1 = 1 - _hv;
+
+    var _w = _tw * _sc;
+    var _off = ((_drift mod _w) + _w) mod _w;
+    var _top0 = _sy + _ky0 * _sc;
+    var _bot0 = _sy + _ky1 * _sc;
+    var _n = CORRIDOR_BAND_COLS;
+    var _x = _v.x0 - _off;
+    while (_x < _v.x1) {
+        draw_primitive_begin_texture(pr_trianglestrip, _tex);
+        for (var _i = 0; _i <= _n; _i++) {
+            var _f = _i / _n;
+            var _src = lerp(_kx0, _kx1, _f);
+            var _px = _x + _src * _sc;
+            var _d = corridor_band_wave(_src / _tw, _amp, _seed);
+            var _top = _top0 + _d;
+            var _bot = _bot0 + _d;
+            if (_dip > 0) {
+                _top = lerp(_top, _bot, _dip * corridor_band_dip(_v, _px, _dip_w));
+            }
+            var _u = lerp(_u0, _u1, _f);
+            draw_vertex_texture_colour(_px, _top, _u, _v0, _col, _a);
+            draw_vertex_texture_colour(_px, _bot, _u, _v1, _col, _a);
+        }
+        draw_primitive_end();
+        _x += _w;
+    }
+}
+
+/// @desc How much a band is squashed at screen x `_px`: one on the view's
+///       centre line, nothing beyond `_w` either side of it, and a smoothstep
+///       between -- a linear ramp would put a visible corner in the crown of
+///       the hedge at both ends of the dip.
+function corridor_band_dip(_v, _px, _w) {
+    var _g = clamp(1 - abs(_px - _v.cx) / max(1, _w), 0, 1);
+    return _g * _g * (3 - 2 * _g);
 }

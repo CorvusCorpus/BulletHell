@@ -130,6 +130,28 @@ function bg_grove() {
     _b.drift = 0;          // how far the distant wood has slid sideways
     _b.spd = GROVE_SPEED;
 
+    // **The arrival.** Zero is "still in the cloud"; one is "the wood is
+    // open". The stage used to begin at full speed on its first frame, which
+    // is the one moment in it nobody composed -- the rack cuts and the world
+    // is already rushing. See `GROVE_INTRO_TIME`.
+    _b.intro = 0;
+
+    // **The camera, and it is a body rather than a rail.** `swell` is the
+    // glide's multiplier on the speed, `rush` is what the world actually
+    // advances by this frame, and `cam_x` / `cam_y` are where the camera is
+    // pointing -- a yaw and a pitch in screen pixels, handed to
+    // `corridor_view` and applied to the two numbers every position in the
+    // corridor is measured from.
+    //
+    // `spd` stays the speed the *stage* is flying at, with neither the beat
+    // nor the arrival folded into it, because that is the number the turn
+    // sets and the number a suite can ask about. `rush` is the one everything
+    // moves by.
+    _b.swell = 1;
+    _b.rush = GROVE_SPEED;
+    _b.cam_x = 0;
+    _b.cam_y = 0;
+
     // **How much light there is in the wood at all**, and it is one number
     // because there is one source. At totality the moon is behind a shadow,
     // so the mist stops glowing, the rims go out, the floor goes to the
@@ -158,6 +180,15 @@ function bg_grove() {
     _b.bushes = corridor_ring(GROVE_BUSH_N, CORRIDOR_Z_NEAR - 40,
                               GROVE_BUSH_Z, grove_make_bush);
 
+    // **The understorey, and it is the layer that closes the picture up.**
+    // Bracken between the trunks, out to well past where the trees stop and
+    // all the way back to the far plane -- so the periphery of the frame has
+    // something in it whatever the trees happen to be doing, and the line
+    // where the wood meets the ground has a ragged fringe standing on it.
+    // See `GROVE_VERGE_H` for the two complaints it answers.
+    _b.verge = corridor_ring(GROVE_VERGE_N, CORRIDOR_Z_NEAR - 20,
+                             CORRIDOR_Z_FAR, grove_make_verge);
+
     // **Boughs overhead, and they are the tree sprite upside down.** A canopy
     // drawn as a band sliding sideways is the one piece of this stage that
     // could not be right, because in a corridor nothing distant slides: it
@@ -173,12 +204,49 @@ function bg_grove() {
     // depth order is a property of the frame, not of a ring, and drawing the
     // rings one after another put every trunk in the wood in front of every
     // tree in it.
-    _b.merge = corridor_merge_new([_b.trees, _b.trunks, _b.bushes, _b.boughs]);
+    _b.merge = corridor_merge_new([_b.trees, _b.trunks, _b.bushes,
+                                   _b.boughs, _b.verge]);
 
     // The one struct `corridor_draw_ground` writes a row's colour into. Owned
     // here so the ground costs no allocation a frame.
     _b.grnd_out = { col: c_black, a: 1 };
     return _b;
+}
+
+/// @desc Which side of the path the prop recycled on lap `_lap` stands on.
+///
+///       **Alternating rather than a coin flip, and the difference is
+///       runs.** A fair coin over forty trees produces a run of six on one
+///       side about as often as not, and what a run of six looks like from
+///       inside the corridor is one edge of the frame empty for two seconds
+///       -- which is exactly how it was reported: the far left and far right
+///       going bare depending on spawn luck. The trees were not too sparse.
+///       They were clumped, which is what randomness does and what nobody
+///       ever means by it.
+///
+///       **So the props are stratified in pairs.** Two consecutive laps are
+///       one prop on each side, and which of the two goes left is the hash --
+///       so a run is bounded at two by construction, both sides get exactly
+///       half of everything, and there is still nothing for the eye to
+///       predict, because the *order* within every pair is noise and how far
+///       out and how deep each one stands is a hash of its own. It is the
+///       argument `fire_fan_stack` makes about turning each row half a step:
+///       regular where the regularity cannot be seen, random where it can.
+///
+///       **A weaker version of this shipped for one build and the measurement
+///       is why it did not stay.** It alternated and let about one lap in
+///       three repeat, on the reasoning that strict alternation would be a
+///       picket fence -- and over four hundred laps it produced runs of *ten*,
+///       barely better than the coin it replaced. The cause is that
+///       `corridor_hash` is the classic one-line shader hash, which is built
+///       for fractional coordinates and is visibly correlated along
+///       consecutive integers: whole stretches of laps fall on the same side
+///       of a threshold, so the "occasional" repeat arrives in clumps. A
+///       stratum cannot have that failure, because it does not ask the hash
+///       whether to balance -- only which way round.
+function grove_side(_lap, _salt) {
+    var _first = (corridor_hash(floor(_lap / 2), _salt) < 0.5) ? -1 : 1;
+    return ((_lap mod 2) == 0) ? _first : -_first;
 }
 
 /// @desc What a tree becomes when it comes round again.
@@ -188,7 +256,7 @@ function bg_grove() {
 ///       build a memory of -- the same argument `hex_spray_dir` makes one file
 ///       over, and the reason the scatter there is a hash of a bead's index.
 function grove_make_tree(_p, _lap) {
-    var _side = (corridor_hash(_lap, 11) < 0.5) ? -1 : 1;
+    var _side = grove_side(_lap, 11);
     _p.wx = _side * (GROVE_PATH_HALF
                      + corridor_hash(_lap, 23) * (GROVE_TREE_OUT
                                                   - GROVE_PATH_HALF));
@@ -219,7 +287,7 @@ function grove_make_tree(_p, _lap) {
 /// @desc What a trunk becomes when it comes round again.
 function grove_make_trunk(_p, _lap) {
     _p.kind = GROVE_KIND_TRUNK;
-    var _side = (corridor_hash(_lap, 3) < 0.5) ? -1 : 1;
+    var _side = grove_side(_lap, 3);
     _p.frame = floor(corridor_hash(_lap, 27)
                      * sprite_get_number(spr_scn_trunk));
     _p.scale = 1 + (corridor_hash(_lap, 31) - 0.5) * 2 * GROVE_VARY_H;
@@ -248,13 +316,39 @@ function grove_make_trunk(_p, _lap) {
 
 function grove_make_bush(_p, _lap) {
     _p.kind = GROVE_KIND_BUSH;
-    var _side = (corridor_hash(_lap, 7) < 0.5) ? -1 : 1;
+    var _side = grove_side(_lap, 7);
     _p.wx = _side * (140 + corridor_hash(_lap, 19) * 1000);
     _p.frame = floor(corridor_hash(_lap, 29) * sprite_get_number(spr_scn_bush));
     _p.flip = (corridor_hash(_lap, 43) < 0.5) ? -1 : 1;
     _p.a = 0.74 + 0.26 * corridor_hash(_lap, 59);
     _p.scale = 1 + (corridor_hash(_lap, 71) - 0.5) * 2 * GROVE_VARY_H;
     _p.aspect = 1 + (corridor_hash(_lap, 79) - 0.5) * 2 * GROVE_VARY_W;
+}
+
+/// @desc What a clump of the understorey becomes when it comes round again.
+///
+///       **Biased outward.** A uniform draw between the path and the far edge
+///       puts as many clumps in the first two hundred units as in the last
+///       two thousand, and the first two hundred are off the side of the
+///       frame within a second of arriving. The square root pushes the
+///       distribution out to where the picture is thin, which is the whole
+///       job.
+function grove_make_verge(_p, _lap) {
+    _p.kind = GROVE_KIND_VERGE;
+    var _side = grove_side(_lap, 9);
+    _p.wx = _side * (GROVE_VERGE_IN
+                     + power(corridor_hash(_lap, 17), 0.55)
+                       * (GROVE_VERGE_OUT - GROVE_VERGE_IN));
+    _p.frame = floor(corridor_hash(_lap, 33)
+                     * sprite_get_number(spr_scn_brush));
+    _p.flip = (corridor_hash(_lap, 41) < 0.5) ? -1 : 1;
+    _p.a = 0.78 + 0.22 * corridor_hash(_lap, 57);
+    // Wider than everything else varies, because a mass of undergrowth at one
+    // size is a hedge and undergrowth is the one thing in a wood that is
+    // never trimmed.
+    _p.scale = 1 + (corridor_hash(_lap, 63) - 0.5) * 2 * GROVE_VARY_H * 1.8;
+    _p.aspect = 1 + (corridor_hash(_lap, 73) - 0.5) * 2 * GROVE_VARY_W;
+    _p.tag = -1;
 }
 
 /// @desc What a bough becomes when it comes round again.
@@ -264,12 +358,20 @@ function grove_make_bush(_p, _lap) {
 ///       directly ahead.
 function grove_make_bough(_p, _lap) {
     _p.kind = GROVE_KIND_BOUGH;
-    _p.wx = (corridor_hash(_lap, 5) - 0.5) * 2 * GROVE_BOUGH_OUT;
-    _p.frame = floor(corridor_hash(_lap, 15) * sprite_get_number(spr_scn_tree));
+    _p.frame = floor(corridor_hash(_lap, 15)
+                     * sprite_get_number(spr_scn_bough));
     _p.flip = (corridor_hash(_lap, 25) < 0.5) ? -1 : 1;
     _p.a = 0.80 + 0.20 * corridor_hash(_lap, 35);
     _p.scale = 1 + (corridor_hash(_lap, 45) - 0.5) * 2 * GROVE_VARY_H;
     _p.aspect = 1 + (corridor_hash(_lap, 55) - 0.5) * 2 * GROVE_VARY_W;
+    // **Either side of the moon, never across it**, and placed by the inner
+    // edge for the reason a trunk is: a bough's own width is part of how far
+    // it reaches toward the middle. See `GROVE_BOUGH_IN`.
+    var _hw = corridor_prop_half_w(spr_scn_bough, GROVE_BOUGH_H,
+                                   _p.scale, _p.aspect);
+    _p.wx = grove_side(_lap, 5)
+            * (GROVE_BOUGH_IN + _hw
+               + corridor_hash(_lap, 61) * (GROVE_BOUGH_OUT - GROVE_BOUGH_IN));
     // How far above the camera this one hangs. Varied, or the canopy is a
     // ceiling at one height.
     // **A narrow band of heights, high up.** At a wide spread the lowest
@@ -288,16 +390,61 @@ function grove_make_bough(_p, _lap) {
 function grove_step(_b) {
     _b.t++;
 
+    // **The arrival, and it eases in exactly as the turn eases out.** One
+    // number: it drives the speed, the fog veil at the end of the back pass,
+    // and how much of the camera's own movement has arrived -- because a
+    // swell on a flight that has not started yet is a camera wobbling for no
+    // reason.
+    if (_b.intro < 1) _b.intro = min(1, _b.intro + 1 / GROVE_INTRO_TIME);
+    var _in = grove_ease(_b.intro);
+
     // **The speed follows the turn, and the turn is eased.** A stage that
     // changed pace on one frame would read as a dropped frame rather than as
     // an event; the ease is the same shape the spell wash uses.
     var _e = grove_ease(_b.omen);
-    _b.spd = lerp(GROVE_SPEED, GROVE_SPEED_FAST, _e);
+    _b.spd = lerp(GROVE_SPEED, GROVE_SPEED_FAST, _e)
+             * lerp(GROVE_INTRO_SPD, 1, _in);
     _b.light = GROVE_NIGHT_LIGHT * (1 - 0.80 * grove_totality(_b));
-    _b.dist += _b.spd;
+
+    // **The swell, and it is a slow sinusoid on the speed and nothing
+    // else.** A corridor at a constant rate is arithmetically a flight and
+    // reads as a dolly on rails, because there is nothing in it for the eye
+    // to attribute to a body; a glide that gathers and eases is.
+    //
+    // **It was a wingbeat, and the wingbeat was too much twice.** It pitched
+    // the camera on every stroke, which came out first -- see
+    // `corridor_horizon` -- and it surged the speed a fifth either way every
+    // second and a quarter, which was reported as a little jarring: on the
+    // trunks nearest the lens, which is where speed is seen at all, that is
+    // a lurch rather than a rhythm. See `GROVE_SWELL`.
+    //
+    // **Kept off `spd`.** That is the speed the *stage* is flying at, which
+    // the turn sets and a suite asks about; `rush` is what the world actually
+    // advances by, and folding one into the other would mean no assertion
+    // could ever say what the turn did.
+    _b.swell = 1 + GROVE_SWELL_SURGE * dsin(_b.t * 360 / GROVE_SWELL) * _in;
+    _b.rush = _b.spd * _b.swell;
+
+    // ...and the flight wanders, in both axes, on one timescale. Two periods
+    // per axis and no two of the four sharing a factor, so the camera never
+    // comes back to where it was and never traces a line while it is away --
+    // which is the argument the floor's two band periods make, one file over,
+    // and the reason a matched pair of axes would be worse than one axis.
+    //
+    // **Slow is the whole specification.** What is wanted overhead is a wood
+    // that is not permanently dead ahead and a flight that is not permanently
+    // level; what is not wanted is anything the eye can catch happening.
+    _b.cam_x = GROVE_SWAY * _in
+               * (0.72 * dsin(_b.t * 360 / GROVE_SWAY_P1)
+                  + 0.28 * dsin(_b.t * 360 / GROVE_SWAY_P2 + 47));
+    _b.cam_y = GROVE_RISE * _in
+               * (0.74 * dsin(_b.t * 360 / GROVE_RISE_P1 + 23)
+                  + 0.26 * dsin(_b.t * 360 / GROVE_RISE_P2 + 131));
+
+    _b.dist += _b.rush;
     // The far wood slides sideways at a fraction of the flight, which is what
     // stops the vanishing point reading as a photograph pinned to the screen.
-    _b.drift += _b.spd * 0.10;
+    _b.drift += _b.rush * 0.10;
 
     // **Every ring, and there is a suite that counts them.** The trunks were
     // built, drawn, depth-sorted and lit for several passes without this line
@@ -307,10 +454,11 @@ function grove_step(_b) {
     // moving; the only thing that does is whether something steps its ring.
     // See `test_corridor`, which now walks the background and refuses one that
     // has not.
-    corridor_ring_step(_b.trees, _b.spd);
-    corridor_ring_step(_b.trunks, _b.spd);
-    corridor_ring_step(_b.bushes, _b.spd);
-    corridor_ring_step(_b.boughs, _b.spd);
+    corridor_ring_step(_b.trees, _b.rush);
+    corridor_ring_step(_b.trunks, _b.rush);
+    corridor_ring_step(_b.bushes, _b.rush);
+    corridor_ring_step(_b.boughs, _b.rush);
+    corridor_ring_step(_b.verge, _b.rush);
 
     // The wavefront. It launches once the eclipse is total and runs the whole
     // depth of the corridor and out the back of the camera.
@@ -385,7 +533,12 @@ function grove_sky_blood(_b) {
 // ---------------------------------------------------------------------------
 
 function grove_draw_back(_b, _fill) {
-    var _v = corridor_view(_fill);
+    // **The camera is a yaw and a pitch, handed to the view.** Everything
+    // below reads `_v.cx` and `corridor_horizon(_v)`, so the whole picture
+    // turns as one body and no layer had to remember. The three tiled bands
+    // are the exception and they take `-_v.ox` off their drift, because they
+    // are laid out from the edge of the view rather than from its middle.
+    var _v = corridor_view(_fill, _b.cam_x, _b.cam_y);
     var _sb = grove_sky_blood(_b);
 
     draw_clear(merge_colour(_b.air_n, _b.air_b, _sb));
@@ -409,16 +562,21 @@ function grove_draw_back(_b, _fill) {
     // motion the camera is not making: flying straight down a path moves what
     // is overhead *toward* you, and the boughs ring is what does that now.
     // What is left here is a sway, which is the wind.
-    corridor_draw_band(_v, spr_scn_canopy, _b.drift * 0.09, _v.y0,
+    corridor_draw_band(_v, spr_scn_canopy, _b.drift * 0.09 - _v.ox,
+                       _v.y0 + _v.oy,
                        _csc, merge_colour(_tree_far, _b.fog_n, 0.42), 0.9);
-    corridor_draw_band(_v, spr_scn_canopy, -_b.drift * 0.13 + 317,
-                       _v.y0 - _v.h * 0.06, _csc * 1.34, _tree_far, 1);
+    corridor_draw_band(_v, spr_scn_canopy, -_b.drift * 0.13 + 317 - _v.ox,
+                       _v.y0 + _v.oy - _v.h * 0.06, _csc * 1.34, _tree_far, 1);
 
     grove_draw_treeline(_b, _v, _sb);
     corridor_draw_ground(_v, _b, grove_ground_shade, _b.grnd_out);
     grove_draw_floor(_b, _v);
     grove_draw_path(_b, _v);
     grove_draw_dapple(_b, _v, _sb);
+    // **Over the floor**, which is the whole point of it: this is the layer
+    // whose foot is visible, so this is the layer whose foot can be a line
+    // that is not straight.
+    grove_draw_scrub(_b, _v, _sb);
     grove_draw_ground_fog(_b, _v, _sb);
     grove_draw_mist(_b, _v, _sb, false);
 
@@ -430,7 +588,140 @@ function grove_draw_back(_b, _fill) {
     }
 
     grove_draw_wisps(_b, _v, 40, 3200, 15.0, 0.46);
+    // **Under the vignette**, so the frame stays dark through the arrival:
+    // a veil drawn over the vignette would wash the one thing keeping the
+    // eye off the corners.
+    grove_draw_veil(_b, _v, _sb);
     grove_draw_vignette(_b, _v);
+}
+
+/// @desc The fog the stage arrives out of.
+///
+///       **A stage used to begin at full speed on its first frame.** That is
+///       the one moment in it nobody composed -- the rack cuts, and a wood is
+///       already rushing past at a rate it took the player no time at all to
+///       get to. What is wanted is the beat before, and the cheapest honest
+///       version of it is the one the weather already gives: the corridor
+///       opens inside cloud and nearly still, and the cloud lifts as the
+///       flight picks up. Two numbers, one of them the speed, and the whole
+///       of the effect is that they are the same number.
+///
+///       **Opaque rather than additive**, which is the one exception in this
+///       stage and is affordable because it is the *back* pass -- every
+///       bullet in the game is drawn over it, and in any case nothing has
+///       been fired yet on the frames this is dense. `grove_draw_front` keeps
+///       the additive rule without exception.
+///
+///       The moon is left showing through as a bloom, because a fog with
+///       nothing behind it is a grey rectangle: what makes the opening read
+///       as a wood rather than as a loading screen is that there is plainly
+///       something in there.
+function grove_draw_veil(_b, _v, _sb) {
+    if (_b.intro >= 1) return;
+    // Held near the top for the first fifth and then falling away, so the
+    // opening is a fog that thins rather than a fade that starts at once.
+    var _a = power(1 - _b.intro, 1.35);
+
+    draw_set_colour(grove_dim(_b, merge_colour(_b.fog_n, _b.fog_b, _sb), _sb));
+    draw_set_alpha(_a);
+    draw_rectangle(_v.x0, _v.y0, _v.x1, _v.y1, false);
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+
+    // The moon through it. It comes up as the fog goes down, which is what
+    // gives the arrival somewhere to be arriving at.
+    var _bw = sprite_get_width(spr_fx_bloom);
+    var _sz = _v.w * (1.5 - 0.6 * _b.intro) / _bw;
+    gpu_set_blendmode(bm_add);
+    draw_sprite_ext(spr_fx_bloom, 0, _v.cx,
+                    corridor_horizon(_v) - GROVE_MOON_RISE, _sz, _sz * 0.5, 0,
+                    merge_colour(_b.moon_n, _b.moon_b, _sb), _a * 0.30);
+    gpu_set_blendmode(bm_normal);
+}
+
+/// @desc The hedgerow standing where the wood meets the ground.
+///
+///       **The horizon was a ruled line, and this is what breaks it.** The
+///       far wood's crown is lifted and dropped by `corridor_draw_band_wave`
+///       and the verge props stand on the line in their own right, but the
+///       line itself is where the ground's top row meets everything above it,
+///       and only something drawn *over* the ground can break that.
+///
+///       **It took three goes and the first two are worth writing down.** The
+///       first was the treeline sprite at a third of its size -- and that
+///       sprite is a lace of two-pixel twigs whose alpha is ramped away down
+///       its own height, because it is drawn as a *distance* with the moon
+///       behind it. Laid small over a lit floor the same art is a smear, and
+///       it was reported as exactly that: transparent messiness thrown at the
+///       problem. A hedgerow is a mass with no light through it.
+///
+///       The second was a filled silhouette built out of overlapping lobes at
+///       draw time -- solid, which was the complaint answered, and still the
+///       wrong answer: a row of arcs is a row of arcs, and what a new layer
+///       needs is new *art*, which is how it was put. `make_scrub` is that,
+///       and it is a hedge rather than a shape: brambles, canes, and the odd
+///       sapling standing out of the top of it.
+///
+///       Two rows, and each is drawn twice -- the mass, and its moonward
+///       crown added over the top. **The rim matters more here than anywhere
+///       else in the wood**, because this is the one opaque layer sitting on
+///       the horizon: without it a hedge in front of a moonlit sky is a black
+///       bar across the picture, which is the defect it was put there to fix.
+///
+///       **It crosses the foot of the moon.** It used to part there, wider
+///       than the moon is round, and that left the most-looked-at stretch of
+///       horizon in the stage ruled straight -- and left the hedge visible
+///       nowhere, since everywhere else it is dark against dark. It dips
+///       where the path runs into it instead. See `GROVE_SCRUB_DIP`.
+function grove_draw_scrub(_b, _v, _sb) {
+    var _hy = corridor_horizon(_v);
+    var _blood = grove_blood_at(_b, 2400);
+    // Depth is value, here as everywhere: the far row is most of the way to
+    // the fog and the near one is nearly the wood's own colour.
+    // **Big enough to be a silhouette against the moon**, which is the one
+    // place this layer is ever seen: everywhere else it is dark against dark.
+    // At the first size it put about twenty pixels of body across the foot of
+    // the moon, which reads as a few twigs rather than as a hedge.
+    grove_scrub_row(_b, _v, _hy, _b.drift * 0.10 - _v.ox + 311,
+                    0.95, 0.70, _blood, 91);
+    grove_scrub_row(_b, _v, _hy, _b.drift * 0.19 - _v.ox,
+                    1.45, 0.34, _blood, 47);
+}
+
+/// @desc One row of it: the mass, then the light on its crown.
+///
+///       `_k` is how big this row is drawn against the band's own width, so
+///       a row at 0.66 is both smaller and further away -- the tile is
+///       narrower, which is what stops two rows of one sprite reading as one
+///       row drawn twice.
+function grove_scrub_row(_b, _v, _hy, _drift, _k, _fog, _blood, _seed) {
+    var _sc = _v.w / sprite_get_width(spr_scn_scrub) * _k;
+    var _h = sprite_get_height(spr_scn_scrub) * _sc;
+    // Its foot sits below the horizon, where the art's own alpha has already
+    // faded away -- see `make_scrub`, whose crown is hard and whose foot
+    // dissolves, for the two different jobs those two edges do.
+    var _sy = _hy - _h * 0.84;
+
+    var _col = grove_dim(_b, merge_colour(
+        merge_colour(_b.tree_n, _b.tree_b, _blood),
+        merge_colour(_b.fog_n, _b.fog_b, _blood), _fog), _blood);
+    corridor_draw_band_wave(_v, spr_scn_scrub, _drift, _sy, _sc, _col, 1,
+                            GROVE_SCRUB_WAVE, _seed, GROVE_SCRUB_DIP,
+                            GROVE_SCRUB_DIP_W);
+
+    // **The rim lines up because it is derived, not configured.** It ships at
+    // half the band's resolution, so its scale is the band's times the ratio
+    // of the two widths -- read off the sprites rather than written down,
+    // which is the same bargain `corridor_draw_prop` makes.
+    var _rs = _sc * sprite_get_width(spr_scn_scrub)
+              / sprite_get_width(spr_scn_scrub_rim);
+    var _rim = grove_dim(_b, merge_colour(_b.rim_n, _b.rim_b, _blood), _blood);
+    gpu_set_blendmode(bm_add);
+    corridor_draw_band_wave(_v, spr_scn_scrub_rim, _drift, _sy, _rs, _rim,
+                            (0.30 + 0.26 * (1 - _fog)) * _b.light,
+                            GROVE_SCRUB_WAVE, _seed, GROVE_SCRUB_DIP,
+                            GROVE_SCRUB_DIP_W);
+    gpu_set_blendmode(bm_normal);
 }
 
 /// @desc The sky: a ramp, and stars in the top of it.
@@ -635,10 +926,20 @@ function grove_draw_treeline(_b, _v, _sb) {
     // one, so the moon came through it. A far wall of wood does not slide and
     // you cannot see through it. What is left is a drift slow enough to read
     // as the path bending.
-    corridor_draw_band(_v, spr_scn_treeline, _b.drift * 0.05,
-                       _hy - _h * 0.92, _sc * 0.92, _far, 1);
-    corridor_draw_band(_v, spr_scn_treeline, _b.drift * 0.09 + 611,
-                       _hy - _h * 1.16 + 8, _sc * 1.16, _near, 1);
+    // **...and it stands on ground that is not level.** Drawn at one y a
+    // band sprite is a wood on a spirit level, and however ragged its crown
+    // is the eye reads the *band* rather than the trees -- which is what was
+    // reported as the horizon looking unnaturally flat. The two copies get
+    // different amplitudes and different seeds, so the near wood and the far
+    // wood disagree about where the hills are, which is the thing that makes
+    // two bands read as two distances rather than as one drawn twice.
+    corridor_draw_band_wave(_v, spr_scn_treeline, _b.drift * 0.05 - _v.ox,
+                            _hy - _h * 0.92, _sc * 0.92, _far, 1,
+                            GROVE_RIDGE_H, 137);
+    corridor_draw_band_wave(_v, spr_scn_treeline,
+                            _b.drift * 0.09 + 611 - _v.ox,
+                            _hy - _h * 1.16 + 8, _sc * 1.16, _near, 1,
+                            GROVE_RIDGE_H * 0.62, 313);
 }
 
 /// @desc The colour of the ground at depth `_z`.
@@ -1009,11 +1310,22 @@ function grove_draw_ground_fog(_b, _v, _sb) {
 
 /// @desc The mist at the vanishing point. Three bands at three rates.
 ///
-///       **Additive without exception**, here and in the foreground pass.
-///       Mist in a moonlit wood is light being scattered toward the eye, so
-///       adding it is not an approximation of what it does, it is what it
-///       does -- and an additive layer can only ever brighten what is behind
-///       it, which means no arrangement of it can hide a bullet.
+///       **Behind the field it is blended normally, and in front of it it is
+///       added**, and this docstring used to say "additive without exception"
+///       over code that did neither: nothing here set a blend mode, so both
+///       passes inherited `bm_normal` from whatever ran last -- which in the
+///       front pass meant a translucent teal sheet laid over live danmaku,
+///       the one thing `grove_draw_front`'s rule exists to forbid. It is the
+///       `HEX_COL_FAN` trap exactly: a comment that describes the fix is the
+///       hardest place to notice the fix is not there.
+///
+///       The two passes want different answers and now say so. Over the
+///       field, additive is the fairness rule -- light can only brighten what
+///       is behind it, so no arrangement of it can hide a bullet. Behind the
+///       field, normal is the *better* rule, because the bank at the
+///       vanishing point lies across the moon, and added to a moon that is
+///       held at half of white for the bullets' sake it would push the moon
+///       back up toward the lamp it is not allowed to be.
 function grove_draw_mist(_b, _v, _sb, _front) {
     var _hy = corridor_horizon(_v);
     var _col = merge_colour(_b.haze_n, _b.haze_b, _sb);
@@ -1025,21 +1337,28 @@ function grove_draw_mist(_b, _v, _sb, _front) {
     var _still = _b.light;
 
     if (_front) {
-        corridor_draw_band(_v, spr_scn_mist, -_b.drift * 3.4 + 210,
+        gpu_set_blendmode(bm_add);
+        corridor_draw_band(_v, spr_scn_mist, -_b.drift * 3.4 + 210 - _v.ox,
                            _v.y1 - _h * 0.72, _sc * 1.7, _col, 0.10 * _still);
+        gpu_set_blendmode(bm_normal);
         return;
     }
+    gpu_set_blendmode(bm_normal);
     // **Thickest at the vanishing point and thinning fast as it comes
     // forward.** Mist reads as distance, so mist in the near half of the
     // frame reads as no distance -- and it is the near half the player is
     // dodging in. The first pass ran all three bands at one alpha and laid a
     // pale wash over the whole floor.
-    corridor_draw_band(_v, spr_scn_mist, _b.drift * 0.5,
-                       _hy - _h * 0.42, _sc, _col, 0.17 * _still);
-    corridor_draw_band(_v, spr_scn_mist, -_b.drift * 0.9 + 400,
+    // **The bank at the vanishing point undulates with the ground under
+    // it.** It is the layer lying exactly along the join, so a straight one
+    // draws the very line the wood is being lifted off.
+    corridor_draw_band_wave(_v, spr_scn_mist, _b.drift * 0.5 - _v.ox,
+                            _hy - _h * 0.42, _sc, _col, 0.17 * _still,
+                            GROVE_MIST_WAVE, 421);
+    corridor_draw_band(_v, spr_scn_mist, -_b.drift * 0.9 + 400 - _v.ox,
                        _hy + _v.h * GROVE_MIST_Y - _h * 0.5, _sc * 1.25, _col,
                        0.13 * _still);
-    corridor_draw_band(_v, spr_scn_mist, _b.drift * 1.6 + 830,
+    corridor_draw_band(_v, spr_scn_mist, _b.drift * 1.6 + 830 - _v.ox,
                        _hy + _v.h * GROVE_MIST_Y * 2.6 - _h * 0.5, _sc * 1.5,
                        _col, 0.07 * _still);
 }
@@ -1068,8 +1387,23 @@ function grove_draw_one(_b, _v, _p) {
             _wh = GROVE_BUSH_H; _rim_k = 1;
             _anchor = CORRIDOR_CAM_H; _yflip = 1;
             break;
+        case GROVE_KIND_VERGE:
+            // **Its own six plants, not the fern at a larger size.** That was
+            // the first version and it was reported in those words: the same
+            // sprite thrown at things over and over. A layer built out of
+            // another layer's art scaled up is a layer the eye reads as the
+            // same thing twice, however many of them there are -- which is
+            // the `TRUNK_KINDS` finding again. See `make_brush`.
+            _spr = spr_scn_brush; _rim = spr_scn_brush_rim;
+            _wh = GROVE_VERGE_H; _rim_k = 1.2;
+            _anchor = CORRIDOR_CAM_H; _yflip = 1;
+            break;
         case GROVE_KIND_BOUGH:
-            _spr = spr_scn_tree; _rim = spr_scn_tree_rim;
+            // **The tree with its root and the foot of its trunk faded out.**
+            // Hung upside down the tree sprite ends in a trunk sawn off flat
+            // in the middle of the sky -- see `bough_from` in
+            // `tools/make_grove.py`.
+            _spr = spr_scn_bough; _rim = spr_scn_bough_rim;
             _wh = GROVE_BOUGH_H; _rim_k = 1.4;
             _anchor = -_p.hang; _yflip = -1;
             break;
@@ -1367,7 +1701,11 @@ function grove_vig_strip(_ax, _ay, _bx, _by, _cx, _cy, _dx, _dy, _col, _a) {
 function grove_draw_front(_b, _spell, _fill) {
     var _a = 1 - 0.86 * clamp(_spell, 0, 1);
     if (_a <= 0.02) return;
-    var _v = corridor_view(_fill);
+    // **The same camera the back pass has.** These are the lit edges of the
+    // trees the back pass just drew, so a front pass on a still camera would
+    // be every near tree wearing its highlight a few pixels to one side of
+    // itself.
+    var _v = corridor_view(_fill, _b.cam_x, _b.cam_y);
     var _sb = grove_sky_blood(_b);
 
     gpu_set_blendmode(bm_add);

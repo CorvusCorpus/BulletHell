@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":1.15000000,
+  "duration":1.20000000,
   "exportDir":"",
   "name":"snd_player_down",
   "parent":{

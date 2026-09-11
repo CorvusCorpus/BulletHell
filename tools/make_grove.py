@@ -102,6 +102,39 @@ CHARM_N = 7
 BUSH_W, BUSH_H = 380, 210
 BUSH_N = 4
 
+# **The understorey, and it is its own art rather than the ferns at a bigger
+# size.** The verge is a whole layer of the picture -- it fills the periphery
+# of the frame and it stands along the horizon -- and a layer built out of one
+# other layer's sprites scaled up is a layer the eye reads as the same thing
+# twice. That was tried and it was reported in exactly those words: the same
+# sprite thrown at things over and over.
+#
+# So six of them, and they are six different *plants* rather than six seeds of
+# one: a bramble mound, a bracken clump, a fallen log, a stand of saplings, a
+# grass tussock and a mass of dock. Which is the `TRUNK_KINDS` argument again
+# -- what tells two of anything apart across a screen is the silhouette, and
+# a generator that varies a width and a lean produces one plant at six widths.
+#
+# **All six are solid.** The existing fern is a scribble of fronds with a
+# small clump at its foot, which is right for something a metre from the lens
+# and wrong for a mass at the edge of a wood: drawn at any distance a lacy
+# silhouette is a smear. Every one of these starts from a base of overlapping
+# ellipses, so whatever is drawn over the top of it, there is a body under it.
+BRUSH_W, BRUSH_H = 460, 300
+BRUSH_N = 6
+
+# The hedgerow along the foot of the far wood. One band, tiled, drawn *over*
+# the floor -- see `grove_draw_scrub`.
+#
+# **Twice the field's width, and that is about how small it is drawn.** Every
+# other band here is laid across the frame at about its own size, so one tile
+# very nearly fills the screen and the repeat is invisible. This one stands at
+# the horizon at a fraction of its height -- a hedge is sixty pixels, not
+# three hundred -- and a band scaled to a third is a band that repeats three
+# times across the field, which is a rhythm the eye finds in about two
+# seconds. Authoring it wide is what buys the small size back.
+SCRUB_W, SCRUB_H = A.FIELD_W * 2, 160
+
 # The forest floor. **One tile, periodic in both axes**, laid down the
 # corridor in bands -- see `grove_draw_floor`. It is square because it is
 # tiled sideways as well as forward, which is the whole difference between a
@@ -441,6 +474,29 @@ def make_trees():
         rims.append(rim_sprite(mask, TREE_W // RIM_DIV, TREE_H // RIM_DIV))
         hangs.append(hang)
     return bodies, rims, hangs
+
+
+def bough_from(img):
+    """A tree turned into a bough: its root and the foot of its trunk faded out.
+
+    **A bough is the tree sprite hung upside down, and a tree sprite ends in
+    a ruled line** -- its root, where it meets the ground. The right way up
+    that line is buried in a mound of litter; upside down it is a trunk sawn
+    off flat in the middle of the sky, and a bough hanging in front of the
+    moon was exactly that: reported as branches visibly cut off half way up
+    the disc. There is nothing to bury it in overhead, so it is not drawn.
+    The crown hangs out of darkness, which is what a branch seen from under
+    a canopy does.
+
+    The fade covers the root flare and the lower trunk and stops below the
+    lowest bough -- `tree_mask` starts those two ninths of the way up.
+    """
+    a = np.asarray(img, dtype=np.float32).copy()
+    h = a.shape[0]
+    up = 1.0 - np.linspace(0.0, 1.0, h, dtype=np.float32)     # 0 at the root
+    t = np.clip((up - 0.10) / 0.24, 0.0, 1.0)
+    a[..., 3] *= (t * t * (3.0 - 2.0 * t))[:, None]
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGBA")
 
 
 # Eight silhouettes, and every column of this table is a thing the eye can see
@@ -871,6 +927,311 @@ def make_bushes():
 
 
 # ---------------------------------------------------------------------------
+# The understorey
+#
+# **Six plants, and every one of them is a mass before it is anything else.**
+# See `BRUSH_N` for why they are not the fern at a larger size.
+# ---------------------------------------------------------------------------
+
+def _clump_base(d, rng, w, h, n=10, lo=0.20, hi=0.80, low=0.14, high=0.34):
+    """The body a plant is standing on.
+
+    Overlapping ellipses along the foot of the frame, drawn below the bottom
+    edge so that the mass is solid all the way down to it. **This is what
+    stops undergrowth reading as a scribble**: at the size these are seen the
+    individual stroke is a pixel or two, and what the eye gets is whether
+    there is anything there.
+
+    **The spread is held well inside the frame, and `soft_border` is not
+    enough on its own.** That window fades the last few per cent of the canvas
+    to nothing, which turns a hard cut into a soft one -- and a soft cut
+    through the middle of a solid mass is still a cut. The first pass ran the
+    centres out to 0.95 with half-widths of up to 0.19, so three of the six
+    plants were sliced flat down one side. A window fixes a branch that
+    overshoots; it cannot fix a body that was never going to fit.
+    """
+    base = h * 1.02
+    for _ in range(n):
+        cx = rng.uniform(lo, hi) * w
+        cw = rng.uniform(0.07, 0.15) * w
+        ch = rng.uniform(low, high) * h
+        d.ellipse([cx - cw, base - ch, cx + cw, base + ch * 0.4], fill=255)
+
+
+def _brush_bramble(d, rng, w, h):
+    """A low thicket with canes arching well clear of it.
+
+    **The dome has to be lower than the canes are long**, which the first pass
+    got backwards: a mound reaching 0.6 of the frame with canes of 0.34 to
+    0.62 on it is a mound with everything hidden inside it, and what came back
+    was a smooth blob indistinguishable from the dock. A bramble is a tangle
+    over a mass, and the tangle is the half the eye is being asked to read.
+    """
+    _clump_base(d, rng, w, h, n=13, low=0.18, high=0.40)
+    for _ in range(24):
+        x = rng.uniform(0.16, 0.84) * w
+        turn = rng.uniform(7, 17) * (1 if rng.random() < 0.5 else -1)
+        pts = sweep(d, x, h * 0.94, -90 + rng.normal(0, 30), turn,
+                    rng.uniform(0.50, 0.86) * h, 7 * SS, 2.2 * SS, steps=7)
+        for (px, py) in pts[2::2]:
+            r = rng.uniform(5, 11) * SS
+            d.ellipse([px - r, py - r * 0.8, px + r, py + r * 0.8], fill=255)
+
+
+def _brush_bracken(d, rng, w, h):
+    """Broad fronds off a low base -- the fern's big cousin.
+
+    Drawn as paired triangles off a spine rather than as leaflets on a line,
+    because a frond that is a stroke is a stroke: what makes bracken read is
+    that each frond is a *shape* with area in it.
+    """
+    _clump_base(d, rng, w, h, n=9, low=0.14, high=0.28)
+    for _ in range(12):
+        x = rng.uniform(0.20, 0.80) * w
+        turn = rng.uniform(3, 9) * (1 if x > w * 0.5 else -1)
+        pts = sweep(d, x, h * 0.94, -90 + rng.normal(0, 30), turn,
+                    rng.uniform(0.42, 0.72) * h, 6 * SS, 2 * SS, steps=6)
+        for i, (px, py) in enumerate(pts):
+            t = 1 - i / len(pts)
+            ll = 30 * SS * t + 6 * SS
+            for sgn in (-1, 1):
+                d.polygon([(px, py), (px + sgn * ll, py + ll * 0.42),
+                           (px + sgn * ll * 0.35, py + ll * 0.78)], fill=255)
+
+
+def _brush_log(d, rng, w, h):
+    """A fallen trunk with things growing on it.
+
+    **The one wide, low silhouette in the set**, and it is there for that
+    reason before any other: five upright plants at six sizes are still five
+    upright plants, and a horizontal mass among them is what makes the verge
+    read as a wood floor rather than as a hedge.
+    """
+    # **Thin, and tapered.** At a quarter of the frame's height with litter
+    # banked to its middle it was one lumpy mass -- a loaf rather than a log,
+    # which is what happens when the thing and the thing it is lying in are
+    # the same size. A log is a cylinder: what says so is that it is long, low
+    # and thicker at one end than the other.
+    y = h * 0.74
+    r = h * 0.155
+    d.polygon([(w * 0.18, y - r), (w * 0.82, y - r * 0.74),
+               (w * 0.82, y + r * 0.74), (w * 0.18, y + r)], fill=255)
+    d.ellipse([w * 0.10, y - r, w * 0.26, y + r], fill=255)
+    d.ellipse([w * 0.76, y - r * 0.74, w * 0.88, y + r * 0.74], fill=255)
+    for _ in range(8):                      # shelf fungus along the top
+        cx = rng.uniform(0.24, 0.78) * w
+        fw = rng.uniform(0.04, 0.09) * w
+        fh = rng.uniform(0.05, 0.11) * h
+        d.ellipse([cx - fw, y - r - fh, cx + fw, y - r + fh * 0.6], fill=255)
+    # Litter at the ends only, so the middle of the log keeps its own outline.
+    _clump_base(d, rng, w, h, n=5, lo=0.14, hi=0.32, low=0.08, high=0.18)
+    _clump_base(d, rng, w, h, n=5, lo=0.68, hi=0.86, low=0.08, high=0.18)
+    for _ in range(22):                     # grass standing through it
+        x = rng.uniform(0.14, 0.86) * w
+        sweep(d, x, y + r * 0.7, -90 + rng.normal(0, 26), rng.uniform(-8, 8),
+              rng.uniform(0.34, 0.66) * h, 4.5 * SS, 1.0 * SS, steps=4)
+
+
+def _brush_saplings(d, rng, w, h):
+    """A stand of thin stems with leaf clusters at the top."""
+    _clump_base(d, rng, w, h, n=10, low=0.12, high=0.24)
+    for _ in range(7):
+        x = rng.uniform(0.20, 0.80) * w
+        pts = sweep(d, x, h * 0.95, -90 + rng.normal(0, 11), rng.normal(0, 3),
+                    rng.uniform(0.50, 0.80) * h, 6 * SS, 2 * SS, steps=5)
+        tx, ty = pts[-1]
+        for _ in range(int(rng.integers(5, 9))):
+            a = rng.uniform(0, 360)
+            rr = rng.uniform(0.04, 0.12) * h
+            cx = tx + math.cos(math.radians(a)) * rr
+            cy = ty + math.sin(math.radians(a)) * rr * 0.8
+            lw = rng.uniform(0.032, 0.062) * w
+            d.ellipse([cx - lw, cy - lw * 0.62, cx + lw, cy + lw * 0.62],
+                      fill=255)
+
+
+def _brush_tussock(d, rng, w, h):
+    """A fan of blades off a solid crown. The spikiest of the six."""
+    _clump_base(d, rng, w, h, n=8, lo=0.16, hi=0.84, low=0.18, high=0.32)
+    for _ in range(48):
+        x = rng.uniform(0.18, 0.82) * w
+        sweep(d, x, h * 0.94, -90 + rng.normal(0, 38), rng.uniform(-9, 9),
+              rng.uniform(0.26, 0.66) * h, 5.5 * SS, 0.9 * SS, steps=5)
+
+
+def _brush_dock(d, rng, w, h):
+    """Big flat leaves on short stems. The most solid of the six."""
+    _clump_base(d, rng, w, h, n=9, low=0.12, high=0.24)
+    for _ in range(14):
+        x = rng.uniform(0.20, 0.80) * w
+        ang = -90 + rng.normal(0, 40)
+        pts = sweep(d, x, h * 0.94, ang, rng.uniform(-6, 6),
+                    rng.uniform(0.22, 0.44) * h, 5 * SS, 3 * SS, steps=4)
+        ex, ey = pts[-1]
+        lw = rng.uniform(0.06, 0.12) * w
+        lh = rng.uniform(0.14, 0.26) * h
+        cx = ex + math.cos(math.radians(ang)) * lh * 0.45
+        cy = ey + math.sin(math.radians(ang)) * lh * 0.45
+        d.ellipse([cx - lw, cy - lh * 0.5, cx + lw, cy + lh * 0.5], fill=255)
+
+
+BRUSHES = (_brush_bramble, _brush_bracken, _brush_log, _brush_saplings,
+           _brush_tussock, _brush_dock)
+
+
+def make_brush():
+    bodies, rims = [], []
+    for i, fn in enumerate(BRUSHES):
+        rng = np.random.default_rng(8800 + i * 23)
+        w, h = BRUSH_W * SS, BRUSH_H * SS
+        mask = Image.new("L", (w, h), 0)
+        fn(ImageDraw.Draw(mask), rng, w, h)
+        # **A wider window than the trees get.** What overshoots here is a
+        # bramble cane, which is a thin stroke travelling a long way sideways
+        # -- so the window has to be wide enough to fade one out rather than
+        # to cut it off, and a thin stroke is exactly what a wide window can
+        # afford to lose.
+        mask = soft_border(mask, sides="lrt", frac=0.07)
+        body, _ = body_from_mask(mask, 8900 + i, floor=0.32, gradient=0.44)
+        bodies.append(body)
+        rims.append(rim_sprite(mask, BRUSH_W // RIM_DIV, BRUSH_H // RIM_DIV,
+                               dx=-8, dy=6, blur=3.0, strength=1.45))
+    return bodies, rims
+
+
+# ---------------------------------------------------------------------------
+# The hedgerow
+# ---------------------------------------------------------------------------
+
+def _bush_mass(d, rng, cx, base, bw, bh):
+    """One bush in a hedgerow: a cumulus of leaf masses with a leafy fringe.
+
+    **Lobes of several sizes, not one dome.** A single ellipse is a hill; a
+    cluster of overlapping ellipses whose tops disagree is a bush, because
+    what the eye reads a plant's silhouette off is that it is made of smaller
+    rounded masses, each of which is made of smaller ones again. Two levels
+    of that is enough at the size this is seen, and the fringe of small
+    circles along the top is the third -- the leaves, which is what stops the
+    outline being smooth enough to read as a rock.
+    """
+    lobes = []
+    for _ in range(int(rng.integers(5, 10))):
+        lx = cx + rng.uniform(-0.42, 0.42) * bw
+        # Taller toward the middle of the bush, so a mass has a crown.
+        centre = 1 - abs(lx - cx) / max(1.0, bw * 0.5)
+        lh = bh * (0.45 + 0.55 * centre) * rng.uniform(0.70, 1.0)
+        lw = bw * rng.uniform(0.20, 0.36)
+        ey0, ey1 = base - lh, base + lh * 0.2
+        d.ellipse([lx - lw, ey0, lx + lw, ey1], fill=255)
+        lobes.append((lx, (ey0 + ey1) * 0.5, lw, (ey1 - ey0) * 0.5))
+    # The fringe sits *on* each lobe's upper arc and stands proud of it by its
+    # own radius, which is what a leaf at the edge of a bush does.
+    for (lx, ly, rx, ry) in lobes:
+        for _ in range(int(rng.integers(6, 12))):
+            a = math.radians(rng.uniform(195, 345))
+            r = rng.uniform(0.04, 0.09) * bh + 2 * SS
+            fx = lx + math.cos(a) * rx * rng.uniform(0.75, 1.0)
+            fy = ly + math.sin(a) * ry * rng.uniform(0.85, 1.0)
+            d.ellipse([fx - r, fy - r, fx + r, fy + r], fill=255)
+
+
+def _scrub_draw(d, w, h):
+    """A hedgerow along the foot of the far wood.
+
+    **Its crown is the whole of the job, and the first version of this art
+    did not have one.** That version was fifty-odd narrow domes, most of them
+    low, with thin canes and sapling stems over the top: solid in its body --
+    ninety-four per cent coverage through its lower half -- and nearly flat
+    across its top, because narrow domes that mostly agree about their height
+    sum to a level edge, and a cane two pixels wide at the size this is drawn
+    is a stick. Drawn across the foot of the moon, what read was a straight
+    edge with sticks on it: very nearly the ruled line the layer exists to
+    break, one layer further forward.
+
+    So it is built the way a hedgerow is. A low mat underneath, so a gap
+    between two bushes is thin hedge and not a hole. Then bushes -- a few
+    dozen per tile, each a cluster of lobes with a leafy fringe, and each a
+    *different height*, from barely clearing the mat to most of the band --
+    because a hedge at a distance is read off the rhythm of its crowns. And a
+    few saplings standing out of it with leafy heads rather than bare stems.
+    """
+    for i in range(3):
+        off = i * w
+        rng = np.random.default_rng(5252)      # the same hedge, three times
+        base = h * 1.04
+        # The mat.
+        for _ in range(70):
+            cx = rng.uniform(0, w) + off
+            cw = rng.uniform(0.012, 0.030) * w
+            ch = rng.uniform(0.26, 0.40) * h
+            d.ellipse([cx - cw, base - ch, cx + cw, base + ch * 0.3], fill=255)
+        # The bushes. **Spaced along the band rather than scattered**, so the
+        # crowns have a rhythm with gaps in it -- scattered at random they
+        # pile up in places and leave the mat bare in others, which is the
+        # clumping `grove_side` was written against, one layer further out.
+        n = 34
+        for k in range(n):
+            cx = (k + rng.uniform(0.15, 0.85)) * w / n + off
+            bw = rng.uniform(0.028, 0.062) * w
+            # Capped at 0.86 so the tallest crown and its fringe clear
+            # the top of the canvas -- a sprite's edge is a hard clip.
+            bh = (0.34 + 0.52 * rng.random() ** 1.3) * h
+            _bush_mass(d, rng, cx, base, bw, bh)
+        # A handful of saplings above the line, with heads.
+        for _ in range(9):
+            x = rng.uniform(0, w) + off
+            pts = sweep(d, x, base - 0.3 * h, -90 + rng.normal(0, 8),
+                        rng.normal(0, 3), rng.uniform(0.40, 0.60) * h,
+                        7 * SS, 2.5 * SS, steps=5)
+            tx, ty = pts[-1]
+            for _ in range(int(rng.integers(7, 12))):
+                a = rng.uniform(0, 360)
+                rr = rng.uniform(0.03, 0.10) * h
+                cx = tx + math.cos(math.radians(a)) * rr
+                cy = ty + math.sin(math.radians(a)) * rr * 0.8
+                lw = rng.uniform(7, 14) * SS
+                d.ellipse([cx - lw, cy - lw * 0.75, cx + lw, cy + lw * 0.75],
+                          fill=255)
+
+
+def make_scrub():
+    """The band, and the moonlight on its crown.
+
+    **Its foot dissolves and its crown does not**, which is one alpha ramp and
+    two different jobs. The crown is a silhouette against the sky and has to
+    be hard, or it is fog; the foot is where it meets the litter, and a hard
+    line there is the cardboard-cutout edge `grove_draw_mound` exists to
+    remove one layer further in.
+    """
+    mask = wrapped(SCRUB_W, SCRUB_H, _scrub_draw)
+    arr = np.asarray(mask, dtype=np.float32) / 255.0
+    h, w = arr.shape
+
+    # Moonlight on the top of it and nothing at all in the mass, plus a
+    # two-scale grain so a hedge fifty metres long is not one value.
+    ramp = np.linspace(1.0, 0.30, h, dtype=np.float32)[:, None]
+    grain = np.asarray(
+        Image.fromarray((np.clip(fbm2(256, 5253, octaves=5, base=6), 0, 1)
+                         * 255).astype(np.uint8), "L")
+             .resize((w, h), Image.LANCZOS), dtype=np.float32) / 255.0
+    val = np.clip(ramp * (0.66 + 0.62 * grain), 0.16, 1.0)
+    body = np.repeat((val * 255)[..., None], 3, axis=2)
+
+    foot = np.clip(np.linspace(1.0, 0.0, h, dtype=np.float32) * 6.0,
+                   0, 1)[:, None]
+    band = A.from_arrays(body, arr * foot)
+
+    # The moonward crown. `rim_sprite` works in supersampled units and this
+    # mask is already at final size, so the edge is taken here rather than
+    # through it -- one of the two places in this file where that is true.
+    edge = edge_light(mask, -6, 5, 2.6, 1.5)
+    rim = Image.new("RGBA", (w, h), (255, 255, 255, 0))
+    rim.putalpha(edge)
+    rim = rim.resize((w // RIM_DIV, h // RIM_DIV), Image.LANCZOS)
+    return band, rim
+
+
+# ---------------------------------------------------------------------------
 # The floor
 # ---------------------------------------------------------------------------
 
@@ -1102,34 +1463,52 @@ def wrapped(w, h, draw_fn):
 
 
 def _treeline_draw(d, w, h):
-    """The far wall of wood.
+    """The far wall of wood, as a row of whole trees.
 
-    **Trunks first, and they are the point.** The first version was fifty
-    branchy saplings, and against the moon that photographed as a scribble --
-    a lace of two-pixel twigs with light coming through all of it, which reads
-    as a texture rather than as a wood. What closes a distance is *mass*: a
-    row of solid verticals with the moon showing between them, and the twigs
-    laid over the top of that as the thing which stops the mass being a fence.
+    **It sits directly behind the moon, so it is the one piece of the wood
+    that is always looked at, and it was the messiest thing in it.** The
+    first version was thirty trunks and forty-six separate branch systems,
+    all rising from the ground independently of each other: the trunks
+    tapered to a third of their width and simply stopped in mid-air, and the
+    branches were a second, unrelated thicket laid over the top. In front of
+    the moon that read as a tangle -- reported as looking piled on rather than
+    designed -- with posts visibly cut off half way up the disc.
+
+    What is drawn instead is a *tree*, twenty-two times: a trunk that carries
+    its own width up to a fork, and two or three limbs out of the fork that
+    carry on from it, dividing twice and tapering to nothing. Nothing ends
+    bluntly, because everything is the continuation of something. The trunks
+    are spaced one to a stratum of the tile, so the gaps between crowns are
+    even enough for the moon to show *between trees* rather than through a
+    mesh, and the wobble is half what it was, because a branch that curves
+    is a branch and a branch that zig-zags is a scribble.
     """
+    n = 22
     for i in range(3):
         off = i * w
         rng = np.random.default_rng(9090)      # the same wood, three times
-        # The mass.
-        for _ in range(30):
-            x = rng.uniform(0, w) + off
-            hh = rng.uniform(0.42, 0.98) * h
-            tw = rng.uniform(26, 62) * SS
+        for k in range(n):
+            x = (k + rng.uniform(0.15, 0.85)) * w / n + off
+            th = rng.uniform(0.52, 0.94) * h          # how tall this tree is
+            fork = th * rng.uniform(0.42, 0.60)       # where its trunk divides
+            tw = rng.uniform(16, 34) * SS             # trunk width at the root
+            lean = rng.normal(0, 5)
+            fx = x + math.tan(math.radians(lean)) * fork
+            fy = h - fork
             tapered(d, [(x, h + 8 * SS),
-                        (x + rng.normal(0, 8 * SS), h - hh * 0.5),
-                        (x + rng.normal(0, 14 * SS), h - hh)],
-                    [tw, tw * 0.72, tw * 0.34])
-        # ...and the crowns over it.
-        for _ in range(46):
-            x = rng.uniform(0, w) + off
-            hh = rng.uniform(0.34, 0.95) * h
-            limb(d, rng, x, h + 6 * SS, -90 + rng.normal(0, 8), hh,
-                 rng.uniform(8, 20) * SS, 2, [], taper=0.55, segs=4,
-                 wobble=10.0)
+                        ((x + fx) * 0.5 + rng.normal(0, 3 * SS),
+                         h - fork * 0.5),
+                        (fx, fy)],
+                    [tw, tw * 0.80, tw * 0.62])
+            kids = 2 if rng.random() < 0.55 else 3
+            spread = rng.uniform(34, 52)
+            for j in range(kids):
+                t = (j / (kids - 1)) - 0.5 if kids > 1 else 0.0
+                limb(d, rng, fx, fy, -90 + lean + t * spread * 2
+                     + rng.normal(0, 5),
+                     (th - fork) * rng.uniform(0.72, 0.95),
+                     tw * 0.62 * rng.uniform(0.62, 0.80), 2, [],
+                     taper=0.62, segs=4, wobble=6.0)
 
 
 def make_treeline():
@@ -1141,6 +1520,10 @@ def make_treeline():
     thing a corridor can have.
     """
     mask = wrapped(TREELINE_W, TREELINE_H, _treeline_draw)
+    # **The top of the band is a clip like any other edge**, and the tallest
+    # crowns reach it -- so it is windowed, and a tip that reaches the top
+    # fades out rather than being sliced along a ruled line across the sky.
+    mask = soft_border(mask, sides="t", frac=0.10)
     arr = np.asarray(mask, dtype=np.float32) / 255.0
     # The feet of it go into the haze rather than ending on a line.
     ramp = np.linspace(1.0, 0.18, TREELINE_H, dtype=np.float32)[:, None]
@@ -1154,19 +1537,34 @@ def _canopy_draw(d, w, h):
         rng = np.random.default_rng(4141)
         # Heavy boughs first, so the top of the frame is closed rather than
         # fringed. A canopy of thin branches is a curtain of string.
-        for _ in range(11):
+        # **Boughs that reach across, and fork.** These used to be vertical
+        # wedges that ended at a third of their width half way down the band
+        # -- boughs sawn off in mid-air -- and tapered to a point instead they
+        # became a row of black icicles, which is a different wrong. A bough
+        # overhead is a limb reaching *sideways* out of the dark and dividing
+        # as it goes, so these leave the top edge at thirty-five to sixty-five
+        # degrees off vertical and are `limb`s rather than wedges: thick where
+        # they come in, forking twice, and ending in the same fine tips as
+        # everything else in the wood.
+        for _ in range(10):
             x = rng.uniform(0, w) + off
-            tapered(d, [(x, -20 * SS),
-                        (x + rng.normal(0, 30 * SS), h * 0.30),
-                        (x + rng.normal(0, 50 * SS), h * 0.62)],
-                    [rng.uniform(46, 92) * SS, rng.uniform(24, 44) * SS,
-                     rng.uniform(8, 18) * SS])
-        for _ in range(30):
+            side = 1 if rng.random() < 0.5 else -1
+            limb(d, rng, x, -30 * SS, 90 + side * rng.uniform(35, 65),
+                 rng.uniform(0.50, 0.80) * h,
+                 rng.uniform(30, 54) * SS, 2, [], taper=0.62, segs=5,
+                 wobble=7.0)
+        # **Half as many branches, reaching sideways, and ending well short of
+        # the bottom.** Thirty of them hung straight down to within a few
+        # rows of the band's edge, and the band's edge is a line across the
+        # lower third of the moon: what that drew was a curtain of string with
+        # its hem cut off in front of the one thing everybody looks at. What
+        # makes a canopy read is the boughs; the twigs are a fringe on them.
+        for _ in range(15):
             x = rng.uniform(0, w) + off
-            limb(d, rng, x, -10 * SS, 90 + rng.normal(0, 30),
-                 rng.uniform(0.42, 0.98) * h,
-                 rng.uniform(7, 22) * SS, 2, [], taper=0.5, segs=4,
-                 wobble=15.0)
+            limb(d, rng, x, -10 * SS, 90 + rng.normal(0, 44),
+                 rng.uniform(0.28, 0.52) * h,
+                 rng.uniform(7, 18) * SS, 2, [], taper=0.6, segs=4,
+                 wobble=8.0)
 
 
 def make_canopy():
@@ -1183,7 +1581,13 @@ def make_canopy():
     # own bottom edge is a straight horizontal line across the whole field,
     # and a straight horizontal line is the one artefact a picture of a wood
     # cannot have. A ramp that ends at 0.35 leaves it visible.
-    ramp = np.linspace(1.0, 0.0, CANOPY_H, dtype=np.float32)[:, None] ** 0.35
+    # **Over the lower half, and eased.** It was `linspace ** 0.35`, which
+    # holds above half until the last tenth of the band and then drops -- so
+    # every twig that reached down that far ended in a fade a few rows long,
+    # and a fade a few rows long is a cut.
+    t = np.clip((np.linspace(0.0, 1.0, CANOPY_H, dtype=np.float32) - 0.40)
+                / 0.55, 0.0, 1.0)
+    ramp = (1.0 - t * t * (3.0 - 2.0 * t))[:, None]
     body = np.full((CANOPY_H, CANOPY_W, 3), 255.0, dtype=np.float32)
     return A.from_arrays(body, arr * ramp)
 
@@ -1326,14 +1730,22 @@ def main():
     folder = "Sprites/scn"
 
     trees, tree_rims, hangs = make_trees()
+    boughs = [bough_from(t) for t in trees]
+    bough_rims = [bough_from(r) for r in tree_rims]
     trunks, trunk_rims = make_trunks()
     leaves = make_leaves()
     charms, charm_lits = make_charms()
     bushes, bush_rims = make_bushes()
+    brush, brush_rims = make_brush()
 
     gm_new.sprite("spr_scn_tree", trees,
                   origin=(TREE_W // 2, TREE_H), folder=folder)
     gm_new.sprite("spr_scn_tree_rim", tree_rims,
+                  origin=(TREE_W // RIM_DIV // 2, TREE_H // RIM_DIV),
+                  folder=folder)
+    gm_new.sprite("spr_scn_bough", boughs,
+                  origin=(TREE_W // 2, TREE_H), folder=folder)
+    gm_new.sprite("spr_scn_bough_rim", bough_rims,
                   origin=(TREE_W // RIM_DIV // 2, TREE_H // RIM_DIV),
                   folder=folder)
     gm_new.sprite("spr_scn_charm", charms,
@@ -1352,6 +1764,11 @@ def main():
     gm_new.sprite("spr_scn_bush_rim", bush_rims,
                   origin=(BUSH_W // RIM_DIV // 2, BUSH_H // RIM_DIV),
                   folder=folder)
+    gm_new.sprite("spr_scn_brush", brush,
+                  origin=(BRUSH_W // 2, BRUSH_H), folder=folder)
+    gm_new.sprite("spr_scn_brush_rim", brush_rims,
+                  origin=(BRUSH_W // RIM_DIV // 2, BRUSH_H // RIM_DIV),
+                  folder=folder)
 
     moon = make_moon()
     gm_new.sprite("spr_scn_moon", [moon], origin="center", folder=folder)
@@ -1360,9 +1777,13 @@ def main():
     gm_new.sprite("spr_scn_floor", [floor], origin="topleft", folder=folder)
 
     treeline = make_treeline()
+    scrub, scrub_rim = make_scrub()
     canopy = make_canopy()
     mist = make_mist()
     gm_new.sprite("spr_scn_treeline", [treeline], origin="topleft",
+                  folder=folder)
+    gm_new.sprite("spr_scn_scrub", [scrub], origin="topleft", folder=folder)
+    gm_new.sprite("spr_scn_scrub_rim", [scrub_rim], origin="topleft",
                   folder=folder)
     gm_new.sprite("spr_scn_canopy", [canopy], origin="topleft", folder=folder)
     gm_new.sprite("spr_scn_mist", [mist], origin="topleft", folder=folder)
@@ -1395,6 +1816,9 @@ def main():
     for i, img in enumerate(bushes):
         shown.append(img.resize((BUSH_W // 2, BUSH_H // 2), Image.LANCZOS))
         labels.append("bush %d" % i)
+    for i, img in enumerate(brush):
+        shown.append(img.resize((BRUSH_W // 2, BRUSH_H // 2), Image.LANCZOS))
+        labels.append(BRUSHES[i].__name__[7:])
     for i, img in enumerate(leaves):
         shown.append(img.resize((LEAF_W, LEAF_H), Image.LANCZOS))
         labels.append("ivy %d" % i)
@@ -1407,15 +1831,19 @@ def main():
     A.preview([moon.resize((256, 256), Image.LANCZOS),
                treeline.resize((TREELINE_W // 3, TREELINE_H // 3),
                                Image.LANCZOS),
+               scrub.resize((SCRUB_W // 3, SCRUB_H // 3), Image.LANCZOS),
                canopy.resize((CANOPY_W // 3, CANOPY_H // 3), Image.LANCZOS),
                mist.resize((MIST_W // 3, MIST_H // 3), Image.LANCZOS),
                antler.resize((ANTLER_W // 3, ANTLER_H // 3), Image.LANCZOS)],
               os.path.join(A.PREVIEW, "grove_bands.png"), cols=2,
               bg=(12, 16, 26),
-              labels=["moon", "treeline", "canopy", "mist", "antler"])
+              labels=["moon", "treeline", "scrub", "canopy", "mist",
+                      "antler"])
 
-    print("grove: %d trees, %d trunks, %d ivy, %d charms, %d bushes, 5 bands"
-          % (len(trees), len(trunks), len(leaves), len(charms), len(bushes)))
+    print("grove: %d trees, %d trunks, %d ivy, %d charms, %d bushes, "
+          "%d brush, 6 bands"
+          % (len(trees), len(trunks), len(leaves), len(charms), len(bushes),
+             len(brush)))
 
 
 if __name__ == "__main__":
