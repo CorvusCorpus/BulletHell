@@ -38,11 +38,11 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 | `tools/build.py` | The GML compiles. Reports real diagnostics with line numbers. |
 | `tools/test.py` | The GML is *correct*: builds, runs with `-selftest`, grades the suites in `scripts/selftest` off stdout. |
 | `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, and no bare `draw_sprite` inheriting the draw state. |
-| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Thirty-three scenes; `--all` does the lot. |
+| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Thirty-four scenes; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
 
 **`shot.py` is not a nicety, and in this genre it is the most important of the
 four.** A bullet pattern that is arithmetically perfect and illegible is a bug,
-and no assertion can see it. It renders thirty-three scenes and **fails on a game
+and no assertion can see it. It renders thirty-four scenes and **fails on a game
 error even when a screenshot appeared** — `obj_shot` calls `screen_save` from
 its Step event and `game_end()` lets the current frame finish, so a throw in the
 Draw event that follows happens *after* the file is on disk. The first crash
@@ -127,13 +127,12 @@ The strip is gone. Both of its tenants moved and neither is worse off:
 - **The health tube is inside the field**, which is where the genre has always
   drawn one, because a boss's health is a fact about the thing you are shooting
   and belongs beside it.
-- **The name is centred over the tube and small**, tracked rather than large —
-  see the note on tracking below. It used to be left-aligned specifically
-  because a boss holds station in the middle of the top of the field and a
-  centred caption would be printed across its face. That is a real problem, and
-  the fix is to move the *boss*: `BOSS_HOME_Y` now stations it clear of its own
-  line, and the fight sits at very nearly the screen position it always did
-  because the field grew downward past it.
+- **The name hangs under the tube's left-hand end and is small**, tracked
+  rather than large — see the note on tracking below. It was centred over the
+  tube for a pass, which worked only while the boss held station well below the
+  line: the caption could own the middle because nothing else was ever there.
+  Raising the boss takes that away, so the name went back to the left end and
+  the timer to the right, which is where the genre has always put them.
 
 So: `FIELD_X0`, `FIELD_Y0`, `FIELD_W`, `FIELD_H` — **1360x992 at (44, 44)**,
 with the same 44-pixel margin on three sides — and one console down the fourth.
@@ -259,7 +258,13 @@ a grade nobody can learn from.
 ### The boss's line
 
 `BOSS_BAR_Y` is inside the field, and it is the one deliberate exception to the
-rule the boundary was built to keep. What makes it affordable is that the whole
+rule the boundary was built to keep. **The bar is pinned to the top of the
+field and every word on the line hangs below it** — first the caster's name at
+the left end and the timer at the right, then the spell's name under the
+caster's. It was the other way round for a pass, with the type above the tube,
+which spent fifty-six pixels of the top of the playfield on captions before
+reaching the one part of this line that is read at a glance mid-dodge. A bar is
+what wants to be pinned to an edge; type can hang off it. What makes it affordable is that the whole
 thing is a *line*: its occlusion budget is its height, not its alpha, and
 fourteen pixels of a 992-pixel field is one and a half per cent — a bullet
 crossing it is hidden for a single frame at the slowest speed this game fires
@@ -287,9 +292,14 @@ Touhou's signature and borrowing it that exactly is closer to copying than to
 being inspired by, and it cost three lines of plate to say what one says. And
 the top of the field is where the boss is and the player is not, which is the
 same exception the bar itself is, on the same terms: outlined text, one line,
-nothing opaque. Whether the capture is still live goes at the *end* of the bar
-rather than beside the name, so that losing it does not shift the name — which
-would read as the spell having changed.
+nothing opaque. Whether the capture is still live goes at the *other end* of
+the line rather than beside the name, so that losing it does not shift the name
+— which would read as the spell having changed.
+
+**It stacks under the caster's name at the same left margin rather than being
+centred**, for the reason the caster's name moved there: the middle of this
+line is the boss's face now. Set one under the other, the two read as one
+block — who is casting, and what they are casting — which is what they are.
 
 **The marks for the remaining attacks are in the console, not beside the bar.**
 Touhou draws its stars in the playfield; the first pass of this line copied
@@ -821,7 +831,8 @@ time should live. `test_player` asserts it directly.
 The bomb's sweep **grows** over `BOMB_GROW` frames rather than clearing the
 screen at once — a bomb that emptied the field on its first frame would be a
 screenshot of an empty screen, and growing it means the player watches the wave
-reach the bullets and turn them into score on the way.
+reach the bullets and turn them into score on the way. What that wave is drawn
+as, and what follows it, is below.
 
 **A hit scatters shards.** Touhou drops your power on death; this is the same
 idea turned round. Losing a quarter of the bar puts a handful of recoverable
@@ -829,6 +840,123 @@ points on the field, so the moment after a hit is a scramble rather than only a
 loss. They are gold, not red — being hit must not hand back the health it just
 took. And the bullets on top of the player are cleared, or the invulnerability
 runs out inside the same wall and the player dies twice to one mistake.
+
+### The shot is blue fire, and it took the colour out of the tint
+
+**It was reported as looking like pointed missiles rather than fireballs**, and
+two things made it one. The sprite was a single smooth teardrop with a white
+stripe down the middle — a symmetric taper with no internal structure, which is
+what a missile is — and it was drawn `draw_sprite_ext(..., COL_SZUIX_LIT)`.
+**A tint multiplies**, so the white core the sprite was drawn with came out the
+same flat periwinkle as its rim: one colour, one shape, no fire anywhere.
+
+So `make_flame` draws it the way a fire shader does. A soft envelope — a ball
+at the front, a taper behind — with turbulence **subtracted** from it: where the
+envelope is thick the noise only roughens the edge, and toward the back, where
+it is thin and the noise is allowed to eat more, it comes apart into separate
+licks. The turbulence scrolls backward along the axis by exactly one period
+over the eight frames, so the loop is seamless and the tongues peel off the
+ball the way they would off anything moving through air.
+
+**The colour is baked and it is drawn `c_white`**, which is the whole of what a
+tint could not do: violet at the torn edges, azure through the body, white only
+at the heart. Each shot starts at its own phase of the loop — a counter, not
+`random`, since two barrels firing on the same frame at the same phase would
+burn in lockstep and read as one shape copied. And a flame now sits at each
+muzzle while the shot is held, so the stream is something he is *doing* rather
+than something appearing above his head.
+
+The same generator at twice the size is `spr_fx_wisp`, which is what the bomb's
+seals are made of and what rides the rim of its sweep. Drawn rather than scaled
+up: a flame enlarged is a blur with a flame's outline, and the licks are the
+whole of what says fire.
+
+### The special: a sigil that takes, and seals that give it back
+
+**It was a flash and a ring, and it was reported as puny and underwhelming.**
+A quarter of the meter bought a white wash, a shockwave and about half a second
+of anything happening, which is a poor trade for the one resource the player
+spends deliberately. It is four beats over two and a half seconds now, and the
+mechanics behind three of them are new.
+
+1. **The cast, on frame zero.** A violet wash, a shake, a hard local flash, a
+   shockwave past the sweep's own radius, and his close-up. Everything that
+   *answers the key* lands here — the same constraint `cue_bomb` is written
+   to, which opens on its transient because a bomb heard a quarter of a second
+   late is a bomb pressed twice.
+2. **The sigil, which is the sweep.** `spr_fx_sigil` grows from the cast point
+   to `BOMB_CLEAR_R` in step with the clearing circle, so its rim is exactly
+   where bullets are being erased: three layers turning at three rates, rings
+   in his violet, script in his cyan, the emblem at the heart. Thirty-two
+   tongues of `spr_fx_wisp` ride the rim, so the wave erasing the pattern is
+   made of the same fire his shot is.
+3. **The theft.** `bullet_clear_circle` takes an optional per-bullet callback,
+   and the bomb passes one: every second bullet it erases leaves a mote that
+   *accelerates* into the sigil's heart, which fills as they arrive. Bound to
+   the cast point rather than to the player, because that is where the sweep
+   is anchored and a player is free to fly out of his own circle.
+4. **The seals.** `BOMB_SEALS` wisps leave the heart at `BOMB_SEAL_AT` in a
+   pinwheel, spread while they turn, then hunt the nearest thing they are
+   allowed to hurt and burst on it — sweeping what they fly through and a
+   circle of what they land in. Fantasy Seal's shape on a caster who steals
+   magic: what goes back at the boss is what was just taken off it.
+
+**The seals do damage, and that is a rule change rather than a picture.** The
+special used to hurt nothing at all, and a wisp that visibly strikes a boss and
+leaves its bar where it was reads as broken. `BOMB_SEAL_DMG` is ten apiece —
+six together are two seconds of the shot held on target — and they pass through
+a boss in ceremony exactly as shots do, which `enemy_take_seals` enforces
+beside `enemy_take_shots` rather than inside the player. It is one constant,
+and setting it to zero gives back the special that damaged nothing.
+
+**Every seal is spent before the grace is.** `BOMB_SEAL_AT + BOMB_SEAL_LIFE` is
+under `BOMB_INVULN`, because a seal still in the air once the player is
+vulnerable again is a bomb that goes on fighting for them after it has stopped
+protecting them. `test_bomb_seals` asserts the arithmetic rather than trusting
+it, since it stops being true the moment somebody lengthens either number.
+
+**The wake clears and does not pay.** `bullet_clear_circle` drops a shard for
+the first bullet of every call, so a per-frame sweep asking for items would
+mint one a frame per seal — five hundred over one bomb. The bursts pay instead.
+
+**A seal's target is chosen again every frame rather than remembered.** An
+enemy's struct is reused once it dies, so a stored reference is a reference to
+whatever took that slot next; re-picking costs six distance checks against a
+handful of enemies and cannot go stale.
+
+### One hit from death
+
+**He beats.** At `HP_PER_HIT` or less a red glow runs round his own silhouette
+twice a beat — `spr_szuix_aura`, his outline grown and blurred, drawn
+additively over the sprite, so the warning is made of pixels that are already
+his and can neither hide a bullet nor be mistaken for one. The console's life
+meter already pulses on the same threshold; this is that fact where the player
+is actually looking.
+
+**It was too bright the first time, and the fix was the onset rather than only
+the alpha.** At a peak of 0.74 and a four-frame rise it was reported as
+flashing distractingly — and a hard onset in the corner of the eye is the same
+signal a bullet arriving makes, which is the one thing a warning must not
+imitate. It swells over about ten frames at a third of that alpha now.
+
+### The grace dial
+
+**How long the player has left was a number the game never told anybody.** The
+flicker says *that* he is safe and looks identical on its first frame and its
+last, so the moment it ran out arrived without warning — which for the three
+seconds after a hit is when they are most likely to be somewhere they could not
+otherwise be. `player_draw_grace` draws Wordsearch's combo ring round him
+instead: a faint circle for the whole grace and a bright arc for what is left,
+sweeping clockwise back to noon, the head carrying the bloom because the head
+is the part that moves. It tightens as it empties and flickers toward the
+colour of being hit inside `GRACE_URGENT`.
+
+It covers both kinds of grace, and the two **overlap rather than add** —
+`player_grace_left` is the longer of `iframe` and `bomb_t`, and `grace_max` is
+what the fraction is *of*, so a bomb cast inside a hit's grace refills the dial
+rather than overfilling it. It is drawn under the danmaku with him, because it
+is information about him and must not become one more bright thing between the
+player and a bullet.
 
 ### The hitbox is drawn after the bullets
 
@@ -912,6 +1040,21 @@ draw.
 **A capture needs the spell beaten *and* untouched** — no hits and no bombs.
 That is the Touhou rule and it is the right one: a bonus for merely surviving
 rewards hiding in a corner.
+
+**A boss holds station in the top quarter, and it used to hold it lower.**
+`BOSS_HOME_Y` was `FIELD_Y0 + 320`, which with a drift of 74 and half of a
+250-pixel sprite put the foot of the boss past the middle of the field on the
+low half of its wander — a boss leaning over the player for the whole fight.
+Reported as oppressive, and it was: a boss belongs at the top of the arena and
+the player owns everything under it.
+
+What was keeping it down was *type* rather than the bar. The name was centred
+over the middle of the line and the timer sat beside it, so the station had to
+clear a block fifty-six pixels deep standing exactly where the boss wanted to
+be. Moving both to the two ends of the bar gave the middle of the line back
+and the station came up with it, to `FIELD_Y0 + 250`. The one thing it may not
+fly through is the fourteen pixels of tube, and `test_hud_layout` asserts that
+and that the foot of the sprite stays out of the player's half.
 
 **A boss drifts, and that is a default rather than a rule.** One that stood
 still would fire every aimed pattern from the same pixel and the player would
@@ -2570,14 +2713,14 @@ once, because PIL's draw calls are hard-edged and a bevel drawn at 1x reads as
 | `tools/art_common.py` | Palette, `Canvas`, `Cut` and the cut-body shader, the distance-field shader, glows, fbm noise, preview sheets |
 | `tools/make_palette.py` | `scripts/palette` — the palette, in GML |
 | `tools/make_bullets.py` | Every bullet sprite **and** `scripts/bullet_table` |
-| `tools/make_fx.py` | Sparks, blooms, rings, laser textures, the shards, the hitbox, the boss sigil |
+| `tools/make_fx.py` | Sparks, blooms, rings, laser textures, the shards, the hitbox, the boss sigil, **Szuix's fire** (the shot and the bomb's wisps) and **his sigil** |
 | `tools/make_fonts.py` | The six sprite-font atlases |
 | `tools/make_enemies.py` | The four fodder shapes |
 | `tools/make_boss.py` | Ziggy and his eye card — **placeholder, see below** |
 | `tools/make_bg.py` | Stage one's three parallax layers |
 | `tools/make_grove.py` | Stage two's scenery: trunks, trees, ivy, hanging charms, ferns, the moon, the forest floor, the far treeline, the canopy, mist — **and `scripts/grove_table`** |
 | `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint |
-| `tools/make_player.py` | Szuix, from the commissioned sheet |
+| `tools/make_player.py` | Szuix, from the commissioned sheet; his aura, for the low-life warning; and his eye card, drawn from nothing |
 | `tools/make_sfx.py` | Every sound effect, and the preview WAV and sheet |
 
 Each writes a preview to `tools/_preview/`. Look at it.
@@ -3258,7 +3401,7 @@ half way down it, the result screen, and permanent progress —
 plus attack practice, which drills any one of the seventeen attacks across
 four casters on its own, and the drafting table, which does the same for five
 attacks that have no boss yet.
-421 assertions pass; all thirty-three screenshot scenes render.
+437 assertions pass; all thirty-four screenshot scenes render.
 
 Not done, in rough order of how much it is missed:
 
@@ -3328,9 +3471,22 @@ Not done, in rough order of how much it is missed:
   tool for legibility and says nothing about whether the *best* row earns its
   place over, say, a life-in-reserve count, or whether the control legend is
   charming on the tenth run or tiresome on the second.
-- **The eye card is still drawn from the placeholder boss art**, so the one
-  piece of ceremony that is a close-up of a face is a close-up of primitives.
-  It improves for free when the commission lands.
+- **The bosses' eye cards are still drawn from the placeholder boss art**, so
+  the one piece of ceremony that is a close-up of a face is a close-up of
+  primitives. It improves for free when the commission lands. **Szuix's own
+  card is drawn rather than painted** — cel-shaded from curves in
+  `make_player.py`, and the better of the two by some way, but it is still
+  shapes written out in card pixels rather than a drawing. **The painted
+  commissions of him are reference only and must not be shipped**: the crop
+  that was in here for one pass came out again on the grounds that the rights
+  are not the game's. Anything that replaces this has to be original or
+  licensed, at 1280x420 with the eyes on the centre line.
+- **Every one of the special's numbers is unplayed**, in the same sense as
+  everything in `constants`: `BOMB_SEAL_DMG`, how long the seals take to leave,
+  how hard they turn and how much they sweep were reasoned about against the
+  shape of the sequence rather than against a fight. The damage in particular
+  is a balance decision made by argument — a seal that strikes a boss and does
+  nothing reads as broken — and it is one constant to take back out.
 - **Waves are not graded, and the ledger is half-built because of it.** A mark
   per encounter is in and the boss's attacks earn theirs for real; the stage's
   own waves do not, because a wave is a line in a `{at, fn}` timeline rather

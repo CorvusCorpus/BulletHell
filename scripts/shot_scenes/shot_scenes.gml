@@ -15,7 +15,8 @@
 
 /// @desc Every scene, in the order they are worth looking at.
 function shot_scene_list() {
-    return ["title", "practice", "stage", "focus", "bomb", "hit", "midboss",
+    return ["title", "practice", "stage", "focus", "bomb", "hit", "peril",
+            "midboss",
             "declare", "spell", "boss", "laser", "rays", "clear", "pause",
             "result", "practice_ready", "practice_result", "bullets",
             "motion", "drafts", "draft_attacks", "draft_spell",
@@ -23,6 +24,27 @@ function shot_scene_list() {
             "hex_burst",
             "grove", "grove_arrive", "grove_turn", "grove_blood",
             "grove_boss", "grove_spell"];
+}
+
+/// @desc Read `-burst`'s comma-separated frame offsets into an array.
+///
+///       Sorted on the way out, because `obj_shot` walks it in order and a
+///       list written out of order would photograph the first frame it
+///       reached and quit on it.
+function shot_parse_burst(_str) {
+    var _out = [];
+    var _cur = "";
+    for (var _i = 1; _i <= string_length(_str) + 1; _i++) {
+        var _ch = (_i > string_length(_str)) ? "," : string_char_at(_str, _i);
+        if (_ch == ",") {
+            if (_cur != "") array_push(_out, real(_cur));
+            _cur = "";
+        } else {
+            _cur += _ch;
+        }
+    }
+    array_sort(_out, true);
+    return _out;
 }
 
 function shot_scene_known(_name) {
@@ -262,6 +284,26 @@ function shot_pose(_scene, _g) {
             _g.player.x = FIELD_CX - 60;
             _g.player.y = FIELD_Y1 - 280;
             return 220 + BOSS_SPELL_LEAD;
+
+        case "peril":
+            // **One hit from death, and not in the grace after one.** The
+            // heartbeat is a state rather than an event -- it is what the
+            // player flies the rest of the stage under -- so the scene poses
+            // the health and then leaves him alone in a live pattern, which
+            // is the only way to see whether it is loud enough to notice and
+            // quiet enough to dodge through. Photographed as a burst, since
+            // a beat is the thing one frame cannot show.
+            shot_boss(_g, 2, ziggy_spawn);
+            _g.player.x = FIELD_CX - 80;
+            _g.player.y = FIELD_Y1 - 260;
+            _g.player.hp = HP_PER_HIT;
+            // **And he cannot be touched**, or the scene photographs its own
+            // subject away: a posed player standing in a live pattern on his
+            // last quarter is hit within a second and the picture is of the
+            // result screen. Which is what the first run of this came back
+            // with.
+            _g.player.untouchable = true;
+            return 220;
 
         case "midboss":
             shot_boss(_g, 0, ziggy_midboss_spawn);

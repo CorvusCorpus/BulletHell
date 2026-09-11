@@ -109,8 +109,8 @@ function hud_box(_which) {
         // note at the top of the file and in `constants` under "The boss's
         // line".
         case "boss":
-            return [FIELD_X0 + BOSS_BAR_INSET, BOSS_NAME_Y,
-                    FIELD_X1 - BOSS_BAR_INSET, BOSS_BAR_Y + BOSS_BAR_H];
+            return [FIELD_X0 + BOSS_BAR_INSET, BOSS_BAR_Y,
+                    FIELD_X1 - BOSS_BAR_INSET, BOSS_SPELL_Y + BOSS_SPELL_ROW];
     }
     return [0, 0, 0, 0];
 }
@@ -592,14 +592,19 @@ function hud_meter(_y, _name, _value, _fraction, _col, _divs, _slosh, _flare,
 ///       phase table's thresholds are cut into it, so a glance answers both
 ///       "how is this attack going" and "how much of this is left".
 ///
-///       **The name is centred and small.** It was left-aligned at 66pt in a
-///       strip above the field, on the reasoning that a boss holds station in
-///       the middle of the top of the field and a centred caption would be
-///       printed across its face. That is a real problem and the fix is to
-///       move the *boss*, not the name: `BOSS_HOME_Y` now stations it clear of
-///       its own line. Centred is where a title wants to be, and a title that
-///       is the width of the field and 66 points tall is not a title, it is a
-///       banner that never leaves.
+///       **The bar is pinned to the top of the field and the words hang off
+///       it.** They were the other way round for a pass, with the name centred
+///       above the tube and the timer beside it -- fifty-six pixels of type
+///       between the top of the playfield and the one part of this line that
+///       is read at a glance mid-dodge.
+///
+///       **And the name is at the bar's left-hand end, not over its middle.**
+///       Centring it was right while the boss held station well below the
+///       line: the caption owned the centre because nothing else was ever
+///       there. Raising `BOSS_HOME_Y` takes that away -- the middle of the top
+///       of the field is the boss's face now -- so the name goes back to the
+///       left end and the timer to the right, which is where the genre has
+///       always put them and which is what gives the boss the middle.
 function hud_boss_bar(_h, _boss) {
     var _b = _boss.boss;
     var _x1 = FIELD_X0 + BOSS_BAR_INSET;
@@ -610,13 +615,13 @@ function hud_boss_bar(_h, _boss) {
     var _p = boss_phase(_boss);
     var _col = (_p == undefined) ? COL_LIFE : global.bullet_colour[_p.col];
 
-    // The name, centred over the bar and tracked, which is what lets it be
-    // small and still read as a title.
+    // The name, under the bar's left-hand end and tracked, which is what lets
+    // it be small and still read as a title.
     draw_set_font(fnt_ui());
     draw_set_valign(fa_top);
-    draw_text_tracked(FIELD_CX, BOSS_NAME_Y, string_upper(_b.def.name), 9,
+    draw_text_tracked(_x1, BOSS_NAME_Y, string_upper(_b.def.name), 9,
                       merge_colour(COL_GILT_LIT, _col, 0.3), 0.95, 3,
-                      fa_center);
+                      fa_left);
 
     // **The marks are in the console and not here.** Touhou draws its
     // remaining-attack stars in the playfield beside the bar, and the first
@@ -733,18 +738,7 @@ function hud_draw_spell(_boss) {
 
     var _col = global.bullet_colour[_p.col];
 
-    if (_b.eye_t > 0) {
-        var _t = _b.eye_t / BOSS_EYE_TIME;               // 1 -> 0
-        var _a = min(1, _t * 2.4) * 0.80;
-        // **A band across the upper third, not a wall across the screen.**
-        // Drawn full size and centred it covered eight hundred pixels of
-        // playfield with a face, and the pattern the spell had just started
-        // firing was invisible behind it. High and small, it reads as a cut to
-        // a close-up and leaves the field alone.
-        var _s = 0.60 + (1 - _t) * 0.09;
-        draw_sprite_ext(_b.def.eye, 0, FIELD_CX, FIELD_Y0 + FIELD_H * 0.28,
-                        _s, _s, 0, c_white, _a);
-    }
+    if (_b.eye_t > 0) draw_eye_card(_b.def.eye, _b.eye_t / BOSS_EYE_TIME);
 
     if (_b.banner_t > 0) {
         var _t = _b.banner_t / BOSS_SPELL_BANNER;
@@ -818,24 +812,29 @@ function hud_draw_spell_name(_h, _boss, _p) {
     var _a = _h.spell_a;
     var _col = global.bullet_colour[_p.col];
 
+    // **Stacked under the caster's name, at the same left margin.** It was
+    // centred while the boss stood clear below this line; the boss is up here
+    // now and the middle of the line is its face. The two names together are
+    // one block -- who is casting, and what -- which is how they are read.
     draw_set_valign(fa_top);
-    draw_set_halign(fa_center);
+    draw_set_halign(fa_left);
     draw_set_font(fnt_ui());
-    draw_text_fit(FIELD_CX, BOSS_SPELL_Y, _p.name, FIELD_W * 0.5, _col, _a, 3);
+    draw_text_fit(FIELD_X0 + BOSS_BAR_INSET, BOSS_SPELL_Y, _p.name,
+                  FIELD_W * 0.42, _col, _a, 3);
 
-    // **Whether the capture is still live, at the left-hand end of the bar.**
+    // **Whether the capture is still live, at the other end of the line.**
     // It is the one fact about the attempt still in play, and a player who has
     // been hit has nothing left to protect -- they should be told at the time
-    // rather than finding out on the result screen. It goes at the end of the
-    // bar rather than beside the name so that losing it does not shift the
-    // name, which would read as the spell having changed.
+    // rather than finding out on the result screen. It goes at the far end
+    // rather than beside the name so that losing it does not shift the name,
+    // which would read as the spell having changed.
     var _clean = (_boss.boss.hits_this_phase == 0
                   && _boss.boss.bombs_this_phase == 0);
     if (_clean) {
-        draw_set_halign(fa_left);
         draw_set_font(fnt_small());
-        draw_text_tracked(FIELD_X0 + BOSS_BAR_INSET, BOSS_SPELL_Y + 6,
-                          "CAPTURE LIVE", 5, COL_GRAZE, _a * 0.9, 2);
+        draw_text_tracked(FIELD_X1 - BOSS_BAR_INSET, BOSS_SPELL_Y + 8,
+                          "CAPTURE LIVE", 5, COL_GRAZE, _a * 0.9, 2,
+                          fa_right);
     }
 
     draw_set_halign(fa_left);

@@ -23,6 +23,8 @@ Usage:
     python tools/shot.py boss
     python tools/shot.py boss out.png
     python tools/shot.py --all          # every scene, one after another
+    python tools/shot.py bomb --burst 0,20,40,70,110
+                                        # one launch, five frames, one sheet
 """
 import contextlib
 import os
@@ -55,6 +57,7 @@ SCENES = (
     "focus",        # focused: hitbox shown, slow, grazing
     "bomb",         # the special going off
     "hit",          # the player struck: iframe flicker, shards scattering
+    "peril",        # one hit from death: the heartbeat warning, in a pattern
     "midboss",      # the midboss and its pattern
     "declare",      # the boss introduction splash
     "spell",        # a named spell: banner, eye card, changed background
@@ -141,7 +144,33 @@ def saves_set_aside(directory, names):
             os.replace(stash, live)
 
 
-def take(scene, out, fullscreen=False):
+def contact_sheet(paths, labels, out, cols=3, scale=0.42):
+    """Tile a burst into one sheet, so a sequence can be read at a glance.
+
+    A bomb is four seconds of sigil, theft, seals and bursts; six PNGs in a
+    folder is six things to open in order and hold in your head, and one sheet
+    is the sequence. Same argument every generator's preview makes.
+    """
+    from PIL import Image, ImageDraw
+
+    shots = [Image.open(p).convert("RGB") for p in paths]
+    w = int(shots[0].width * scale)
+    h = int(shots[0].height * scale)
+    rows = (len(shots) + cols - 1) // cols
+    pad, lab = 8, 18
+    sheet = Image.new("RGB", (cols * (w + pad) + pad,
+                              rows * (h + lab + pad) + pad), (18, 16, 26))
+    d = ImageDraw.Draw(sheet)
+    for i, (img, label) in enumerate(zip(shots, labels)):
+        x = pad + (i % cols) * (w + pad)
+        y = pad + (i // cols) * (h + lab + pad)
+        sheet.paste(img.resize((w, h), Image.LANCZOS), (x, y))
+        d.text((x + 4, y + h + 3), label, fill=(190, 196, 220))
+    sheet.save(out)
+    return out
+
+
+def take(scene, out, fullscreen=False, burst=None):
     """Photograph one scene.
 
     **Windowed by default, and that reverses an earlier decision.** Full screen
@@ -153,15 +182,20 @@ def take(scene, out, fullscreen=False):
     size, scaled together, and nothing here measures a screenshot. Pass
     ``--fullscreen`` when a photographed pixel really has to be a design pixel.
     """
-    shot = os.path.join(SAVE_DIR, "shot.png")
+    names = (["shot_%d.png" % i for i in range(len(burst))] if burst
+             else ["shot.png"])
+    shots = [os.path.join(SAVE_DIR, n) for n in names]
     # Remove any previous shot first, or a run that failed to save one leaves
     # the last good image in place and the failure looks like success.
-    if os.path.exists(shot):
-        os.remove(shot)
+    for path in shots:
+        if os.path.exists(path):
+            os.remove(path)
 
     try:
         with saves_set_aside(SAVE_DIR, SEEDED):
             cmd = [EXE, "-shot", scene]
+            if burst:
+                cmd += ["-burst", ",".join(str(int(b)) for b in burst)]
             if fullscreen:
                 cmd.append("-fullscreen")
             # Minimised and un-activated unless somebody asked to watch it.
@@ -169,8 +203,10 @@ def take(scene, out, fullscreen=False):
             # the one run that gets shown. See `build.run_game`.
             proc = build.run_game(cmd, TIMEOUT, show=fullscreen)
             output = (proc.stdout or "") + (proc.stderr or "")
-            if not os.path.exists(shot):
-                print("FAILED (%s): no screenshot at %s" % (scene, shot))
+            missing = [p for p in shots if not os.path.exists(p)]
+            if missing:
+                print("FAILED (%s): no screenshot at %s"
+                      % (scene, ", ".join(missing)))
                 print("\n".join(output.splitlines()[-25:]))
                 return 1
             # **The screenshot is not the verdict**, for the reason spelled
@@ -185,7 +221,19 @@ def take(scene, out, fullscreen=False):
                 print("\n".join(output.splitlines()[-25:]))
                 return 1
             os.makedirs(os.path.dirname(out), exist_ok=True)
-            shutil.copyfile(shot, out)
+            if burst:
+                stem = os.path.splitext(out)[0]
+                copies = []
+                for path, off in zip(shots, burst):
+                    dest = "%s@%+d.png" % (stem, int(off))
+                    shutil.copyfile(path, dest)
+                    copies.append(dest)
+                sheet = contact_sheet(
+                    copies, ["%s %+d" % (scene, int(b)) for b in burst],
+                    "%s_sheet.png" % stem)
+                print("burst -> %s" % os.path.relpath(sheet, build.ROOT))
+            else:
+                shutil.copyfile(shots[0], out)
     except subprocess.TimeoutExpired:
         print("FAILED (%s): the game did not exit within %ds" % (scene, TIMEOUT))
         print("A run-time throw is a modal box, which from here is a hang.")
@@ -203,6 +251,12 @@ def main():
     fullscreen = "--fullscreen" in args
     if fullscreen:
         args.remove("--fullscreen")
+    burst = None
+    for i, a in enumerate(list(args)):
+        if a == "--burst" and i + 1 < len(args):
+            burst = sorted(int(v) for v in args[i + 1].split(",") if v.strip())
+            del args[i:i + 2]
+            break
 
     scene = "stage"
     if args and not args[0].endswith(".png"):
@@ -235,7 +289,7 @@ def main():
         return 0
 
     out = args[0] if args else os.path.join(preview, "%s.png" % scene)
-    return take(scene, out, fullscreen)
+    return take(scene, out, fullscreen, burst)
 
 
 if __name__ == "__main__":

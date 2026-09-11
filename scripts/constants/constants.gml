@@ -207,6 +207,52 @@
 #macro BOMB_CLEAR_R 560        // bullets inside this are swept
 #macro BOMB_GROW 26            // frames the sweep takes to reach full radius
 
+// **The special has two halves: the sigil takes, and the seals give it back.**
+// The sweep is the half that was always there -- a circle of Szuix's sigil
+// grows out from where he cast it and every bullet it reaches is erased, its
+// magic streaming back into the circle's heart. `BOMB_SEAL_AT` frames later
+// the heart lets go: `BOMB_SEALS` wisps of his fire spiral out, hunt whatever
+// is nearest, and burst on it -- sweeping the bullets they pass and the ones
+// round where they land. It is Touhou's Fantasy Seal turned to an imp who
+// steals magic: what comes back at the boss is its own pattern, burnt blue.
+//
+// **The seals do damage, and that is a rule change rather than a picture.**
+// The special used to hurt nothing. A seal that visibly strikes a boss and
+// leaves its bar where it was reads as broken, so each lands for
+// `BOMB_SEAL_DMG` -- six of them together are two seconds of the shot held
+// on target, and like the shot they pass through a boss in ceremony.
+#macro BOMB_SEALS 6
+#macro BOMB_SEAL_AT 40         // frames after the cast the seals leave
+#macro BOMB_SEAL_CURL 24       // frames they spiral out before they hunt
+#macro BOMB_SEAL_LIFE 96       // frames a seal lives if it finds nothing
+#macro BOMB_SEAL_SPD0 7.5      // leaving the heart
+#macro BOMB_SEAL_SPD 24        // top speed, hunting
+#macro BOMB_SEAL_TURN 8.5      // degrees a frame, hunting
+#macro BOMB_SEAL_R 26          // how close to a target counts as striking it
+#macro BOMB_SEAL_WAKE 90       // bullets this close to a flying seal are swept
+#macro BOMB_SEAL_BLAST 230     // ...and this close to where it bursts
+#macro BOMB_SEAL_DMG 10
+#macro BOMB_SIGIL_OUT 116      // the frame the circle has finished fading
+
+// The close-up of Szuix that flashes as he casts -- the same card a boss's
+// spell gets, for the same length. See `draw_eye_card`.
+#macro PLAYER_CARD_TIME BOSS_EYE_TIME
+
+// **The grace dial.** Wordsearch's combo ring, round Szuix instead of round a
+// pointer: a faint circle for the whole grace and a bright arc for what is
+// left of it, sweeping back to noon, tightening as it goes and flickering in
+// its last `GRACE_URGENT`. Sized to clear his wings at full and to sit just
+// inside their tips as it closes. See `player_draw_grace`.
+#macro GRACE_RING_R_FULL 80
+#macro GRACE_RING_R_EMPTY 62
+#macro GRACE_URGENT 0.3
+
+// **One hit from death, he beats.** A heartbeat rather than a flash -- two
+// pulses and a rest -- because a warning that flickers constantly is one the
+// eye learns to ignore within a minute, and a rhythm is noticed without being
+// looked at. `LOW_HP_BEAT` is frames per beat.
+#macro LOW_HP_BEAT 48
+
 // The shot. Two barrels that converge slightly, and a focused mode that
 // narrows them -- the standard trade, and the reason focus is not purely a
 // dodging tool.
@@ -394,14 +440,24 @@
 // fact about the arena rather than about the readouts, which is why it is here
 // and not among the HUD constants.
 //
-// **Clear of its own name and its own bar.** Those are drawn over the top of
-// the field now, and `spr_boss_ziggy` is 250 tall on a centred origin, so a
-// boss stationed where the old strip let it stand would fly its head through
-// its own health tube. 320 less a drift of 74 less half a sprite leaves the
-// top of the boss thirty pixels under the bar at its highest -- and since the
-// field grew by 124 at the same time, the fight sits at very nearly the screen
-// position it always did while the player gets every pixel of the growth.
-#macro BOSS_HOME_Y (FIELD_Y0 + 320)
+// **Clear of its own bar, and of nothing else.** `spr_boss_ziggy` is 250 tall
+// on a centred origin, so 250 less a drift of 74 less half a sprite leaves the
+// top of the boss twenty-three pixels under the tube at its highest.
+//
+// **It used to be 320, and what was in the way was type rather than the
+// bar.** The name was centred over the middle of the line and the timer sat
+// beside it, so the boss had to hold station clear of a block fifty-six pixels
+// deep that it was never going to touch anyway -- and at 320 the foot of the
+// sprite reached past the middle of the field on the low half of its drift,
+// which is a boss leaning over the player for the whole fight. Reported as
+// oppressive, and it was: a boss belongs at the top of the arena, and the
+// player owns everything under it.
+//
+// Moving the name and the timer to the two ends of the bar gave the middle of
+// the line back, and the station came up with it. What the fight loses is
+// nothing -- the boss is still 250 pixels down a 992-pixel field -- and what
+// the player gains is 70 pixels of room under the thing shooting at them.
+#macro BOSS_HOME_Y (FIELD_Y0 + 250)
 
 // ---------------------------------------------------------------------------
 // The HUD
@@ -589,9 +645,24 @@
 // ---------------------------------------------------------------------------
 
 #macro BOSS_BAR_INSET 34           // in from the field's left and right edges
-#macro BOSS_BAR_Y (FIELD_Y0 + 72)  // the tube's top edge
+#macro BOSS_BAR_Y (FIELD_Y0 + 14)  // the tube's top edge
 #macro BOSS_BAR_H 14
-#macro BOSS_NAME_Y (FIELD_Y0 + 16) // the name and the timer, above the bar
+
+// **The bar is the top of the field and the words are under it.** They were
+// the other way round: the name centred over the bar and the timer beside it,
+// which put fifty-six pixels of type between the top of the playfield and the
+// only part of the line that is a *number the player reads while dodging*.
+// The bar is fourteen pixels and is the thing that wants to be pinned to an
+// edge; type can hang off it.
+//
+// **And the words moved out of the middle at the same time.** The name was
+// centred precisely because the boss used to stand clear below it -- so the
+// caption could own the centre and the boss would never be under it. Raising
+// the boss takes that away: the centre of the top of the field is where its
+// face now is. So the name goes back to the left-hand end of the bar and the
+// timer to the right-hand end, which is where the genre has always put them
+// and which leaves the whole middle of the line to the boss.
+#macro BOSS_NAME_Y (BOSS_BAR_Y + BOSS_BAR_H + 6)
 
 // **The spell's name goes under the bar, and this reverses a decision.** It
 // lived in the console for one pass, on the reasoning that forty seconds of
@@ -604,9 +675,15 @@
 // the plate the moment a title ran long.
 //
 // It is the same exception the bar itself is, on the same terms: outlined
-// text, one line, at the top of the field where the boss is and the player is
-// not.
-#macro BOSS_SPELL_Y (BOSS_BAR_Y + BOSS_BAR_H + 10)
+// text, one line, at the top of the field where the player is not.
+//
+// **It stacks under the boss's own name rather than being centred**, for the
+// same reason that one moved: the middle of this line belongs to the boss
+// now. Under the caster's name and set to the caster's left margin, the two
+// read as one block -- who is casting, and what they are casting -- which is
+// what they are.
+#macro BOSS_SPELL_ROW 42                        // one line of `fnt_ui`
+#macro BOSS_SPELL_Y (BOSS_NAME_Y + BOSS_SPELL_ROW)
 
 // The tallest a line drawn over the playfield may be. One number, so the
 // exception above cannot quietly grow back into a strip.

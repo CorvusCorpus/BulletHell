@@ -37,6 +37,8 @@ function selftest_run() {
     test_laser_graze();
     test_spell_resist();
     test_player();
+    test_bomb_seals();
+    test_grace_dial();
     test_items();
     test_untouchable();
     test_boss_table();
@@ -796,6 +798,118 @@ function test_player() {
                       shoot: false, bomb: true, focus: false }, _g);
     player_collide(_p, _g);
     ok("a special on the frame of a hit beats the hit", _p.hp == HP_MAX);
+    st_reset();
+}
+
+/// @desc The bomb's seals: when they leave, what they sweep, what they hurt,
+///       and that they are gone before the grace is.
+///
+///       **The last one matters most.** A seal is a thing that clears bullets
+///       and does damage, and one still in the air after the player is
+///       vulnerable again would be a bomb that went on fighting for them
+///       after it had stopped protecting them. It is arithmetic --
+///       `BOMB_SEAL_AT + BOMB_SEAL_LIFE` against `BOMB_INVULN` -- and it is
+///       exactly the kind of arithmetic that stops being true when somebody
+///       lengthens one of them.
+function test_bomb_seals() {
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_CY + 200);
+    var _p = _g.player;
+    _p.mp = MP_MAX;
+
+    ok("the seals wait for the grace to outlast them",
+       BOMB_SEAL_AT + BOMB_SEAL_LIFE < BOMB_INVULN);
+
+    player_bomb(_p, _g);
+    ok("no seal is in the air on the frame of the cast",
+       player_seals_live(_p) == 0);
+    ok("and the close-up is", _p.card_t == PLAYER_CARD_TIME);
+
+    // Run the bomb out. The sweep is stepped the way `player_step` steps it.
+    var _launched = -1;
+    for (var _f = 0; _f < BOMB_INVULN; _f++) {
+        _p.bomb_t--;
+        player_bomb_sweep(_p);
+        player_seals_step(_p);
+        if (_launched < 0 && player_seals_live(_p) > 0) _launched = _f;
+    }
+    ok("the seals leave at BOMB_SEAL_AT", _launched == BOMB_SEAL_AT - 1);
+    ok("and every one of them is spent by the end of the grace",
+       player_seals_live(_p) == 0);
+
+    // A seal sweeps what it flies through.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_CY);
+    _p = _g.player;
+    _p.mp = MP_MAX;
+    player_bomb(_p, _g);
+    for (var _f = 0; _f < BOMB_SEAL_AT + 2; _f++) {
+        _p.bomb_t--;
+        player_bomb_sweep(_p);
+        player_seals_step(_p);
+    }
+    var _s = _p.seals[0];
+    fire(_s.x + 20, _s.y + 20, 0, 0, BSHAPE_ORB, BCOL_CRIMSON, 0);
+    ok("there is a bullet beside a seal", bullet_count() == 1);
+    player_seals_step(_p);
+    ok("and the seal sweeps it", bullet_count() == 0);
+
+    // ...and strikes what it catches, for real damage.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _p = _g.player;
+    _p.mp = MP_MAX;
+    var _e = enemy_spawn(EnemyKind.Wisp, FIELD_CX, FIELD_CY, 400, undefined,
+                         BCOL_JADE);
+    player_bomb(_p, _g);
+    var _hit_at = -1;
+    for (var _f = 0; _f < BOMB_INVULN; _f++) {
+        _p.bomb_t--;
+        player_bomb_sweep(_p);
+        player_seals_step(_p);
+        enemy_take_seals(_p, _g);
+        if (_hit_at < 0 && _e.hp < 400) _hit_at = _f;
+    }
+    ok("a seal hunts down what is on the field", _hit_at > BOMB_SEAL_AT);
+    ok("and takes BOMB_SEAL_DMG off it per strike",
+       (400 - _e.hp) mod BOMB_SEAL_DMG == 0 && _e.hp < 400);
+    st_reset();
+}
+
+/// @desc The dial round Szuix while he cannot be hit.
+///
+///       It is drawn as `left / grace_max`, so the only thing a suite can say
+///       about it -- and the only thing that can go wrong without anybody
+///       noticing -- is that the fraction starts at one, falls, and never
+///       climbs above one when one grace lands inside another.
+function test_grace_dial() {
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_CY);
+    var _p = _g.player;
+
+    ok("no grace to begin with", player_grace_left(_p) == 0);
+    player_hit(_p);
+    ok("a hit gives the dial its full sweep",
+       _p.grace_max == IFRAME_TIME
+       && player_grace_left(_p) == IFRAME_TIME);
+
+    // A bomb cast inside the grace of a hit. The dial must not overfill: the
+    // two overlap rather than adding up.
+    _p.mp = MP_MAX;
+    player_bomb(_p, _g);
+    ok("a bomb inside a grace keeps the longer of the two",
+       player_grace_left(_p) == max(IFRAME_TIME - 0, BOMB_INVULN));
+    ok("and the dial never reads over full",
+       player_grace_left(_p) <= _p.grace_max);
+
+    // The heartbeat is a pure function of the clock, and it has to join up
+    // across its own wrap or the warning ticks once a cycle.
+    var _peak = player_heartbeat(0);
+    ok("the heartbeat peaks at the start of a beat", _peak > 0.9);
+    ok_near("and joins up across the wrap", player_heartbeat(LOW_HP_BEAT),
+            _peak, 0.02);
+    var _rest = player_heartbeat(LOW_HP_BEAT * 0.62);
+    ok("and rests between beats", _rest < 0.1);
     st_reset();
 }
 
@@ -2586,11 +2700,32 @@ function test_hud_layout() {
     // is held to the same rule the bar is: everything drawn over the playfield
     // is a line at the top of it. It has been in three places and this is the
     // one where it is next to the health it refers to.
-    ok("the spell name sits under the boss's bar",
-       BOSS_SPELL_Y > BOSS_BAR_Y + BOSS_BAR_H
+    //
+    // The order down the line is bar, then the caster's name, then the spell's
+    // -- the bar pinned to the top because it is the part read mid-dodge, and
+    // the type hanging off it because type can.
+    ok("the bar is pinned to the top of the field",
+       BOSS_BAR_Y - FIELD_Y0 <= 20);
+    ok("the boss's name sits under its bar",
+       BOSS_NAME_Y >= BOSS_BAR_Y + BOSS_BAR_H);
+    ok("and the spell name under that",
+       BOSS_SPELL_Y >= BOSS_NAME_Y + BOSS_SPELL_ROW
        && BOSS_SPELL_Y < FIELD_Y0 + FIELD_H * 0.14);
-    ok("and the boss still flies clear of both",
-       BOSS_HOME_Y - BOSS_DRIFT_Y - 125 > BOSS_SPELL_Y);
+
+    // **What the boss clears is the bar, and only the bar.** It used to have
+    // to clear the whole line, because the name was centred over the middle of
+    // it -- which is exactly where a boss stands. The name and the timer are
+    // at the two ends now, so the middle of the line is the boss's, and the
+    // one thing it may not fly through is the fourteen pixels of tube.
+    ok("the boss flies below its own bar, not through it",
+       BOSS_HOME_Y - BOSS_DRIFT_Y - 125 > BOSS_BAR_Y + BOSS_BAR_H);
+
+    // **And it holds station in the top third, not over the player.** At its
+    // lowest drift the foot of the sprite has to stay out of the bottom half
+    // of the field: a boss leaning past the middle is one the player is under
+    // for the whole fight, which is what 320 was and what was reported.
+    ok("and it keeps out of the player's half",
+       BOSS_HOME_Y + BOSS_DRIFT_Y + 125 < FIELD_CY);
 
     // **The sections that hold a fixed thing are of comparable height, and the
     // one that grows is the biggest.** This is the assertion that would have
@@ -2649,8 +2784,9 @@ function test_hud_layout() {
     ok("the boss bar spans the field's width less its inset",
        hud_box("boss")[0] == FIELD_X0 + BOSS_BAR_INSET
        && hud_box("boss")[2] == FIELD_X1 - BOSS_BAR_INSET);
-    ok("and the boss flies below its own line, not through it",
-       BOSS_HOME_Y - BOSS_DRIFT_Y - 125 > BOSS_BAR_Y + BOSS_BAR_H);
+    ok("and the line's box covers everything drawn on it",
+       hud_box("boss")[1] <= BOSS_BAR_Y
+       && hud_box("boss")[3] >= BOSS_SPELL_Y);
 
     // **The field itself has to be a sane rectangle inside the screen**, since
     // every coordinate in the game is measured from it -- a typo here would

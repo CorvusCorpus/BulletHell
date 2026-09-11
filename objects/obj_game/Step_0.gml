@@ -162,6 +162,9 @@ laser_step();
 enemy_step(self);
 
 tally += enemy_take_shots(self);
+// The bomb's seals, on the same terms and straight after: they are the
+// player's other way of doing damage and they respect the same ceremony.
+tally += enemy_take_seals(player, self);
 
 var _got = item_step(player.x, player.y);
 if (_got.n > 0) {

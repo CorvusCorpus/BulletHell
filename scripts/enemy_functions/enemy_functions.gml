@@ -247,6 +247,47 @@ function enemy_take_shots(_g) {
     return _earned;
 }
 
+/// @desc The bomb's seals against enemies. Returns the tally earned.
+///
+///       **Written beside `enemy_take_shots` and not inside the player**,
+///       because everything it has to do -- find the enemy, spend its health,
+///       kill it, pay for it -- is this file's business and none of it is the
+///       player's. The player owns where a seal *is*; the pool owns what it
+///       hits.
+///
+///       Swept like a shot, against the segment the seal travelled rather
+///       than the point it ended on: a seal moves twenty-four pixels a frame
+///       and a wisp of fire that passes through a boss without touching it is
+///       the same bug the bullets' swept test exists for.
+function enemy_take_seals(_p, _g) {
+    var _earned = 0;
+    var _seals = _p.seals;
+    for (var _k = 0; _k < array_length(_seals); _k++) {
+        var _s = _seals[_k];
+        if (!_s.live) continue;
+        for (var _i = global.enemy_n - 1; _i >= 0; _i--) {
+            var _e = global.enemies[_i];
+            if (_e.leaving) continue;
+            // A boss in ceremony takes nothing, exactly as it takes no shots.
+            if (_e.boss != undefined && !boss_vulnerable(_e)) continue;
+            if (point_seg_dist(_e.x, _e.y, _s.px, _s.py, _s.x, _s.y)
+                > _e.r + BOMB_SEAL_R) {
+                continue;
+            }
+
+            _e.hp -= BOMB_SEAL_DMG;
+            _e.flash = ENEMY_FLASH;
+            player_seal_burst(_s);
+            if (_e.hp <= 0) {
+                _earned += enemy_die(_e, _g);
+                if (_e.boss == undefined) enemy_kill_at(_i);
+            }
+            break;      // one seal strikes one thing, and is spent on it
+        }
+    }
+    return _earned;
+}
+
 /// @desc What happens when something runs out of health.
 function enemy_die(_e, _g) {
     if (_e.boss != undefined) {

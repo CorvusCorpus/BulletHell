@@ -11,11 +11,18 @@ if (!posed && t >= 2) {
 
 if (posed) shot_tick(scene, _g, t);
 
-if (posed && t >= shutter) {
-    // The window has to have been drawn at least once at the right size, and
-    // `screen_save` is sandboxed into the game's own save area -- which is
-    // where `tools/shot.py` fetches it from.
-    screen_save("shot.png");
-    show_debug_message("SHOT SAVED " + scene);
-    game_end();
+// **One shutter, or several.** A burst photographs the same posed scene at
+// several frames in one launch -- which is the only way to see whether a
+// thing that happens *over time* reads, and the ordinary run is the burst
+// with one frame in it. `screen_save` is sandboxed into the game's own save
+// area, which is where `tools/shot.py` fetches these from.
+if (posed && fired < array_length(frames)) {
+    if (t >= shutter + frames[fired]) {
+        screen_save(array_length(frames) > 1
+                    ? "shot_" + string(fired) + ".png" : "shot.png");
+        show_debug_message("SHOT SAVED " + scene + " +"
+                           + string(frames[fired]));
+        fired++;
+        if (fired >= array_length(frames)) game_end();
+    }
 }

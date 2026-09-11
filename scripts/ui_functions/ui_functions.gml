@@ -761,6 +761,55 @@ function draw_bloom(_x, _y, _size, _col, _alpha) {
     gpu_set_blendmode(bm_normal);
 }
 
+/// @desc An arc drawn as a band, with its own alpha at each end. Lifted from
+///       the Wordsearch project, where it draws the combo ring.
+///
+///       One triangle strip rather than a run of `draw_line_width` segments,
+///       for the one thing a strip can do that a run of lines cannot: **the
+///       alpha is interpolated along it**, so the arc can be dim where it
+///       started and bright where it is moving. The joints between segments of
+///       an additive line double up into visible beads; a strip has none.
+///
+///       Angles are GameMaker's: 0 is east and they increase anticlockwise, so
+///       a clockwise sweep from noon runs from 90 downward.
+function draw_arc_band(_x, _y, _r_in, _r_out, _from, _to, _colour, _a_from,
+                       _a_to, _steps) {
+    _steps = max(2, _steps);
+    draw_primitive_begin(pr_trianglestrip);
+    for (var _i = 0; _i <= _steps; _i++) {
+        var _t = _i / _steps;
+        var _ang = lerp(_from, _to, _t);
+        var _a = lerp(_a_from, _a_to, _t);
+        draw_vertex_colour(_x + lengthdir_x(_r_in, _ang),
+                           _y + lengthdir_y(_r_in, _ang), _colour, _a);
+        draw_vertex_colour(_x + lengthdir_x(_r_out, _ang),
+                           _y + lengthdir_y(_r_out, _ang), _colour, _a);
+    }
+    draw_primitive_end();
+}
+
+/// @desc The close-up that flashes when somebody casts: a boss declaring a
+///       spell, or Szuix spending a sigil.
+///
+///       **One function for both, so the two cannot drift apart.** The
+///       player's card was asked for as the same effect the bosses get, and
+///       two copies of a fade and a push-in are two copies that get tuned
+///       apart the first time either is touched.
+///
+///       `_t` runs from 1 at the start to 0 at the end. **A band across the
+///       upper third, not a wall across the screen**: drawn full size and
+///       centred it covered eight hundred pixels of playfield with a face,
+///       and the pattern the spell had just started firing was invisible
+///       behind it. High and small, it reads as a cut to a close-up and leaves
+///       the field alone.
+function draw_eye_card(_spr, _t) {
+    if (_t <= 0) return;
+    var _a = min(1, _t * 2.4) * 0.80;
+    var _s = 0.60 + (1 - _t) * 0.09;
+    draw_sprite_ext(_spr, 0, FIELD_CX, FIELD_Y0 + FIELD_H * 0.28,
+                    _s, _s, 0, c_white, _a);
+}
+
 /// @desc Bubbles rising through the liquid, between `_bot` and `_surf`.
 ///
 ///       **Derived from the clock rather than simulated**, exactly as the

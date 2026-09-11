@@ -41,6 +41,11 @@ if (_boss != undefined) {
     // that can occupy the middle block. See `hud_draw_engagement`.
 }
 
+// Szuix's own close-up, when he is the one casting. It goes after the boss's
+// so that a sigil spent during a declaration is the card on top -- the player
+// pressed a key and is owed the answer to it.
+player_draw_card(player);
+
 fx_draw_text();
 
 // The stage's own name, across the field at the very start. It is the only

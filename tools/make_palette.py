@@ -56,6 +56,8 @@ def main():
         ("GILT", A.GILT, "filigree and rules"),
         ("GILT_LIT", A.GILT_LIT, ""),
         ("RUNE", A.RUNE, "the arcane accent"),
+        ("SIGIL", A.SIGIL, "Szuix's own magic: the bomb's circle"),
+        ("FLAME", A.FLAME, "Szuix's fire: the body of his shot"),
     ]
     for name, col, note in named:
         tail = ("    // " + note) if note else ""

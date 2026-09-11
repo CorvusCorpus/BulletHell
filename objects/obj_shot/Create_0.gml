@@ -17,3 +17,9 @@ t = 0;
 scene = global.shot_scene;
 shutter = 40;           // overwritten per scene, below
 posed = false;
+
+// Which frames to photograph, as offsets from the scene's own shutter, and
+// how many have been taken. `[0]` is the ordinary single picture; `-burst`
+// fills it with a sequence. See the Step event.
+frames = (array_length(global.shot_burst) > 0) ? global.shot_burst : [0];
+fired = 0;

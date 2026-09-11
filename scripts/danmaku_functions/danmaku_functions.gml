@@ -55,6 +55,7 @@ function danmaku_init() {
 
     global.pshots = [];
     global.pshot_n = 0;
+    global.pshot_seq = 0;       // see `pshot_fire`; only ever read by a draw
 }
 
 /// @desc A blank bullet struct. Only ever called when the pool has to grow.
@@ -765,7 +766,12 @@ function bullet_apply_mod(_u, _tx, _ty) {
 ///       because that is the *game* changing what is on the field and a
 ///       bullet left over from the previous attack is a bug rather than a
 ///       challenge.
-function bullet_clear_circle(_x, _y, _rad, _to_items) {
+///
+///       `_each`, if given, is called with each bullet's position and colour
+///       as it goes -- which is how the bomb makes stolen magic stream back
+///       out of the exact places bullets were, rather than out of a guess at
+///       where the sweep's edge probably met some.
+function bullet_clear_circle(_x, _y, _rad, _to_items, _each = undefined) {
     var _n = 0;
     var _r2 = _rad * _rad;
     for (var _i = global.bullet_n - 1; _i >= 0; _i--) {
@@ -777,6 +783,7 @@ function bullet_clear_circle(_x, _y, _rad, _to_items) {
         if (_to_items && (_n mod CLEAR_ITEM_EVERY) == 0) {
             item_spawn(_u.x, _u.y, ItemKind.Tally);
         }
+        if (_each != undefined) _each(_u.x, _u.y, _u.col, _n);
         fx_bullet_pop(_u.x, _u.y, _u.col);
         bullet_kill_at(_i);
         _n++;
@@ -951,6 +958,7 @@ function pshot_fire(_x, _y, _spd, _dir, _dmg) {
     if (_i >= array_length(global.pshots)) {
         array_push(global.pshots, {
             x: 0, y: 0, px: 0, py: 0, dir: 0, spd: 0, dmg: 0, life: 0,
+            flick: 0,
         });
     }
     global.pshot_n = _i + 1;
@@ -961,6 +969,11 @@ function pshot_fire(_x, _y, _spd, _dir, _dmg) {
     _s.spd = _spd;
     _s.dmg = _dmg;
     _s.life = 0;
+    // Where in its flicker this one starts. **A counter, not `random`**: it is
+    // only a picture, and two barrels fired on the same frame at the same
+    // phase would burn in lockstep and read as one shape copied.
+    global.pshot_seq = (global.pshot_seq + 3) mod 8;
+    _s.flick = global.pshot_seq;
     return _s;
 }
 

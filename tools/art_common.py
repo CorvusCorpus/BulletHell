@@ -109,6 +109,11 @@ GILT = (196, 154, 74)        # filigree, rules, the frame -- old gold
 GILT_LIT = (255, 226, 150)   # the highlight on a gilded edge
 RUNE = (110, 224, 255)       # the arcane accent: Szuix's own eye-cyan
 
+# Szuix's own magic, as opposed to his furniture: the violet of his wings for
+# the sigil he casts, and the azure body of the fire he throws.
+SIGIL = (150, 84, 255)
+FLAME = (60, 168, 255)
+
 # The fourteen bullet hues. They are a wheel plus a neutral rather than a
 # curated set, because a boss designs its own attacks out of them and a gap in
 # the wheel is a colour some pattern will want and not find.

@@ -43,6 +43,10 @@ pshot_draw();
 
 player_draw_bomb(player);
 player_draw(player);
+// The grace dial goes under the danmaku with him, not over it: it says when
+// he stops being safe, which is information about him, and it must not be one
+// more bright thing between the player and a bullet.
+player_draw_grace(player);
 
 laser_draw();
 bullet_draw();

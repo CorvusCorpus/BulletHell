@@ -58,6 +58,14 @@ global.practice_best = {};
 // nothing else has to test for it.
 global.shot_scene = "";
 
+// **Which frames a shot run photographs, relative to the scene's own.** Empty
+// is the ordinary one-picture run. A burst exists because half of what this
+// project now draws is a *sequence* -- a bomb is four seconds of sigil, theft
+// and seals -- and a still of frame 26 says nothing about whether the other
+// hundred read. One launch, several shutters, so a sequence costs one build
+// and seven seconds rather than six of each.
+global.shot_burst = [];
+
 // ---------------------------------------------------------------------------
 // The command line
 // ---------------------------------------------------------------------------
@@ -82,6 +90,14 @@ for (var _i = 1; _i <= _argc; _i++) {
         _mode = "shot";
         if (_i < _argc) {
             _scene = parameter_string(_i + 1);
+            _i++;
+        }
+    } else if (_a == "-burst") {
+        // A comma-separated list of frame offsets, taken as a separate
+        // argument for the same reason the scene name is: one this file does
+        // not understand should be visible rather than silently ignored.
+        if (_i < _argc) {
+            global.shot_burst = shot_parse_burst(parameter_string(_i + 1));
             _i++;
         }
     }
