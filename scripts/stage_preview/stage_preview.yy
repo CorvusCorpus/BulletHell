@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"stage_preview",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"stage_preview",
+  "parent":{
+    "name":"content",
+    "path":"folders/Scripts/content.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

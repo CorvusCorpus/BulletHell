@@ -25,6 +25,7 @@ grove_table_init();
 
 danmaku_init();
 laser_init();
+ring_init();
 item_init();
 enemy_init();
 fx_init();

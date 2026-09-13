@@ -125,6 +125,17 @@ for (var _i = 0; _i < _shown; _i++) {
             draw_text_outline(_x + _cw * 0.5, _cy + 216, "PRACTICE ONLY",
                               merge_colour(COL_PARCHMENT, COL_ARCANE_LIT,
                                            0.45), 0.8, 1);
+        } else if (stage_is_preview(_def)) {
+            // What it does, and the one thing it does not: there is no boss
+            // on this card, so "not yet cleared" would be advertising a
+            // condition nothing on it can ever meet.
+            draw_set_font(fnt_ui());
+            draw_text_outline(_x + _cw * 0.5, _cy + 176, "THE TURN, LOOPED",
+                              COL_MANA, 0.9, 2);
+            draw_set_font(fnt_small());
+            draw_text_outline(_x + _cw * 0.5, _cy + 216, "NOTHING TO CLEAR",
+                              merge_colour(COL_PARCHMENT, COL_ARCANE_LIT,
+                                           0.45), 0.8, 1);
         } else if (_rec.cleared) {
             draw_set_font(fnt_ui());
             draw_text_outline(_x + _cw * 0.5, _cy + 176,

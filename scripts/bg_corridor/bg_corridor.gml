@@ -148,7 +148,24 @@ function corridor_depth_at(_v, _sy) {
 ///       tiled from the edge of the view rather than from its centre and so
 ///       take `-ox` off their own drift; `ox` is kept on the view for exactly
 ///       that.
-function corridor_view(_fill, _ox = 0, _oy = 0) {
+///       **`_lat` is the third one and it is a *translation*, in world units
+///       rather than screen pixels, which is the whole of where parallax
+///       comes from.** A yaw moves the moon, the far wood and the nearest
+///       trunk by the same number of pixels, because they have all turned
+///       through the same angle -- so a camera with nothing but a yaw is a
+///       camera the depth of the scene cannot be read from. A camera that
+///       *slides* moves each thing by `corridor_k` of its own depth: the moon
+///       at infinity does not move at all, the far wall of wood barely does,
+///       and the canopy overhead sweeps. That is the illusion of flying
+///       through a wood rather than of panning across a picture of one, and
+///       it costs one subtraction in `corridor_draw_prop` because the
+///       projection was already there.
+///
+///       It is not scaled by `_s` in fill mode, and `_ox` is, because they
+///       are different kinds of number: `_ox` is screen pixels and `_lat` is
+///       world units that meet the screen through `_k`, exactly as a prop's
+///       own `_wx` does.
+function corridor_view(_fill, _ox = 0, _oy = 0, _lat = 0) {
     if (_fill) {
         // The world is authored at the field's size, so a view that covers
         // the whole screen has to scale the camera's throw with everything
@@ -156,11 +173,11 @@ function corridor_view(_fill, _ox = 0, _oy = 0) {
         var _s = GAME_W / FIELD_W;
         return { x0: 0, y0: 0, w: GAME_W, h: GAME_H,
                  cx: GAME_W / 2 + _ox * _s, x1: GAME_W, y1: GAME_H,
-                 ox: _ox * _s, oy: _oy * _s };
+                 ox: _ox * _s, oy: _oy * _s, lat: _lat };
     }
     return { x0: FIELD_X0, y0: FIELD_Y0, w: FIELD_W, h: FIELD_H,
              cx: FIELD_CX + _ox, x1: FIELD_X1, y1: FIELD_Y1,
-             ox: _ox, oy: _oy };
+             ox: _ox, oy: _oy, lat: _lat };
 }
 
 // ---------------------------------------------------------------------------
@@ -423,7 +440,10 @@ function corridor_draw_prop(_v, _spr, _rim, _frame, _z, _wx, _wh, _flip,
                             _col, _rim_col, _a, _rim_a, _aspect = 1,
                             _anchor = CORRIDOR_CAM_H, _yflip = 1) {
     var _k = corridor_k(_z);
-    var _sx = _v.cx + _k * _wx;
+    // The camera's own lateral position is subtracted in *world* space, so
+    // the shift a prop gets is `_k` of it -- which is parallax, and is the
+    // same arithmetic that already put the prop on the screen.
+    var _sx = _v.cx + _k * (_wx - _v.lat);
     var _sy = corridor_horizon(_v) + _k * _anchor;
     var _s = _k * _wh / sprite_get_height(_spr);
 

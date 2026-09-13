@@ -393,6 +393,13 @@ function boss_end_phase(_e, _g, _beaten) {
 
     var _swept = bullet_clear_all(true);
     laser_clear_all();
+    // **And the rings, which is the one sweep that has no other way of
+    // happening.** A bullet leaves the field on its own and a laser runs out
+    // of clock; a ring stands there until something says otherwise, so an
+    // attack that ended with three of them up would hand the next attack a
+    // field it did not ask for. Same rule as the bullets, for a stronger
+    // reason.
+    ring_clear_all();
 
     var _col = (_p == undefined) ? COL_GRAZE : global.bullet_colour[_p.col];
     // **Broken and survived are different cues, not one cue at two volumes.**
@@ -497,6 +504,7 @@ function boss_finish(_e, _g) {
     _e.hp = 0;
     bullet_clear_all(true);
     laser_clear_all();
+    ring_clear_all();
     sfx(Sfx.BossDie);
     fx_flash_screen(c_white, 0.9);
     fx_shake(26);

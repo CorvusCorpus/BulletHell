@@ -37,8 +37,8 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 |---|---|
 | `tools/build.py` | The GML compiles. Reports real diagnostics with line numbers. |
 | `tools/test.py` | The GML is *correct*: builds, runs with `-selftest`, grades the suites in `scripts/selftest` off stdout. |
-| `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, and no bare `draw_sprite` inheriting the draw state. |
-| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Thirty-four scenes; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
+| `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, no bare `draw_sprite` inheriting the draw state, **the hedgerow still covering the horizon it hides**, and **the rings eating the player's shots before the enemies are offered them**. |
+| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Forty-one scenes; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
 
 **`shot.py` is not a nicety, and in this genre it is the most important of the
 four.** A bullet pattern that is arithmetically perfect and illegible is a bug,
@@ -809,6 +809,111 @@ every node; blobs at this size are indistinguishable once they overlap,
 additive blending hides the seams for free, and sixty-four draws per laser
 against a handful of lasers is nothing.
 
+### Rings: the first object that is neither a bullet nor an enemy
+
+**A bullet is something to dodge and an enemy is something to shoot. A ring is
+neither.** It is furniture a boss puts down, it cannot be destroyed, and what
+it changes is *where the player is allowed to stand and where they are allowed
+to shoot from*. `ring_functions` is the pool; stage three is the fight built out
+of it.
+
+**Every ring is the same size and there is no way to make one that is
+not.** `RING_R` is a macro and the struct has no radius field, which is the
+difference between a rule and a convention: an attack cannot ask for a bigger
+ring, so six on the field are six of the same object and the player learns one
+shape once. The number is set against the *bullets* -- `BSHAPE_SPHERE` is the
+largest thing the game fires at 108 pixels across and a ring is 167, moderately
+bigger and nothing like the 400-pixel gates the first pass drew. Those read as
+architecture rather than as the bands he wears: two of them walled the field,
+and three concentric ones produced a boss who could not be shot at all from
+outside. `test_rings` asserts both the constancy and the ratio to the largest
+bullet, because both are the kind of number that drifts the moment somebody
+wants one dramatic ring.
+
+**It blocks along its band and not across its middle, and that is the whole
+design.** An indestructible shield in front of a boss is the defect `BossMove`
+exists to fix -- an attack that cannot be answered, only waited out. A *ring*
+has a hole in it, so the answer is always there and it is a positional one:
+line up through the middle, or go round. The player is never told to stop
+shooting; they are told where to stand to keep shooting. `test_rings` asserts
+the hole as hard as it asserts the band, because a ring that quietly blocked
+across its disc would look identical and would only show up as a player slowly
+concluding the fight is unfair.
+
+Four verbs, and every one is a field on the struct:
+
+- **Block.** Player shots crossing the metal are absorbed. Enemy bullets are
+  not, because they are his -- and the bomb's seals are not either, which is
+  what stops a walled boss making the one panic button in the game useless.
+- **Kill.** A ring can be *charged*, after a visible warning, and then its band
+  hurts. `ring_is_hot` has to test `warn` as well as `hot`, because
+  `ring_charge` sets both at once: the first version killed for the whole of
+  the build-up it was drawing to say it had not started. `test_rings` found it
+  on its first run, and nothing else could have -- the picture, the cue and the
+  timing were all correct.
+- **Arc.** Two rings strung with a line of current: a lethal segment between two
+  *moving* points, which the player reads off the objects at its ends rather
+  than off the wall itself. The drawn bolt jitters, and the jitter is bounded by
+  `ring_arc_half` so it never strays outside the band it kills in -- at
+  twenty-six pixels off a nine-pixel kill line it was a bolt that visibly missed
+  and killed anyway.
+- **Fire.** A ring carries an `act`, called every frame exactly as a boss attack
+  is, so it is a boss attack one level down. `ring_fire_rim` fires from the
+  *metal* rather than from the centre (fired from the middle it looks identical
+  for one frame and wrong for ever after, because the delay marks appear inside
+  the hole) and `ring_beam` anchors a following beam at the centre, because the
+  hole is what a ring is for.
+
+**Blocking is swept, and the ordering is the mechanic.** A player shot travels
+`PSHOT_SPD` against metal a fifth as thick, so a point test would miss two in
+three and the ring would read as leaking -- the same defect `bullet_hit_index`
+exists for, and the same fix. And `ring_block_shots` has to run *before*
+`enemy_take_shots`: a shot absorbed by a ring must be gone before the boss
+behind it is offered the pool. Run the other way round, a ring blocks nothing
+while looking exactly as though it does -- the shots still spark on it, the
+ring is still drawn, and the only difference is a health bar going down at the
+normal rate. `check_rings_block_before_enemies` is the guard, and it was tested
+against the wrong order before being believed.
+
+**A ring is stamped with a serial and references are validated against it.** A
+struct is reused out of the pool, so an attack that remembers three rings and
+reads them two seconds later may be reading whatever took those slots.
+`Demon Sealing Hex`'s seals answer the same trap by re-picking every frame,
+which cannot work here: an attack that spawned three rings means *those* three.
+`ring_valid` is the answer, and the case it actually catches is an arc whose far
+end has been swept -- a lethal line drawn to a ring that no longer exists.
+
+**A ring is drawn before the bullets, which is what makes an opaque object this
+size affordable.** The near parallax layer is capped at `BG_NEAR_ALPHA` and kept
+out of the middle of the screen because it draws *over* live danmaku; a ring
+draws under all of it, so no arrangement of rings can hide a bullet. What they
+can hide is the boss, which is the point.
+
+**The sprite's proportion is the collision's proportion.** `RING_BAND_FRAC` is
+half the metal's thickness as a fraction of the radius, it is quoted in
+`tools/make_rings.py`, and because the sprite is scaled uniformly the band that
+is drawn and the band that blocks a shot are the same shape by construction --
+the property `capsule_half` buys the meters and `laser_draw_curve` buys a curve.
+
+**And the ring is one sprite with its colour baked in**, which is the opposite
+of what everything else here does. A ring is not a shape being lit, it is a
+*marking*: the reference sheet draws the same band on Mika's tail, his biceps
+and his wrists, and that pattern is the character. What the spell's colour gets
+instead is the *charge*: the same sprite drawn again additively, so the chasing
+blazes in the attack's hue and the metal underneath does not move. The marking
+is the conductor, which is the whole idea of the fight.
+
+**The marking is an interlace, not a row of links, and drawing it as links is
+what made the first one read as a string of beads.** The reference is one
+continuous ribbon that crosses itself: a lens opens between two crossings,
+closes to a point, and the next opens on the other side of the line, with a
+knot on every crossing. So what `make_rings.py` draws is literally two waves --
+`+A cos` and `-A cos` -- and the lenses are what falls out between them, which
+gives every link the **pointed** ends an ellipse cannot. Four hairlines rather
+than two, as well: a line at each edge, a gap, then a second line bounding the
+channel, so the chain reads as inlaid into a cuff instead of printed on a
+strip.
+
 ### The player is a struct and its input is an argument
 
 `player_step` takes an input struct rather than reading the keyboard, so a
@@ -1174,6 +1279,15 @@ banner and its notch in the health bar, which is enough.
 because it is genuinely right for some casters: the Warden is a carved stone
 told to watch, and a circle of power is what one of those stands in. What it is
 not is a default that suits everybody, which is what it used to be.
+
+**And it is centred on the caster's station, which it was not.** It drew on
+`FIELD_CY` — two hundred and fifty pixels below where any boss in this game
+ever stands — so what it actually put on screen was a circle of power with
+nobody in it and a caster hovering above the rim. It went unnoticed until a
+boss whose entire fight is rings was put in front of it, at which point it was
+the first thing anybody said. The *station* rather than the live position,
+deliberately: a boss drifts four hundred pixels either way, and a background
+that slid with him would be a room following its occupant about.
 
 Ziggy gets `SPELLBG_BRIMSTONE`, fixed in red, grey and black: the world becomes
 the inside of a forge. Black rock fracturing outward from wherever he is
@@ -1840,6 +1954,24 @@ already sorted, so `corridor_merge_step` is a k-way merge — one linear pass, n
 comparisons beyond the heads, output array allocated once. `test_corridor`
 asserts the merged walk is monotonic in z and covers every prop.
 
+**The canopy bands do not move on their own, and that took two goes.** They
+carried a share of the drift, which was a pan; that became a bounded sway,
+which was still the only thing left in the frame going sideways under its own
+clock — and in a stage where the camera steers, that reads as a clash rather
+than as wind. Reported as the branches moving left and right at random. What
+says wind overhead is the boughs *ring*: props that come at the lens and sweep
+out of the top corners, which is what a canopy does to somebody flying under
+it. The bands behind them are the far canopy, and a far canopy slides for the
+same reason a far wall of wood does — none.
+
+`check_bands_are_rooted` holds it: a band's x must be `grove_rooted_x`, or a
+parameter passed through from a checked caller, and the drift is legal only
+inside `grove_draw_mist`. **Its first version carried a literal backspace where
+it meant a word boundary** — an escape that compiled, ran against three
+deliberate violations and called all three clean. Which is the `GAME_ERROR`
+lesson again, and the only thing that separates a guard from a comment is
+watching it fail.
+
 **The canopy is a ring too, and it is the tree sprite upside down.** A canopy
 drawn as a band sliding sideways is the one piece of this stage that could not
 be right: in a corridor nothing distant slides, it grows. Reported as flat
@@ -2138,6 +2270,31 @@ Three things do it and they are three different distances:
   the only way a foot can be visible at all. It **crosses the foot of the
   moon** and only dips where the path runs into it — see below for the
   version that parted there instead.
+
+  **It also used to pan left for ever, and that is what a rooted band may
+  never do.** The treeline, the hedgerow and the canopy each carried a share
+  of `drift`, an accumulator that only grows, on the reasoning that a band
+  pinned at one x reads as a photograph stuck to the screen. That reasoning
+  was written for a camera that did not move, and it bought the look with a
+  lie: a wall of wood travelling sideways in a stage flying straight down a
+  corridor — the same "sideways motion the camera is not making" this file
+  already records about the canopy and the treeline, left standing on the one
+  band nobody had photographed. It was reported on the hedgerow, which is the
+  worst place for it: that band exists to hide the join between the ground
+  and the far wood, so it lies across the middle of the frame under the moon.
+  At flying speed it walked a hundred pixels left every twenty seconds
+  whatever the player did, and the steering could offset forty-eight of that
+  only while the player stayed against a wall.
+
+  **The bands are the layer where a yaw reads at all** — everything nearer
+  has its own rushing motion to hide it — so a drift on them is a drift over
+  the top of the only legible evidence that the camera turned. `grove_rooted_x`
+  is the rule: a rooted band's sideways position is the camera's and nothing
+  else. The mist keeps its drift, because fog is the one thing out there that
+  genuinely travels, and the canopy trades its pan for a **sway**, because an
+  oscillation is wind where a pan is the camera sliding. Measured over half a
+  minute of flight with the player held still, a rooted band now moves 23px —
+  which is the meander, and all of it — and 61px wall to wall on the steering.
 - **The verge props stand along it in their own right**, being ordinary
   billboards at the far end of a ring that reaches the far plane.
 
@@ -2159,6 +2316,36 @@ than scalloped. It is authored at **twice the field's width**, because it is
 drawn at a fraction of its height — a hedge is sixty pixels, not three hundred
 — and a band scaled to a third is a band that repeats three times across the
 field, which is a rhythm the eye finds in about two seconds.
+
+**And the one thing it may never do is fall below the line it is covering.**
+That is a property of the hedge's *thinnest* stretch rather than of its
+average, and it is the sum of four numbers living in three files: how tall the
+band is drawn, how much of it stands above the horizon, how far the wave and
+the dip push it back down, and where the art's own crown bottoms out. Every one
+of them was individually reasonable and nothing was adding them up. The mat was
+seventy scattered ellipses topping out anywhere between 0.64 and 0.83 of the
+canvas, so between two of them the hedge was a sixth of its own height, the
+crown there landed *below* the horizon, and the ruled join showed straight
+through the layer built to hide it — reported as the border peeking out from
+behind the hedgerow.
+
+**The measurement is what said the art was at fault and not the tuning**: with
+the wave and the dip both set to zero, the worst stretch still cleared the line
+by one pixel. So the mat got a floor — more ellipses, wider, over a shorter
+height range, so it is many times covered everywhere and its crown undulates
+between 0.34 and 0.50 instead of falling away — and the wave and the dip came
+down with it, because 26px and 22% on a band 116px tall is forty-four per cent
+of it spent pushing the crown down, which leaves an art budget no hedge can be
+drawn inside. `check_scrub_covers_horizon` does the addition against the
+shipped PNG and was tested against both failures before being believed.
+
+**It had always been broken, and what made it visible was fixing something
+else.** The band used to slide, so the bare patch swept across the frame a few
+pixels a second; parked to the camera it sits at one x and reads as a ruled
+edge. A defect that travels is a defect nobody reports — every screenshot in
+`tools/_preview` caught it too, and it looked like scenery. That is the same
+shape as the note on `check_sprites_not_blank` sampling three frames: the thing
+that hid the fault was the thing that made it move.
 
 Its **crown is hard and its foot dissolves**, which is one alpha ramp doing
 two jobs: a crown against the sky has to be hard or it is fog, and a foot on
@@ -2337,15 +2524,65 @@ can attribute to a body. What is there now is two things:
   tenth either way over four seconds, by 0.24.
 - **A slow wander in both axes**, two periods each and no two of the four
   sharing a factor, so the camera never comes back to where it was and never
-  traces a line while it is away.
+  traces a line while it is away. It is a third of what it was, because it no
+  longer has to carry the camera's whole character on its own.
+- **A lean toward the player**, which is the larger half of the yaw now and
+  the only part of the camera anybody is driving. The sway answers to nobody:
+  it gives the flight a body and gives the *player* no part in it, so the one
+  thing on screen that could plausibly be steering the camera was the one
+  thing it was not reading — and it reads as arbitrary because it is, reported
+  as the stage steering at random and mostly to the right, which is what two
+  sinusoids seeded where these are seeded do for the first twenty seconds.
+  The sign is the rail shooter's: a player against the left wall is a camera
+  looking left, which puts the vanishing point out to the *right* and the
+  player heading into it.
 
-Both are **rotations rather than translations**, and that distinction is the
-whole of why a moving camera reads as a camera: under a small yaw everything
-on screen shifts by the same number of pixels — the moon at infinity, the far
-wood, a tree ten metres off and the ground under it — because they have all
-turned through the same angle. Sliding sideways instead would move the near
-trees and leave the moon where it was, which is a world on rails behind a pane
-of glass. So the offsets go into the two numbers every position in the
+  **The follow is filtered twice and both halves earn their keep.** The
+  player crosses this field in two seconds and dodges across it several times
+  a second, so a camera reading their position directly would shake in time
+  with the dodging — on the one line a danmaku player measures every bullet
+  against, at exactly the moment they are reading bullets. The lag is what
+  removes the dodge, because a flick left and back is a third of a second
+  against a time constant of one; the cap is what makes it a *guarantee*
+  rather than a tuning, on the same argument `BOSS_TRACK_SPD` makes about a
+  boss that tracks — a proportional ease alone is fastest exactly when the
+  player has just moved furthest, which is the worst frame to be fast on.
+  Measured: a player who commits to a wall gets the full 36 pixels, a player
+  teleporting wall to wall every frame moves the camera by its cap and not a
+  thousandth more, and a real dodge at `PLAYER_SPD` moves it **0.94 pixels**.
+
+  **The aim is pushed, not pulled.** `bg_step` takes it as an argument and
+  `bg_new` carries it on the base struct beside `omen`, for the reason `omen`
+  is there: the run knows where the player is and has no idea what kind of
+  world it is telling. A background that read the player itself would have
+  the rack and the attack list — neither of which has a player — steering
+  toward wherever the last run left somebody standing, and a suite could not
+  fly the camera without posing one. `player_field_aim` is the field's own
+  fraction rather than a coordinate, and it is the one place the sign is
+  written down.
+
+**The meander is a rotation and the lean is a translation, and the difference
+between them is where depth comes from.** Under a yaw everything on screen
+shifts by the same number of pixels — the moon at infinity, the far wood, a
+tree ten metres off and the ground under it — because they have all turned
+through the same angle. That is right for an idle look-around and it is
+exactly wrong for steering: a camera driven by nothing but a yaw is a camera
+whose scene has no depth in it, and when the bands were first rooted to the
+yaw alone the canopy sat at a fixed offset in front of the moon however the
+player flew. Reported as the branches having lost their parallax.
+
+So the lean is a lateral *slide*, in world units, and every band and every
+prop takes `corridor_k` of its own depth: the moon does not move, the far wall
+of wood shifts five pixels, the canopy overhead shifts forty and the nearest
+trunk a hundred. It costs one subtraction in `corridor_draw_prop` —
+`_wx - _v.lat` — because the projection was already there, and one argument on
+`grove_rooted_x`, because a band is a backdrop at a distance like everything
+else. Measured: steering from one wall to the other parts the canopy from the
+far wood by **66.8px**, and the two sit together when the player is on the
+centre line.
+
+The two canopy bands are at two depths, so they part from *each other* as
+well, which is what stops the roof of the wood reading as one sheet. So the offsets go into the two numbers every position in the
 corridor is measured from, `cx` and the horizon, and nothing that draws a prop
 has to know the camera exists. The three tiled bands are the exception,
 because they are laid out from the edge of the view rather than from its
@@ -2471,6 +2708,377 @@ its first, and does it keep out of the middle of a layer drawn over the field.
 Neither means anything about a tree. The prefix here is `spr_scn_` — scenery —
 and the rules those checks enforce are enforced for this stage where they can
 be, by the additive foreground above.
+
+## Stage three: the Gilded Sanctum
+
+Mika -- a black fennec in gold, head mage to Ashiah, the Living God of Death.
+Seven attacks: three non-spells and four spells, and **every one of them is
+built round a ring**. The stage exists for the same reason the Hollow Grove
+exists for its background: a mechanic cannot be judged from an engine test, so
+there is a fight to play it in.
+
+**His palace exists now**, and it is the third projection in the game: a room
+rather than a floor or a corridor. See below.
+
+**Every one of his spells washes indigo and none of them washes in its own
+colour**, which is two rules at once. One background per boss, because an arena
+is a *place*. And the wash has to be the colour his rings are not: the first
+pass ran `Gilded Aperture` gold on gold and photographed as three gold bands
+dissolving into a gold field, which is the `Cinder Waltz` finding exactly.
+
+`SPELLBG_SIGIL` nearly did not work here for a subtler reason -- **the
+fallback's own motif is a ring**. Two counter-rotating magic circles behind a
+caster whose whole fight is rings is scenery drawn in the same shape as the one
+object that has to be told apart from scenery, which is the ember-and-pellet
+finding at four hundred pixels. What separates them is value and hue rather
+than shape, and the indigo wash is what does it.
+
+**`Gilded Aperture` is the fight's one real idea, and the aperture is the
+*gap*.** Six rings on one orbit round him, turning: the windows between them
+are the only line to the boss, and they sweep, so the answer is to find where
+one is now and be under it. That is a positional question whose answer is
+always somewhere.
+
+The first version was the same name over a different shape -- three enormous
+rings concentric on him, on the reasoning that each one the player got inside
+was one fewer band in the way. It reads well written down and in practice it is
+a boss who cannot be shot from anywhere sensible, which is the unanswerable
+defect `BossMove` was invented to fix, arriving from a new direction. The
+volleys are tangential rather than radial either way, because radial ones would
+put a wall in every window the attack exists to open.
+
+The rest of the table is a placeholder in the sense the whole game's is. What is
+not placeholder is the vocabulary: between the Proctor's two attacks and Mika's
+seven they use every verb a ring has, which is the argument the drafting
+table's first five drafts are chosen on.
+
+### The hall, and the sky over it
+
+**Stage one is a floor, stage two is a corridor, and this is a room.** The
+projection is a real camera with a real perspective matrix and the GPU's own
+depth buffer -- which is what the other two could not be, because the stage
+opens nine hundred units up aimed at the marble and then rises and levels out,
+and pointing a camera at the floor is a *rotation*. `scripts/bg_sanctum` is
+the whole of it and its own docstring is the long version; what follows is the
+part about what is over the nave.
+
+**The hall had a ceiling and taking it off is what stopped it reading as a
+corridor.** It was capped at `HALL_CEIL_H` by a coffered plane with a
+starfield painted on its underside -- a picture of a sky on a lid, and a lid
+is exactly what a tunnel has. Floor, two walls and a ceiling is four edges and
+no way out: every ray the camera casts lands on something a couple of bays
+away, so however deep the shelving is modelled the room can never be bigger
+than its own cross-section. It was reported as a basic corridor bounded by a
+barebones ceiling texture, which is precisely what it was.
+
+**What the sky is allowed to be is a wedge, and the wedge is a rule.** A long
+horizontal edge at height H and half-width X projects, from a camera at
+`HALL_CAM_FLY`, to a straight ray out of the vanishing point with slope
+`(H - cam) / X` -- so the visible sky is the cone above the steepest such edge
+in the hall, and every unit built on top of the wall narrows it for the whole
+length of the hall. That makes the parapet's height the *price of the sky*,
+paid once and paid everywhere, and it is why there is no upper storey: a
+second register of stacks set back far enough not to close the wedge is a
+register that is entirely hidden behind the first, which is what "inside the
+silhouette" means. `test_hall_sky` does the arithmetic against the orrery's
+own screen radius, because the failure it guards is "the landmark this stage
+was opened up for is behind the masonry" and no assertion about either piece
+alone could see it.
+
+So what stands on the wall is a **coping, a parapet and a post**. An obelisk
+over every pilaster on the ordinary bays and a brazier on the alcove ones --
+thin things, which close the wedge only at their own bay rather than along the
+whole hall, and what the eye gets is a rhythm of dark verticals marching away
+against the stars. A gilt pyramidion on each is the only part actually lit,
+which is enough: a dark shaft with a bright point on top is read as a whole
+obelisk.
+
+**The sky is a dome centred on the camera, drawn first, with the depth test
+off.** That is the whole of a skybox and it is the only construction that gets
+both halves right at once -- it turns correctly under the pitch and the lean,
+and it does not translate at all, which is what "infinitely far away" means.
+The reveal swings the camera through fifty-three degrees over four and a half
+seconds and every frame of that has to read as the camera rising rather than
+as a picture sliding, which is the defect `bg_grove` records about the canopy
+bands reading as acetate pulled across the frame. Its radius is arbitrary and
+has to be inside the frustum anyway, because the near and far planes clip
+whether or not the depth test is on.
+
+Four things were wrong with the first sky and every one of them is the same
+mistake: **it was built for a sky nobody in this stage can see.**
+
+- **It was derived from the fog by multiplication**, which keeps the join at
+  the horizon exact and cannot add chroma -- so a desaturated haze made a
+  desaturated sky at every elevation it was asked for. Reported, exactly, as a
+  grey void with something caught in it. It is the grove's own correction one
+  layer out: value and saturation are different budgets, and a deep blue at
+  the same value as a neutral grey costs the danmaku nothing. `hall_sky_col`
+  is three stops now, the lowest of which *is* `HALL_FOG` -- so the far end of
+  the hall still dissolves into the sky rather than meeting it at a line,
+  which is the finding about the ground at infinity being the sky.
+- **Its gradient was spread over ninety degrees of elevation.** The camera
+  never looks up: the top of the frame is twenty-seven degrees above the
+  horizon and the wall tops cut off everything under about ten, so the whole
+  visible sky is one narrow strip low down and every stop of the ramp was out
+  of shot. `HALL_SKY_LOW_EL` and `HALL_SKY_HIGH_EL` are inside the strip.
+- **Its extinction was too.** Stars have to fade out before the wall tops do,
+  or the architecture closes into haze with a crisp starfield behind it and
+  the join is the line the fog exists to hide -- but a ramp from two degrees
+  to thirty put every star actually on screen at a third of its brightness.
+  The assertion that holds it is measured **at the elevation the orrery hangs
+  at**, because the first version asked whether a star well above the ramp's
+  own end was lit, which is true of every ramp there is and is therefore not a
+  question.
+- **There were not enough of them.** Nine thousand stars, for about a hundred
+  on screen: the dome is a hemisphere and the wedge is a narrow triangle, so
+  ninety-eight per cent of any count is spent out of shot. Measured rather
+  than guessed -- at two thousand six hundred the frame held thirty-nine and
+  read as an empty sky with something wrong with it.
+
+**And the handful of things there are only a handful of are composed for the
+camera.** The stars are spread over the whole dome because there are enough of
+them that the wedge gets its share wherever they fall; the nebulae and the
+constellations are not, and at a uniform azimuth exactly one short segment of
+one figure landed on screen out of nine. A sky is a backdrop and is allowed to
+be arranged for the one direction the stage is ever flown, which is the same
+call `bg_grove` makes when it puts the moon on the horizon and centres it
+rather than hanging it where a hash landed. `HALL_SKY_SPREAD` is how far
+either side of dead ahead, and it is wider than the lens so that nothing reads
+as a fan.
+
+A constellation is **local**: a seed direction and the four brightest stars
+near it. Joined in index order instead, bright stars are scattered all over
+the dome and what gets drawn is a cat's cradle the width of the sky.
+
+### The grand orrery
+
+**The thing at the end of the hall, and the reason the roof came off.** A
+corridor with nothing at the end of it is a corridor: the eye follows the
+perspective to the vanishing point, finds haze, and comes back. It is an
+armillary the size of a building hanging above the nave, and it is this
+stage's moon in the sense `bg_grove` means one -- **a fixed direction rather
+than a place**, anchored to the camera's own depth so the flight never reaches
+it. That is a lie the player cannot catch, because at nine thousand units
+nothing about it would change over the five minutes a stage runs even if it
+were real.
+
+**Where it sits is derived rather than chosen.** Its centre has to clear the
+parapet's silhouette by its own screen radius, and its top has to be inside
+the field; between them those fix the height and the size, and
+`test_hall_sky` is the addition.
+
+**It is real geometry rather than a painted card, and that is not
+extravagance.** It is the only way it can *turn*. A ring seen face-on and the
+same ring seen edge-on are different shapes, and an armillary whose rings are
+continuously becoming one and then the other is the whole of what says
+"instrument" rather than "logo". Six rings at six rates, no two tilts and no
+two rates alike so it never settles into a shape the eye can learn, with the
+outer limb **not turning at all** -- an armillary has a fixed meridian
+everything else is measured against, and something stationary in the middle of
+all that movement is what makes the movement legible.
+
+Three things about how it is built are worth keeping:
+
+- **A ring has a square section rather than being a flat annulus**, because an
+  armillary's rings go edge-on: a flat one would vanish twice a turn and come
+  back, which reads as a bug. With a section it narrows to a bright line
+  instead, which is what a band of metal does.
+- **A body riding on a ring goes in the ring's own buffer**, at the ring's
+  radius in the ring's own plane, so the orbit is the same matrix and cannot
+  drift out of the ring it belongs to. It is in a *separate* buffer only when
+  it needs a different texture, which is the rule this file learnt when the
+  ceiling drew the floor's ankhs.
+- **The limb is graduated and a graduation has a pitch.** `hall_face` puts the
+  whole sprite on one quad, which for a ring of forty segments is forty copies
+  of a forty-eight-division band -- nineteen hundred marks around a circle
+  seven hundred pixels round, which is not a scale, it is grey.
+  `hall_face_u` is what lets the band repeat twice instead.
+
+**It is depth-tested and depth-written, unlike the sky.** A solid object drawn
+with the test off shows its own far side through its near one, which on six
+nested rings is a tangle of wire. It is nearer than the far plane and further
+than every bay the hall draws, so the depth buffer sorts it against itself and
+the hall paints over it exactly where the hall is in the way. **The fog is off
+for it and the dimming is a multiply**, because hardware fog at nine thousand
+units is total and a fogged orrery is a rectangle of fog colour; what distance
+does to something bright is take its contrast away. And **it breathes by scale
+rather than by alpha**, because a vertex buffer's alpha is frozen into it and
+its size is one matrix.
+
+**Its core is blue rather than white**, and that is a fairness line rather
+than a taste. Driven hard enough to clip every channel it came back as a
+twenty-pixel white-hot blob -- which is what a bullet's core is, in a sky
+bullets cross.
+
+### The review card
+
+**A background cannot be judged from a still, and it cannot be judged from a
+stage either.** `tools/shot.py` answers "does this frame read", which is what
+it is for and what it is the only tool for; what it cannot answer is anything
+about *movement* -- whether the reveal is paced right, whether the camera's
+swell is a rhythm or a lurch, whether the orrery turns at a rate that reads as
+an instrument or as a spinner. The only way to watch those used to be to play
+four minutes of waves and a midboss and hope the turn came when it was
+convenient.
+
+So the background gets what an attack got when `practice_functions` was
+written. `stage_preview` is a card on the rack -- **THE EMPTY ARCHIVES** --
+that flies the hall with no enemies in it, holds phase A, runs the reveal,
+holds phase B, and goes round again twelve times. It is the same argument as
+attack practice and takes the same shape: **written as content rather than as
+a debug view**, so what is being looked at is the stage's own console, field,
+frame and camera rather than a diagnostic that would have to be judged twice.
+
+**The cut back to phase A is a cut.** `bg_set_omen` is one-way because a stage
+turns once; `bg_clear_omen` is the rewind, it lives in `bg_functions` because
+which fields the turn is made of is that file's business and not a timeline's,
+and nothing that is actually a stage should call it. A hard cut is right here
+anyway -- the two poses are what is being compared, and a cut is how two poses
+get compared.
+
+**Nothing on it can touch the save**, on the drafting table's terms: `id` is
+the empty string, so there is no stage to file a clear against, and there is
+no boss for `on_boss_beaten` to fire on, so the path that reaches
+`progress_record` is never entered. Unlike the drafting table its `build` *is*
+defined, because this one genuinely is a run; the two locks are what stand in
+for that. `bosses` is absent rather than empty, so `practice_available`
+answers false and X on the rack opens nothing rather than an empty panel.
+
+**And the rack says what it is.** "NOT YET CLEARED" is true of the card and is
+a lie about it -- there is no boss on it, so nothing could ever clear it, and
+a card advertising a condition it cannot meet reads as broken.
+`stage_is_preview` is the flag, read through `[$ ]` like `stage_is_draft`
+because every other entry lacks the field and a bare read raises.
+
+Deleting the file and its line in `rack_list` removes the whole feature, which
+is deliberate: it is a tool for a stage that is being built.
+
+
+**Mika is cut out of the owner's own reference sheet**, which is the second
+commissioned asset in the project and the first the owner drew themselves --
+the rule Szuix's painted art is under is about *other people's* work, and it
+does not apply here. `tools/make_mika.py` keys the flat background off the
+sheet's own corner pixel and finds him by **flood fill rather than by
+cropping**: the legend runs down the left of the sheet and his raised hand
+reaches back under it, so no vertical line separates the two, and what does is
+that he is one connected mass and the legend is forty small ones.
+
+**He is skinned, and that is the third attempt.** The first ran the whole
+figure through a travelling horizontal shear — correctly reported as a piece of
+paper flapping in the wind, because a shear is one deformation applied to a
+body with no joints, so nothing in it moves *relative* to anything else. The
+second cut him into parts and turned each about its own pivot, which is the
+textbook answer for a single illustration; it produced a new defect every time
+a boundary moved — his head splitting, an ear tip left behind, a shoulder
+coming away, a foot travelling with the cape.
+
+**Every one of those is the same fault, and it is not a misplaced polygon — it
+is the cut.** A hard boundary through solid fur shows the moment the two sides
+move differently, and this figure has no narrow necks to hide one in: his head
+runs into his ruff, his ruff into his shoulder, his leg into his foot. Moving
+the seam moves the problem. Four rounds of moving it is the evidence.
+
+So there are no layers. Each part is a **bone** — a region, a pivot and an
+angle — and every pixel is displaced by the *weighted average* of what those
+bones would do to it, the weights blending smoothly from one to the next. A
+weighted average of two rigid motions is continuous, so there is nowhere left
+for a seam to be. It is one displacement field and one resample: nothing is
+composited, nothing drawn twice, and the alpha comes through whole rather than
+losing a few per cent at every boundary the way the layered version did.
+
+What it costs is that nothing can pass in front of anything else, so the bones
+keep to small angles and none may cross. At four to five degrees that is not a
+constraint anybody would notice.
+
+Three things make a rig read as animation rather than as wobble:
+
+- **Every bone lags the one it hangs from.** The head follows the body, the
+  ears follow the head, the tail follows the hips, each by a fraction of a
+  cycle. Follow-through is what separates a rig from a set of independent sine
+  waves, and it costs one number per bone.
+- **The pivot is the attachment point.** Turning about a part's middle drags
+  its root about; turning about the root moves the tip, which is what a limb
+  does.
+- **The weights are wide** — twenty pixels of falloff at this size. A tight one
+  is a soft-edged cut and behaves like one; a wide one means an ear's base is
+  half ear and half head, which is what an ear's base is.
+
+**Both hems are bones, and the right-hand one taught the rule.** An early rig
+had it half inside the tail's region, so half the fur at his ankle swung and
+half stayed — reported as a fault, and then, once it was explained, asked for
+deliberately on both sides. That is the right call: drapery is the part of a
+standing figure that should still be moving after the body has stopped.
+
+**`Image.paste` with an RGBA image as its own mask applies the mask to the
+*alpha channel too***, so alpha comes back squared and every feathered edge
+loses half of itself. It cost the layered version a measurable slice of his
+coverage before the whole thing was replaced, and it is worth knowing
+independently: nothing in this project should paste RGBA through itself.
+
+**And every region coordinate was read off a grid over the whole figure, and
+every one was wrong the same way.** His box has a raised hand at one edge and a
+tail at the other, so his head is centred at x 0.34 rather than the 0.29 it
+looks like — enough that the ear polygons ran across his forehead. What settled
+it in a single pass was **drawing the polygons back onto the art**, outlines and
+pivots over the drawing, in one picture. `MIKA_RIG_DEBUG=1` does that. Reading a
+region map by eye instead means reading a *padded* canvas, and the padding is
+the same size as the error being looked for.
+
+**Twelve frames, which is not Ziggy's six.** `boss_draw` holds every frame for
+seven game frames whatever the sprite says, so six is a seven-tenths-of-a-second
+loop -- a wingbeat, and right for him. A hovering mage wants an idle nearer a
+second and a half, and the only way to buy that is more frames.
+
+**How big he is, is measured off Ziggy rather than chosen.** Ziggy's sprite is
+a 260x250 box and his *ink* is 198x208: most of a boss sprite is empty margin,
+so matching the box put Mika -- whose cut-out is tight to his outline -- a fifth
+larger than the other boss on the rack, and it was reported that way. What has
+to agree between two characters is how much of the screen each one covers,
+which is the ink.
+
+**A bone's region still has to follow anatomy**, and the tail's got it wrong
+at both ends before skinning made it forgiving: along the bottom it ran from
+the hip to the frame's corner in one segment, straight through the fur fringe
+at his ankle; at the top it leaned inward to x 0.58, which is through the outer
+tufts of his right ear and through the middle of his raised claws. Its ink up
+there does not begin until x 0.66. A region that is a little off now blends
+rather than tearing, which is most of the argument for skinning over cutting.
+
+**Every one of those was a coordinate read off a grid laid over the whole
+figure, and every one was wrong the same way.** The figure's box has a raised
+hand at one edge and a tail at the other, so his head is centred at x 0.34
+rather than the 0.29 it looks like -- enough that the ear polygons ran across
+his forehead and the boundary between them lay over the middle of his face.
+What settled it in a single pass was **drawing the polygons back onto the
+art**: every outline and pivot over the drawing, in one picture. Measuring what
+each region actually *captures*, in figure coordinates, is the other half --
+reading a region map by eye means reading a padded canvas, and the padding is
+the same size as the error being looked for.
+
+**Two things the sheet cannot supply and the cut has to add.** A *rim*, cool
+against his blue-black fur, because he is drawn for a mid-brown page and this
+stage is near-black -- a dark mass with no lit edge is a hole in the picture,
+which is the rule every solid thing in the grove already keeps. And an
+*origin*: his tail is nearly half the width of the frame, so the box's centre
+lands between his hip and the base of it, and the origin is what
+`enemy_take_shots` measures against. His head is found instead -- the ears are
+the topmost ink, so their mean column is the line he stands on -- and the hit
+circle goes on his chest under it, which is the same finding `make_player.py`
+records about Szuix's wings.
+
+**The eye card is his face, found rather than assumed.** Cropping the top third
+of the figure is not cropping his head: the tail rises nearly as high as his
+skull, so the first card came back with his face in the left third and half the
+plate empty. The ears give the head's span, and **the eyes are found by being
+blue** -- nothing else on him is -- so the card puts that centroid on its own
+centre line rather than a fraction of a crop that changes.
+
+The primitive-drawn version it replaced was wrong four times over and every one
+of them was a reading the sheet already answered: the plumes are a fur mantle
+from the shoulders rather than tails, he has one tail, he has digitigrade legs
+and a tabard, and the ring marking is an interlace rather than a row of links.
+**When the reference exists, use it** is the finding, and it cost four passes to
+learn.
 
 ## The sound
 
@@ -2720,6 +3328,9 @@ once, because PIL's draw calls are hard-edged and a bevel drawn at 1x reads as
 | `tools/make_bg.py` | Stage one's three parallax layers |
 | `tools/make_grove.py` | Stage two's scenery: trunks, trees, ivy, hanging charms, ferns, the moon, the forest floor, the far treeline, the canopy, mist — **and `scripts/grove_table`** |
 | `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint |
+| `tools/make_sanctum.py` | Stage three's hall: the marble, the joinery, the statues and banners -- **and the sky over it**: stars in three magnitudes, nebulae, and the graduated limb the orrery's rings are made of |
+| `tools/make_rings.py` | Mika's ring, **one sprite with its colour baked in** -- see the note under "Rings" |
+| `tools/make_mika.py` | Mika and his eye card, **cut out of the owner's own reference sheet**, plus his idle as a shareable GIF |
 | `tools/make_player.py` | Szuix, from the commissioned sheet; his aura, for the low-life warning; and his eye card, drawn from nothing |
 | `tools/make_sfx.py` | Every sound effect, and the preview WAV and sheet |
 
@@ -3335,11 +3946,30 @@ saying the animated bullets had gone.
 
 `check_font_ink_ratio` had caught the first instance purely by accident: it
 looks at the ink in a `W` for a completely unrelated reason and covers three
-sprites. So the rule is general now. **`check_sprites_not_blank` refuses any
-sprite with no ink in its first, middle or last frame**, which is every sprite
-this project ships, and it is sampled rather than exhaustive because a sprite
-inked in those three and nowhere else is not a failure mode anything here
-produces.
+sprites. So the rule is general now: **`check_sprites_not_blank` refuses any
+sprite with a frame that has no ink in it.**
+
+**It used to sample three frames and pass the sprite if any of them had ink,
+and the third occurrence walked straight through that.** Mika's sprite went
+from six frames to twelve; the IDE wrote its cached six back over the first
+half and left the second half empty, so he was on screen for seven tenths of
+every second and gone for the other seven — and the check reported the project
+sound, because frame 0 had ink. It reached a person as "his sprite is appearing
+and disappearing periodically". The stated reason for sampling was that a
+sprite inked in some frames and blank in others is not a failure mode this
+project produces. It is now, and the exhaustive scan costs **0.9 seconds over
+1129 frames**, which was never a budget worth defending.
+
+**Its first exhaustive run then reported a sprite that was perfectly fine**,
+and the mistake is worth keeping. `spr_scn_charm_lit` had two blank frames of
+seven, which was called damage from the IDE twice before anybody looked: they
+are a bundle of bones and a stick with feathers, and `charm_fetish`'s own
+docstring says "no light in it at all". Some sprites are a **catalogue** rather
+than an animation, and an empty entry in a catalogue is an answer.
+`BLANK_FRAMES_OK` is the exemption and it carries its reason, because an
+allow-list without one becomes a place to put anything inconvenient. The
+failure message stopped asserting a cause at the same time -- it names both
+possibilities now, because for one of them it had been confidently wrong.
 
 `check_project.py` is the safety net — run it after any art pass, and if a
 generated sprite has reverted, regenerate and run it again. The reliable order
@@ -3379,11 +4009,23 @@ To add a **bullet shape**: an entry in `SHAPES` in `make_bullets.py` and a
 function returning a `Cut` — its `body`, and whatever `groove`, `bevel` and
 `core` it wants. Re-run it and `bullet_table.gml` follows.
 
+To add an attack built round a **ring**: `ring_new` puts one down and
+`ring_attach`, `ring_grow`, `ring_charge` and `ring_link` are the rest of the
+surface. A ring carries an `act` of its own shape `(ring, run, frame)`, so the
+usual answer is to give it its whole behaviour at birth and never hold the
+reference; when an attack genuinely needs one back -- pairing two for an arc --
+keep the `gen` beside it and read through `ring_valid`. See `stage_sanctum`.
+
 To add a **spell**: a row in the boss's phase table and a function of `_t`. It
 appears in the attack list by itself, because that list is read off the same
 table the fight is. Add a `move` to the row only if the pattern is fighting the
 drift — see `BossMove`; saying nothing is saying `Drift`, which is right for
 nearly every attack.
+
+To add a **background worth watching rather than playing**: a card in
+`rack_list` shaped like `preview_stage_def` -- an empty `id`, no `bosses`, and
+a `build` whose whole running order is `wave_bg_rewind()` and
+`wave_bg_omen()` on a loop. See "The review card".
 
 To add an **attack with no boss yet**: a row in `draft_list()` in
 `stage_drafts` — a name (or `""` for a non-spell), a hue, a clock and a
@@ -3397,11 +4039,13 @@ function and writing a proper `hp_end`.
 
 Playable end to end: the stage rack, stage one from its first wave through a
 midboss to Ziggy's seven attacks, stage two through a wood that turns to blood
-half way down it, the result screen, and permanent progress —
-plus attack practice, which drills any one of the seventeen attacks across
-four casters on its own, and the drafting table, which does the same for five
-attacks that have no boss yet.
-437 assertions pass; all thirty-four screenshot scenes render.
+half way down it, stage three through a hall of rings to Mika, the result
+screen, and permanent progress —
+plus attack practice, which drills any one of the twenty-six attacks across
+six casters on its own, the drafting table, which does the same for five
+attacks that have no boss yet, and the review card, which flies stage three's
+hall with nothing in it so the reveal can be watched rather than played for.
+524 assertions pass.
 
 Not done, in rough order of how much it is missed:
 
@@ -3418,6 +4062,30 @@ Not done, in rough order of how much it is missed:
   larger of the two remaining gaps and is not this file's shape at all: a cue
   is at most a second and a half and streams nothing, where a track loops for
   five minutes and wants `compression` and `preload` pointed the other way.
+- **Stage three is a placeholder fight around a finished mechanic, and the
+  two halves are at very different stages.** The ring pool is engine and is
+  tested; Mika's nine attacks are the plainest arrangements of it that make
+  each verb visible, and only `Gilded Aperture` is an idea rather than an
+  exercise. **The hall is the finished half** — a real room under an open sky
+  with the orrery at the end of it — and the fight standing in it is not.
+
+- **The hall's sky is unplayed, in the same sense everything in `constants`
+  is.** It was designed against screenshots and against arithmetic, which is
+  the right pair of tools for "does the orrery clear the masonry" and says
+  nothing about the two questions that matter: whether a landmark at the end
+  of the hall is something a player looks at or something that pulls their
+  eye off the field, and whether nine thousand stars and a constellation
+  behind a wall of gold danmaku is legible or busy. The one that worries most
+  is the second — the wedge sits directly above where the boss stands, which
+  is where the pattern is thickest. `HALL_STARS`, `HALL_CONST_A` and
+  `HALL_ORRERY_HALO_A` are one number each.
+- **There is no upper storey, and the reason is a constraint rather than a
+  choice.** A second register of stacks set back far enough not to narrow the
+  sky is a register entirely hidden behind the first, so above the bookcases
+  the hall is a parapet and a row of obelisks and then nothing. What that
+  gives up is the tiers of galleries the reference has; what it buys is the
+  sky the orrery hangs in. Anything that wants both has to widen the nave,
+  which is `HALL_HALF_W` and every number tuned against it.
 - **Six more stages are named on the rack and marked unbuilt.** Everything
   needed to add one is listed above; what is missing is the bosses, and each is
   a phase table and a character.
@@ -3452,6 +4120,16 @@ Not done, in rough order of how much it is missed:
   kerning pairs in `make_fonts.py` — a table of overhanging pairs baked into
   the glyph advances — and nothing in the tooling can see the defect, because
   every glyph is present, inked and correctly sized.
+- **Every number a ring has is unplayed**, in the same sense as everything in
+  `constants`. Whether `RING_BAND_FRAC` makes a ring feel solid or merely
+  awkward, whether `RING_WARN` is long enough to read a charge coming, whether
+  three concentric bands is one too many for `Gilded Aperture`, and whether
+  being walled off from a boss is interesting for forty seconds or maddening
+  for five are all questions for somebody holding the keyboard. The one that
+  worries most is the last: an obstacle that stops the player *doing damage* is
+  a new kind of frustration in this game, and the gradient the aperture is
+  built on is an argument rather than a measurement.
+
 - **Nothing is balanced against a human.** Every number in `ziggy_phases`,
   every fire rate, `PLAYER_SPD` and the whole of `constants` was reasoned about
   rather than played. The suites prove the fight *runs*; none of them can say

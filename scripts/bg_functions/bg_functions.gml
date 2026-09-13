@@ -29,6 +29,20 @@ function bg_new(_ground, _rock, _near, _air, _speed) {
         // the other.
         kind: BGKIND_PARALLAX,
 
+        // **How this background draws itself.** `bg_step` and its two
+        // neighbours dispatched on `kind`, with one `if` per world -- which
+        // was honest while there were two and becomes a switch statement the
+        // day there are four. A background that carries its own three
+        // functions is the same shape as a phase carrying its own `attack`
+        // and a ring carrying its own `act`, and it is what lets a stage add
+        // a world without editing this file at all.
+        //
+        // `undefined` is "the parallax stack below", so nothing that already
+        // worked had to change to gain the seam.
+        f_step: undefined,
+        f_back: undefined,
+        f_front: undefined,
+
         // **A stage may have a second half.** `bg_set_omen` starts it, it
         // eases over `BG_OMEN_TIME`, and a background that has nothing to say
         // about it simply never reads it -- which is stage one. It lives on
@@ -37,6 +51,15 @@ function bg_new(_ground, _rock, _near, _air, _speed) {
         // it without knowing what kind of world it is saying it to.
         omen: 0,
         omen_on: false,
+
+        // **Where the player is across the field, -1 at the left wall and +1
+        // at the right.** A request in exactly the sense `omen` is: the run
+        // knows where the player is and has no idea what kind of world it is
+        // telling, and a background that has nothing to say about it never
+        // reads it -- which is stage one. Zero is the honest answer for every
+        // screen that has no player on it, and it is what the rack and the
+        // attack list get.
+        aim: 0,
 
         ground: _ground,
         rock: _rock,
@@ -92,8 +115,19 @@ function bg_seed_embers(_b, _n, _col) {
     _b.ember_n = _n;
 }
 
-function bg_step(_b) {
+function bg_step(_b, _aim = 0) {
+    // **Pushed rather than pulled.** The background could read the player
+    // itself -- it is a global -- and then the title screen and the attack
+    // list would both be reading a player that is standing wherever the last
+    // run left it. Handing it in means the three screens that step a
+    // background each say what they actually know, and a suite can fly the
+    // camera without posing a player at all.
+    _b.aim = clamp(_aim, -1, 1);
     bg_omen_step(_b);
+    if (!is_undefined(_b.f_step)) {
+        _b.f_step(_b);
+        return;
+    }
     if (_b.kind == BGKIND_CORRIDOR) {
         grove_step(_b);
         return;
@@ -113,6 +147,25 @@ function bg_step(_b) {
 ///       say it without knowing what kind of world it is saying it to.
 function bg_set_omen(_b) {
     _b.omen_on = true;
+}
+
+/// @desc **Put the turn back.** For the review card and for nothing else.
+///
+///       `bg_set_omen` is one-way because a stage turns once, and that is the
+///       right shape for a stage: a second half does not become a first half
+///       again. A card whose whole purpose is to show the turn does want it
+///       again, though, and without quitting to the rack in between -- so the
+///       rewind is a named function here rather than two fields poked from a
+///       stage script, because which fields the turn is made of is this
+///       file's business and not a timeline's.
+///
+///       It is a **cut**, not a rewind: `omen` goes straight to zero and any
+///       background reading it snaps back. That is what is wanted where it is
+///       used -- two poses either side of a cut is how two poses get compared
+///       -- and it is why nothing that is actually a stage should call it.
+function bg_clear_omen(_b) {
+    _b.omen_on = false;
+    _b.omen = 0;
 }
 
 /// @desc Ease the turn along. One line, and every background gets it.
@@ -144,6 +197,10 @@ function bg_offset(_b, _rate) {
 ///       trade one visible seam for another. Behind the rack's own scrim the
 ///       enlargement is invisible.
 function bg_draw_back(_b, _fill = false) {
+    if (!is_undefined(_b.f_back)) {
+        _b.f_back(_b, _fill);
+        return;
+    }
     if (_b.kind == BGKIND_CORRIDOR) {
         grove_draw_back(_b, _fill);
         return;
@@ -199,6 +256,10 @@ function bg_draw_back(_b, _fill = false) {
 ///       dramatic. `_spell` is the same eased 0..1 the wash uses, so the two
 ///       move together.
 function bg_draw_front(_b, _spell = 0, _fill = false) {
+    if (!is_undefined(_b.f_front)) {
+        _b.f_front(_b, _spell, _fill);
+        return;
+    }
     if (_b.kind == BGKIND_CORRIDOR) {
         grove_draw_front(_b, _spell, _fill);
         return;
@@ -315,19 +376,32 @@ function spell_bg_sigil(_col, _t, _fade) {
 
     gpu_set_blendmode(bm_add);
 
+    // **Centred on the caster's station, not on the field.** A magic circle is
+    // something somebody stands in, and this one was centred on `_cy` --
+    // two hundred and fifty pixels below where any boss in this game ever
+    // stands, so what it drew was a circle of power with nobody in it and a
+    // caster hovering above the rim. It was reported the moment a boss whose
+    // whole fight is rings was put in front of it.
+    //
+    // The *station* rather than the boss's live position, deliberately: a boss
+    // drifts four hundred pixels either way, and a background that slid with
+    // him would be a room following its occupant about. The station is where
+    // he is on average and it does not move.
+    var _cy = BOSS_HOME_Y;
+
     // A slow bloom behind everything, breathing.
     var _bs = (FIELD_W * 1.5) / sprite_get_width(spr_fx_bloom);
-    draw_sprite_ext(spr_fx_bloom, 0, FIELD_CX, FIELD_CY * 0.85, _bs, _bs, 0,
+    draw_sprite_ext(spr_fx_bloom, 0, FIELD_CX, _cy, _bs, _bs, 0,
                     _c, 0.10 * _fade * (0.8 + 0.2 * dsin(_t * 1.1)));
 
     // Two sigils, counter-rotating at unrelated rates so the pattern they make
     // together never visibly repeats.
     var _ss = 1500 / sprite_get_width(spr_boss_sigil);
-    draw_sprite_ext(spr_boss_sigil, 0, FIELD_CX, FIELD_CY, _ss, _ss,
+    draw_sprite_ext(spr_boss_sigil, 0, FIELD_CX, _cy, _ss, _ss,
                     _t * 0.13, _c, 0.13 * _fade);
-    draw_sprite_ext(spr_boss_sigil, 0, FIELD_CX, FIELD_CY, _ss * 0.62,
+    draw_sprite_ext(spr_boss_sigil, 0, FIELD_CX, _cy, _ss * 0.62,
                     _ss * 0.62, -_t * 0.21, c_white, 0.07 * _fade);
-    draw_sprite_ext(spr_boss_sigil, 0, FIELD_CX, FIELD_CY, _ss * 1.55,
+    draw_sprite_ext(spr_boss_sigil, 0, FIELD_CX, _cy, _ss * 1.55,
                     _ss * 1.55, _t * 0.07, _c, 0.07 * _fade);
 
     // Rings pushing outward on a four-second cycle, which is what keeps the
@@ -336,7 +410,7 @@ function spell_bg_sigil(_col, _t, _fade) {
         var _p = frac(_t / 240 + _i / 3);
         var _r = 120 + _p * 1500;
         var _rs = _r * 2 / sprite_get_width(spr_fx_ring);
-        draw_sprite_ext(spr_fx_ring, 0, FIELD_CX, FIELD_CY, _rs, _rs, 0, _c,
+        draw_sprite_ext(spr_fx_ring, 0, FIELD_CX, _cy, _rs, _rs, 0, _c,
                         (1 - _p) * 0.13 * _fade);
     }
 

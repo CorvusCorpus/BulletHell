@@ -104,6 +104,18 @@ function input_idle() {
              shoot: false, bomb: false, focus: false };
 }
 
+/// @desc Where the player is standing across the field: -1 at the left wall,
+///       0 on the centre line, +1 at the right.
+///
+///       **A fraction rather than a coordinate**, because the two things that
+///       read it -- the grove's camera today, and whatever wants a "which
+///       side is he on" later -- want the answer in the field's own terms and
+///       not in pixels. It survived the field becoming a rectangle once
+///       already; this is the same seam one level up. See `GROVE_LEAN`.
+function player_field_aim(_p) {
+    return clamp((_p.x - FIELD_CX) / (FIELD_W / 2), -1, 1);
+}
+
 /// @desc Is the player untouchable right now?
 function player_invulnerable(_p) {
     return _p.untouchable || _p.iframe > 0 || _p.bomb_t > 0 || _p.entry > 0;
@@ -523,6 +535,13 @@ function player_collide(_p, _g) {
             player_hit(_p);
             return true;
         }
+        // A charged ring's metal, and the current strung between two of them.
+        // Both on the same terms as a laser: only ever while they are live,
+        // never during the warning that announced them.
+        if (ring_any_hit(_p.x, _p.y, PLAYER_R)) {
+            player_hit(_p);
+            return true;
+        }
         if (enemy_body_hit(_p.x, _p.y, PLAYER_R)) {
             player_hit(_p);
             return true;
@@ -540,7 +559,8 @@ function player_collide(_p, _g) {
     // of nerve the score said nothing about. It pays on a cooldown rather than
     // once, because a laser is still there a second later; see `laser_graze`.
     var _gz = bullet_graze(_p.x, _p.y, GRAZE_R)
-            + laser_graze(_p.x, _p.y, PLAYER_R);
+            + laser_graze(_p.x, _p.y, PLAYER_R)
+            + ring_graze(_p.x, _p.y, PLAYER_R);
     if (_gz > 0) {
         _p.graze_n += _gz;
         // `sfx_many` rather than a call per bullet: this already knows how

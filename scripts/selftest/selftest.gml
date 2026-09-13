@@ -35,6 +35,9 @@ function selftest_run() {
     test_graze();
     test_laser();
     test_laser_graze();
+    test_rings();
+    test_hall_sky();
+    test_hall_preview();
     test_spell_resist();
     test_player();
     test_bomb_seals();
@@ -94,6 +97,7 @@ function ok_near(_name, _got, _want, _tol) {
 function st_reset() {
     danmaku_init();
     laser_init();
+    ring_init();
     item_init();
     enemy_init();
     fx_clear();
@@ -1279,7 +1283,7 @@ function test_stage_table() {
     ok("no event has a missing action", _last_gate == -1);
 
     var _list = stage_list();
-    ok("the roster has eight stages", array_length(_list) == 8);
+    ok("the roster has nine stages", array_length(_list) == 9);
     ok("stage one is built", stage_is_built(_list[0]));
     ok("and needs nothing to unlock", _list[0].needs == 0);
     ok("stage two is built", stage_is_built(_list[1]));
@@ -1288,6 +1292,8 @@ function test_stage_table() {
     // that pinned that number would have to be edited on the day it goes back
     // to one, which is a suite reporting the roster rather than checking it.
     ok("and the rack can say what it costs", is_real(_list[1].needs));
+    ok("stage three is built", stage_is_built(_list[2]));
+    ok("and it can say what it costs too", is_real(_list[2].needs));
 
     // **The built stages are a prefix of the roster**, which is the honest
     // form of "the rest are marked unbuilt": the rack draws every entry and
@@ -1315,11 +1321,19 @@ function test_stage_table() {
         if (_e2[_i].at < _e2[_i - 1].at) _sorted2 = false;
     }
     ok("stage two's timeline is in order too", _sorted2);
+
+    var _e3 = stage_sanctum_script();
+    var _sorted3 = true;
+    for (var _i = 1; _i < array_length(_e3); _i++) {
+        if (_e3[_i].at < _e3[_i - 1].at) _sorted3 = false;
+    }
+    ok("stage three's timeline is in order too", _sorted3);
 }
 
 function test_stage_run() {
     st_stage_run(stage_ziggy_def(), "the stage");
     st_stage_run(stage_grove_def(), "stage two");
+    st_stage_run(stage_sanctum_def(), "stage three");
 }
 
 /// @desc Play a whole stage headlessly, killing everything a second after it
@@ -1357,6 +1371,8 @@ function st_stage_run(_def, _label) {
     ok(_label + " puts a boss on the field on the way", _boss_seen);
     ok(_label + " leaks no enemies past its own cap",
        enemy_count() <= ENEMY_MAX);
+    ok(_label + " leaks no rings past its own cap",
+       ring_count() <= RING_MAX);
     st_reset();
 }
 
@@ -1538,6 +1554,148 @@ function test_corridor() {
     ok("and the camera stays inside its own throw",
        abs(_i0.cam_x) <= GROVE_SWAY + 0.001
        && abs(_i0.cam_y) <= GROVE_RISE + 0.001);
+
+    // ---- the flyer steers -------------------------------------------------
+    // **The camera looks where the player is**, and the claim has three parts
+    // no screenshot can make between them: which way it goes, that a player
+    // who commits to a side actually gets there, and that a player who merely
+    // *dodges* moves it by almost nothing. The last is the whole reason the
+    // follow is filtered rather than direct -- a camera that read the player
+    // frame for frame would shake in time with the dodging, on the one line a
+    // danmaku player measures every bullet against. See `GROVE_LEAN`.
+    var _lf = bg_grove();
+    for (var _f = 0; _f < GROVE_INTRO_TIME + 4; _f++) bg_step(_lf, 0);
+    for (var _f = 0; _f < 900; _f++) bg_step(_lf, -1);
+    ok("a player at the left wall slides the camera left: "
+       + string_format(_lf.lean, 1, 1) + " units",
+       _lf.lean < -GROVE_LEAN * 0.9);
+    for (var _f = 0; _f < 900; _f++) bg_step(_lf, 1);
+    ok("and one at the right wall slides it right",
+       _lf.lean > GROVE_LEAN * 0.9);
+    for (var _f = 0; _f < 900; _f++) bg_step(_lf, 0);
+    ok("and the middle of the field is straight ahead",
+       abs(_lf.lean) < GROVE_LEAN * 0.05);
+
+    // **The rate is the part that matters.** A player who crosses the whole
+    // field must not drag the camera with them frame for frame, and the cap
+    // is what makes that a guarantee rather than a tuning: this hands it the
+    // worst input there is -- a player teleporting wall to wall every frame
+    // -- and asks the camera to stay inside its own speed anyway.
+    var _lr = bg_grove();
+    for (var _f = 0; _f < GROVE_INTRO_TIME + 4; _f++) bg_step(_lr, 1);
+    var _was_l = _lr.lean;
+    var _jerk = 0;
+    for (var _f = 0; _f < 400; _f++) {
+        bg_step(_lr, ((_f mod 2) == 0) ? -1 : 1);
+        _jerk = max(_jerk, abs(_lr.lean - _was_l));
+        _was_l = _lr.lean;
+    }
+    ok("and nothing the player can do moves it faster than its cap: "
+       + string_format(_jerk, 1, 3) + "px", _jerk <= GROVE_LEAN_SPD + 0.0001);
+
+    // ...and a dodge is not a decision. **Flown rather than asserted**: a
+    // real player at `PLAYER_SPD` reversing every third of a second, which is
+    // what dodging a fan looks like and is bounded by how fast anybody can
+    // actually cross this field. Handing the camera a square wave instead
+    // measures a player who can teleport, which is the input the cap above is
+    // already for.
+    var _ld = bg_grove();
+    for (var _f = 0; _f < GROVE_INTRO_TIME + 4; _f++) bg_step(_ld, 0);
+    //
+    // **What is measured is the swing, not the settling.** A player dodging
+    // about one spot is still standing somewhere, and the camera leaning to
+    // where they are standing is the feature; the first four hundred frames
+    // are it arriving there, and folding those into the same min and max
+    // would measure the lean and call it a wobble.
+    var _dp = player_new();
+    var _dlo = 999999;
+    var _dhi = -999999;
+    for (var _f = 0; _f < 1300; _f++) {
+        _dp.x += ((((_f div 20) mod 2) == 0) ? -1 : 1) * PLAYER_SPD;
+        _dp.x = clamp(_dp.x, FIELD_X0, FIELD_X1);
+        bg_step(_ld, player_field_aim(_dp));
+        if (_f < 400) continue;
+        _dlo = min(_dlo, _ld.lean);
+        _dhi = max(_dhi, _ld.lean);
+    }
+    ok("and a dodge barely moves it at all: "
+       + string_format(_dhi - _dlo, 1, 2) + "px",
+       (_dhi - _dlo) < GROVE_LEAN * 0.15);
+
+    // **The request is a request, and a screen with no player makes none.**
+    // The rack and the attack list both step a background and neither has a
+    // player on it, so the default has to be the meander on its own rather
+    // than a lean toward wherever the last run left somebody standing.
+    var _ln = bg_grove();
+    for (var _f = 0; _f < GROVE_INTRO_TIME + 400; _f++) bg_step(_ln);
+    ok("and a screen with no player on it does not steer", _ln.lean == 0);
+
+    // **A rooted band goes nowhere on its own, and one that did was
+    // reported.** The hedgerow hides the join between the ground and the far
+    // wood, so it lies across the middle of the frame under the moon -- and
+    // it carried a share of an accumulator that only ever grows, which walked
+    // it a hundred pixels left every twenty seconds whatever the player did.
+    // The steering could offset forty-eight of that and only while the player
+    // stayed at a wall, so the net motion was always leftward on the one
+    // layer where a yaw reads at all. See `grove_rooted_x`.
+    var _rb = bg_grove();
+    for (var _f = 0; _f < GROVE_INTRO_TIME + 4; _f++) bg_step(_rb, 0);
+    var _rlo = 999999;
+    var _rhi = -999999;
+    for (var _f = 0; _f < 1800; _f++) {
+        bg_step(_rb, 0);
+        var _rx = grove_rooted_x(corridor_view(false, _rb.cam_x, _rb.cam_y,
+                                              _rb.lat));
+        _rlo = min(_rlo, _rx);
+        _rhi = max(_rhi, _rx);
+    }
+    ok("a rooted band travels nowhere over half a minute: "
+       + string_format(_rhi - _rlo, 1, 1) + "px",
+       (_rhi - _rlo) <= GROVE_SWAY * 2 + 0.001);
+
+    // ...and the camera is the whole of what does move it, which is the half
+    // of the claim that stops the fix being "pin it down and forget it".
+    //
+    // **And it moves a near band further than a far one, which is the whole
+    // of the depth in this stage.** Pinned to the yaw alone every band shifted
+    // by exactly what the moon shifted, so the canopy kept a fixed offset in
+    // front of it however the player flew -- reported as the branches having
+    // lost their parallax. A yaw cannot express depth; only the slide can, and
+    // this is the assertion that says the slide is still there. See
+    // `grove_rooted_x`.
+    // **Two depths at the same instant**, so the yaw -- which is common to
+    // both, being a rotation -- cancels exactly and what is left is the
+    // parallax on its own. Sampling one depth at two *times* instead measures
+    // the meander as well, which at these amplitudes can cancel the far
+    // wood's whole travel and did.
+    for (var _f = 0; _f < 900; _f++) bg_step(_rb, -1);
+    var _vl = corridor_view(false, _rb.cam_x, _rb.cam_y, _rb.lat);
+    var _part_l = grove_rooted_x(_vl, 0, 700)
+                  - grove_rooted_x(_vl, 0, CORRIDOR_Z_FAR);
+    for (var _f = 0; _f < 900; _f++) bg_step(_rb, 1);
+    var _vr = corridor_view(false, _rb.cam_x, _rb.cam_y, _rb.lat);
+    var _part_r = grove_rooted_x(_vr, 0, 700)
+                  - grove_rooted_x(_vr, 0, CORRIDOR_Z_FAR);
+    ok("the canopy parts from the far wood as the player steers: "
+       + string_format(abs(_part_r - _part_l), 1, 1) + "px",
+       abs(_part_r - _part_l) > GROVE_LEAN);
+    ok("and it parts the other way at the other wall",
+       (_part_l < 0) != (_part_r < 0));
+    for (var _f = 0; _f < 900; _f++) bg_step(_rb, 0);
+    var _vm = corridor_view(false, _rb.cam_x, _rb.cam_y, _rb.lat);
+    ok("and the two sit together when the player is on the centre line",
+       abs(grove_rooted_x(_vm, 0, 700)
+           - grove_rooted_x(_vm, 0, CORRIDOR_Z_FAR)) < 1);
+
+    // ...and the field's own fraction is what feeds it, which is the one
+    // place the sign is written down.
+    var _pl = player_new();
+    _pl.x = FIELD_X0;
+    ok("the left wall reads as -1", player_field_aim(_pl) == -1);
+    _pl.x = FIELD_X1;
+    ok("and the right wall as +1", player_field_aim(_pl) == 1);
+    _pl.x = FIELD_CX;
+    ok("and the centre line as nothing", player_field_aim(_pl) == 0);
 
     // **The horizon drifts, it does not bob.** A pitch on a wingbeat was
     // written, looked at and taken out: at that rate this line is a level
@@ -2112,8 +2270,8 @@ function test_drafts() {
     // ---- the rack ---------------------------------------------------------
     var _stages = stage_list();
     var _rack = rack_list();
-    ok("the rack carries the roster and the drafting table",
-       array_length(_rack) == array_length(_stages) + 1);
+    ok("the rack carries the roster, the review card and the table",
+       array_length(_rack) == array_length(_stages) + 2);
     ok("and the table is the last card",
        stage_is_draft(_rack[array_length(_rack) - 1]));
     // A bare `_def.draft` on any of the eight would raise rather than answer,
@@ -2862,6 +3020,7 @@ function test_run_starts_clean() {
     // Put one of everything on the field, including a boss mid-fight.
     fire(FIELD_CX, FIELD_CY, 3, 90, BSHAPE_ORB, BCOL_CYAN, 0);
     laser_beam(FIELD_CX, FIELD_CY, 90, 900, 30, BCOL_GOLD, 20, 40, 10);
+    ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
     item_spawn(FIELD_CX, FIELD_CY, ItemKind.Tally);
     enemy_spawn(EnemyKind.Wisp, FIELD_CX, FIELD_CY, 5, undefined, BCOL_CYAN,
                 0, 0, 0);
@@ -2870,7 +3029,7 @@ function test_run_starts_clean() {
 
     ok("the field can be dirtied at all",
        bullet_count() > 0 && laser_count() > 0 && item_count() > 0
-       && enemy_count() > 1 && _b != undefined);
+       && enemy_count() > 1 && ring_count() > 0 && _b != undefined);
 
     // This is what entering `room_game` does, and it is the whole assertion:
     // however a run was reached, it starts here.
@@ -2878,6 +3037,11 @@ function test_run_starts_clean() {
 
     ok("a run starts with no bullets", bullet_count() == 0);
     ok("...no lasers", laser_count() == 0);
+    // **A ring is the one thing on this list that would never leave on its
+    // own.** A bullet goes off the edge and a laser runs out of clock; a ring
+    // stands there until something says otherwise, so a run that inherited one
+    // would inherit it for the whole stage.
+    ok("...no rings", ring_count() == 0);
     ok("...no items", item_count() == 0);
     ok("...and no enemies, boss included", enemy_count() == 0);
     ok("so nothing is left to find a boss in", enemy_find_boss() == undefined);
@@ -3194,5 +3358,403 @@ function test_bullet_cost() {
     // divides by the very count that grew.
     ok("and a second of a full screen is well under a second",
        _best < 600000);
+    st_reset();
+}
+
+/// @desc The ring pool: what it blocks, what it does not, and what it kills.
+///
+///       **Almost none of this is visible in a screenshot, and the one part
+///       that is would look right while being wrong.** A ring drawn over a
+///       boss and eating shots looks identical whether it is eating them along
+///       its metal or across its whole disc -- the difference only shows as
+///       the player slowly concluding the fight is unfair. So the hole is
+///       asserted as hard as the band is.
+/// @desc The open roof: the wedge of sky, and what has to fit in it.
+///
+///       **This is arithmetic no screenshot can do and no screenshot can
+///       report.** A picture says "the orrery is behind the masonry" only if
+///       it happens to be, at the one camera position it was taken at -- and
+///       the numbers that decide it live in three files: the parapet's height
+///       and setback in `constants`, the field's size and field of view in
+///       `constants` too, and the orrery's own distance, height and radius
+///       beside them. Every one of those is individually reasonable at any
+///       value; what has to hold is a relation between all of them.
+///
+///       It is the same shape of guard as `check_scrub_covers_horizon` one
+///       stage over, which adds four numbers from three files and asks
+///       whether the hedge still hides the line it was built to hide. That
+///       one had always been broken and nothing had ever added it up.
+function test_hall_sky() {
+    st_reset();
+
+    // The lens, in pixels. A vertical field of view of `HALL_FOV` over the
+    // field's height is one focal length, and every screen position below is
+    // measured with it.
+    var _f = (FIELD_H * 0.5) / dtan(HALL_FOV * 0.5);
+
+    // **The wedge.** A long horizontal edge at height H and half-width X
+    // projects, from a camera at `HALL_CAM_FLY`, to a straight ray out of the
+    // vanishing point with slope (H - cam) / X -- so the sky the player can
+    // see is the cone above the steepest such ray in the hall. The parapet is
+    // that edge, and nothing may be built above the wall without this being
+    // recomputed.
+    var _cam = HALL_CAM_FLY;
+    var _par_y = HALL_CEIL_H + HALL_COPING_H + HALL_PARAPET_H;
+    var _slope = (_par_y - _cam) / HALL_PARAPET_X;
+    var _cop_y = HALL_CEIL_H + HALL_COPING_H;
+    var _cop_x = HALL_HALF_W - HALL_CORN_D - 14;
+    ok("the parapet is what the sky is measured from",
+       _slope >= (_cop_y - _cam) / _cop_x);
+
+    // The orrery, on screen.
+    var _cy = _f * (HALL_ORRERY_Y - _cam) / HALL_ORRERY_Z;
+    var _cr = _f * HALL_ORRERY_R / HALL_ORRERY_Z;
+    // The perpendicular distance from the wedge's edge to its centre line is
+    // `sin` of the wedge's own half-angle, so a circle fits when its centre is
+    // at least its radius over that.
+    var _half = darctan(1 / _slope);
+    ok("the orrery clears the masonry it hangs behind",
+       _cy >= _cr / dsin(_half));
+
+    // ...and it is still on the screen. The vanishing point of a hall flown
+    // level-ish sits `tan(pitch)` above the middle of the frame.
+    var _vp = _f * dtan(abs(HALL_PITCH_B));
+    ok("...and its top is inside the field",
+       _cy + _cr + _vp < FIELD_H * 0.5);
+    // A landmark small enough to fit anywhere is a landmark nobody looks at.
+    ok("...and it is big enough to be the thing at the end of the hall",
+       _cr * 2 > FIELD_H * 0.16);
+
+    // **The hall is drawn out to `HALL_BAYS` and the orrery is beyond all of
+    // it**, which is what lets the depth buffer sort the two without the
+    // orrery ever being written into a bay's own depth. It is also inside the
+    // far plane, or it would be clipped away entirely.
+    ok("the orrery is further off than the last bay drawn",
+       HALL_ORRERY_Z > HALL_BAYS * HALL_BAY_Z);
+    ok("...and nearer than the far plane", HALL_ORRERY_Z < HALL_ZFAR);
+    // The dome has to be inside the frustum too: the depth test is off for it,
+    // and the near and far planes clip regardless.
+    ok("the sky dome is inside the frustum",
+       HALL_SKY_R > HALL_ZNEAR && HALL_SKY_R < HALL_ZFAR);
+
+    // **The sky at the horizon is the fog**, which is what stops the far end
+    // of the hall meeting the sky at a line. Asserted rather than assumed
+    // because `hall_sky_col` gained a palette of its own and could very
+    // easily have gained a horizon of its own with it.
+    ok("the sky at the horizon is exactly the fog colour",
+       hall_sky_col(0) == HALL_FOG);
+    ok("...and it is a different colour further up",
+       hall_sky_col(40) != HALL_FOG);
+
+    // **The stars fade out before the wall tops do**, or the architecture
+    // closes into haze with a crisp starfield behind it and the join between
+    // them is the line the fog exists to hide. The wedge's own lowest
+    // elevation is at its edge, which is the slope above.
+    //
+    // **Measured at the elevation the orrery hangs at, not at some elevation
+    // above it.** The first version of this asked whether a star well above
+    // `HALL_STAR_EL1` was lit, which is true for every ramp there is and is
+    // therefore not a question -- it passed happily against a ramp spread
+    // over forty-six degrees, which is the exact defect that put an empty
+    // grey wedge on the screen. What has to be lit is the sky the player
+    // actually looks at, and the orrery is by construction in the middle of
+    // it.
+    var _sky_el = darctan((HALL_ORRERY_Y - _cam) / HALL_ORRERY_Z);
+    ok("a star at the wall-top line is out", hall_star_extinction(0) <= 0.001);
+    ok("...and one where the orrery hangs is fully lit",
+       hall_star_extinction(_sky_el) > 0.9);
+
+    // **A banner is placed by its centre and has a width.** It hangs in front
+    // of the wall, so how far out it may go is bounded by the cornice face
+    // rather than by the wall -- moved outboard to hang off the new wall head
+    // it put its outer third through the masonry, which is a sum of three
+    // numbers in two files that nothing was adding up.
+    var _bw = HALL_BANNER_H * sprite_get_width(spr_hall_banner)
+              / sprite_get_height(spr_hall_banner);
+    ok("a banner hangs clear of the cornice it hangs under",
+       HALL_BANNER_X + _bw * 0.5 < HALL_HALF_W - HALL_CORN_D);
+    ok("...and its head is under the coping rather than in it",
+       HALL_CEIL_H - HALL_BANNER_DROP <= HALL_CEIL_H);
+
+    st_reset();
+}
+
+/// @desc The review card: the hall, flown on its own, and nothing in it.
+///
+///       **What is worth asserting is that it cannot do any harm**, which is
+///       the same thing `test_drafts` asserts about the drafting table and for
+///       the same reason. Whether the reveal is paced right is exactly the
+///       question this card exists to ask a person, and no suite can answer
+///       it.
+function test_hall_preview() {
+    st_reset();
+
+    var _def = preview_stage_def();
+    ok("the review card is a stage to play", stage_is_built(_def));
+    ok("...but has no stage to file a clear against", _def.id == "");
+    ok("...and a blank id reads back as nothing cleared",
+       !progress_stage(_def.id).cleared);
+    ok("...and no attacks to practise", !practice_available(_def));
+    ok("...and it is not the drafting table", !stage_is_draft(_def));
+    ok("...and it says what it is, so the rack need not guess",
+       stage_is_preview(_def));
+    ok("...and no stage claims to be one",
+       !stage_is_preview(stage_sanctum_def())
+       && !stage_is_preview(draft_stage_def()));
+    ok("nor does nothing at all", !stage_is_preview(undefined));
+
+    // **It has nothing in it.** Not a rule about taste: a wave would put an
+    // enemy on the field, and the whole of what this card is for is watching
+    // the background with nothing in front of it.
+    var _ev = _def.build();
+    ok("its running order is nothing but the turn, over and over",
+       array_length(_ev) == PREVIEW_CYCLES * 2);
+    var _gates = 0;
+    for (var _i = 0; _i < array_length(_ev); _i++) {
+        if (_ev[_i].gate) _gates++;
+    }
+    ok("...with no gates in it, because nothing ever has to be cleared",
+       _gates == 0);
+    var _sorted = true;
+    for (var _i = 1; _i < array_length(_ev); _i++) {
+        if (_ev[_i].at < _ev[_i - 1].at) _sorted = false;
+    }
+    ok("...and it is in order", _sorted);
+
+    // The rewind is a cut, and a cut is what it claims to be.
+    var _b = bg_new(spr_hall_floor, spr_hall_stone, spr_hall_pale,
+                    HALL_FOG, HALL_SPEED);
+    bg_set_omen(_b);
+    for (var _i = 0; _i < BG_OMEN_TIME; _i++) bg_omen_step(_b);
+    ok("the turn runs to its end", _b.omen >= 1);
+    bg_clear_omen(_b);
+    ok("...and the rewind puts it back at once", _b.omen == 0 && !_b.omen_on);
+    bg_omen_step(_b);
+    ok("...and it stays there until it is asked again", _b.omen == 0);
+
+    st_reset();
+}
+
+function test_rings() {
+    st_reset();
+
+    // --- the pool ------------------------------------------------------
+    var _r = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
+    ok("a ring reaches the field", _r != undefined && ring_count() == 1);
+    ok("and it knows how thick its metal is",
+       abs(ring_band_half() - RING_R * RING_BAND_FRAC) < 0.001);
+
+    // **Every ring is the same size and there is no argument that changes
+    // that.** It is asserted rather than trusted because the rule is the whole
+    // reason `RING_R` is a macro instead of a field: six rings on the field
+    // have to be six of one object, and an attack that could ask for a bigger
+    // one would be introducing a second thing to learn without saying so.
+    var _other = ring_new(FIELD_X0 + 200, FIELD_Y0 + 200, BCOL_CYAN, 0);
+    ok("and every ring is the same size",
+       _other != undefined && ring_band_half() == RING_BAND_HALF);
+    // ...and moderately bigger than the largest thing the game fires, which is
+    // the number `RING_R` was chosen against.
+    var _biggest = 0;
+    for (var _i = 0; _i < BSHAPE_COUNT; _i++) {
+        _biggest = max(_biggest, global.bshape_w[_i]);
+    }
+    ok("...and moderately bigger than the largest bullet",
+       RING_R * 2 > _biggest && RING_R * 2 < _biggest * 2.2);
+    ring_clear_all();
+    _r = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
+
+    // **The drawn band has to fit inside the sprite it is drawn from.** Both
+    // numbers mirror `tools/make_rings.py`, and if the outer edge ran past the
+    // sprite's own edge the metal would be sliced flat along four sides --
+    // the defect `cut_pad` exists for, one family over.
+    ok("the band fits inside its own sprite",
+       RING_SPR_LINE * (1 + RING_BAND_FRAC) < 1.0);
+
+    // A stale reference: sweep the ring and the serial no longer matches, even
+    // though the struct is still sitting in the pool waiting to be reused.
+    var _gen = _r.gen;
+    ok("a live ring validates", ring_valid(_r, _gen));
+    ring_clear_all();
+    ok("clearing empties the pool", ring_count() == 0);
+    ok("and a reference to a swept ring is refused", !ring_valid(_r, _gen));
+
+    var _r2 = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
+    ok("the slot is handed straight back out", _r2 == _r);
+    ok("...and the old reference is still refused", !ring_valid(_r, _gen));
+
+    // The cap is a refusal, as every pool here is.
+    st_reset();
+    var _made = 0;
+    for (var _i = 0; _i < RING_MAX + 8; _i++) {
+        if (ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0) != undefined) {
+            _made++;
+        }
+    }
+    ok("the pool refuses rather than growing",
+       _made == RING_MAX && ring_count() == RING_MAX);
+
+    // --- blocking ------------------------------------------------------
+    st_reset();
+    var _ring = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
+    // A ring that blocked while it was still arriving would be a wall that
+    // appeared without warning, which is the rule `BULLET_DELAY_DEFAULT`
+    // states for bullets.
+    ok("a ring that is still arriving does not block", !ring_solid(_ring));
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(undefined);
+    ok("...and does once it has arrived", ring_solid(_ring));
+
+    // **The swept test, which is the whole reason this is not a point
+    // check.** A player shot travels `PSHOT_SPD` a frame against metal
+    // `2 * ring_band_half` thick, so a point test would miss most of them and
+    // the ring would read as leaking at random -- the same defect
+    // `bullet_hit_index` exists for. The segment here steps clean over the
+    // band in one frame.
+    var _half = ring_band_half();
+    var _inner = FIELD_CY + RING_R - _half - 2;
+    var _outer = FIELD_CY + RING_R + _half + 2;
+    ok("a shot that jumps the whole band is still caught",
+       ring_seg_crosses(_ring, FIELD_CX, _outer, FIELD_CX, _inner));
+    ok("...which a point test at either end would have missed",
+       ring_band_dist(_ring, FIELD_CX, _outer) > _half
+       && ring_band_dist(_ring, FIELD_CX, _inner) > _half);
+
+    // The hole. **This is the half that makes the mechanic answerable**: a
+    // ring that blocked across its disc would be an indestructible shield,
+    // which is the "unanswerable rather than hard" defect `BossMove` was
+    // written for.
+    ok("a shot inside the hole passes",
+       !ring_seg_crosses(_ring, FIELD_CX - 20, FIELD_CY + 30,
+                         FIELD_CX + 20, FIELD_CY - 30));
+    ok("a shot right past the outside passes",
+       !ring_seg_crosses(_ring, FIELD_CX + 300, FIELD_CY - 100,
+                         FIELD_CX + 300, FIELD_CY + 100));
+
+    // ...and end to end, through the real function.
+    st_reset();
+    _ring = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(undefined);
+    pshot_fire(FIELD_CX, FIELD_CY + 300, PSHOT_SPD, 90, PSHOT_DMG);
+    pshot_fire(FIELD_CX + 400, FIELD_CY + 300, PSHOT_SPD, 90, PSHOT_DMG);
+    var _stopped = 0;
+    for (var _i = 0; _i < 40; _i++) {
+        pshot_step();
+        _stopped += ring_block_shots();
+    }
+    ok("one shot of two is eaten by the metal", _stopped == 1);
+
+    // --- the charge ----------------------------------------------------
+    st_reset();
+    _ring = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(undefined);
+    ok("a cold ring cannot hurt anybody",
+       !ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R));
+
+    ring_charge(_ring, 20, 30);
+    var _bit_during_warning = false;
+    // **Sampled while the warning is still running, not after each step.**
+    // The frame the countdown reaches zero *is* the frame the metal goes live,
+    // so a loop that stepped and then looked would find the band hot on its
+    // last pass and call that a failure -- which is the assertion being off by
+    // one rather than the rule being broken, and it is the harder of the two
+    // to see because the first run of this was failing for a real reason as
+    // well. See `ring_is_hot`.
+    for (var _i = 0; _i < 20; _i++) {
+        if (_ring.warn > 0
+            && ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R)) {
+            _bit_during_warning = true;
+        }
+        ring_step(undefined);
+    }
+    // **A telegraph that can kill is not a telegraph.** Same rule
+    // `laser_is_hot` keeps, and the reason `ring_charge` refuses a warning of
+    // zero in its docstring.
+    ok("a charging ring cannot hurt anybody either", !_bit_during_warning);
+    ok("and then the metal bites",
+       ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R));
+
+    // It kills a little narrower than it is drawn, on the genre's rule.
+    ok("it kills narrower than it is drawn",
+       ring_kill_half() < ring_band_half());
+    var _just_outside = FIELD_CY + RING_R + ring_kill_half() + PLAYER_R + 2;
+    ok("...so the black of the cuff is the hitbox",
+       !ring_any_hit(FIELD_CX, _just_outside, PLAYER_R));
+
+    // Grazing: outside the kill band, and on a cooldown rather than once,
+    // because a wall is still there a second later. Same deal `laser_graze`
+    // makes and off the same measurement, so what the player learnt from the
+    // bullets holds here.
+    _ring.graze_t = 0;
+    ok("riding a charged band pays",
+       ring_graze(FIELD_CX, _just_outside, PLAYER_R) == 1);
+    ok("...and not again on the next frame",
+       ring_graze(FIELD_CX, _just_outside, PLAYER_R) == 0);
+
+    for (var _i = 0; _i < RING_GRAZE_CD + 1; _i++) ring_step(undefined);
+    ok("...but again once the cooldown is up",
+       ring_graze(FIELD_CX, _just_outside, PLAYER_R) == 1);
+
+    // --- the arc -------------------------------------------------------
+    st_reset();
+    var _a = ring_new(FIELD_CX - 300, FIELD_CY, BCOL_CYAN, 0);
+    var _b = ring_new(FIELD_CX + 300, FIELD_CY, BCOL_CYAN, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(undefined);
+    ring_link(_a, _b, 120);
+    ok("current runs between two rings", ring_arc_live(_a));
+    ok("...and it is lethal along the line between them",
+       ring_any_hit(FIELD_CX, FIELD_CY, PLAYER_R));
+    ok("...and not off it",
+       !ring_any_hit(FIELD_CX, FIELD_CY + 240, PLAYER_R));
+
+    // **Losing the far end takes the current with it.** A ring struct is
+    // reused out of the pool, so an arc held as a bare reference would keep
+    // drawing a lethal line to whatever took the slot -- which is the trap the
+    // serial on every ring exists for, and the one thing here that would reach
+    // a player as damage from nothing.
+    ring_dismiss(_b, 1);
+    ring_step(undefined);
+    ring_step(undefined);
+    ok("and it goes out with the ring at its far end", !ring_arc_live(_a));
+    ok("...so nothing is left lethal in the middle of the field",
+       !ring_any_hit(FIELD_CX, FIELD_CY, PLAYER_R));
+
+    // --- Mika's table --------------------------------------------------
+    var _ph = mika_phases();
+    var _descends = true;
+    var _prev = 1.0;
+    for (var _i = 0; _i < array_length(_ph); _i++) {
+        if (_ph[_i].hp_end >= _prev) _descends = false;
+        _prev = _ph[_i].hp_end;
+    }
+    ok("Mika's table descends", _descends);
+    ok("and ends at zero", _ph[array_length(_ph) - 1].hp_end == 0);
+
+    // **Every attack he has puts a ring on the field**, which is the claim the
+    // whole stage was written to make and the one an assertion can actually
+    // check. It is played rather than read: each attack is run against a real
+    // controller for a few seconds and the pool is counted.
+    var _ringed = 0;
+    for (var _i = 0; _i < array_length(_ph); _i++) {
+        st_reset();
+        var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+        var _e = mika_spawn(_g);
+        if (_e == undefined) break;
+        _e.boss.entry_t = 0;
+        _e.boss.declare_t = 0;
+        _e.boss.started = true;
+        _e.x = _e.boss.home_x;
+        _e.y = _e.boss.home_y;
+        boss_enter_phase(_e, _g, _i);
+        _e.boss.lead_t = 0;
+        var _seen = 0;
+        for (var _f = 0; _f < 320; _f++) {
+            _ph[_i].attack(_e, _g, _f);
+            ring_step(_g);
+            _seen = max(_seen, ring_count());
+        }
+        if (_seen > 0) _ringed++;
+    }
+    ok("every one of his attacks is a ring attack",
+       _ringed == array_length(_ph));
+
     st_reset();
 }

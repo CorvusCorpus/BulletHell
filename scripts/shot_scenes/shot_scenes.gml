@@ -23,7 +23,9 @@ function shot_scene_list() {
             "hex_draw", "hex_seal", "hex_scatter", "hex_gaps",
             "hex_burst",
             "grove", "grove_arrive", "grove_turn", "grove_blood",
-            "grove_boss", "grove_spell"];
+            "grove_boss", "grove_spell",
+            "sanctum", "mika", "aperture", "circuit",
+            "hall_a", "hall_b", "hall_turn"];
 }
 
 /// @desc Read `-burst`'s comma-separated frame offsets into an array.
@@ -109,6 +111,31 @@ function shot_scene_prepare(_name) {
             // `Falling Sky` -- the one draft whose whole idea is the shape of
             // a trajectory, which is precisely the thing no assertion can see.
             global.practice = practice_new(draft_stage_def(), 0, 1);
+            break;
+
+        case "sanctum":
+        case "mika":
+        case "aperture":
+        case "circuit":
+        case "hall_a":
+        case "hall_b":
+            // **Stage three gets four, and three of them are one mechanic.**
+            // A ring is the first object in this game that is neither a bullet
+            // nor an enemy, and the three things it does that no assertion can
+            // judge are all *pictures*: whether a ring reads as solid enough
+            // that a player believes it will stop a shot, whether a charged
+            // band is told apart from a cold one at a glance, and whether the
+            // current between two of them reads as a wall rather than as an
+            // effect. `test_rings` proves all three work and none of them
+            // read.
+            global.stage_def = stage_sanctum_def();
+            break;
+
+        case "hall_turn":
+            // The review card rather than the stage: it is the thing whose
+            // timeline drives the turn, and a picture of the reveal taken
+            // any other way is a picture of a state somebody posed.
+            global.stage_def = preview_stage_def();
             break;
 
         case "grove":
@@ -476,6 +503,85 @@ function shot_pose(_scene, _g) {
             _g.bg.intro = 1;
             _g.bg.omen_on = true;
             return shot_omen_frame(GROVE_WAVE_START + 0.34);
+
+        case "hall_a":
+            // **The approach.** The camera is nine hundred units up and aimed
+            // at the marble, so the hall is off the top of the frame entirely
+            // -- which is the whole claim of this phase and the thing a
+            // screenshot is the only way to check. `omen` is left alone, so
+            // `reveal` is zero.
+            _g.player.x = FIELD_CX - 90;
+            _g.player.y = FIELD_Y1 - 210;
+            return 150;
+
+        case "hall_turn":
+            // **The reveal, half way through, and driven by the review
+            // card's own timeline rather than by the scene.** The other two
+            // pose `omen` by hand, which is right for a picture of an end
+            // state and says nothing about whether the thing that is supposed
+            // to *ask* for the turn does. This one plays
+            // `preview_stage_def`'s running order, so what is photographed is
+            // the path a person reviewing the hall actually takes.
+            _g.player.x = FIELD_CX;
+            _g.player.y = FIELD_Y1 - 230;
+            return PREVIEW_HOLD_A + 40 + round(BG_OMEN_TIME * 0.62);
+
+        case "hall_b":
+            // ...and the same hall once the reveal has run. **The omen is
+            // written straight to one rather than started and waited out**,
+            // which is the opposite of what the grove's turn scenes have to
+            // do: there the picture wanted is a *moment inside* the movement,
+            // and here it is the state at the end of it.
+            _g.player.x = FIELD_CX + 70;
+            _g.player.y = FIELD_Y1 - 240;
+            _g.bg.omen_on = true;
+            _g.bg.omen = 1;
+            return 150;
+
+        case "sanctum":
+            // The gateposts, mid-wave: two rings standing in the field doing
+            // nothing but eating shots aimed through them, which is where the
+            // stage teaches the rule. Wound to just after the second of the
+            // two events, so the grimoire line is arriving over them.
+            _g.stage.t = 420;
+            _g.player.x = FIELD_CX - 90;
+            _g.player.y = FIELD_Y1 - 200;
+            return 300;
+
+        case "mika":
+            // His opening non-spell: one ring on a long lead, orbiting, with
+            // the boss firing past it. The plainest possible statement of the
+            // mechanic, which is exactly what a first picture of it should be.
+            shot_boss(_g, 0, mika_spawn);
+            _g.player.x = FIELD_CX + 120;
+            _g.player.y = FIELD_Y1 - 260;
+            return 200;
+
+        case "aperture":
+            // **Gilded Aperture, and the player posed inside the middle
+            // ring.** The whole claim of the attack is that getting closer is
+            // fewer bands in the way, and a shot of it from the bottom of the
+            // field would photograph the state the player is trying to leave.
+            // He is untouchable, for the reason the `peril` scene records: a
+            // posed player standing in a live pattern is dead before the
+            // shutter, and a hit sweeps a 190-pixel circle out of the thing
+            // being photographed.
+            shot_boss(_g, 1, mika_spawn);
+            _g.player.x = FIELD_CX + 60;
+            _g.player.y = FIELD_Y0 + 420;
+            _g.player.untouchable = true;
+            return 190 + BOSS_SPELL_LEAD;
+
+        case "circuit":
+            // Ashiah's Circuit, caught with the current across the field
+            // rather than up and down it -- the sweep is the attack, and the
+            // one frame worth having is the one where the bar is longest on
+            // screen.
+            shot_boss(_g, 3, mika_spawn);
+            _g.player.x = FIELD_CX - 200;
+            _g.player.y = FIELD_Y1 - 280;
+            _g.player.untouchable = true;
+            return 150 + BOSS_SPELL_LEAD;
 
         case "grove_boss":
             // Velka's opening non-spell over the turned wood, which is what

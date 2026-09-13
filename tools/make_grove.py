@@ -1154,16 +1154,32 @@ def _scrub_draw(d, w, h):
     *different height*, from barely clearing the mat to most of the band --
     because a hedge at a distance is read off the rhythm of its crowns. And a
     few saplings standing out of it with leafy heads rather than bare stems.
+
+    **The mat has a floor now, and not having one put the ruled line back.**
+    This band exists to cover the join between the ground and the far wood,
+    and covering it is a property of the art's *thinnest* stretch rather than
+    of its average: the mat was seventy scattered ellipses topping out
+    anywhere from 0.64 to 0.83 of the canvas, so between two of them the
+    hedge was a sixth of its own height and its crown fell below the horizon
+    it was drawn to hide. Reported as the border peeking out from behind it,
+    and the arithmetic agrees -- with the wave and the dip both set to zero
+    the worst stretch cleared the line by one pixel. What makes a hole here is
+    a *gap in the coverage*, so the answer is more ellipses, wider, and over a
+    shorter height range: at this count and width the mat is many times
+    covered everywhere and its crown undulates between 0.34 and 0.50 instead
+    of falling away. `check_scrub_covers_horizon` does the arithmetic against
+    the shipped PNG, because "the thinnest stretch of a hedge" is not
+    something any assertion about the drawing could see.
     """
     for i in range(3):
         off = i * w
         rng = np.random.default_rng(5252)      # the same hedge, three times
         base = h * 1.04
-        # The mat.
-        for _ in range(70):
+        # The mat, which is the part that may not have a gap in it.
+        for _ in range(110):
             cx = rng.uniform(0, w) + off
-            cw = rng.uniform(0.012, 0.030) * w
-            ch = rng.uniform(0.26, 0.40) * h
+            cw = rng.uniform(0.020, 0.042) * w
+            ch = rng.uniform(0.54, 0.70) * h
             d.ellipse([cx - cw, base - ch, cx + cw, base + ch * 0.3], fill=255)
         # The bushes. **Spaced along the band rather than scattered**, so the
         # crowns have a rhythm with gaps in it -- scattered at random they
@@ -1175,7 +1191,11 @@ def _scrub_draw(d, w, h):
             bw = rng.uniform(0.028, 0.062) * w
             # Capped at 0.86 so the tallest crown and its fringe clear
             # the top of the canvas -- a sprite's edge is a hard clip.
-            bh = (0.34 + 0.52 * rng.random() ** 1.3) * h
+            # **Floored at 0.68 so a bush still reads above the mat**: the mat
+            # tops out at half the canvas now, and a bush shorter than that is
+            # a bush nobody can see, which spends the crown's rhythm on
+            # nothing.
+            bh = (0.68 + 0.18 * rng.random() ** 1.3) * h
             _bush_mass(d, rng, cx, base, bw, bh)
         # A handful of saplings above the line, with heads.
         for _ in range(9):

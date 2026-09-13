@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"bg_sanctum",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"bg_sanctum",
+  "parent":{
+    "name":"background",
+    "path":"folders/Scripts/background.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

@@ -71,13 +71,14 @@ if (phase == Phase.Paused) {
 if (phase == Phase.Won || phase == Phase.Lost) {
     result_t++;
     fx_step();
-    bg_step(bg);
+    bg_step(bg, player_field_aim(player));
     // **The field keeps running under the result panel.** Bullets that were in
     // flight finish their arcs and the particles from the kill burn out, which
     // is what makes the panel feel like it arrived over the fight rather than
     // instead of it.
     bullet_step(player.x, player.y);
     laser_step();
+    ring_step(self);
     // **The console keeps settling under the panel.** It was left out of this
     // branch, so the moment a run ended the score stopped rolling wherever it
     // had got to -- and the frame a run ends on is the frame the biggest
@@ -149,7 +150,9 @@ if (phase == Phase.BossDeclare && boss_ref != undefined
 }
 
 fx_step();
-bg_step(bg);
+// **The camera looks where the player is**, and this is the only place in the
+// game that knows both. See `GROVE_LEAN`; stage one never reads it.
+bg_step(bg, player_field_aim(player));
 
 var _hp_before = player.hp;
 player_step(player, _in, self);
@@ -160,7 +163,16 @@ pshot_step();
 bullet_step(player.x, player.y);
 laser_step();
 enemy_step(self);
+// **After the enemies, because an attack is what puts a ring down** -- so one
+// spawned this frame starts arriving on the frame it was asked for rather than
+// on the next. See `ring_step`.
+ring_step(self);
 
+// **The rings eat what crosses their metal, and this line has to come first.**
+// A shot absorbed here never reaches the boss behind it, which is the whole
+// mechanic; run the other way round and a ring would be scenery with a spark
+// effect on it. See `ring_block_shots`.
+ring_block_shots();
 tally += enemy_take_shots(self);
 // The bomb's seals, on the same terms and straight after: they are the
 // player's other way of doing damage and they respect the same ceremony.
@@ -191,6 +203,7 @@ if (!player.alive && phase != Phase.Lost) {
     }
     bullet_clear_all(false);
     laser_clear_all();
+    ring_clear_all();
 }
 
 // The stage only advances while the field belongs to it. During a boss the

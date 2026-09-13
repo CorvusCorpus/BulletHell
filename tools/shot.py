@@ -86,6 +86,21 @@ SCENES = (
     "grove_blood",   # ...with the wavefront part way down the corridor
     "grove_boss",    # Velka over the turned wood, danmaku across the moon
     "grove_spell",   # her caster's background: bone circle, antlers, wash
+    "sanctum",       # stage three: two gateposts standing in a live wave
+    "mika",          # his opening non-spell: one ring on a long lead
+    "aperture",      # Gilded Aperture, from inside the middle band
+    "circuit",       # Ashiah's Circuit: current strung between two rings
+
+    # The hall itself, at the two ends of its reveal. **Two pictures of the
+    # same room**, and the only difference between them is where the camera
+    # is: phase A is nine hundred units up aimed at the marble, phase B is at
+    # flying height and level. Nothing else in the stage changes, which is the
+    # whole argument for making the reveal a camera move rather than a scene
+    # change -- and it is why both have to be photographed, because "the hall
+    # is hidden" is a claim about a frame and not about a number.
+    "hall_a",        # the approach: aimed at the floor, the hall off-frame
+    "hall_b",        # the reveal: level, the room open
+    "hall_turn",     # ...and half way between them, off the review card
 )
 
 EXE = os.path.join(build.BUILD, "out", build.project_name() + ".exe")

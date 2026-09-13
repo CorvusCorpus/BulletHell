@@ -370,6 +370,18 @@ def check_run_clears_the_field():
              "included")
 
 
+# Sprites whose frames are a **catalogue** rather than an animation, where an
+# empty entry is a deliberate answer rather than damage. Each carries its
+# reason: an allow-list without one is a place to put anything inconvenient.
+BLANK_FRAMES_OK = {
+    # The light on each of seven charms, one frame per charm. Two of them have
+    # none: a bundle of bones and a stick with feathers, whose own generator
+    # docstring says "no light in it at all". Drawing an empty frame additively
+    # is a no-op, which is exactly the intended behaviour.
+    "spr_scn_charm_lit": "two charms have no glowing part; see make_grove.py",
+}
+
+
 def check_sprites_not_blank():
     """No sprite may be entirely transparent.
 
@@ -388,13 +400,30 @@ def check_sprites_not_blank():
     frames each -- and the only thing that noticed was a player saying the
     animated bullets had gone.
 
-    So the rule is general: if a sprite has no ink anywhere, something has
-    eaten it. Re-run the generator that owns it, with the IDE closed.
+    So the rule is general: if a sprite has a frame with no ink in it, something
+    has eaten it. Re-run the generator that owns it, with the IDE closed.
 
-    Sampled rather than exhaustive -- first, middle and last frame. A sprite
-    with ink in those three and nowhere else is not a failure mode anything
-    here produces, and the alternative is opening every one of the four
-    thousand PNGs this project ships.
+    **Every frame, and it used to be three.** The old version sampled first,
+    middle and last and passed the sprite if *any* of them had ink, on the
+    stated grounds that a sprite inked in some frames and blank in others was
+    not a failure mode this project produces. It is: the IDE wrote its cached
+    six frames back over a freshly generated twelve and left the second half
+    empty, so Mika vanished for seven tenths of every second of play and the
+    check reported the project sound. What reached a person was "his sprite is
+    appearing and disappearing".
+
+    Exhaustive costs 0.9 seconds over the 1129 frames this project ships, which
+    is not a budget worth defending against a bug that has now happened three
+    times.
+
+    **Some sprites are a catalogue rather than an animation, and an empty entry
+    in a catalogue is an answer.** `spr_scn_charm_lit` is the light on each of
+    seven charms, drawn frame-per-charm; two of them are a bundle of bones and
+    a stick with feathers on it, and `charm_fetish`'s own docstring says "no
+    light in it at all". The first exhaustive run reported those as damage,
+    which they are not. `BLANK_FRAMES_OK` is the exemption and it carries the
+    reason, because an allow-list without one becomes a place to put anything
+    inconvenient.
     """
     try:
         from PIL import Image
@@ -411,27 +440,35 @@ def check_sprites_not_blank():
             continue
 
         folder = os.path.dirname(yy_path)
-        sample = {frames[0], frames[len(frames) // 2], frames[-1]}
-        inked = False
         missing = []
-        for fid in sample:
+        blank = []
+        for i, fid in enumerate(frames):
             png = os.path.join(folder, fid + ".png")
             if not os.path.exists(png):
-                missing.append(fid)
+                missing.append(i)
                 continue
-            if Image.open(png).convert("RGBA").getchannel("A").getbbox():
-                inked = True
-                break
+            if not Image.open(png).convert("RGBA").getchannel("A").getbbox():
+                blank.append(i)
 
         if missing:
             fail("%s is missing %d of its frame PNGs -- re-run the generator "
                  "that owns it" % (rel(yy_path), len(missing)))
-        elif not inked:
-            fail("%s is blank: no ink in its first, middle or last frame. A "
-                 "generated sprite does not become empty on its own -- the "
-                 "GameMaker IDE writes its cached copy back over generated "
-                 "art when the project is open. Close it, re-run the "
-                 "generator, and check again." % rel(yy_path))
+        name = os.path.splitext(os.path.basename(yy_path))[0]
+        if blank and name in BLANK_FRAMES_OK:
+            blank = []
+
+        if blank:
+            where = ("every one of its %d frames" % len(frames)
+                     if len(blank) == len(frames)
+                     else "frame(s) %s of %d"
+                          % (", ".join(str(b) for b in blank[:8]), len(frames)))
+            fail("%s has no ink in %s. Either the generator that owns it never "
+                 "draws those frames -- in which case say so in "
+                 "BLANK_FRAMES_OK, with the reason -- or something ate them: "
+                 "the GameMaker IDE writes its cached copy back over generated "
+                 "art when the project is open, which has happened three "
+                 "times. Close it, re-run the generator, and check again."
+                 % (rel(yy_path), where))
 
 
 def check_enum_references():
@@ -1312,6 +1349,173 @@ def check_bg_keepout():
                  % (name, len(cols), lo, hi))
 
 
+def check_scrub_covers_horizon():
+    """The hedgerow must never fall below the line it is there to hide.
+
+    The grove's ground plane meets the far wood at one ruled horizontal row
+    the full width of the field, and the scrub band is drawn over the join to
+    break it. Whether it *does* is a property of the hedge's thinnest stretch
+    and not of its average, and it is the sum of four numbers living in three
+    files: how tall the band is drawn, how much of it stands above the
+    horizon, how far the wave and the dip push it back down, and where the
+    art's own crown bottoms out. Every one of them is individually reasonable.
+    Nothing was adding them up.
+
+    So the mat in `make_scrub` thinned to a sixth of its height between two
+    ellipses, the crown there landed *below* the horizon, and the join showed
+    through -- reported as the border peeking out from behind the hedgerow.
+    Nothing could have seen it: the build is clean, the sprite is inked, every
+    constant is in range, and `tools/shot.py` photographs one frame of a band
+    that used to slide, so the bare patch swept past rather than sitting still.
+
+    The near row is what is measured, because it is drawn over the far one and
+    is the taller of the two -- so it is the row that does the covering, and
+    the check says so rather than assuming it.
+    """
+    try:
+        from PIL import Image
+        import numpy as np
+    except ImportError:
+        return
+
+    pngs = sorted(glob.glob(os.path.join(ROOT, "sprites", "spr_scn_scrub",
+                                         "*.png")))
+    pngs = [p for p in pngs if os.sep + "layers" + os.sep not in p]
+    if not pngs:
+        fail("spr_scn_scrub has no frame to measure")
+        return
+
+    alpha = np.asarray(Image.open(pngs[0]).convert("RGBA").getchannel("A"),
+                       dtype=np.float32) / 255.0
+    height, width = alpha.shape
+    solid = alpha > 0.35
+    if not solid.any():
+        fail("spr_scn_scrub is blank")
+        return
+    # The lowest crown anywhere along the tile: a column with no ink at all is
+    # a hole rather than a low stretch, and scores as the very bottom.
+    crown = np.where(solid.any(axis=0), np.argmax(solid, axis=0), height)
+    worst = float(crown.max()) / height
+
+    field_w = read_macro_number("FIELD_W")
+    rise = read_macro_number("GROVE_SCRUB_RISE")
+    wave = read_macro_number("GROVE_SCRUB_WAVE")
+    dip = read_macro_number("GROVE_SCRUB_DIP")
+    clear = read_macro_number("GROVE_SCRUB_CLEAR")
+    near = read_macro_number("GROVE_SCRUB_NEAR")
+    far = read_macro_number("GROVE_SCRUB_FAR")
+
+    if near <= far:
+        fail("GROVE_SCRUB_NEAR (%g) is not taller than GROVE_SCRUB_FAR (%g), "
+             "so the row drawn on top is no longer the row that covers the "
+             "horizon and this check is measuring the wrong one" % (near, far))
+
+    # The band as it is actually drawn: `grove_scrub_row` scales the sprite to
+    # the field's width times the row's own size, stands `rise` of it above the
+    # horizon, and everything below pushes the crown back down.
+    band = height * (field_w / width) * near
+    margin = band * (worst - rise + dip) + wave
+    if margin > -clear:
+        where = ("falls %.1fpx *below* the horizon" % margin if margin > 0
+                 else "clears the horizon by only %.1fpx" % -margin)
+        fail("the hedgerow's thinnest stretch %s, against GROVE_SCRUB_CLEAR "
+             "(%gpx) -- the ground/treeline join shows through it. Its lowest "
+             "crown is %.0f%% down the canvas against a band %.0fpx tall, "
+             "with %gpx of wave and %.0f%% of dip pushing it down; raise the "
+             "mat in make_scrub, or spend less on the wave and the dip"
+             % (where, clear, worst * 100, band, wave, dip * 100))
+
+
+IDENT = "[A-Za-z_][A-Za-z_0-9]*"
+
+
+def check_bands_are_rooted():
+    """A scenery band's sideways position is the camera's, or it is the wind.
+
+    The grove's tiled bands -- the far wood, the hedgerow, the canopy -- stand
+    on the ground, so the only thing that may move them sideways is the camera
+    turning. Each of them nonetheless shipped with a share of an accumulator
+    that only ever grows, and the canopy then shipped with a sinusoid, and both
+    were reported: a wall of wood panning left for ever in a stage flying
+    straight ahead, and branches overhead sliding left and right under their
+    own clock while everything else in the frame answered to the player.
+
+    The rule is invisible at the call site -- every one of those arguments is a
+    perfectly ordinary number -- which is exactly the case a comment cannot
+    hold. So the x of a band draw has to be `grove_rooted_x(...)`, or a
+    parameter passed straight through from a caller that is itself checked, and
+    `_b.drift` is allowed only in `grove_draw_mist`, because fog is the one
+    thing out there that really does travel.
+
+    **Found by scanning rather than by matching**, because this guard's first
+    version carried a literal backspace where it meant a word boundary -- an
+    escape that survived review, compiled, ran against three deliberate
+    violations and reported all three as clean. Which is the `GAME_ERROR`
+    lesson exactly: the only thing that separates a guard from a comment is
+    watching it fail.
+    """
+    path = os.path.join(ROOT, "scripts", "bg_grove", "bg_grove.gml")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8-sig") as fh:
+        src = fh.read()
+
+    # Which argument of each call carries the band's x.
+    where = {"corridor_draw_band": 2, "corridor_draw_band_wave": 2,
+             "grove_scrub_row": 3}
+    word = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
+
+    def enclosing(at):
+        found = "?"
+        for hit in re.finditer("^function (" + IDENT + ")", src, re.M):
+            if hit.start() > at:
+                break
+            found = hit.group(1)
+        return found
+
+    for name, index in sorted(where.items()):
+        at = -1
+        while True:
+            at = src.find(name + "(", at + 1)
+            if at < 0:
+                break
+            # A whole word, and not the function's own definition.
+            if at and src[at - 1] in word:
+                continue
+            if src[max(0, at - 9):at] == "function ":
+                continue
+            depth, args, arg = 0, [], ""
+            for ch in src[at + len(name):]:
+                if ch in "([":
+                    depth += 1
+                    if depth == 1:
+                        continue
+                elif ch in ")]":
+                    depth -= 1
+                    if depth == 0:
+                        args.append(arg)
+                        break
+                if depth == 1 and ch == ",":
+                    args.append(arg)
+                    arg = ""
+                else:
+                    arg += ch
+            if len(args) <= index:
+                continue
+            x = " ".join(args[index].split())
+            host = enclosing(at)
+            if "grove_rooted_x" in x:
+                continue
+            if x and all(c in word for c in x):      # passed through by a caller
+                continue
+            if "drift" in x and host == "grove_draw_mist":
+                continue
+            fail("%s in %s() takes its x from `%s`, which is neither "
+                 "grove_rooted_x nor the mist's drift -- a rooted band may "
+                 "only move when the camera turns. See grove_rooted_x"
+                 % (name, host, x))
+
+
 def check_font_accessors_called():
     """A font accessor must be *called*, never passed by name.
 
@@ -1406,6 +1610,49 @@ def check_sprite_draws_are_explicit():
                      % (rel(gml), n))
 
 
+def check_rings_block_before_enemies():
+    """`obj_game`'s Step must block shots on rings *before* the enemies take
+    them.
+
+    A ring stops the player's fire along its metal, and the whole of what makes
+    that true is an ordering: `ring_block_shots` removes a shot from the pool,
+    so anything that runs after it never sees that shot. Run it the other way
+    round and the boss behind a ring takes every hit exactly as if the ring
+    were not there -- and the picture is *identical*, because the ring is still
+    drawn, the shots still spark on it, and the only difference is a health bar
+    going down at the normal rate.
+
+    Nothing else can see it. `test_rings` proves the blocking works and cannot
+    prove anybody calls it first; the build is clean either way; and a
+    screenshot of a boss being shot through a ring looks like a screenshot of a
+    boss being shot. Same shape of rule as `check_run_clears_the_field`, and
+    the same reason for it: the bug was never going to be in the function.
+    """
+    step = os.path.join(ROOT, "objects", "obj_game", "Step_0.gml")
+    if not os.path.exists(step):
+        fail("objects/obj_game/Step_0.gml is missing")
+        return
+
+    with open(step, encoding="utf-8-sig") as fh:
+        src = _strip_noise(fh.read())
+
+    block = src.find("ring_block_shots(")
+    take = src.find("enemy_take_shots(")
+    if block < 0:
+        fail("obj_game/Step_0.gml never calls ring_block_shots() -- a ring "
+             "that does not eat the player's fire is scenery with a spark "
+             "effect on it")
+        return
+    if take < 0:
+        fail("obj_game/Step_0.gml never calls enemy_take_shots()")
+        return
+    if block > take:
+        fail("obj_game/Step_0.gml calls ring_block_shots() after "
+             "enemy_take_shots() -- a shot absorbed by a ring has to be gone "
+             "before the boss behind it is offered the pool, or the ring "
+             "blocks nothing while looking exactly as though it does")
+
+
 def main():
     yyp_path = os.path.join(ROOT, PROJECT + ".yyp")
     yyp = load_yy(yyp_path)
@@ -1431,9 +1678,12 @@ def main():
     check_font_ink_ratio()
     check_bg_seams()
     check_bg_keepout()
+    check_scrub_covers_horizon()
+    check_bands_are_rooted()
     check_font_accessors_called()
     check_sprite_draws_are_explicit()
     check_run_clears_the_field()
+    check_rings_block_before_enemies()
     check_sprites_not_blank()
     check_enum_references()
     check_brace_balance()

@@ -38,6 +38,13 @@ spell_bg_draw(spell_style, spell_col, t, spell_fade);
 // shoot the player. See `enemy_draw`.
 enemy_draw();
 
+// **The rings, in front of the boss and behind everything the player reads.**
+// They are opaque and they are enormous, which is affordable only because of
+// where this line is: bullets, lasers, the player and his hitbox all draw
+// after it, so no arrangement of rings can hide one of them. What a ring can
+// hide is the boss, and that is what it is for.
+ring_draw();
+
 item_draw();
 pshot_draw();
 

@@ -127,7 +127,7 @@ function bg_grove() {
     _b.wisp_b   = make_colour_rgb(255, 92, 48);
 
     _b.dist = 0;
-    _b.drift = 0;          // how far the distant wood has slid sideways
+    _b.drift = 0;          // how far the fog has travelled on the wind
     _b.spd = GROVE_SPEED;
 
     // **The arrival.** Zero is "still in the cloud"; one is "the wood is
@@ -151,6 +151,13 @@ function bg_grove() {
     _b.rush = GROVE_SPEED;
     _b.cam_x = 0;
     _b.cam_y = 0;
+
+    // **What the camera has actually turned toward so far**, in screen
+    // pixels, which is a lagging copy of where the player is rather than the
+    // thing itself. It is state because the whole point of it is that it is
+    // behind: see `GROVE_LEAN`.
+    _b.lean = 0;
+    _b.lat = 0;            // ...the same number, once the arrival has eased
 
     // **How much light there is in the wood at all**, and it is one number
     // because there is one source. At totality the moon is behind a shadow,
@@ -434,16 +441,43 @@ function grove_step(_b) {
     // **Slow is the whole specification.** What is wanted overhead is a wood
     // that is not permanently dead ahead and a flight that is not permanently
     // level; what is not wanted is anything the eye can catch happening.
-    _b.cam_x = GROVE_SWAY * _in
-               * (0.72 * dsin(_b.t * 360 / GROVE_SWAY_P1)
-                  + 0.28 * dsin(_b.t * 360 / GROVE_SWAY_P2 + 47));
+    var _meander = GROVE_SWAY * _in
+                   * (0.72 * dsin(_b.t * 360 / GROVE_SWAY_P1)
+                      + 0.28 * dsin(_b.t * 360 / GROVE_SWAY_P2 + 47));
+
+    // **...and the flyer steers, which is the larger half of the yaw now.**
+    // The camera looks where the player is: at the left wall it turns left,
+    // which puts the vanishing point out to the right and the player heading
+    // into it, and everything between the walls is between the two. See
+    // `GROVE_LEAN` for why the meander stayed and why the follow is filtered
+    // twice -- an ease for the dodging and a cap for the guarantee.
+    //
+    // Eased by `_in` on the same terms the meander is: a camera steering
+    // before the flight has started is a camera steering nothing.
+    var _want = GROVE_LEAN * _b.aim * _in;
+    _b.lean += clamp((_want - _b.lean) * GROVE_LEAN_EASE,
+                     -GROVE_LEAN_SPD, GROVE_LEAN_SPD);
+
+    // **The steering is a slide and the meander is a look-around**, which is
+    // the whole of why the wood now has depth in it. A yaw moves everything
+    // by the same number of pixels, so a camera that only ever turned could
+    // not show that the canopy is near and the moon is not; a slide moves
+    // each thing by `corridor_k` of its own depth. The idle meander stays a
+    // yaw, because a gentle look-around is what it is for and a wander that
+    // parallaxed would read as the flyer being blown sideways.
+    _b.lat = _b.lean;
+    _b.cam_x = _meander;
     _b.cam_y = GROVE_RISE * _in
                * (0.74 * dsin(_b.t * 360 / GROVE_RISE_P1 + 23)
                   + 0.26 * dsin(_b.t * 360 / GROVE_RISE_P2 + 131));
 
     _b.dist += _b.rush;
-    // The far wood slides sideways at a fraction of the flight, which is what
-    // stops the vanishing point reading as a photograph pinned to the screen.
+    // **The wind, and it blows on the mist alone now.** This used to move the
+    // far wood, the hedgerow and the canopy as well, on the reasoning that a
+    // band pinned at one x reads as a photograph stuck to the screen -- an
+    // argument written for a camera that did not move, and paid for with a
+    // wall of wood panning left for ever in a stage flying straight ahead.
+    // See `grove_rooted_x`. Fog genuinely travels, so it keeps this.
     _b.drift += _b.rush * 0.10;
 
     // **Every ring, and there is a suite that counts them.** The trunks were
@@ -536,9 +570,9 @@ function grove_draw_back(_b, _fill) {
     // **The camera is a yaw and a pitch, handed to the view.** Everything
     // below reads `_v.cx` and `corridor_horizon(_v)`, so the whole picture
     // turns as one body and no layer had to remember. The three tiled bands
-    // are the exception and they take `-_v.ox` off their drift, because they
+    // are the exception and they take `-_v.ox` off their offset, because they
     // are laid out from the edge of the view rather than from its middle.
-    var _v = corridor_view(_fill, _b.cam_x, _b.cam_y);
+    var _v = corridor_view(_fill, _b.cam_x, _b.cam_y, _b.lat);
     var _sb = grove_sky_blood(_b);
 
     draw_clear(merge_colour(_b.air_n, _b.air_b, _sb));
@@ -561,11 +595,29 @@ function grove_draw_back(_b, _fill) {
     // at a third and at very nearly the whole of the flight speed, which is
     // motion the camera is not making: flying straight down a path moves what
     // is overhead *toward* you, and the boughs ring is what does that now.
-    // What is left here is a sway, which is the wind.
-    corridor_draw_band(_v, spr_scn_canopy, _b.drift * 0.09 - _v.ox,
+    // What is left here is nothing at all, and that took two goes.
+    //
+    // **It was a pan, then a sway, and it is rooted now.** The pan was a
+    // share of `drift`, which only ever grows, so the two bands were not
+    // swaying -- they were travelling, one left and one right, for ever. The
+    // sway that replaced it was bounded and still wrong, and it was wrong for
+    // a reason the pan had hidden: it is the *last* thing in the frame moving
+    // sideways under its own clock, in a stage where the camera now steers
+    // and every other rooted thing answers to it. Reported as the branches
+    // moving left and right at random and clashing with the sense of
+    // direction, which is the same complaint the meander got one layer up,
+    // arriving at the top of the frame.
+    //
+    // What says wind overhead is the *boughs*, which are props: they come at
+    // the lens and sweep out of the top corners, which is what a canopy does
+    // to somebody flying under it. These two bands are the far canopy behind
+    // them, and a far canopy slides for exactly the same reason a far wall of
+    // wood does -- none. See `grove_rooted_x`; the mist is the only exception
+    // left, and it is fog.
+    corridor_draw_band(_v, spr_scn_canopy, grove_rooted_x(_v, 0, 1300),
                        _v.y0 + _v.oy,
                        _csc, merge_colour(_tree_far, _b.fog_n, 0.42), 0.9);
-    corridor_draw_band(_v, spr_scn_canopy, -_b.drift * 0.13 + 317 - _v.ox,
+    corridor_draw_band(_v, spr_scn_canopy, grove_rooted_x(_v, 317, 700),
                        _v.y0 + _v.oy - _v.h * 0.06, _csc * 1.34, _tree_far, 1);
 
     grove_draw_treeline(_b, _v, _sb);
@@ -682,10 +734,66 @@ function grove_draw_scrub(_b, _v, _sb) {
     // place this layer is ever seen: everywhere else it is dark against dark.
     // At the first size it put about twenty pixels of body across the foot of
     // the moon, which reads as a few twigs rather than as a hedge.
-    grove_scrub_row(_b, _v, _hy, _b.drift * 0.10 - _v.ox + 311,
-                    0.95, 0.70, _blood, 91);
-    grove_scrub_row(_b, _v, _hy, _b.drift * 0.19 - _v.ox,
-                    1.45, 0.34, _blood, 47);
+    grove_scrub_row(_b, _v, _hy, grove_rooted_x(_v, 311, 3000),
+                    GROVE_SCRUB_FAR, 0.70, _blood, 91);
+    grove_scrub_row(_b, _v, _hy, grove_rooted_x(_v, 0, 2000),
+                    GROVE_SCRUB_NEAR, 0.34, _blood, 47);
+}
+
+/// @desc Where a *rooted* band starts tiling, in screen pixels. `_phase` is
+///       the band's own place in the tile, so two copies of one sprite do not
+///       repeat in lockstep.
+///
+///       **A thing standing on the ground does not travel sideways, and three
+///       of these did.** The treeline, the hedgerow and the canopy each
+///       carried a share of `drift` -- an accumulator that only ever grows --
+///       on the reasoning that a band pinned at one x reads as a photograph
+///       stuck to the screen. That reasoning was written for a camera that
+///       did not move, and it bought the look at the price of a lie: the far
+///       wood was panning left at a constant rate in a stage flying straight
+///       down a corridor, which is exactly the "sideways motion the camera is
+///       not making" this file already records about the canopy and about the
+///       treeline, left standing on the layer nobody had photographed.
+///
+///       It was reported on the hedgerow, which is the worst place for it:
+///       that band is there to hide the join between the ground and the far
+///       wood, so it sits across the middle of the frame under the moon and
+///       is the most-looked-at stretch of horizon in the stage. At flying
+///       speed it walked a hundred pixels to the left every twenty seconds
+///       whatever the player did. Steering could offset forty-eight of that
+///       and only while the player stayed against a wall, so the net motion
+///       was always leftward -- and the bands are the one layer where a yaw
+///       reads at all, since everything nearer has its own rushing motion to
+///       hide it. See `GROVE_LEAN`.
+///
+///       So a rooted band's sideways position is the camera's and nothing
+///       else. What replaced the old argument is the camera itself: it
+///       genuinely turns now, and it turns these by up to `GROVE_SWAY +
+///       GROVE_LEAN` whenever the player flies anywhere. The mist keeps its
+///       drift, because fog is the one thing out there that really does
+///       travel.
+///
+///       **The canopy is rooted too, and its exception lasted one pass.** It
+///       traded the pan for a bounded sway on the argument that boughs
+///       overhead genuinely move -- and a sway is still the only thing left
+///       in the frame going sideways under its own clock, which in a stage
+///       where the camera steers reads as a clash rather than as wind.
+///       Reported that way. What says wind overhead is the boughs *ring*:
+///       props that come at the lens and sweep out of the top corners, which
+///       is what a canopy does to somebody flying under it. These bands are
+///       the far canopy behind them, and a far canopy slides for the same
+///       reason a far wall of wood does -- none.
+///       **`_z` is how deep the band is, and it is what gives a flat tile
+///       parallax.** Pinned to the yaw alone every band moved by exactly the
+///       number of pixels the moon did, so the canopy sat at a fixed offset
+///       in front of it however the player flew -- reported as the branches
+///       having lost their parallax. A band is a backdrop at a distance like
+///       everything else, so it takes `corridor_k` of the camera's lateral
+///       position on top of the yaw: the far wood shifts a few pixels where
+///       the canopy overhead shifts thirty, and the two canopy bands are at
+///       two depths so they part from each other as well.
+function grove_rooted_x(_v, _phase = 0, _z = CORRIDOR_Z_FAR) {
+    return _phase - _v.ox + corridor_k(_z) * _v.lat;
 }
 
 /// @desc One row of it: the mass, then the light on its crown.
@@ -700,7 +808,10 @@ function grove_scrub_row(_b, _v, _hy, _drift, _k, _fog, _blood, _seed) {
     // Its foot sits below the horizon, where the art's own alpha has already
     // faded away -- see `make_scrub`, whose crown is hard and whose foot
     // dissolves, for the two different jobs those two edges do.
-    var _sy = _hy - _h * 0.84;
+    // **Named, because whether this band covers the horizon is arithmetic
+    // nobody was doing.** See `GROVE_SCRUB_RISE` and
+    // `check_scrub_covers_horizon`.
+    var _sy = _hy - _h * GROVE_SCRUB_RISE;
 
     var _col = grove_dim(_b, merge_colour(
         merge_colour(_b.tree_n, _b.tree_b, _blood),
@@ -924,8 +1035,10 @@ function grove_draw_treeline(_b, _v, _sb) {
     // a *sideways* motion the camera is not making, which the eye reads as a
     // sheet of acetate pulled across the picture -- and it was drawn under
     // one, so the moon came through it. A far wall of wood does not slide and
-    // you cannot see through it. What is left is a drift slow enough to read
-    // as the path bending.
+    // you cannot see through it. **And what was left of that drift is gone
+    // too**: it was a fifth of a pixel a frame, which is small enough to
+    // argue for and still a wall of wood walking sideways for ever. It moves
+    // when the camera turns and at no other time. See `grove_rooted_x`.
     // **...and it stands on ground that is not level.** Drawn at one y a
     // band sprite is a wood on a spirit level, and however ragged its crown
     // is the eye reads the *band* rather than the trees -- which is what was
@@ -933,11 +1046,10 @@ function grove_draw_treeline(_b, _v, _sb) {
     // different amplitudes and different seeds, so the near wood and the far
     // wood disagree about where the hills are, which is the thing that makes
     // two bands read as two distances rather than as one drawn twice.
-    corridor_draw_band_wave(_v, spr_scn_treeline, _b.drift * 0.05 - _v.ox,
+    corridor_draw_band_wave(_v, spr_scn_treeline, grove_rooted_x(_v, 0, 5200),
                             _hy - _h * 0.92, _sc * 0.92, _far, 1,
                             GROVE_RIDGE_H, 137);
-    corridor_draw_band_wave(_v, spr_scn_treeline,
-                            _b.drift * 0.09 + 611 - _v.ox,
+    corridor_draw_band_wave(_v, spr_scn_treeline, grove_rooted_x(_v, 611, 3400),
                             _hy - _h * 1.16 + 8, _sc * 1.16, _near, 1,
                             GROVE_RIDGE_H * 0.62, 313);
 }
@@ -1338,7 +1450,7 @@ function grove_draw_mist(_b, _v, _sb, _front) {
 
     if (_front) {
         gpu_set_blendmode(bm_add);
-        corridor_draw_band(_v, spr_scn_mist, -_b.drift * 3.4 + 210 - _v.ox,
+        corridor_draw_band(_v, spr_scn_mist, grove_rooted_x(_v, 210, 500) - _b.drift * 3.4,
                            _v.y1 - _h * 0.72, _sc * 1.7, _col, 0.10 * _still);
         gpu_set_blendmode(bm_normal);
         return;
@@ -1352,13 +1464,13 @@ function grove_draw_mist(_b, _v, _sb, _front) {
     // **The bank at the vanishing point undulates with the ground under
     // it.** It is the layer lying exactly along the join, so a straight one
     // draws the very line the wood is being lifted off.
-    corridor_draw_band_wave(_v, spr_scn_mist, _b.drift * 0.5 - _v.ox,
+    corridor_draw_band_wave(_v, spr_scn_mist, grove_rooted_x(_v, 0, 4000) + _b.drift * 0.5,
                             _hy - _h * 0.42, _sc, _col, 0.17 * _still,
                             GROVE_MIST_WAVE, 421);
-    corridor_draw_band(_v, spr_scn_mist, -_b.drift * 0.9 + 400 - _v.ox,
+    corridor_draw_band(_v, spr_scn_mist, grove_rooted_x(_v, 400, 2600) - _b.drift * 0.9,
                        _hy + _v.h * GROVE_MIST_Y - _h * 0.5, _sc * 1.25, _col,
                        0.13 * _still);
-    corridor_draw_band(_v, spr_scn_mist, _b.drift * 1.6 + 830 - _v.ox,
+    corridor_draw_band(_v, spr_scn_mist, grove_rooted_x(_v, 830, 1200) + _b.drift * 1.6,
                        _hy + _v.h * GROVE_MIST_Y * 2.6 - _h * 0.5, _sc * 1.5,
                        _col, 0.07 * _still);
 }
@@ -1705,7 +1817,7 @@ function grove_draw_front(_b, _spell, _fill) {
     // trees the back pass just drew, so a front pass on a still camera would
     // be every near tree wearing its highlight a few pixels to one side of
     // itself.
-    var _v = corridor_view(_fill, _b.cam_x, _b.cam_y);
+    var _v = corridor_view(_fill, _b.cam_x, _b.cam_y, _b.lat);
     var _sb = grove_sky_blood(_b);
 
     gpu_set_blendmode(bm_add);

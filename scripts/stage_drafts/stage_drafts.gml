@@ -64,8 +64,14 @@ function stage_is_draft(_def) {
 ///       **It appears only while it has something in it.** Empty the drafts
 ///       and the card goes away by itself, so shipping is deleting rows rather
 ///       than remembering to hide a menu.
+///       **And the same goes for the review card**, which is a stage in every
+///       way the rack cares about and in no way `stage_list` does: it has no
+///       waves, no boss, no clear and no line in the save. It sits before the
+///       drafting table because the table is the one that reads as the end of
+///       the rack, and both of them are one line to delete.
 function rack_list() {
     var _l = stage_list();
+    array_push(_l, preview_stage_def());
     if (array_length(draft_list()) > 0) array_push(_l, draft_stage_def());
     return _l;
 }

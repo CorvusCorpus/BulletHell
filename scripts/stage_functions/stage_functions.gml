@@ -233,6 +233,15 @@ function wave_bg_omen() {
     };
 }
 
+/// @desc Put the stage's turn back to its beginning. See `bg_clear_omen`:
+///       this is the review card's, and a stage that used it would be saying
+///       its second half had un-happened.
+function wave_bg_rewind() {
+    return function(_g) {
+        bg_clear_omen(_g.bg);
+    };
+}
+
 /// @desc Sweep the field so the next section starts clean.
 function wave_sweep_field() {
     return function(_g) {
@@ -272,6 +281,7 @@ function wave_sweep_field() {
 function run_clear_field() {
     danmaku_init();
     laser_init();
+    ring_init();
     item_init();
     enemy_init();
     fx_clear();

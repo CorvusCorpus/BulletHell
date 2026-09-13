@@ -285,6 +285,7 @@
 #macro ITEM_MAX 512
 #macro ENEMY_MAX 128
 #macro LASER_MAX 96
+#macro RING_MAX 24
 #macro PARTICLE_MAX 1024
 #macro FLOATER_MAX 64          // floating text
 
@@ -316,6 +317,59 @@
 // the reward for finishing a spell and the reason clearing one feels like an
 // exhale.
 #macro CLEAR_ITEM_EVERY 7          // one shard per N bullets swept
+
+// ---------------------------------------------------------------------------
+// Rings
+//
+// **The first thing on this field that is neither a bullet nor an enemy.** A
+// ring is furniture the boss puts down: it cannot be destroyed, it stops the
+// player's shots along its metal, and when it is charged the metal kills. See
+// `scripts/ring_functions` for the whole argument and `stage_sanctum` for the
+// fight built out of them.
+// ---------------------------------------------------------------------------
+
+// **Every ring in the game is this size and there is no way to make one that
+// is not.** The radius is a macro rather than a field on the struct, which is
+// the difference between a rule and a convention: an attack cannot ask for a
+// bigger ring, so six of them on the field are six of the same object and the
+// player learns one shape once.
+//
+// The number is set against the *bullets*: `BSHAPE_SPHERE` is the largest
+// thing this game fires at 108 pixels across, and a ring is 167 -- moderately
+// bigger, and nothing like the 400-pixel gates the first pass drew. Those read
+// as architecture rather than as the bands he wears, and at that size two of
+// them walled the field.
+#macro RING_R 72
+
+// Half the metal's thickness, as a fraction of the ring's radius.
+//
+// **This is the sprite's own proportion and it is quoted in
+// `tools/make_rings.py`.** Because the sprite is scaled uniformly, holding the
+// number in one place is what makes the band that is drawn and the band that
+// blocks a shot the same shape by construction rather than by agreement --
+// the property `capsule_half` buys the meters and `laser_draw_curve` buys a
+// curve. `UI_CORNER_DEPTH` mirrors a generator for the same reason.
+#macro RING_BAND_FRAC 0.16
+
+// ...and what that comes to in pixels. Every test in the file is against this.
+#macro RING_BAND_HALF (RING_R * RING_BAND_FRAC)
+
+// Where the band's centre line sits in the sprite, as a fraction of its half
+// width: 200 of 256. Also `make_rings.py`'s, and the only other number the two
+// have to agree about.
+#macro RING_SPR_LINE 0.78125
+
+// How much of the metal actually kills when it is charged. Under the drawn
+// width, on the genre's rule -- see `ring_kill_half`.
+#macro RING_KILL_FRAC 0.62
+
+#macro RING_FORM 34                // frames arriving: no block, no kill
+#macro RING_FADE 22                // frames leaving
+#macro RING_WARN 40                // the default charge, before the metal bites
+#macro RING_GRAZE_CD 20            // as a laser's: a wall pays repeatedly
+
+#macro RING_ARC_WID 26             // the current between two rings, drawn
+#macro RING_ARC_NODES 14           // segments the bolt is jittered in
 
 // ---------------------------------------------------------------------------
 // Items
@@ -1196,7 +1250,7 @@ enum BossMove {
 // ---------------------------------------------------------------------------
 #macro GROVE_SWELL 240           // frames in one swell of the glide
 #macro GROVE_SWELL_SURGE 0.09    // ...and the share of the speed it adds
-#macro GROVE_SWAY 30             // how far the path wanders either way
+#macro GROVE_SWAY 12             // how far the path wanders on its own
 #macro GROVE_RISE 14             // ...and how far the flight rises and falls
 // Two periods, neither a multiple of the other, so the meander never comes
 // back to the same place -- the same argument the floor's two band periods
@@ -1209,6 +1263,61 @@ enum BossMove {
 // movement the eye can learn.
 #macro GROVE_RISE_P1 1670
 #macro GROVE_RISE_P2 709
+
+// ---------------------------------------------------------------------------
+// The lean
+//
+// **The yaw used to be the meander and nothing else, and the meander answers
+// to nobody.** Two sinusoids wander the camera left and right on their own
+// clock, which gives the flight a body and gives the player no part in it --
+// so the one thing on screen that could plausibly be *steering* the camera
+// was the one thing it was not reading. It also reads as arbitrary, because
+// it is: reported as the stage steering at random and mostly to the right,
+// which is exactly what two sinusoids seeded where these are seeded do for
+// the first twenty seconds.
+//
+// So the camera looks where the player is. `GROVE_LEAN` is how far the
+// vanishing point swings when they are against a wall, and the sign is the
+// rail-shooter one: a player on the left of the field is a camera looking
+// left, which puts the vanishing point on the *right* of the screen and the
+// player heading toward it. See `corridor_view` for why a yaw moves the moon
+// and the nearest trunk by the same number of pixels.
+//
+// **The meander stays, at a third of what it was.** A danmaku player parks
+// in one place for seconds at a time, and a camera that reads only the
+// player is a dolly on rails again the moment they hold still -- which is
+// the defect the meander was written for. What it no longer has to do is
+// carry the whole of the camera's character on its own.
+//
+// **The follow is filtered, and both halves of the filter earn their keep.**
+// The player crosses this field in about four seconds and *dodges* across it
+// several times a second, so a camera that read their position directly
+// would shake in time with the dodging -- at exactly the moment the player
+// is reading bullets, which is the one thing this horizon may never do. The
+// lag is what removes the dodge: a flick left and back is a third of a
+// second against a time constant of one, and comes out as a pixel or two.
+// The cap is what makes it a *guarantee* rather than a tuning -- the same
+// argument `BOSS_TRACK_SPD` makes about a boss that tracks, where a
+// proportional ease alone is fastest exactly when the player has just moved
+// furthest, which is the worst frame to be fast on.
+//
+// Committing to one side for a second and a half is about half the lean;
+// wall to wall is about five seconds. Both are unplayed, like everything
+// else here, and both are one number.
+// ---------------------------------------------------------------------------
+// **It is world units, not screen pixels, and that is what buys parallax.**
+// The lean used to be a yaw, which moves the moon, the far wall of wood and
+// the nearest trunk by the same number of pixels -- so a camera driven by
+// nothing but a yaw is a camera whose scene has no depth in it, and the
+// canopy sat at a fixed offset in front of the moon however the player flew.
+// It is a lateral *slide* now, so every band and every prop takes
+// `corridor_k` of its own depth: the moon does not move, the far wood shifts
+// five pixels, the canopy overhead shifts forty and the nearest trunk a
+// hundred. See `corridor_view`. The idle meander stays a yaw, because a
+// look-around is what it is for.
+#macro GROVE_LEAN 30             // world units the camera slides at the wall
+#macro GROVE_LEAN_EASE 0.016     // ...the share of the gap it closes a frame
+#macro GROVE_LEAN_SPD 0.34       // ...and the most it may slide in one frame
 
 // ---------------------------------------------------------------------------
 // The verge
@@ -1277,9 +1386,34 @@ enum BossMove {
 //     or it is fog, and a foot on the litter has to not be, or it is the
 //     cardboard-cutout edge `grove_draw_mound` exists to remove.
 // ---------------------------------------------------------------------------
-#macro GROVE_SCRUB_WAVE 26       // how far its baseline rides up and down
-#macro GROVE_SCRUB_DIP 0.22      // how much lower it stands where the path is
+//   * **And the one thing it may never do is fall below the line it is
+//     covering.** That is a property of the hedge's *thinnest* stretch, not
+//     of its average, and it is the sum of four numbers that live in three
+//     files: how tall the band is drawn (`GROVE_SCRUB_NEAR`), how much of it
+//     stands above the horizon (`GROVE_SCRUB_RISE`), how far the wave and the
+//     dip push it back down, and where the art's own crown bottoms out. Every
+//     one of those is individually reasonable and nothing was adding them up
+//     -- so the mat in `make_scrub` thinned to a sixth of its height between
+//     two ellipses, the crown there fell *below* the horizon, and the ruled
+//     join the layer exists to hide showed straight through it. Reported as
+//     the border peeking out from behind the hedgerow, and with the wave and
+//     the dip both zeroed the worst stretch still cleared the line by one
+//     pixel -- which is the measurement that says the art was the fault and
+//     not the tuning.
+//
+//     The wave and the dip came down as well, because both were sized as if
+//     this band were as tall as the treeline: 26 and 0.22 on a band 116
+//     pixels high is forty-four per cent of it spent pushing the crown down,
+//     which leaves an art budget no hedge can be drawn inside.
+//     `check_scrub_covers_horizon` does the addition against the shipped PNG.
+// ---------------------------------------------------------------------------
+#macro GROVE_SCRUB_FAR 0.95      // the far row's size against the band's width
+#macro GROVE_SCRUB_NEAR 1.45     // ...and the near row's, which is the cover
+#macro GROVE_SCRUB_RISE 0.84     // the share of the band standing above the line
+#macro GROVE_SCRUB_WAVE 10       // how far its baseline rides up and down
+#macro GROVE_SCRUB_DIP 0.08      // how much lower it stands where the path is
 #macro GROVE_SCRUB_DIP_W 320     // ...and over how many pixels either side
+#macro GROVE_SCRUB_CLEAR 12      // px the thinnest stretch must clear the line
 
 #macro SPELLBG_GROVE 2         // the grove's caster: a ring of bone and ivy
 
@@ -1311,3 +1445,425 @@ enum BossMove {
 // their designed peaks in `tools/make_sfx.py` and the headroom is what keeps
 // five of them at once from clipping the master bus.
 #macro SFX_MASTER 0.72
+
+
+// ---------------------------------------------------------------------------
+// The Archives of Bequeathed Memories: a room, in three dimensions
+//
+// **Stage one is a floor, stage two is a corridor, and stage three is a
+// room.** See `scripts/bg_sanctum` for why that is a third projection rather
+// than a third set of art; what lives here is the hall it flies down and the
+// camera that flies it.
+//
+// The camera is a *real* one -- a view matrix and a perspective projection,
+// with the GPU's depth buffer doing the sorting. That is what the grove's
+// could not be: `corridor_horizon` adds its pitch to the horizon, which is a
+// principal-point shift, and a shift keeps the optical axis pointing forward
+// however far it travels. This stage opens aimed at the floor, and pointing a
+// camera at the floor is a rotation.
+// ---------------------------------------------------------------------------
+
+#macro BGKIND_SANCTUM 2
+
+// The hall. A nave 1400 units across under a ceiling at 1250, in bays of 560
+// -- which is one three-bay run of `spr_hall_wall`, so a bay of geometry and
+// a bay of art are the same thing by construction.
+#macro HALL_HALF_W 700
+#macro HALL_CEIL_H 1250
+#macro HALL_BAY_Z 560
+// How many bays are submitted ahead of the camera. At 560 apiece this is
+// 6720 units of hall, which is past where the fog has closed completely.
+#macro HALL_BAYS 13
+
+#macro HALL_FLOOR_TILE 340
+#macro HALL_FLOOR_N 4        // tiles of marble across the nave
+
+// The lens. A vertical field of view of 58 degrees against the field's 1.371
+// aspect is about 74 horizontal -- the same angle the grove flies, so that
+// anything learnt about framing in one stage carries to the other.
+#macro HALL_FOV 58
+// **Forty, not eight.** Depth precision is spent across the near-to-far
+// ratio, so a near plane far closer than anything the camera can actually get
+// to throws most of the buffer away on empty space -- and what is left is
+// what every coplanar surface in the hall has to be told apart with. Nothing
+// in the nave comes within forty units of the lens (the walls are six hundred
+// out), so this is free, and it is about five times the precision at the
+// distances the shelving is read at.
+#macro HALL_ZNEAR 40
+#macro HALL_ZFAR 14000
+
+// **The fog is the aerial perspective and it is doing the work the grove's
+// haze did**, except that the hardware applies it. Its far end is inside the
+// last bay drawn, so the hall ends in air rather than in a visible edge.
+#macro HALL_FOG make_colour_rgb(10, 17, 46)
+#macro HALL_FOG_START 1100
+#macro HALL_FOG_END 6400
+
+// The two ends of the reveal.
+//
+// **Phase A is high and aimed down**, and both halves of that matter. High,
+// so the marble and the things standing on it are what fills the frame; aimed
+// down far enough that the vanishing point is off the top of the screen, so
+// the hall is genuinely hidden rather than merely small. At a 58-degree field
+// of view a pitch of -55 puts the top of the frame 26 degrees below level,
+// which is a clear margin.
+#macro HALL_CAM_HIGH 900
+#macro HALL_CAM_FLY 250
+#macro HALL_PITCH_A -55
+#macro HALL_PITCH_B -2
+
+#macro HALL_SPEED 9.0
+// **Phase A flies slower, and that is so it does not look slower.** Speed is
+// read off whatever is nearest the lens; from 900 units up there is nothing
+// near, so the same number reads as a crawl.
+#macro HALL_SPEED_A 5.2
+#macro HALL_SWELL 0.055
+#macro HALL_SWELL_P 260
+
+// Baked light. A vertex colour multiplies its texture, so these are the whole
+// of the lighting model -- everything brighter than the material is the
+// emissive pass.
+// ---------------------------------------------------------------------------
+// The joinery
+//
+// **The wall is built, not painted.** Reading outward from the nave: a
+// pilaster standing proud of everything, the case front set back behind it,
+// the recess set back again with the books at the bottom of it, and a cornice
+// and plinth projecting past the pilaster at top and bottom. Every one is a
+// real plane at a real depth, which is what buys the parallax, the occlusion
+// and the light on the shelf edges that a flat quad could not have.
+// ---------------------------------------------------------------------------
+#macro HALL_PIL_D 46          // how far a pilaster stands out from the case
+#macro HALL_PIL_W 80          // ...and how wide it is along the hall
+#macro HALL_CASE_D 120
+// **How far behind the case front the books actually stand.** They were at
+// the *back* of the recess, a hundred and twenty units in, which is not where
+// books are: a shelf is deep and the spines sit at the front of it. At that
+// depth the boards ran back into darkness and the shelving read as a row of
+// empty ledges -- the flat texture it replaced was closer to right.
+#macro HALL_BOOK_INSET 22        // how deep a bookcase recess goes
+#macro HALL_ALCOVE_D 280      // ...and the alcove, which is deeper on purpose
+#macro HALL_PLINTH_H 130
+#macro HALL_PLINTH_D 30
+#macro HALL_CASE_TOP 1040
+#macro HALL_CORN_D 46
+#macro HALL_SHELVES 6
+// The rhythm of the hall: an alcove every fourth bay, at the third of them.
+// See `hall_bay_kind` for why this is a stratum and not a hash.
+#macro HALL_ALCOVE_EVERY 4
+#macro HALL_ALCOVE_AT 2
+#macro HALL_BOARD_T 6
+// **A shelf board is stone, not gold.** The flat bay tile it replaced drew
+// its boards as an ordinary moulding -- a warm grey lit edge over a dark
+// underside -- and gilded only the cornice and the plinth. The 3D version
+// made every board a bright gilt bar, six a bay, twelve a side, and that one
+// substitution is most of why the joinery went from refined to blocky: gold
+// stopped being a line somewhere and became the thing the wall is made of.
+#macro HALL_BOARD_COL make_colour_rgb(92, 86, 76)
+#macro HALL_GILT make_colour_rgb(104, 80, 32)
+// **A tint only means anything over a pale albedo.** See `pale_tile` in
+// `tools/make_sanctum.py`: a vertex colour multiplies its texture, so these
+// are all drawn on `spr_hall_pale` rather than on the stone.
+#macro HALL_CAT make_colour_rgb(46, 46, 60)     // the statues: black basalt
+#macro HALL_MASONRY make_colour_rgb(27, 28, 36)
+#macro HALL_GLASS make_colour_rgb(72, 78, 104)
+#macro HALL_ORB_COL make_colour_rgb(120, 186, 255)
+#macro HALL_LAMP_GLOW 0.40
+
+// Where the furniture sits, in world units.
+#macro HALL_STATUE_BASE 132     // the height of a statue's plinth
+#macro HALL_DESK_TOP 150
+
+// The orb in the alcove: a real object at a real position, and the thing the
+// stone around it is actually lit by.
+// How far a moulding stands out from the face it is on. Any non-zero value
+// breaks the depth tie; this is also simply what a fillet does.
+#macro HALL_FILLET_D 4
+#macro HALL_ORB_BODY make_colour_rgb(34, 48, 86)
+
+#macro HALL_ORB_R 48
+#macro HALL_ORB_Y 470
+#macro HALL_ORB_GLOW 0.95
+#macro HALL_ORB_POWER 1.55
+#macro HALL_ORB_LIGHT_R 420
+
+// Baked light. `AMB` is what a surface gets with nothing near it, and the two
+// powers are how much each source adds at its own centre.
+#macro HALL_WALL_AMB 0.46
+#macro HALL_LAMP_Y 360
+#macro HALL_LAMP_POWER 0.62
+#macro HALL_LIGHT_R 680
+
+#macro HALL_WALL_LIGHT 1.00
+#macro HALL_FLOOR_LIGHT 0.86
+// Where the lamps sit up the wall, as a share of its height from the cornice
+// down. It is where `tools/make_sanctum.py` draws them, and the falloff in
+// `hall_build_wall` is measured from it.
+#macro HALL_LAMP_V 0.46
+
+// The steering, on the grove's terms: an ease to take the dodging out and a
+// cap to make the limit a guarantee rather than a tuning.
+#macro HALL_LEAN 92
+#macro HALL_LEAN_EASE 0.022
+#macro HALL_LEAN_SPD 1.7
+
+// What stands in it, in world units.
+#macro HALL_STATUE_X 548
+#macro HALL_STATUE_H 430
+// **Out on the statue line, not adrift in the nave.** At 430 the pedestals
+// stood in open floor with nothing behind them and nothing beside them, which
+// is what read as floating: a thing against a wall is furnished, a thing in
+// the middle of a room is dropped. They share the statues' setback now and
+// fall at the midpoint between two of them.
+#macro HALL_DESK_X 548
+#macro HALL_DESK_H 165
+// **A banner is placed by its centre and is two hundred units wide**, so
+// how far out it may hang is bounded by the cornice face it would otherwise
+// go through rather than by the wall. Moved out to 628 to hang it off the
+// new wall head, it put its outer third inside the cornice and the pilaster
+// -- reported, accurately, as the tabards suddenly clipping into the walls.
+// `test_hall_sky` does the addition now, because the number that has to hold
+// is a sum of three that live in three different places.
+#macro HALL_BANNER_X 540
+#macro HALL_BANNER_H 620
+// It hangs from the wall head rather than from the ceiling that used to be
+// there: its top is just under the coping's soffit.
+#macro HALL_BANNER_DROP 6
+#macro HALL_LAMP_X 606
+#macro HALL_LAMP_H 340
+
+// **How hard the emissive pass is driven.** The lamps are drawn additively
+// over an almost black hall, so at full white a bay's two orbs were the
+// brightest thing on the screen by a wide margin -- brighter than the
+// bullets, which is the one thing no piece of scenery may ever be.
+#macro HALL_EMISSIVE_K 0.50
+// How much light a prop's own surface carries. Props stand out in the nave
+// rather than against the shelving, so they take a flat value rather than the
+// wall's falloff from the lamp height.
+#macro HALL_PROP_LIGHT 0.88
+// **Below this, a texel is not there at all.** Cut-out sprites on quads have
+// transparent corners, and with depth writing on those corners would punch a
+// rectangular hole in whatever is behind them.
+#macro HALL_ALPHA_REF 96
+#macro HALL_LAMP_EMISSIVE make_colour_rgb(96, 96, 96)
+
+// ---------------------------------------------------------------------------
+// The shafts
+//
+// **The light from overhead is the one thing in the hall that is drawn as
+// light rather than as a lit surface**, and it is what stops the nave reading
+// as a corridor with lamps down the sides. It is also completely free of the
+// fairness problem every other piece of foreground has: it is additive, so it
+// can only ever brighten what is behind it, and no arrangement of it can hide
+// a bullet.
+//
+// A shaft is four blades through one axis, not a cone -- see `shaft_blade` in
+// `tools/make_sanctum.py` for why light must not have a silhouette.
+// ---------------------------------------------------------------------------
+#macro HALL_SHAFT_X 336       // how far off the centre line a shaft falls
+#macro HALL_SHAFT_BLADES 4
+#macro HALL_SHAFT_TOP (HALL_CEIL_H + 120)
+#macro HALL_SHAFT_R0 132      // its width where it enters the hall
+#macro HALL_SHAFT_R1 250      // ...and where it reaches the floor
+#macro HALL_SHAFT_COL make_colour_rgb(116, 170, 255)
+#macro HALL_SHAFT_A 0.095
+// **Every other bay, not every bay.** One per bay is a colonnade of light and
+// the eye stops reading them as individual beams; spaced out, each one is an
+// event the camera passes through.
+#macro HALL_SHAFT_EVERY 2
+#macro HALL_POOL_R 340
+#macro HALL_POOL_A 0.30
+// Just clear of the marble. Coplanar with it, the pool and the floor fight
+// for the same depth and the result flickers a band at a time as the camera
+// moves -- which is z-fighting, and two units is the cheapest possible fix.
+#macro HALL_POOL_Y 8
+
+// ---------------------------------------------------------------------------
+// The open roof
+//
+// **The hall has no ceiling, and that is what stopped it reading as a
+// corridor.** It was capped at `HALL_CEIL_H` by a coffered plane with a
+// starfield painted on its underside -- a picture of a sky on a lid, and a
+// lid is precisely what a tunnel has. Floor, two walls and a ceiling is four
+// edges and no way out: every ray the camera casts lands on something a
+// couple of bays away, so however deep the shelving is modelled the room can
+// never be bigger than its own cross-section.
+//
+// Taking the lid off costs one thing and buys two. It costs the enclosure the
+// original note argued for -- and that argument was right about libraries and
+// wrong about *this* library, which is a death-god's archive and is open to
+// the sky. It buys somewhere for the distance to be, which is where the
+// orrery hangs; and it buys a silhouette, because the wall tops now end
+// against something.
+//
+// **What the sky is allowed to be is a wedge, and the wedge is a rule.** The
+// visible sky is bounded by the two wall tops, and a long horizontal edge at
+// height H and half-width X projects to a straight ray out of the vanishing
+// point with slope (H - camera) / X. Anything built above the wall narrows
+// that wedge for the whole length of the hall, so the parapet's height is not
+// a free choice -- it is the price of the sky, paid once and paid everywhere.
+// `test_hall_sky` does the arithmetic against the orrery's own screen radius,
+// because the failure it guards against is "the landmark this stage was
+// opened up for is behind the masonry", which no assertion about either piece
+// on its own could ever see.
+// ---------------------------------------------------------------------------
+
+// The coping: the slab that caps the wall, oversailing it on the nave side.
+#macro HALL_COPING_H 26
+#macro HALL_COPING_OUT 46        // how far past the pilaster it stands
+
+// The parapet standing on the coping. `X` is its *inner* face, which is the
+// edge that silhouettes, and it is what the wedge is measured from.
+#macro HALL_PARAPET_X 672
+#macro HALL_PARAPET_H 72
+
+// An obelisk on every ordinary bay, over the pilaster that carries it.
+//
+// **Thin, on purpose.** A continuous upper storey would be a second wall and
+// would close the wedge along the whole hall; a post closes it only at its
+// own bay. What the eye gets instead is a rhythm of dark verticals marching
+// away against the stars, which says the building goes up much further than
+// the frame does without spending any of the sky to say it.
+#macro HALL_OBELISK_H 430
+#macro HALL_OBELISK_W 32
+#macro HALL_OBELISK_CAP 78       // the gilt pyramidion, which is the lit bit
+
+// ...and a brazier on the alcove bays instead, so the upper level has a light
+// of its own and the rhythm is a rhythm rather than a repeat.
+#macro HALL_BRAZIER_H 104
+#macro HALL_BRAZIER_R 62
+#macro HALL_BRAZIER_COL make_colour_rgb(255, 176, 92)
+#macro HALL_BRAZIER_GLOW 0.85
+
+// ---------------------------------------------------------------------------
+// The sky
+//
+// **A dome centred on the camera, drawn first, with the depth test off.**
+// That is the whole of a skybox, and it is the only construction that gets
+// both halves right at once: it turns with the pitch and the lean exactly as
+// the world does, and it does not translate at all -- which is what "at
+// infinity" means and what no amount of parallax tuning on a flat backdrop
+// can imitate.
+//
+// The radius is arbitrary and has to be *inside the frustum anyway*, because
+// the near and far planes clip whether or not the depth test is on.
+// ---------------------------------------------------------------------------
+#macro HALL_SKY_R 6000
+#macro HALL_SKY_COLS 40
+#macro HALL_SKY_ROWS 13
+// The dome runs well below the horizon, so that no pitch the reveal passes
+// through can put an unpainted band under it. Everything down there is
+// covered by the floor in play; this is the guarantee rather than the
+// expectation.
+#macro HALL_SKY_EL0 -40
+// **The sky is saturated and the fog is not, and that is the whole of the
+// difference between night and haze.** The first version derived every band
+// of it from `HALL_FOG` by multiplication -- which keeps the join at the
+// horizon exact, and which is also why it came back as a grey void with
+// something caught in it. A multiply cannot add chroma, so a desaturated fog
+// makes a desaturated sky however it is scaled, and the one thing this stage
+// had to gain by losing its ceiling was somewhere that reads as *outside*.
+//
+// It is the grove's own correction one layer out: value and saturation are
+// different budgets. A deep blue at the same value as a neutral grey costs
+// the danmaku exactly nothing and is the difference between a night sky and
+// a photocopy of one. So the value here stays where it was and the chroma
+// goes up by a factor of three.
+//
+// The join is kept by construction rather than by matching: elevation zero
+// *is* the fog colour, and the blue ramps in above it. What that draws is a
+// horizon glow, which is what the bottom of a real sky has anyway.
+#macro HALL_SKY_LOW make_colour_rgb(20, 44, 104)
+#macro HALL_SKY_HIGH make_colour_rgb(7, 12, 46)
+// **Where the ramp happens is set by what the camera can see.** The whole
+// visible sky is between about ten and twenty-eight degrees of elevation, so
+// a gradient spread over the full ninety puts every one of its stops out of
+// frame and what is left in frame is one flat colour.
+#macro HALL_SKY_LOW_EL 13
+#macro HALL_SKY_HIGH_EL 52
+
+// The stars. Three magnitudes, and the count is most of what makes a sky read
+// as a sky rather than as a handful of dots.
+//
+// **Nine thousand of them, for about a hundred on screen.** The dome is a
+// whole hemisphere and the wedge between the two parapets is a narrow
+// triangle at the top of the frame, so ninety-eight per cent of any star
+// count is spent out of shot -- measured, not guessed: at two thousand six
+// hundred the frame held thirty-nine stars and read as an empty sky with
+// something wrong with it. Generating them only where the camera looks would
+// be cheaper and would be a dome that is a lie the moment anything ever
+// tilts, so the count is what moves instead. Nine thousand cards is one
+// frozen buffer and one draw.
+#macro HALL_STARS 9000
+// **Extinction, and it is load-bearing rather than decorative.** A star at
+// the horizon is seen through the same haze the far end of the hall is, so it
+// has to fade out before it reaches the wall tops -- otherwise the fog closes
+// on the architecture and the stars behind it do not, and the seam between
+// the two is the exact line the fog exists to hide.
+#macro HALL_STAR_EL0 1
+#macro HALL_STAR_EL1 11
+#macro HALL_STAR_SIZE 40         // a middling star's half-size at HALL_SKY_R
+// **The band the extinction is measured over is the band that is *seen*.**
+// The camera never looks up: at the reveal's own pitch the top of the frame
+// is twenty-seven degrees above the horizon and the wall tops cut off
+// everything under about ten, so the whole of the visible sky is one narrow
+// strip low down. The first ramp faded the stars in between two and thirty
+// degrees, which is a perfectly sensible atmosphere over a sky nobody in this
+// stage can see: every star actually in frame was at a third of its
+// brightness, and what came back was an empty grey wedge.
+//
+// A band of denser, fainter stars across the sky: the one arrangement that
+// separates a designed starfield from a uniform sprinkle.
+#macro HALL_STAR_BAND 0.44       // what share of them fall in it
+#macro HALL_STAR_BAND_TILT 34
+#macro HALL_STAR_BAND_W 13       // its half-width, in degrees
+
+// **How far either side of dead ahead the composed sky is spread.** The
+// stars are over the whole dome, because there are enough of them that the
+// wedge gets its share wherever they fall. The nebulae and the constellations
+// are not: there are a handful of each, the wedge is a narrow V, and a
+// uniform azimuth put one segment of one figure on the screen. Wider than the
+// lens, so nothing is arranged in a fan the eye could read as one.
+#macro HALL_SKY_SPREAD 64
+
+#macro HALL_NEB_N 16
+#macro HALL_NEB_A 0.42
+#macro HALL_NEB_R0 62            // a patch's half-angle, in degrees
+#macro HALL_NEB_R1 26            // ...and how much less it can be
+
+// The constellations: a handful of the bright stars, joined.
+#macro HALL_CONST_N 22
+#macro HALL_CONST_A 0.22
+
+// ---------------------------------------------------------------------------
+// The grand orrery
+//
+// **It is this stage's moon**, in the sense `bg_grove` means one: a fixed
+// direction rather than a place. It is anchored to the camera's own depth, so
+// it never arrives however long the flight lasts -- which is a lie the player
+// cannot catch, because at nine thousand units nothing about it would change
+// over the five minutes a stage runs even if it were real.
+//
+// **Where it sits is derived from the wedge rather than chosen.** Its centre
+// has to clear the parapet's silhouette by its own screen radius or the
+// masonry eats its flanks, and at this field's focal length that is what
+// fixes the height. See `test_hall_sky`.
+// ---------------------------------------------------------------------------
+#macro HALL_ORRERY_Z 9000
+#macro HALL_ORRERY_Y 2820
+#macro HALL_ORRERY_R 1120
+// **Drawn with the fog off and dimmed by hand instead.** Hardware fog at nine
+// thousand units is total -- the far end of the haze is at 6400 -- so a
+// fogged orrery is a rectangle of fog colour. What distance actually does to
+// a bright thing is take its contrast away, which is a multiply, and this is
+// it.
+#macro HALL_ORRERY_DIM 0.62
+#macro HALL_ORRERY_GILT make_colour_rgb(206, 170, 92)
+#macro HALL_ORRERY_CORE make_colour_rgb(150, 205, 255)
+#macro HALL_ORRERY_HALO_R 2900
+#macro HALL_ORRERY_HALO_A 0.16
+// How long the core takes to breathe once, in frames.
+#macro HALL_ORRERY_PULSE 310
+
+#macro HALL_DUST_N 46
+#macro HALL_DUST_COL make_colour_rgb(150, 190, 255)
