@@ -194,6 +194,47 @@ def script(name, body=None, folder=None, order=0):
 
 
 # ---------------------------------------------------------------------------
+# Shaders
+# ---------------------------------------------------------------------------
+
+SHADER_YY = """{
+  "$GMShader":"",
+  "%%Name":"%(name)s",
+  "name":"%(name)s",
+  "parent":{
+    %(parent)s
+  },
+  "resourceType":"GMShader",
+  "resourceVersion":"2.0",
+  "type":1,
+}"""
+
+
+def shader(name, vertex=None, fragment=None, folder=None, order=0):
+    """Create a GLSL ES shader asset, or register one authored on disk.
+
+    `type: 1` is GLSL ES, which is the only one that compiles on every target
+    this project could ship to -- the HLSL variants are Windows-only and there
+    is nothing in here that needs them.
+
+    Like `script`, passing `None` for either stage leaves whatever is on disk
+    alone, so a shader can be written as files and registered without being
+    clobbered.
+    """
+    d = os.path.join(ROOT, "shaders", name)
+    for text, ext in ((vertex, ".vsh"), (fragment, ".fsh")):
+        path = os.path.join(d, name + ext)
+        if text is not None:
+            write(path, text)
+        elif not os.path.exists(path):
+            raise SystemExit("shaders/%s/%s%s does not exist and no source "
+                             "given" % (name, name, ext))
+    write(os.path.join(d, name + ".yy"),
+          SHADER_YY % {"name": name, "parent": _parent(folder)})
+    register(name, "shaders/%s/%s.yy" % (name, name), order)
+
+
+# ---------------------------------------------------------------------------
 # Objects
 # ---------------------------------------------------------------------------
 

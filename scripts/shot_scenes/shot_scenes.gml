@@ -25,7 +25,7 @@ function shot_scene_list() {
             "grove", "grove_arrive", "grove_turn", "grove_blood",
             "grove_boss", "grove_spell",
             "sanctum", "mika", "aperture", "circuit",
-            "hall_a", "hall_b", "hall_turn"];
+            "hall_a", "hall_b", "hall_turn", "hall_arrive"];
 }
 
 /// @desc Read `-burst`'s comma-separated frame offsets into an array.
@@ -119,6 +119,7 @@ function shot_scene_prepare(_name) {
         case "circuit":
         case "hall_a":
         case "hall_b":
+        case "hall_arrive":
             // **Stage three gets four, and three of them are one mechanic.**
             // A ring is the first object in this game that is neither a bullet
             // nor an enemy, and the three things it does that no assertion can
@@ -510,9 +511,25 @@ function shot_pose(_scene, _g) {
             // -- which is the whole claim of this phase and the thing a
             // screenshot is the only way to check. `omen` is left alone, so
             // `reveal` is zero.
+            //
+            // **The arrival is written to one**, as every hall scene but
+            // `hall_arrive` does: a stage that opens dark means every posed
+            // picture of it is a picture of the veil otherwise, which is the
+            // same thing three of the grove's five scenes have to say.
             _g.player.x = FIELD_CX - 90;
             _g.player.y = FIELD_Y1 - 210;
+            _g.bg.intro = 1;
             return 150;
+
+        case "hall_arrive":
+            // ...and a picture of the veil, which is the one scene that wants
+            // one. Wound to a third of the way through, where the fog is
+            // thinning and the marble is beginning to show through it --
+            // early enough to still be dark and late enough that a still
+            // frame says what is under there.
+            _g.player.x = FIELD_CX;
+            _g.player.y = FIELD_Y1 - 210;
+            return round(HALL_INTRO_TIME * 0.34);
 
         case "hall_turn":
             // **The reveal, half way through, and driven by the review
@@ -536,6 +553,7 @@ function shot_pose(_scene, _g) {
             _g.player.y = FIELD_Y1 - 240;
             _g.bg.omen_on = true;
             _g.bg.omen = 1;
+            _g.bg.intro = 1;
             return 150;
 
         case "sanctum":
@@ -546,6 +564,7 @@ function shot_pose(_scene, _g) {
             _g.stage.t = 420;
             _g.player.x = FIELD_CX - 90;
             _g.player.y = FIELD_Y1 - 200;
+            _g.bg.intro = 1;
             return 300;
 
         case "mika":
@@ -555,6 +574,7 @@ function shot_pose(_scene, _g) {
             shot_boss(_g, 0, mika_spawn);
             _g.player.x = FIELD_CX + 120;
             _g.player.y = FIELD_Y1 - 260;
+            _g.bg.intro = 1;
             return 200;
 
         case "aperture":
@@ -570,6 +590,7 @@ function shot_pose(_scene, _g) {
             _g.player.x = FIELD_CX + 60;
             _g.player.y = FIELD_Y0 + 420;
             _g.player.untouchable = true;
+            _g.bg.intro = 1;
             return 190 + BOSS_SPELL_LEAD;
 
         case "circuit":
@@ -581,6 +602,7 @@ function shot_pose(_scene, _g) {
             _g.player.x = FIELD_CX - 200;
             _g.player.y = FIELD_Y1 - 280;
             _g.player.untouchable = true;
+            _g.bg.intro = 1;
             return 150 + BOSS_SPELL_LEAD;
 
         case "grove_boss":

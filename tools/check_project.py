@@ -1693,6 +1693,59 @@ def check_rings_block_before_enemies():
              "blocks nothing while looking exactly as though it does")
 
 
+def check_hall_frame_textures():
+    """A hall buffer may not be submitted with a multi-frame sprite's page.
+
+    `vertex_submit` takes **one** texture and `bg_sanctum`'s `hall_uv` writes
+    coordinates in *page* space, so a buffer holding geometry from two frames
+    of a sprite is drawn against whichever page `sprite_get_texture(spr, 0)`
+    names. That is correct exactly while the packer has put both frames on the
+    same page, and the packer is under no obligation to: adding two tiles to
+    the hall's folder repacked the atlas, `spr_hall_banner`'s two frames came
+    apart, and one tabard in every other bay came back drawn out of a piece of
+    masonry.
+
+    Nothing else can see it. The build is clean, the sprite is present and
+    inked, every coordinate is in range, and what lands on screen is a
+    perfectly valid picture of the wrong thing -- the same failure this file
+    already records about the ceiling drawing the floor's winged discs. It was
+    reported by a person looking at the screen.
+
+    **And it cannot be asserted at run time either.** `sprite_get_texture`
+    answers a pointer to the frame's own entry rather than to the page it sits
+    on -- measured: three single-frame sprites certainly packed together give
+    three different pointers -- so no suite can ask whether two frames share a
+    page. What can be refused is the construction that needs the question
+    asking, which is this. The answer is `hall_submit_frames`: one buffer per
+    frame, each drawn with its own frame's texture, right whatever the packer
+    does.
+    """
+    path = os.path.join(ROOT, "scripts", "bg_sanctum", "bg_sanctum.gml")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8-sig") as fh:
+        src = _strip_noise(fh.read())
+
+    pattern = re.compile(
+        r"hall_submit\s*\([^;]*?sprite_get_texture\s*\(\s*(\w+)\s*,")
+    seen = set()
+    for match in pattern.finditer(src):
+        spr = match.group(1)
+        if spr in seen:
+            continue
+        seen.add(spr)
+        yy = os.path.join(ROOT, "sprites", spr, spr + ".yy")
+        if not os.path.exists(yy):
+            continue
+        with open(yy, encoding="utf-8-sig") as fh:
+            frames = fh.read().count('"$GMSpriteFrame"')
+        if frames > 1:
+            fail("bg_sanctum submits a buffer with %s's page, and %s has %d "
+                 "frames -- a buffer mixing frames is drawn against one page "
+                 "and is right only while the packer happens to keep them "
+                 "together. Use hall_submit_frames()." % (spr, spr, frames))
+
+
 def main():
     yyp_path = os.path.join(ROOT, PROJECT + ".yyp")
     yyp = load_yy(yyp_path)
@@ -1725,6 +1778,7 @@ def main():
     check_sprite_draws_are_explicit()
     check_run_clears_the_field()
     check_rings_block_before_enemies()
+    check_hall_frame_textures()
     check_sprites_not_blank()
     check_enum_references()
     check_brace_balance()

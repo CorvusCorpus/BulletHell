@@ -1473,10 +1473,36 @@ enum BossMove {
 #macro HALL_BAY_Z 560
 // How many bays are submitted ahead of the camera. At 560 apiece this is
 // 6720 units of hall, which is past where the fog has closed completely.
-#macro HALL_BAYS 13
+// How many bays are submitted in front of the camera. **It is set by the
+// fade, not by taste**: the last bay drawn has to be gone by alpha before it
+// can enter the loop, so it must sit at or beyond `HALL_FADE_END` at its
+// nearest -- `(HALL_BAYS - 1) * HALL_BAY_Z`, which `test_hall_sky` checks.
+//
+// It went 13 -> 16 when the fade did, and the reason is worth keeping: the
+// fade has to happen somewhere, and wherever it happens is the end of the
+// hall. Putting it where the fog already was cost the depth the fog was
+// buying -- see `HALL_FADE_START`. Bays are frozen geometry and a dozen
+// submits each, so buying the room back is the cheap half of it.
+#macro HALL_BAYS 16
 
-#macro HALL_FLOOR_TILE 340
-#macro HALL_FLOOR_N 4        // tiles of marble across the nave
+// **The pavement, in three courses.** One tile repeated across the nave is a
+// grid, and a grid has no middle -- which in a hall with a processional way
+// down it is the one thing the floor has to say. So: a sunken runner the
+// player flies along, an ornamented border either side of it, and the marble
+// field out at the walls where the furniture stands. The two joints between
+// them are straight lines converging on the vanishing point, which is a
+// perspective cue a field of squares cannot have.
+//
+// Measured from the centre line outward, and the marble takes whatever is
+// left: 264 + 92 leaves 344 of field, which is two tiles of 172 either side.
+#macro HALL_RUNNER_HW 264     // the runner's half-width
+#macro HALL_FLOOR_STEP 13     // ...and how far it is sunk below the aisles
+#macro HALL_BORDER_W 92       // the ornamented course between the two
+#macro HALL_THRESH_W 58       // the band laid across the aisles at a bay joint
+#macro HALL_AISLE_NX 2        // tiles of marble across one aisle
+#macro HALL_AISLE_NZ 3        // ...and along it
+#macro HALL_BORDER_NZ 2
+#macro HALL_THRESH_NX 3
 
 // The lens. A vertical field of view of 58 degrees against the field's 1.371
 // aspect is about 74 horizontal -- the same angle the grove flies, so that
@@ -1497,7 +1523,46 @@ enum BossMove {
 // last bay drawn, so the hall ends in air rather than in a visible edge.
 #macro HALL_FOG make_colour_rgb(10, 17, 46)
 #macro HALL_FOG_START 1100
-#macro HALL_FOG_END 6400
+// **The air goes solid at 7200, not 6400.** The fog and the fade were made to
+// end at the same distance, which sounds tidy and is the one arrangement that
+// cannot work: fog is what makes the far end *dim* and the fade is what makes
+// it *go*, so ending them together means the rows the fog had dimmed were also
+// the rows the fade removed. Measured by counting tabards down the nave, the
+// hall lost two rows of depth -- reported as six deep before, four after. The
+// fog ends further out now and the fade begins where it leaves off.
+#macro HALL_FOG_END 7200
+// **...and a surface's alpha goes with its colour**, which is the half of
+// distance the fog cannot do. Fog recolours a surface toward the air, and that
+// hides it only where what is *behind* it is the air too -- at the end of this
+// hall it is not, because `hall_draw_far` hangs a lit rotunda at the vanishing
+// point and the last few bays project into the middle of it. A bay arriving
+// fully fogged arrived as a perfectly air-coloured silhouette cut out of a
+// bright building, which is exactly as visible as a black one was. `sh_hall`
+// is where this is applied, because a frozen vertex buffer cannot carry how
+// far it is from the camera.
+//
+// **Gone before it can arrive.** One more bay enters the draw loop every time
+// the camera crosses a bay line, and the nearest that bay can ever be is
+// `(HALL_BAYS - 1)` bays out -- so the fade has to be complete by then or the
+// arrival is the thing being hidden. `test_hall_sky` does the arithmetic.
+//
+// **It begins exactly where the fog ends, and that is the whole of the
+// arrangement.** Two earlier versions got this wrong in opposite directions.
+// At 4600 the fade began where the air was three quarters thick, so a surface
+// was still visibly its own colour while it was going transparent -- which
+// reads as the texture dissolving rather than as distance taking it, and was
+// reported as the fade being close and noticeable. Moving it to 5200 fixed
+// that and cost depth instead: everything past it went, including the rows the
+// fog had merely dimmed, and the hall came back two tabbards shallower than it
+// had been before any of this.
+//
+// Beginning at `HALL_FOG_END` is what has both. Up to there the fog does the
+// work and every bay is drawn; past there every surface is already flat
+// `HALL_FOG`, so what the alpha removes is a shape with no colour left in it
+// at all, and the dissolve has nothing to be seen against but the rotunda it
+// exists to stop silhouetting on.
+#macro HALL_FADE_START 7200
+#macro HALL_FADE_END 8400
 
 // The two ends of the reveal.
 //
@@ -1516,6 +1581,17 @@ enum BossMove {
 // **Phase A flies slower, and that is so it does not look slower.** Speed is
 // read off whatever is nearest the lens; from 900 units up there is nothing
 // near, so the same number reads as a crawl.
+// **The arrival.** The stage used to open at full speed on its first frame,
+// in a hall already lit -- which is the one moment in it nobody composed: the
+// rack cuts and the room is simply there. So it opens dark and nearly still
+// and the lights come up as the flight gathers, which is the grove's own
+// `intro` on the same terms and driven by the same one number.
+//
+// `HALL_INTRO_SPD` is not zero, deliberately, for the reason `GROVE_INTRO_SPD`
+// is not: a world that has stopped dead for a second reads as the game having
+// hung rather than as a flight beginning.
+#macro HALL_INTRO_TIME 165
+#macro HALL_INTRO_SPD 0.16
 #macro HALL_SPEED_A 5.2
 #macro HALL_SWELL 0.055
 #macro HALL_SWELL_P 260
@@ -1586,6 +1662,17 @@ enum BossMove {
 #macro HALL_ORB_GLOW 0.95
 #macro HALL_ORB_POWER 1.55
 #macro HALL_ORB_LIGHT_R 420
+// **How far into the recess the orb stands, and it is one number because it
+// has to be.** The geometry read it one way and `hall_wall_light` read it
+// another -- 763 against 949 -- so the pool of light on the stone was a
+// hundred and eighty units deeper into the alcove than the thing casting it.
+// Nothing about that is visible as an error: both are perfectly good numbers
+// and what it draws is a lit patch with nothing in it beside an unlit lamp.
+// `hall_orb_x` is the one answer now and `test_hall_orb` holds the two to it.
+#macro HALL_ORB_STAND 84
+#macro HALL_ORB_STEM_H 262    // the pedestal, from the alcove sill upward
+#macro HALL_ORB_CRADLE 28     // ...and the gilt cup it sits in
+#macro HALL_ORB_BLOOM 5.2     // the bloom card's radius, in orb radii
 
 // Baked light. `AMB` is what a surface gets with nothing near it, and the two
 // powers are how much each source adds at its own centre.
@@ -1596,6 +1683,23 @@ enum BossMove {
 
 #macro HALL_WALL_LIGHT 1.00
 #macro HALL_FLOOR_LIGHT 0.86
+// **The pavement is lit by both walls at once**, which is why it has a light
+// model of its own rather than the joinery's: a wall quad faces one way and
+// answers to the lamps on its own side, and a floor quad in the middle of the
+// nave is between two of them. `HALL_FLOOR_AMB` is what a point equidistant
+// from everything falls to, and the bounce is how much of a lamp reaches the
+// stone under it -- the two together are what keep the centre of the field,
+// where the player lives, the darkest part of the picture.
+#macro HALL_FLOOR_AMB 0.26
+#macro HALL_FLOOR_BOUNCE 0.74
+// **...and then a vignette over the top of it, which is a fairness rule and
+// not physics.** `HALL_LIGHT_R` is 680 against a nave 1400 wide, so both
+// walls' lamps reach everywhere and the honest falloff alone comes out flat:
+// measured, the middle of the nave and the stone at the wall were within one
+// and a half per cent of each other, which is a floor with no shape in it and
+// -- worse -- a *bright* floor exactly where the player lives and the danmaku
+// is thickest. This is the share of the light the centre line keeps.
+#macro HALL_FLOOR_DIM 0.42
 // Where the lamps sit up the wall, as a share of its height from the cornice
 // down. It is where `tools/make_sanctum.py` draws them, and the falloff in
 // `hall_build_wall` is measured from it.

@@ -101,6 +101,7 @@ SCENES = (
     "hall_a",        # the approach: aimed at the floor, the hall off-frame
     "hall_b",        # the reveal: level, the room open
     "hall_turn",     # ...and half way between them, off the review card
+    "hall_arrive",   # ...and the dark it all comes up out of
 )
 
 EXE = os.path.join(build.BUILD, "out", build.project_name() + ".exe")

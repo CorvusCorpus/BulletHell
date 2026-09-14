@@ -37,6 +37,8 @@ function selftest_run() {
     test_laser_graze();
     test_rings();
     test_hall_sky();
+    test_hall_orb();
+    test_hall_floor();
     test_hall_preview();
     test_spell_resist();
     test_player();
@@ -3431,6 +3433,42 @@ function test_hall_sky() {
     // far plane, or it would be clipped away entirely.
     ok("the orrery is further off than the last bay drawn",
        HALL_ORRERY_Z > HALL_BAYS * HALL_BAY_Z);
+
+    // **A bay arrives already fogged, or it arrives.** The hall is endless
+    // because nothing is recycled, but the *range* of bays drawn is not:
+    // `_b1` is `_b0 + HALL_BAYS`, so one more bay enters the loop every time
+    // the camera crosses a bay line. If the air is still clear out there, a
+    // whole bay of shelving, its parapet and its furniture appear at once --
+    // which is the grove's `CORRIDOR_ARRIVE_HAZE` finding, in a stage that
+    // buys its distance with hardware fog instead of an alpha.
+    //
+    // The worst case is the camera exactly on a bay line, where the last bay
+    // drawn begins `(HALL_BAYS - 1)` bays out; the props inside it are half a
+    // bay further again.
+    ok("the last bay drawn arrives fully fogged",
+       (HALL_BAYS - 1) * HALL_BAY_Z >= HALL_FOG_END);
+    ok("...and the fog has somewhere to fall off across",
+       HALL_FOG_END > HALL_FOG_START * 2);
+
+    // **And fully faded, which is the half that actually hides it.** Fog
+    // recolours a surface toward the air and that hides it only where what is
+    // behind it is the air too -- here it is the rotunda, which is a lit
+    // building, so an arriving bay was a fog-coloured silhouette cut out of
+    // it. `sh_hall` takes the alpha instead; this is the number that has to
+    // reach zero before a bay can enter the loop.
+    ok("...and fully faded, which is what hides it from the rotunda",
+       HALL_FADE_END <= (HALL_BAYS - 1) * HALL_BAY_Z);
+    ok("...over a band rather than at a plane",
+       HALL_FADE_START < HALL_FADE_END - HALL_BAY_Z);
+    // **The fade begins where the fog ends, and neither before nor after.**
+    // Before, and a surface goes transparent while its colour is still its
+    // own, which reads as the texture dissolving rather than as distance. At
+    // the same distance as the fog's own end -- which is where both of them
+    // were -- the rows the fog had merely dimmed are the rows the fade
+    // removes, and the hall loses the depth the fog was buying: measured by
+    // counting tabards down the nave, six rows became four.
+    ok("...beginning exactly where the air goes solid",
+       HALL_FADE_START == HALL_FOG_END);
     ok("...and nearer than the far plane", HALL_ORRERY_Z < HALL_ZFAR);
     // The dome has to be inside the frustum too: the depth test is off for it,
     // and the near and far planes clip regardless.
@@ -3510,6 +3548,120 @@ function test_hall_sky() {
 ///       the same reason. Whether the reveal is paced right is exactly the
 ///       question this card exists to ask a person, and no suite can answer
 ///       it.
+/// @desc The alcove's orb, its stand, and the light it casts are one object.
+///
+///       **Two halves of one lamp, disagreeing about where it is.** The
+///       sphere was built at the mouth of the recess and `hall_wall_light`
+///       put its falloff at the back wall -- a hundred and eighty units
+///       apart, which on screen is a pool of light on empty stone beside an
+///       orb casting nothing. Both numbers are legal and the picture is
+///       valid, so the only thing that could ever have reported it is an
+///       assertion with both of them in view.
+function test_hall_orb() {
+    st_reset();
+
+    for (var _s = -1; _s <= 1; _s += 2) {
+        var _x = hall_orb_x(_s);
+        // the recess, measured the way `hall_case_side` measures it
+        var _mouth = _s * (HALL_HALF_W + HALL_PIL_D);
+        var _back = _s * (HALL_HALF_W + HALL_PIL_D + HALL_ALCOVE_D);
+        ok("the orb stands inside its own alcove",
+           abs(_x) > abs(_mouth) && abs(_x) < abs(_back));
+        // ...and clear of both, by its own radius: against the back wall it
+        // is occluded from every angle the camera reaches, and in the plane
+        // of the mouth half of it hangs out over the nave with nothing under
+        // it, which is how it read before the stand was built.
+        ok("...clear of the mouth and of the back wall",
+           abs(_x) - HALL_ORB_R > abs(_mouth)
+           && abs(_x) + HALL_ORB_R < abs(_back));
+
+        // **The light is at the orb, which is the whole of this suite.**
+        // Sampled rather than reasoned about, and sampled **far out**: near
+        // the alcove the ambient, the lamp and the orb together run past the
+        // cap, so two points either side of the sphere both read 1.35 and a
+        // comparison there says nothing at all. It is the same trap as
+        // measuring a clipped facet map. Differenced against the same bay
+        // with no orb in it, so what is left is the orb's own term and
+        // nothing else.
+        var _z = HALL_BAY_Z * 0.5;
+        var _near = hall_wall_light(_x, HALL_ORB_Y, _z + 700, _s, 2)
+                    - hall_wall_light(_x, HALL_ORB_Y, _z + 700, _s, 0);
+        var _far = hall_wall_light(_x, HALL_ORB_Y, _z + 1000, _s, 2)
+                   - hall_wall_light(_x, HALL_ORB_Y, _z + 1000, _s, 0);
+        ok("...and the light it casts falls off with distance from it",
+           _near > _far && _far > 0);
+        ok("...and a bay with no orb in it is not lit by one",
+           hall_wall_light(_x, HALL_ORB_Y, _z, _s, 0)
+           < hall_wall_light(_x, HALL_ORB_Y, _z, _s, 2));
+
+        // The stack: the shaft's head, the cup, and the sphere resting in it.
+        // Every one of these is derived from the one below, so what this
+        // holds is that the derivation still lands the orb on the stand
+        // rather than above it -- which is what it did when the stand was a
+        // flat plate and the sphere floated twenty-four units clear.
+        var _cup = HALL_ORB_Y - HALL_ORB_R;
+        ok("the orb sits in its cup rather than over it",
+           _cup - HALL_ORB_CRADLE > HALL_PLINTH_H);
+        ok("...and the stand stands on the alcove's own sill",
+           HALL_ORB_Y - HALL_ORB_R - HALL_ORB_CRADLE - HALL_PLINTH_H > 0);
+    }
+}
+
+/// @desc The pavement's three courses fill the nave exactly once.
+///
+///       **A floor is read across, so what has to be right is the sum.** Four
+///       squares of marble was reported as the same thing four times left to
+///       right; what replaced it is a runner, a border course either side and
+///       the marble out at the walls -- and the one way that can go wrong
+///       silently is for the courses to overlap or to leave a strip of
+///       nothing, either of which is a perfectly valid picture of a floor
+///       with a seam in it.
+function test_hall_floor() {
+    st_reset();
+
+    var _sum = HALL_RUNNER_HW + HALL_BORDER_W;
+    ok("the runner and its border fit inside the nave", _sum < HALL_HALF_W);
+    ok("...and the marble takes what is left, at a sane tile",
+       (HALL_HALF_W - _sum) / HALL_AISLE_NX > 120);
+    // The player lives over the runner, so it has to be wider than they are
+    // and narrower than the field: a runner the width of the nave is a nave.
+    ok("the runner is the lane the player actually flies in",
+       HALL_RUNNER_HW * 2 > FIELD_W * 0.25
+       && HALL_RUNNER_HW * 2 < HALL_HALF_W * 2 * 0.62);
+    // **The step is small.** It is there for the two lit lines it puts down
+    // the hall, not to be architecture in its own right -- and anything the
+    // camera could fly *into* at 250 units up is a different problem.
+    ok("the step is a fillet rather than a stair",
+       HALL_FLOOR_STEP > 0 && HALL_FLOOR_STEP < 30);
+    // The threshold is a band across the aisle, not a slab: it may not eat
+    // the bay it is marking the end of.
+    ok("the threshold is a band, not a bay",
+       HALL_THRESH_W > 0 && HALL_THRESH_W < HALL_BAY_Z * 0.2);
+
+    // **The pavement is lit by the room, not by the tile.** The old floor
+    // shaded off the u of each tile, so it was bright at every tile edge --
+    // four bright seams across the nave rather than two bright walls. What
+    // holds it down is that the light near a wall beats the light in the
+    // middle, measured in world coordinates where the defect lived.
+    var _z = HALL_BAY_Z * 0.5;
+    var _mid = hall_floor_light(0, 0, _z, 1, 0);
+    var _wall = hall_floor_light(HALL_HALF_W - 40, 0, _z, 1, 0);
+    var _seam = hall_floor_light(HALL_RUNNER_HW, 0, _z, 1, 0);
+    ok("the pavement is brighter at the walls than down the middle",
+       _wall > _mid);
+    ok("...and the joint between two courses is not a light of its own",
+       _seam < _wall && _seam > _mid);
+    // ...and the alcove's orb reaches it, which is the other half of a lamp
+    // being a lamp.
+    ok("an alcove throws a pool onto the stone in front of it",
+       hall_floor_light(HALL_HALF_W - 40, 0, _z, 1, 2)
+       > hall_floor_light(HALL_HALF_W - 40, 0, _z, 1, 0));
+    // The centre of the field is where the player lives and where the danmaku
+    // is thickest, so it stays the darkest part of the picture.
+    ok("...and the middle of the nave stays the darkest part of it",
+       _mid < HALL_WALL_AMB + 0.25);
+}
+
 function test_hall_preview() {
     st_reset();
 

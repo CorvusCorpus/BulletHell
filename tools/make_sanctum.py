@@ -67,6 +67,10 @@ STONE     = (21, 21, 29)
 STONE_LIT = (38, 38, 50)
 MARBLE    = (12, 12, 18)
 MARBLE_LT = (30, 31, 42)
+# the runner down the middle of the nave, a shade under the marble either
+# side of it: the player lives over this one, so it is the darkest
+# surface in the hall
+OBSIDIAN  = (8, 8, 13)
 GILT      = (188, 146, 60)
 GILT_HOT  = (255, 233, 166)
 GILT_DIM  = (96, 72, 30)
@@ -540,6 +544,192 @@ def floor_tile():
     out = grain(down(im, FLOOR_N, FLOOR_N), 3, 7).convert("RGBA")
     out.putalpha(255)
     return out
+
+
+
+# ---------------------------------------------------------------------------
+# ...and the rest of the pavement
+#
+# **A floor of one tile repeated is a floor with nothing in it.** The marble
+# above is a good square of stone and four of them across the nave is a grid,
+# which is what it was reported as: the same thing four times, left to right,
+# for the length of the hall. A grid has no *centre* -- and a hall with a
+# processional way down it is the one kind of room whose floor is entirely
+# about where its middle is.
+#
+# So the pavement is three courses rather than one, and they are three
+# different pieces of art at three different scales: a runner down the middle
+# that the player flies along, an ornamented border either side of it, and the
+# marble field out at the walls where the furniture stands. `bg_sanctum` sinks
+# the runner below the other two and faces the step in gilt, so the two lines
+# where the courses meet converge on the vanishing point -- which is the
+# cheapest perspective cue there is and the one a floor of repeated tiles
+# cannot have at all.
+#
+# **Both of these are periodic along the hall and neither is periodic across
+# it.** A bay abuts the next bay, so the long axis has to join seamlessly --
+# which is `fbm_field`'s `wrap_y` rule one project over, in the one dimension
+# that needs it here. Across, each has its own margins, because a course with
+# no edge of its own is a course that has to be given one by whatever is
+# beside it.
+# ---------------------------------------------------------------------------
+def _coil(d, x0, x1, y0, y1, n, col=GILT, a=190, t=1.4):
+    """A running spiral: the frieze that is actually Egyptian.
+
+    A Greek key is the reflex and it is the wrong country. What runs along a
+    New Kingdom ceiling is a coil -- a row of round spirals joined by a wave,
+    which is also the one border pattern that still reads as *turning* when it
+    is four pixels wide and most of it has gone.
+    """
+    s = SS
+    w = x1 - x0
+    step = (y1 - y0) / n
+    r = w * 0.40
+    cx = (x0 + x1) * 0.5
+    for i in range(n):
+        cy = y0 + (i + 0.5) * step
+        d.ellipse([cx - r, cy - r, cx + r, cy + r],
+                  outline=rgba(col, a), width=int(t * s))
+        d.ellipse([cx - r * 0.42, cy - r * 0.42, cx + r * 0.42,
+                   cy + r * 0.42], outline=rgba(col, int(a * 0.8)),
+                  width=max(1, int(t * s * 0.7)))
+        # **The wave joining this coil to the next, sampled rather than
+        # cornered.** Four points and a straight line between them draws a
+        # zigzag with rings threaded on it, which is a chain and not a coil;
+        # the frieze only reads as one turning line if the join curves.
+        sgn = 1 if (i % 2 == 0) else -1
+        pts = []
+        for k in range(21):
+            u = k / 20.0
+            pts.append((cx + sgn * math.cos(u * math.pi) * w * 0.46,
+                        cy + u * step))
+        d.line(pts, fill=rgba(col, int(a * 0.85)), width=max(1, int(t * s)))
+
+
+def _cartouche(d, cx, cy, hw, hh, seed):
+    """A name-ring: the motif a processional way is paved with."""
+    s = SS
+    d.rounded_rectangle([cx - hw, cy - hh, cx + hw, cy + hh],
+                        radius=hw, outline=rgba(GILT, 230), width=int(2.2 * s))
+    d.rounded_rectangle([cx - hw + 4 * s, cy - hh + 4 * s,
+                         cx + hw - 4 * s, cy + hh - 4 * s],
+                        radius=hw, outline=rgba(GILT_DIM, 170), width=s)
+    # the tie across the foot, which is what makes a ring a cartouche
+    d.rectangle([cx - hw * 0.55, cy + hh - 2 * s, cx + hw * 0.55,
+                 cy + hh + 3 * s], fill=rgba(GILT, 220))
+    glyph_run(d, cx, cy - hh + 13 * s, cy + hh - 13 * s, hw * 1.05, seed,
+              col=GILT, alpha=205)
+
+
+def _winged_disc(d, cx, cy, size, col=GILT, a=215):
+    """The sun with its wings out, spread along x for a floor read along z."""
+    s = SS
+    d.ellipse([cx - size * 0.30, cy - size * 0.30, cx + size * 0.30,
+               cy + size * 0.30], outline=rgba(col, a), width=int(2.2 * s))
+    d.ellipse([cx - size * 0.14, cy - size * 0.14, cx + size * 0.14,
+               cy + size * 0.14], fill=rgba(GILT_DARK, 210))
+    for sgn in (-1, 1):
+        for i in range(6):
+            t = i / 5.0
+            d.line([(cx + sgn * size * 0.34, cy - size * 0.03 + i * size * 0.031),
+                    (cx + sgn * size * (0.34 + 0.60 * (1 - t * 0.45)),
+                     cy + size * (0.05 + i * 0.072))],
+                   fill=rgba(col, max(40, a - i * 24)), width=int(1.8 * s))
+
+
+def runner_tile(w=384, h=512):
+    """The processional runner: obsidian, and read along the hall.
+
+    **It is one tile across and many along**, which is the whole difference
+    between this and the marble. A field of squares has no direction; a runner
+    has exactly one, and everything on it -- the coils, the cartouches, the
+    rules down its edges -- is laid out along the way the player is flying.
+    """
+    im, d = canvas(w, h, OBSIDIAN)
+    W, H = w * SS, h * SS
+    s = SS
+    veining(d, W, H, 23, n=20, col=(26, 27, 38))
+
+    # **The rules run the whole length, unbroken.** They are the two lines the
+    # eye follows to the vanishing point, and a rule interrupted by a motif is
+    # a rule that has stopped being a line and started being a row of dashes.
+    for x in (16 * s, W - 16 * s):
+        d.rectangle([x - 2.2 * s, 0, x + 2.2 * s, H], fill=rgba(GILT, 225))
+    # the dark line inboard of the bright one: the moulding rule, laid flat,
+    # which is what makes an inlay read as let *into* the stone
+    for x in (21 * s, W - 22 * s):
+        d.rectangle([x, 0, x + s, H], fill=(0, 0, 0, 150))
+    for x in (46 * s, W - 46 * s):
+        d.rectangle([x - s, 0, x + s, H], fill=rgba(GILT_DIM, 175))
+
+    # the coil frieze, in the channel between the two rules
+    _coil(d, 52 * s, 98 * s, 0, H, 8)
+    _coil(d, W - 98 * s, W - 52 * s, 0, H, 8)
+
+    # **The chain down the middle, and it is periodic in h.** A cartouche at a
+    # quarter and at three quarters lies wholly inside the tile; the disc is
+    # drawn at both ends, so what lands on the joint between two bays is one
+    # motif rather than a seam.
+    cx = W * 0.5
+    d.rectangle([cx - 0.9 * s, 0, cx + 0.9 * s, H], fill=rgba(GILT_DIM, 110))
+    _cartouche(d, cx, H * 0.25, 44 * s, 78 * s, 41)
+    _cartouche(d, cx, H * 0.75, 44 * s, 78 * s, 42)
+    for y in (0, H):
+        _winged_disc(d, cx, y, 116 * s)
+
+    # a broad sheen, off centre, so the stone reads as polished
+    sh, shd = mask(w, h)
+    shd.ellipse([-W * 0.3, H * 0.05, W * 0.8, H * 0.5], fill=32)
+    sh = sh.filter(ImageFilter.GaussianBlur(26 * s))
+    a = np.asarray(im).astype(np.float32) + np.asarray(sh)[:, :, None] * 0.45
+    im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGB")
+    return solid(grain(down(im, w, h), 3, 9), w, h)
+
+
+def border_course(w=96, h=288):
+    """The band between the runner and the marble, and the bay's threshold.
+
+    **One piece of art, used along the hall and across it.** A frieze that
+    tiles along its own length does not care which way it is laid, and having
+    one band rather than two is what keeps the pavement's two joints reading
+    as the same moulding turned through a right angle.
+    """
+    im, d = canvas(w, h, STONE)
+    W, H = w * SS, h * SS
+    s = SS
+    veining(d, W, H, 31, n=9, col=(30, 31, 42))
+    for x in (7 * s, W - 7 * s):
+        d.rectangle([x - 1.6 * s, 0, x + 1.6 * s, H], fill=rgba(GILT, 215))
+    d.rectangle([11 * s, 0, 12 * s, H], fill=(0, 0, 0, 160))
+    d.rectangle([W - 12 * s, 0, W - 11 * s, H], fill=(0, 0, 0, 160))
+
+    # **A lotus frieze: an open flower and a closed bud, taking turns.** The
+    # pair is the point -- a row of one shape is a texture, and a row of two
+    # shapes alternating is an ornament somebody laid out.
+    n = 8
+    step = H / n
+    cx = W * 0.5
+    for i in range(n):
+        cy = i * step
+        open_ = (i % 2 == 0)
+        r = 24 * s if open_ else 15 * s
+        a = 205 if open_ else 170
+        if open_:
+            # the cup, and the petals standing out of it. `d.arc` measures
+            # from three o'clock going clockwise, so the *lower* half is
+            # 0 to 180 -- the other way round draws a lotus upside down.
+            d.arc([cx - r, cy - r * 0.55, cx + r, cy + r * 1.25],
+                  0, 180, fill=rgba(GILT, a), width=int(1.7 * s))
+            for k, tip in ((-1, 0.74), (0, 1.0), (1, 0.74)):
+                d.line([(cx + k * r * 0.20, cy + r * 0.50),
+                        (cx + k * r * 0.92, cy - r * tip)],
+                       fill=rgba(GILT, a), width=int(1.6 * s))
+        else:
+            d.ellipse([cx - r * 0.55, cy - r, cx + r * 0.55, cy + r * 0.55],
+                      outline=rgba(GILT_DIM, a), width=int(1.4 * s))
+            d.line([(cx, cy + r * 0.4), (cx, cy + step * 0.42)],
+                   fill=rgba(GILT_DIM, 150), width=int(1.2 * s))
+    return solid(grain(down(im, w, h), 3, 13), w, h)
 
 
 # ---------------------------------------------------------------------------
@@ -1728,6 +1918,10 @@ def main():
         gm_new.delete(stale, "sprites")
     bays = [wall_bay(k)[0] for k in range(3)]
     gm_new.sprite("spr_hall_floor", [floor_tile()], origin="topleft", folder=f)
+    gm_new.sprite("spr_hall_runner", [runner_tile()], origin="topleft",
+                  folder=f)
+    gm_new.sprite("spr_hall_border", [border_course()], origin="topleft",
+                  folder=f)
 
     # the sky, and the instrument hanging in it
     gm_new.sprite("spr_hall_star", [star_point(0), star_point(1),
@@ -1789,6 +1983,15 @@ def main():
               labels=["floor", "bastet", "banner: crest",
                       "banner: eye", "desk: glass", "desk: armillary",
                       "lamp"])
+    # **The three courses side by side, at the proportions they are laid
+    # at.** A pavement is read across the nave, so a sheet that shows one
+    # tile at a time says nothing about the thing that was actually wrong
+    # with the old floor -- which was the relation between the courses and
+    # not any one of them.
+    A.preview([runner_tile(), border_course(), floor_tile()],
+              os.path.join(A.PREVIEW, "sanctum_floor.png"), cols=3,
+              bg=(8, 8, 12),
+              labels=["the runner", "the border course", "the marble field"])
     A.preview([star_point(0), star_point(1), star_point(2),
                nebula(301), nebula(302), zodiac_band()],
               os.path.join(A.PREVIEW, "sanctum_sky.png"), cols=3,

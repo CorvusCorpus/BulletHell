@@ -37,12 +37,12 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 |---|---|
 | `tools/build.py` | The GML compiles. Reports real diagnostics with line numbers. |
 | `tools/test.py` | The GML is *correct*: builds, runs with `-selftest`, grades the suites in `scripts/selftest` off stdout. |
-| `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, no bare `draw_sprite` inheriting the draw state, **the hedgerow still covering the horizon it hides**, **the far chamber painted at the size it is hung at**, and **the rings eating the player's shots before the enemies are offered them**. |
-| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Forty-one scenes; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
+| `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, no bare `draw_sprite` inheriting the draw state, **the hedgerow still covering the horizon it hides**, **the far chamber painted at the size it is hung at**, **no hall buffer drawn with a multi-frame sprite's page**, and **the rings eating the player's shots before the enemies are offered them**. |
+| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Forty-two scenes; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
 
 **`shot.py` is not a nicety, and in this genre it is the most important of the
 four.** A bullet pattern that is arithmetically perfect and illegible is a bug,
-and no assertion can see it. It renders thirty-four scenes and **fails on a game
+and no assertion can see it. It renders forty-two scenes and **fails on a game
 error even when a screenshot appeared** — `obj_shot` calls `screen_save` from
 its Step event and `game_end()` lets the current frame finish, so a throw in the
 Draw event that follows happens *after* the file is on disk. The first crash
@@ -2934,6 +2934,205 @@ than a taste. Driven hard enough to clip every channel it came back as a
 twenty-pixel white-hot blob -- which is what a bullet's core is, in a sky
 bullets cross.
 
+### The pavement
+
+**A floor of one tile repeated has no middle, and a hall with a processional
+way down it is entirely about where its middle is.** It was four squares of
+marble across the nave and two along each bay, and it was reported as exactly
+what it was: the same thing four times, left to right, for the length of the
+hall. No amount of detail inside that tile would have answered it, because
+what was missing is not detail but *structure across the nave*.
+
+So there are three courses and they are three different pieces of art at three
+different scales -- a runner down the middle the player flies along, an
+ornamented border either side of it, and the marble field out at the walls
+where the furniture stands. Four things about that are load-bearing:
+
+- **The runner is sunk rather than the aisles raised**, so everything the
+  walls stand on stays at y = 0 and only the one new course had to move. What
+  the step buys is a gilt-faced line the length of the hall where each course
+  meets the next: they converge on the vanishing point, which is the strongest
+  perspective cue in the frame and the one thing a grid of squares can never
+  have.
+- **The threshold stops at the step.** It is a band laid across the aisles at
+  each bay joint -- the same lotus frieze the border course is, turned through
+  a right angle, so the pavement's two joints read as one moulding rather than
+  as two ideas -- and it is a feature of the *raised* pavement, so the runner
+  passes under it unbroken. The rules down the runner's own edges are the
+  lines the eye follows out; chopping them into dashes once a bay would take
+  that away to mark something the architecture already marks.
+- **The runner's art is periodic along the hall and not across it**, which is
+  `fbm_field`'s `wrap_y` rule one project over in the one dimension that needs
+  it. A bay abuts the next bay. Across, it has its own margins, because a
+  course with no edge of its own has to be given one by whatever is beside it.
+  The cartouche sits at the tile's middle and the winged disc is drawn at both
+  ends, so what lands on the joint between two bays is one motif rather than a
+  seam.
+- **The frieze is a coil, because a Greek key is the wrong country.** What runs
+  along a New Kingdom ceiling is a row of round spirals joined by a wave, and
+  it is also the one border pattern that still reads as *turning* at four
+  pixels wide. Sampled rather than cornered: four points and straight lines
+  between them draws a zigzag with rings threaded on it, which is a chain.
+
+**And the pavement is lit by the room rather than by the tile.** The old floor
+shaded off `abs(u * 2 - 1)` *within each tile*, which is not "brightest at the
+walls" at all -- it is four bright seams and four dark ones marching across the
+nave, one pair per tile. `hall_floor_light` is a function of the world point,
+like `hall_wall_light` beside it, and it sums both walls because a floor in the
+middle of a nave is between two of them where a wall quad faces one way.
+
+**The honest falloff on its own came out flat, and the vignette over the top of
+it is a fairness rule rather than physics.** `HALL_LIGHT_R` is 680 against a
+nave 1400 wide, so both walls' lamps reach everywhere: measured, the middle of
+the nave and the stone at the wall were within one and a half per cent of each
+other, which is a floor with no shape in it and -- worse -- a *bright* floor
+exactly where the player lives and the danmaku is thickest. `HALL_FLOOR_DIM` is
+the share of the light the centre line keeps, and it is the old vignette's own
+number applied in world coordinates where the defect was.
+
+**The floor is built per bay kind now**, which is what makes the alcove's orb
+throw a pool onto the stone in front of it. One buffer shared by every bay
+cannot know which kind it is under, and that was the reason the one real light
+source in the hall lit nothing beneath itself. Three copies of a bay's pavement
+is a few hundred triangles; a lamp with no pool under it is a lamp nobody
+believes.
+
+### The orb in the alcove, and one number written twice
+
+**Two halves of one lamp, disagreeing about where it is.** The sphere was built
+at the mouth of the recess and `hall_wall_light` put its falloff at the back
+wall -- 763 against 949, a hundred and eighty units apart -- so what the frame
+actually carried was a pool of light on empty stone beside an orb casting
+nothing. Both numbers are legal, the build is clean, and the picture is valid;
+it is the `HEX_COL_FAN` shape of mistake, and the only thing that could ever
+have reported it is an assertion with both of them in view. `hall_orb_x` is the
+one answer now and `test_hall_orb` holds the light to it.
+
+**And the stand was a plate with the orb floating over it.** Two flat quads at
+the orb's own x, so half the sphere hung out in front of its own face with
+nothing under it -- and its foot was twenty-four units clear of the top
+besides. Neither reads as a mistake on its own; together they are a ball
+hanging in a niche beside a slab, which is what was reported. It is a real
+tapered box on the alcove's sill now, with a moulding at its head, a gilt cup
+on that, and the orb sitting *in* the cup. Every height is derived from the one
+below it, so the stack cannot come apart again.
+
+**A sphere drawn additively is a bright ball; what says lamp is the air round
+it going bright too.** No amount of brightness on the ball buys that, which is
+why the orb -- and the brazier on the parapet with it -- carries two crossed
+cards of `spr_fx_bloom`, the one texture in the project that is a light rather
+than a surface. Crossed cards are wrong for an object and right for a glow: the
+seam where two quads intersect is a silhouette defect, and a bloom has no
+silhouette.
+
+### The arrival
+
+**The stage used to begin at full speed in a lit room on its first frame**,
+which is the one moment in it nobody composed: the rack cuts and everything is
+simply there, at once, going past. So the lights come up instead. `intro` is
+the grove's own field under the same name, because it is the same thing -- and
+like the grove's it is one number driving both the veil and the speed of the
+flight, which is the whole of why the two read as one event rather than as a
+fade happening over a stage that had already started.
+
+The veil is opaque, and that is affordable for `grove_draw_veil`'s reason: it
+is the *back* pass, every bullet is drawn over it, and nothing has been fired
+on the frames it is dense. `HALL_INTRO_SPD` is not zero, for the reason
+`GROVE_INTRO_SPD` is not.
+
+Every hall screenshot scene but one writes `intro` to 1, because a stage that
+opens dark means every posed picture of it is a picture of the veil otherwise.
+`hall_arrive` is the one that wants one.
+
+### Distance takes the alpha, not just the colour
+
+**The hall hid its far end with fog, and fog cannot hide anything the air is
+not behind.** Hardware fog recolours a surface toward `HALL_FOG` as it recedes,
+which works everywhere the background at that distance is also `HALL_FOG` --
+and at the end of this hall it is not. `hall_draw_far` hangs a lit rotunda at
+the vanishing point, and the last few bays of shelving, their statues and their
+tabards all project into the middle of it. So a bay arriving at the fog's own
+end arrived as a perfectly air-coloured silhouette cut out of a bright
+building, which is exactly as visible as a black one.
+
+It was reported as things popping in at the far end. **The first answer here
+was to make the props' fog agree with the architecture's**, and that was a real
+bug -- they had been fogging to *black*, inherited from the additive pass drawn
+immediately before them, so a plinth darkened into the distance while the wall
+behind it lightened. Fixing it changed nothing anybody could see, because the
+colour was never what was wrong. The second report was the useful one: the
+backdrop is the rotunda, not the sky.
+
+**Alpha is the only thing that hides a surface whatever is behind it.** And
+`vertex_submit` has no per-draw alpha -- what reaches the default shader is the
+vertex buffer's own colour, the buffers are frozen, and a bay's distance from
+the camera changes every frame -- so the fade cannot be baked and cannot be set
+from GML. `shaders/sh_hall` is the answer and it is the only shader in the
+project: it computes eye distance per vertex, fades the alpha across
+`HALL_FADE_START`..`HALL_FADE_END`, and does the fog off the same distance so
+the two cannot disagree about where the end of the hall is.
+
+Four things about it are worth keeping:
+
+- **Gone before it can arrive.** One more bay enters the draw loop every time
+  the camera crosses a bay line, and the nearest that bay can ever be is
+  `(HALL_BAYS - 1)` bays out. `HALL_BAYS` is set by that rather than by taste,
+  and `test_hall_sky` does the arithmetic.
+- **The fade begins where the fog is nearly solid.** At 4600 it began where the
+  air was three quarters thick, so a surface was still visibly its own colour
+  while it was going transparent -- which reads as the *texture dissolving*
+  rather than as distance taking it, and was reported as the fade being close
+  and noticeable. Beginning it a bay further out puts the alpha to work on
+  something that has almost no colour left. The band stayed the same length,
+  because a shorter one trades a visible fade for a visible edge.
+- **Eye distance, not view-space z.** A bay at the edge of a 74-degree lens is
+  a fifth further away than one dead ahead, and fading by z alone puts the
+  boundary on a flat plane the camera can see the corners of.
+- **The cut-out moved into the shader with it.** `gpu_set_alphatestenable` is a
+  fixed-function state the *default* shader implements, so a custom one has to
+  do its own -- and it is better there, because `sh_hall` tests the texture's
+  alpha rather than the result's. Testing the result would mean a prop being
+  faded by distance stopped fading and became a hard cut the moment it crossed
+  the reference, which is the defect the whole change exists to remove.
+
+**And the shader is put back like every other piece of GPU state.** That note
+is already in this file about `cull_counterclockwise` costing every stage its
+health bar; a shader left set would draw the rest of the game fogged and faded
+by a distance nothing outside `bg_sanctum` has.
+
+`hall_pass_solid` and `hall_pass_light` are the two passes, and they are
+functions because they are a pair: an additive pass wants depth writing off,
+because two lamps at one depth should both land, and the fog toward **black**,
+because what distance does to a light is take it away rather than wash it
+toward the colour of the air.
+
+### One buffer per frame
+
+**A buffer holding two frames of a sprite is a buffer that can only be right by
+luck.** `vertex_submit` takes one texture and `hall_uv` writes page
+coordinates, so geometry using frame 1 is drawn against whichever page
+`sprite_get_texture(spr, 0)` names -- correct exactly while the packer happens
+to have put the two frames together, and the packer is under no obligation to.
+Adding two tiles to the hall's folder repacked the atlas, `spr_hall_banner`'s
+two frames came apart, and one tabard in every other bay came back drawn out of
+a piece of masonry. It was reported by a person looking at the screen.
+
+**And it cannot be asserted against at run time**, which is why the answer is
+construction rather than a guard. `sprite_get_texture` hands back a pointer to
+the *frame's own entry* rather than to the page it sits on -- measured: three
+single-frame sprites certainly packed together answer three different pointers
+-- so no suite can ask whether two frames share a page. The first version of
+this suite compared those pointers, reported every multi-frame sprite in the
+hall as split, and was believed for one run; what said the comparison was at
+fault rather than the atlas was printing them.
+
+So a sprite the hall draws more than one frame of gets one buffer per frame,
+each submitted with its own frame's texture: `hall_frames_begin`,
+`hall_frames_end`, `hall_submit_frames`. It costs a submit per frame and it is
+right whatever the packer does. `check_hall_frame_textures` refuses the other
+shape at source level, and it was tested against a deliberate violation before
+being believed.
+
 ### The chamber at the end of the hall
 
 **The sky needed a floor.** With the roof off, the hall's own perspective ran
@@ -3411,7 +3610,7 @@ once, because PIL's draw calls are hard-edged and a bevel drawn at 1x reads as
 | `tools/make_bg.py` | Stage one's three parallax layers |
 | `tools/make_grove.py` | Stage two's scenery: trunks, trees, ivy, hanging charms, ferns, the moon, the forest floor, the far treeline, the canopy, mist — **and `scripts/grove_table`** |
 | `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint |
-| `tools/make_sanctum.py` | Stage three's hall: the marble, the joinery, the statues and banners -- **the sky over it** (stars in three magnitudes, nebulae, the graduated limb the orrery's rings are made of) **and the chamber at the end of it**, which is one painting rather than a second room |
+| `tools/make_sanctum.py` | Stage three's hall: **the pavement's three courses** (the marble field, the processional runner, the lotus border), the joinery, the statues and banners -- **the sky over it** (stars in three magnitudes, nebulae, the graduated limb the orrery's rings are made of) **and the chamber at the end of it**, which is one painting rather than a second room |
 | `tools/make_rings.py` | Mika's ring, **one sprite with its colour baked in** -- see the note under "Rings" |
 | `tools/make_mika.py` | Mika and his eye card, **cut out of the owner's own reference sheet**, plus his idle as a shareable GIF |
 | `tools/make_player.py` | Szuix, from the commissioned sheet; his aura, for the low-life warning; and his eye card, drawn from nothing |
@@ -4070,7 +4269,8 @@ simply did not exist.
 
 Everything goes through `tools/gm_new.py`, which is the one place that knows
 where a resource has to be registered. A script is a `.gml`, a `.yy`, a line in
-`Bullet Hell.yyp` and a line in `Bullet Hell.resource_order`; a sprite adds a PNG
+`Bullet Hell.yyp` and a line in `Bullet Hell.resource_order`; a shader is a
+`.vsh`, a `.fsh` and the same three; a sprite adds a PNG
 per frame *and a second copy under `layers/`*; an object's events live both as
 `.gml` files and as entries in its own `eventList`.
 
@@ -4128,7 +4328,7 @@ plus attack practice, which drills any one of the twenty-six attacks across
 six casters on its own, the drafting table, which does the same for five
 attacks that have no boss yet, and the review card, which flies stage three's
 hall with nothing in it so the reveal can be watched rather than played for.
-529 assertions pass.
+555 assertions pass.
 
 Not done, in rough order of how much it is missed:
 
@@ -4152,6 +4352,17 @@ Not done, in rough order of how much it is missed:
   exercise. **The hall is the finished half** — a real room under an open sky
   with the orrery at the end of it — and the fight standing in it is not.
 
+- **The pavement, the arrival and the fade are unplayed**, in the same sense
+  everything in `constants` is. `HALL_FADE_START` was moved a bay out once
+  already on a report that the dissolve was visible, which is the only kind of
+  evidence there is for it: the number is a trade between seeing the hall end
+  and seeing a bay arrive, and only somebody flying it can say where it sits. `HALL_RUNNER_HW` is the lane the player actually flies in
+  and it was picked against a screenshot; whether a runner that wide reads as
+  a road or as most of the floor, and whether the two gilt lines down its
+  edges help the eye or compete with the danmaku over them, are questions for
+  somebody holding the keyboard. So is `HALL_INTRO_TIME`: two and three
+  quarter seconds of lights coming up is composed against a still frame, and
+  the thing a still frame cannot say is whether it is a beginning or a wait.
 - **The hall's sky is unplayed, in the same sense everything in `constants`
   is.** It was designed against screenshots and against arithmetic, which is
   the right pair of tools for "does the orrery clear the masonry" and says

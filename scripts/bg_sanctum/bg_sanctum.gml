@@ -98,6 +98,14 @@ function bg_sanctum() {
     // timeline, so the reveal costs no new plumbing at all.
     _b.reveal = 0;
 
+    // **The arrival, which is the reveal's own movement run once at the
+    // beginning and in the other direction.** Zero is a dark hall barely
+    // moving; one is the stage under way. It is the grove's `intro` under the
+    // same name, because it is the same thing -- and like the grove's it is
+    // one number driving both the light and the speed, which is the whole of
+    // why the two read as one event.
+    _b.intro = 0;
+
     _b.cam_x = 0;
     _b.cam_y = HALL_CAM_HIGH;
     _b.pitch = HALL_PITCH_A;
@@ -180,14 +188,7 @@ function hall_format() {
     return _f;
 }
 
-/// @desc One vertex. `_l` is the baked light, 0..1.
-function hall_vert(_vb, _x, _y, _z, _u, _v, _l, _tint = c_white) {
-    vertex_position_3d(_vb, _x, _y, _z);
-    vertex_colour(_vb, _tint, 1);
-    vertex_texcoord(_vb, _u, _v);
-}
-
-/// @desc A quad, subdivided into a grid, with per-corner light.
+/// @desc A quad carrying its sprite **once**, subdivided into a grid.
 ///
 ///       **Subdivided even though the GPU does not need it to be.** The
 ///       perspective is the projection's problem now, so a wall could be two
@@ -197,40 +198,35 @@ function hall_vert(_vb, _x, _y, _z, _u, _v, _l, _tint = c_white) {
 ///       is the oldest trick there is and still the cheapest way to make a
 ///       flat surface look like it is standing in a room.
 ///
-///       `_lit` is called with (u, v) and answers the light at that point.
-function hall_quad(_vb, _p0, _p1, _p2, _p3, _spr, _frame, _nx, _ny, _lit,
-                   _tint = c_white) {
+///       The one difference from `hall_tiles` is the texture: there every
+///       cell takes the whole sprite, so the art repeats; here the sprite is
+///       stretched across the whole quad and the grid buys nothing but light.
+///       The runner wants that -- it is one piece of art a bay long, and a
+///       cartouche repeated eight times down a bay is wallpaper.
+function hall_quad(_vb, _p0, _p1, _p2, _p3, _spr, _frame, _nx, _ny,
+                   _face, _side, _kind, _col = c_white,
+                   _lightfn = hall_wall_light) {
+    var _order = [0, 1, 2, 0, 2, 3];
     for (var _i = 0; _i < _nx; _i++) {
         for (var _j = 0; _j < _ny; _j++) {
             var _u0 = _i / _nx, _u1 = (_i + 1) / _nx;
             var _v0 = _j / _ny, _v1 = (_j + 1) / _ny;
-
-            var _a = hall_lerp4(_p0, _p1, _p2, _p3, _u0, _v0);
-            var _b = hall_lerp4(_p0, _p1, _p2, _p3, _u1, _v0);
-            var _c = hall_lerp4(_p0, _p1, _p2, _p3, _u1, _v1);
-            var _d = hall_lerp4(_p0, _p1, _p2, _p3, _u0, _v1);
-
-            var _ta = hall_uv(_spr, _frame, _u0, _v0);
-            var _tb = hall_uv(_spr, _frame, _u1, _v0);
-            var _tc = hall_uv(_spr, _frame, _u1, _v1);
-            var _td = hall_uv(_spr, _frame, _u0, _v1);
-
-            var _la = _lit(_u0, _v0), _lb = _lit(_u1, _v0);
-            var _lc = _lit(_u1, _v1), _ld = _lit(_u0, _v1);
-
-            hall_vert(_vb, _a[0], _a[1], _a[2], _ta[0], _ta[1], _la,
-                      hall_shade(_tint, _la));
-            hall_vert(_vb, _b[0], _b[1], _b[2], _tb[0], _tb[1], _lb,
-                      hall_shade(_tint, _lb));
-            hall_vert(_vb, _c[0], _c[1], _c[2], _tc[0], _tc[1], _lc,
-                      hall_shade(_tint, _lc));
-
-            hall_vert(_vb, _a[0], _a[1], _a[2], _ta[0], _ta[1], _la,
-                      hall_shade(_tint, _la));
-            hall_vert(_vb, _c[0], _c[1], _c[2], _tc[0], _tc[1], _lc,
-                      hall_shade(_tint, _lc));
-            hall_vert(_vb, _d[0], _d[1], _d[2], _td[0], _td[1], _ld,
-                      hall_shade(_tint, _ld));
+            var _uu = [[_u0, _v0], [_u1, _v0], [_u1, _v1], [_u0, _v1]];
+            var _c = [];
+            for (var _k = 0; _k < 4; _k++) {
+                _c[_k] = hall_lerp4(_p0, _p1, _p2, _p3, _uu[_k][0],
+                                    _uu[_k][1]);
+            }
+            for (var _k = 0; _k < 6; _k++) {
+                var _m = _order[_k];
+                var _pt = _c[_m];
+                var _l = _face * _lightfn(_pt[0], _pt[1], _pt[2], _side,
+                                          _kind);
+                var _t = hall_uv(_spr, _frame, _uu[_m][0], _uu[_m][1]);
+                vertex_position_3d(_vb, _pt[0], _pt[1], _pt[2]);
+                vertex_colour(_vb, hall_shade(_col, _l), 1);
+                vertex_texcoord(_vb, _t[0], _t[1]);
+            }
         }
     }
 }
@@ -259,15 +255,15 @@ function hall_shade(_col, _l) {
 
 /// @desc Build the hall's geometry. Once, at construction.
 function hall_build(_b) {
-    var _f = hall_format();
-    var _hw = HALL_HALF_W;
-    var _ch = HALL_CEIL_H;
-    var _bz = HALL_BAY_Z;
-
-    // ---- the floor --------------------------------------------------------
-    // One bay's worth, tiled across the nave by `HALL_FLOOR_N` tiles either
-    // way, so the marble's own square repeats at a human size rather than
-    // being stretched the width of the hall.
+    // ---- the joinery and the pavement, one set of buffers per bay kind ----
+    //
+    // **The floor is built per kind now, and that is what makes the alcove's
+    // orb light the stone in front of it.** It was one buffer shared by every
+    // bay -- correct while a floor was four squares of marble lit by a
+    // vignette, and the reason the one real light source in the hall threw
+    // nothing onto the ground under it. Three copies of a bay's pavement is a
+    // few hundred triangles; a lamp with no pool beneath it is a lamp nobody
+    // believes.
     //
     // **One buffer per texture, and there is no way round it.** A vertex
     // buffer carries texture *coordinates* and `vertex_submit` carries the
@@ -279,45 +275,6 @@ function hall_build(_b) {
     // and ankhs, because that is what those coordinates pointed at. It does
     // not fail loudly: every number involved is in range and the result is a
     // perfectly valid picture of the wrong thing.
-    var _vb = vertex_create_buffer();
-    vertex_begin(_vb, _f);
-
-    var _nx = HALL_FLOOR_N;
-    var _nz = max(1, round(_bz / HALL_FLOOR_TILE));
-    for (var _i = 0; _i < _nx; _i++) {
-        for (var _j = 0; _j < _nz; _j++) {
-            var _x0 = -_hw + _hw * 2 * _i / _nx;
-            var _x1 = -_hw + _hw * 2 * (_i + 1) / _nx;
-            var _z0 = _bz * _j / _nz;
-            var _z1 = _bz * (_j + 1) / _nz;
-            // **The floor is lit from the walls, so it is brightest at its
-            // edges and darkest down the middle** -- which is the opposite of
-            // what a naive vignette would do and is exactly what a hall lit
-            // by wall lamps looks like. It is also what keeps the centre of
-            // the field, where the player lives, the darkest part of the
-            // picture.
-            var _lit = function(_u, _v) {
-                var _e = abs(_u * 2 - 1);
-                return HALL_FLOOR_LIGHT * (0.42 + 0.58 * power(_e, 1.6));
-            };
-            // **The tile's top edge is its *far* edge.** Wound the other
-            // way round the marble is laid face-down: every ankh and every
-            // winged disc on it points back at the camera, which is upside
-            // down to anybody flying up the hall and was reported that way.
-            // A floor seen from above has no "up" of its own, so the only
-            // thing that can define one is the direction of travel.
-            hall_quad(_vb,
-                      [_x0, 0, _z1], [_x1, 0, _z1],
-                      [_x1, 0, _z0], [_x0, 0, _z0],
-                      spr_hall_floor, 0, 2, 2, _lit);
-        }
-    }
-
-    vertex_end(_vb);
-    vertex_freeze(_vb);
-    _b.vb_floor = _vb;
-
-    // ---- the joinery, one set of buffers per bay kind ---------------------
     // **Not `_b.case`.** `case` is a reserved word, and a struct member of
     // that name is a parse error that Igor happens to let through and
     // Feather does not -- eleven of them, from three lines. It is the
@@ -356,14 +313,66 @@ function hall_wall_light(_x, _y, _z, _side, _kind) {
     _l += HALL_LAMP_POWER / (1 + (_d / HALL_LIGHT_R) * (_d / HALL_LIGHT_R));
 
     if (_kind == 2) {
-        var _ox = _side * (HALL_HALF_W + HALL_PIL_D + HALL_ALCOVE_D
-                           - HALL_ORB_R * 1.6);
-        var _od = point_distance_3d(_x, _y, _z, _ox, HALL_ORB_Y,
-                                    HALL_BAY_Z * 0.5);
+        var _od = point_distance_3d(_x, _y, _z, hall_orb_x(_side),
+                                    HALL_ORB_Y, HALL_BAY_Z * 0.5);
         _l += HALL_ORB_POWER
               / (1 + (_od / HALL_ORB_LIGHT_R) * (_od / HALL_ORB_LIGHT_R));
     }
     return min(_l, 1.35);
+}
+
+/// @desc Where the alcove's orb stands along x, on the side given.
+///
+///       **One answer, read by the geometry and by the light.** It used to be
+///       written out twice -- the sphere at the mouth of the recess and the
+///       falloff a hundred and eighty units behind it, at the back wall the
+///       orb had been moved forward from and nobody went back to. What that
+///       draws is a lit patch of stone with nothing in it and, beside it, a
+///       lamp casting nothing: two perfectly ordinary-looking halves of one
+///       object disagreeing about where it is. It is the `HEX_COL_FAN` shape
+///       of mistake -- every number legal, the build clean, and no assertion
+///       anywhere with both of them in view. `test_hall_orb` has both now.
+function hall_orb_x(_side) {
+    return _side * (HALL_HALF_W + HALL_PIL_D + HALL_ORB_STAND);
+}
+
+/// @desc How lit a point on the pavement is.
+///
+///       **A floor is between two walls, and that is the whole reason it does
+///       not use `hall_wall_light`.** A wall quad faces one way and answers
+///       to the lamps on its own side; a floor quad in the middle of the nave
+///       answers to both, and to the orb in either alcove. The old floor
+///       ducked that by shading off `abs(u * 2 - 1)` *within each tile* --
+///       which is not "brightest at the walls" at all but four bright seams
+///       and four dark ones marching across the nave, one pair per tile.
+///
+///       It is a function of the world point for the same reason
+///       `hall_wall_light` is: the light is a property of the room, not of
+///       the piece of stone that happens to be catching it.
+function hall_floor_light(_x, _y, _z, _side, _kind) {
+    var _l = HALL_FLOOR_AMB;
+    for (var _s = -1; _s <= 1; _s += 2) {
+        var _d = point_distance_3d(_x, _y, _z, _s * HALL_LAMP_X, HALL_LAMP_Y,
+                                   HALL_BAY_Z * 0.42);
+        _l += HALL_LAMP_POWER * HALL_FLOOR_BOUNCE
+              / (1 + (_d / HALL_LIGHT_R) * (_d / HALL_LIGHT_R));
+        if (_kind == 2) {
+            var _od = point_distance_3d(_x, _y, _z, hall_orb_x(_s),
+                                        HALL_ORB_Y, HALL_BAY_Z * 0.5);
+            _l += HALL_ORB_POWER * HALL_FLOOR_BOUNCE
+                  / (1 + (_od / HALL_ORB_LIGHT_R)
+                         * (_od / HALL_ORB_LIGHT_R));
+        }
+    }
+    // **...and the vignette, which is the rule rather than the physics.**
+    // Both walls' lamps reach the whole nave, so the honest falloff on its own
+    // is nearly flat -- the middle and the wall came out within one and a half
+    // per cent, which is a floor with no shape in it and a bright one under
+    // the player. What this buys is that the centre line, where the danmaku is
+    // thickest, stays the darkest stone in the hall whatever is lighting it.
+    var _e = clamp(abs(_x) / HALL_HALF_W, 0, 1);
+    _l *= HALL_FLOOR_DIM + (1 - HALL_FLOOR_DIM) * power(_e, 1.6);
+    return min(_l * HALL_FLOOR_LIGHT, 1.25);
 }
 
 /// @desc A surface, tiled `_nu` by `_nv` times, lit per vertex.
@@ -378,8 +387,15 @@ function hall_wall_light(_x, _y, _z, _side, _kind) {
 ///       `_face` is the surface's own orientation term: a board's top catches
 ///       the lamp, its underside does not, and one number per quad is the
 ///       whole of the shading model on top of the distance falloff.
+///
+///       `_lightfn` is which of the hall's two light models this surface is
+///       standing in -- the joinery's by default, the pavement's for anything
+///       lying flat. It is an argument rather than a test on the surface,
+///       because a surface has no way of knowing which it is and the caller
+///       always does.
 function hall_tiles(_vb, _p0, _p1, _p2, _p3, _spr, _frame, _nu, _nv,
-                    _face, _side, _kind, _col = c_white) {
+                    _face, _side, _kind, _col = c_white,
+                    _lightfn = hall_wall_light) {
     var _q0 = hall_uv(_spr, _frame, 0, 0);
     var _q1 = hall_uv(_spr, _frame, 1, 0);
     var _q2 = hall_uv(_spr, _frame, 1, 1);
@@ -398,12 +414,109 @@ function hall_tiles(_vb, _p0, _p1, _p2, _p3, _spr, _frame, _nu, _nv,
             for (var _k = 0; _k < 6; _k++) {
                 var _m = _order[_k];
                 var _pt = _c[_m];
-                var _l = _face * hall_wall_light(_pt[0], _pt[1], _pt[2],
-                                                 _side, _kind);
+                var _l = _face * _lightfn(_pt[0], _pt[1], _pt[2],
+                                          _side, _kind);
                 vertex_position_3d(_vb, _pt[0], _pt[1], _pt[2]);
                 vertex_colour(_vb, hall_shade(_col, _l), 1);
                 vertex_texcoord(_vb, _uv[_m][0], _uv[_m][1]);
             }
+        }
+    }
+}
+
+/// @desc One bay of pavement: a sunken runner, a border course either side of
+///       it, the marble field out at the walls, and a threshold across the
+///       aisles at the bay's own joint.
+///
+///       **A floor of one tile repeated has no middle, and a hall with a
+///       processional way down it is entirely about where its middle is.**
+///       Four squares of marble across the nave was reported as exactly what
+///       it was -- the same thing four times, left to right, for the length
+///       of the hall -- and no amount of detail inside that tile would have
+///       answered it, because what was missing was not detail but *structure*
+///       across the nave.
+///
+///       **The runner is sunk rather than the aisles raised**, so everything
+///       the walls stand on stays at zero and only the one new course had to
+///       move. What the step buys is the two gilt lines running the length of
+///       the hall where the courses meet: they converge on the vanishing
+///       point, which is the strongest perspective cue in the frame and the
+///       one thing a grid of squares can never have.
+///
+///       **The threshold stops at the step.** It is a feature of the raised
+///       pavement, so the runner passes under it unbroken -- which is what a
+///       real processional way does, and it keeps the rules down the runner's
+///       own edges from being chopped into dashes once a bay.
+function hall_floor_bay(_o, _kind) {
+    var _bz = HALL_BAY_Z;
+    var _hw = HALL_HALF_W;
+    var _r = HALL_RUNNER_HW;
+    var _st = HALL_FLOOR_STEP;
+    var _b0 = _r + HALL_BORDER_W;        // where the marble field begins
+    var _tz = HALL_THRESH_W;             // the threshold's depth along the bay
+
+    // --- the runner, one piece of art a bay long -------------------------
+    // **The far edge is the tile's top.** Wound the other way round the
+    // pavement is laid face-down: every cartouche and every winged disc on it
+    // faces back at the camera, which is upside down to anybody flying up the
+    // hall and was reported that way about the marble. A floor seen from
+    // above has no "up" of its own, so the only thing that can define one is
+    // the direction of travel.
+    hall_quad(_o.runner,
+              [-_r, -_st, _bz], [_r, -_st, _bz],
+              [_r, -_st, 0], [-_r, -_st, 0],
+              spr_hall_runner, 0, 8, 10, 1.0, 1, _kind, c_white,
+              hall_floor_light);
+
+    for (var _s = -1; _s <= 1; _s += 2) {
+        // --- the step, faced in gilt --------------------------------------
+        // Bright, because it is the one edge in the pavement that faces the
+        // light rather than lying flat under it -- and because two lit lines
+        // converging is the whole reason the runner is sunk at all.
+        hall_tiles(_o.gilt,
+                   [_s * _r, 0, 0], [_s * _r, 0, _bz],
+                   [_s * _r, -_st, _bz], [_s * _r, -_st, 0],
+                   spr_hall_pale, 0, 6, 1, 1.30, _s, _kind, HALL_GILT,
+                   hall_floor_light);
+
+        // --- the border course, along the hall ----------------------------
+        for (var _j = 0; _j < HALL_BORDER_NZ; _j++) {
+            var _z0 = _tz + (_bz - _tz) * _j / HALL_BORDER_NZ;
+            var _z1 = _tz + (_bz - _tz) * (_j + 1) / HALL_BORDER_NZ;
+            hall_quad(_o.border,
+                      [_s * _r, 0, _z1], [_s * _b0, 0, _z1],
+                      [_s * _b0, 0, _z0], [_s * _r, 0, _z0],
+                      spr_hall_border, 0, 1, 3, 1.0, _s, _kind, c_white,
+                      hall_floor_light);
+        }
+
+        // --- the marble field, out where the furniture stands -------------
+        for (var _i = 0; _i < HALL_AISLE_NX; _i++) {
+            var _x0 = _b0 + (_hw - _b0) * _i / HALL_AISLE_NX;
+            var _x1 = _b0 + (_hw - _b0) * (_i + 1) / HALL_AISLE_NX;
+            for (var _j = 0; _j < HALL_AISLE_NZ; _j++) {
+                var _z0 = _tz + (_bz - _tz) * _j / HALL_AISLE_NZ;
+                var _z1 = _tz + (_bz - _tz) * (_j + 1) / HALL_AISLE_NZ;
+                hall_quad(_o.marble,
+                          [_s * _x0, 0, _z1], [_s * _x1, 0, _z1],
+                          [_s * _x1, 0, _z0], [_s * _x0, 0, _z0],
+                          spr_hall_floor, 0, 2, 2, 1.0, _s, _kind, c_white,
+                          hall_floor_light);
+            }
+        }
+
+        // --- the threshold, across the aisle at the bay's joint -----------
+        // The same frieze the border course is, turned through a right angle,
+        // which is what makes the pavement's two joints read as one moulding
+        // rather than as two ideas.
+        for (var _i = 0; _i < HALL_THRESH_NX; _i++) {
+            var _x0 = _r + (_hw - _r) * _i / HALL_THRESH_NX;
+            var _x1 = _r + (_hw - _r) * (_i + 1) / HALL_THRESH_NX;
+            hall_quad(_o.border,
+                      [_s * _x0, 0, _tz], [_s * _x0, 0, 0],
+                      [_s * _x1, 0, 0], [_s * _x1, 0, _tz],
+                      spr_hall_border, 0, 1, 3, 1.06, _s, _kind, c_white,
+                      hall_floor_light);
         }
     }
 }
@@ -473,42 +586,69 @@ function hall_case_side(_o, _s, _kind) {
         hall_tiles(_o.stone, [_x_case, _y0, _z1], [_x_back, _y0, _z1],
                    [_x_back, _y0, _z0], [_x_case, _y0, _z0],
                    spr_hall_stone, 0, 2, 2, 0.80, _s, _kind);
-        // the plinth the orb stands on
-        var _pz0 = _bz * 0.5 - HALL_ORB_R * 1.5;
-        var _pz1 = _bz * 0.5 + HALL_ORB_R * 1.5;
-        var _px = _s * (HALL_HALF_W + HALL_PIL_D + HALL_ORB_R * 0.35);
-        var _ph = HALL_ORB_Y - HALL_ORB_R * 1.5;
-        hall_tiles(_o.stone, [_px, _ph, _pz0], [_px, _ph, _pz1],
-                   [_px, _y0, _pz1], [_px, _y0, _pz0],
-                   spr_hall_stone, 0, 1, 2, 0.90, _s, _kind);
-        hall_tiles(_o.stone, [_px, _ph, _pz0], [_x_back, _ph, _pz0],
-                   [_x_back, _ph, _pz1], [_px, _ph, _pz1],
-                   spr_hall_stone, 0, 1, 1, 1.10, _s, _kind);
-        hall_tiles(_o.gilt, [_px, _ph + 7, _pz0], [_x_back, _ph + 7, _pz0],
-                   [_x_back, _ph + 7, _pz1], [_px, _ph + 7, _pz1],
-                   spr_hall_pale, 0, 1, 1, 1.0, _s, _kind, HALL_GILT);
-        // the orb, as crossed quads so it reads from any angle
-        // **At the mouth of the recess, not the back of it.** Set deep in
-        // the alcove the orb was occluded by its own reveals at every angle
-        // the camera ever reaches -- it was never once visible in either
-        // phase, which for the hall's only real light source is the whole of
-        // its job undone. Smaller and forward, it reads from both.
-        var _ox = _s * (HALL_HALF_W + HALL_PIL_D + HALL_ORB_R * 0.35);
+        // --- the pedestal, and the orb standing on it ---------------------
+        //
+        // **It was a plate and the orb was floating above it.** The stand was
+        // two flat quads at the orb's own x, so half of the sphere hung out
+        // in front of its own face with nothing under it -- and its foot was
+        // twenty-four units clear of the top besides. Neither reads as a
+        // mistake on its own; together they are a ball hanging in a niche
+        // beside a slab, which is what was reported.
+        //
+        // So it is a real tapered box on the alcove's sill, with a moulding
+        // at its head, a gilt cup on that, and the orb sitting *in* the cup.
+        // Every height here is derived from the one above it, so the stack
+        // cannot come apart again: the cup's rim is where the sphere's
+        // underside is, and the sphere's underside is `HALL_ORB_R` below its
+        // centre.
+        var _ox = hall_orb_x(_s);
+        var _cup_y = HALL_ORB_Y - HALL_ORB_R;        // where the orb rests
+        var _cap_y = _cup_y - HALL_ORB_CRADLE;       // the head of the shaft
+        var _cz = _bz * 0.5;
+
+        hall_taper(_o.stone, _ox, _cz, _y0, _cap_y - 12,
+                   HALL_ORB_R * 0.74, HALL_ORB_R * 0.74,
+                   HALL_ORB_R * 0.56, HALL_ORB_R * 0.56,
+                   spr_hall_stone, 0, _s, _kind, c_white, 0.92);
+        // the moulding at its head: a lit slab standing proud of the shaft,
+        // which is the pair the whole hall's relief is drawn as
+        hall_taper(_o.gilt, _ox, _cz, _cap_y - 12, _cap_y,
+                   HALL_ORB_R * 0.60, HALL_ORB_R * 0.60,
+                   HALL_ORB_R * 0.66, HALL_ORB_R * 0.66,
+                   spr_hall_pale, 0, _s, _kind, HALL_GILT, 1.22);
+        // ...and the cup, opening upward to take the sphere
+        hall_taper(_o.gilt, _ox, _cz, _cap_y, _cup_y + 4,
+                   HALL_ORB_R * 0.40, HALL_ORB_R * 0.40,
+                   HALL_ORB_R * 0.72, HALL_ORB_R * 0.72,
+                   spr_hall_pale, 0, _s, _kind, HALL_GILT, 1.34);
+
         // **A sphere and two rings, not crossed cards.** The orb was the
         // last thing in the hall still drawn as two quads at right angles,
         // and at this size the seam where they intersect is a hard edge that
         // the alpha test cuts differently frame to frame -- which is the
         // striping across it. It has the primitives now that everything else
         // does.
-        hall_sphere(_o.orb, _ox, HALL_ORB_Y, _bz * 0.5, HALL_ORB_R, 12, 8,
+        hall_sphere(_o.orb, _ox, HALL_ORB_Y, _cz, HALL_ORB_R, 12, 8,
                     spr_hall_pale, 0, _s, _kind, HALL_ORB_BODY, 0.95);
-        hall_ring(_o.gilt, _ox, HALL_ORB_Y, _bz * 0.5, HALL_ORB_R + 3, 2.4,
+        // the armillary round it: a meridian and an equator, so the sphere
+        // reads as mounted rather than as resting loose in a bowl
+        hall_ring(_o.gilt, _ox, HALL_ORB_Y, _cz, HALL_ORB_R + 3, 2.4,
                   0, 0, 20, spr_hall_pale, 0, _s, _kind, HALL_GILT, 1.30);
-        hall_ring(_o.gilt, _ox, HALL_ORB_Y, _bz * 0.5, HALL_ORB_R + 3, 2.4,
+        hall_ring(_o.gilt, _ox, HALL_ORB_Y, _cz, HALL_ORB_R + 3, 2.4,
                   90, 0, 20, spr_hall_pale, 0, _s, _kind, HALL_GILT, 1.15);
-        hall_sphere(_o.glow, _ox, HALL_ORB_Y, _bz * 0.5, HALL_ORB_R * 1.35,
+        hall_sphere(_o.glow, _ox, HALL_ORB_Y, _cz, HALL_ORB_R * 1.35,
                     10, 7, spr_hall_pale, 0, _s, _kind, HALL_ORB_COL,
                     HALL_ORB_GLOW);
+        // **And the light it throws, which is the half that was missing.**
+        // A sphere drawn additively is a bright ball; what says *lamp* is the
+        // air round it going bright too, and no amount of brightness on the
+        // ball itself buys that. Two crossed cards of `spr_fx_bloom` -- the
+        // game's own soft falloff, and the one texture in the project that is
+        // a light rather than a surface -- so it blooms whether the camera is
+        // abeam of the alcove or looking down the hall at it.
+        hall_cross(_o.bloom, spr_fx_bloom, 0, _ox, HALL_ORB_Y, _cz,
+                   HALL_ORB_R * HALL_ORB_BLOOM, 1.0, HALL_ORB_COL,
+                   HALL_LAMP_GLOW);
     } else {
         // --- the bookcase ------------------------------------------------
         var _n = HALL_SHELVES;
@@ -519,7 +659,7 @@ function hall_case_side(_o, _s, _kind) {
             // the books, set back at the bottom of the recess
             var _fr = floor(hall_hash(_i * 7 + _kind, 5) * 3) % 3;
             var _xb = _x_case + _s * HALL_BOOK_INSET;
-            hall_tiles(_o.books, [_xb, _ty - HALL_BOARD_T, _z0],
+            hall_tiles(_o.books[_fr], [_xb, _ty - HALL_BOARD_T, _z0],
                        [_xb, _ty - HALL_BOARD_T, _z1],
                        [_xb, _sy, _z1], [_xb, _sy, _z0],
                        spr_hall_books, _fr, 2, 1, 1.06, _s, _kind);
@@ -543,7 +683,7 @@ function hall_case_side(_o, _s, _kind) {
                    [_x_back, _y1, _z0], [_x_case, _y1, _z0],
                    spr_hall_stone, 0, 2, 2, 0.26, _s, _kind);
         var _xb2 = _x_case + _s * HALL_BOOK_INSET;
-        hall_tiles(_o.books, [_xb2, _y1, _z0], [_xb2, _y1, _z1],
+        hall_tiles(_o.books[0], [_xb2, _y1, _z0], [_xb2, _y1, _z1],
                    [_xb2, _y1 - HALL_BOARD_T * 2, _z1],
                    [_xb2, _y1 - HALL_BOARD_T * 2, _z0],
                    spr_hall_books, 0, 2, 1, 0.30, _s, _kind);
@@ -656,6 +796,11 @@ function hall_case_side(_o, _s, _kind) {
         hall_sphere(_o.glow, _bx, _y_p1 + HALL_BRAZIER_H, 0,
                     HALL_BRAZIER_R * 0.90, 9, 6, spr_hall_pale, 0, _s, _kind,
                     HALL_BRAZIER_COL, HALL_BRAZIER_GLOW);
+        // ...and its bloom, on the orb's terms: a fire against the stars with
+        // no air lit round it is a bright bead, not a brazier.
+        hall_cross(_o.bloom, spr_fx_bloom, 0, _bx, _y_p1 + HALL_BRAZIER_H, 0,
+                   HALL_BRAZIER_R * 3.4, 1.0, HALL_BRAZIER_COL,
+                   HALL_LAMP_GLOW * 0.8);
     } else {
         var _ox = _s * HALL_HALF_W;
         var _oy = _y_p1 + HALL_OBELISK_H;
@@ -682,22 +827,33 @@ function hall_build_case(_kind) {
     var _f = hall_format();
     var _o = {
         stone: vertex_create_buffer(),
-        books: vertex_create_buffer(),
         pil: vertex_create_buffer(),
         gilt: vertex_create_buffer(),
         orb: vertex_create_buffer(),
         glow: vertex_create_buffer(),
+        bloom: vertex_create_buffer(),
         dado: vertex_create_buffer(),
         cornice: vertex_create_buffer(),
         board: vertex_create_buffer(),
+        marble: vertex_create_buffer(),
+        runner: vertex_create_buffer(),
+        border: vertex_create_buffer(),
     };
-    var _names = ["stone", "books", "pil", "gilt", "orb", "glow",
-                  "dado", "cornice", "board"];
+    var _names = ["stone", "pil", "gilt", "orb", "glow", "bloom",
+                  "dado", "cornice", "board", "marble", "runner", "border"];
     for (var _i = 0; _i < array_length(_names); _i++) {
         vertex_begin(_o[$ _names[_i]], _f);
     }
+    // **The books are three frames and so they are three buffers.** See
+    // `hall_frames_begin`: a buffer mixing frames is drawn against one page
+    // and is right only while the packer keeps them together.
+    _o.books = hall_frames_begin(spr_hall_books, _f);
     hall_case_side(_o, -1, _kind);
     hall_case_side(_o, 1, _kind);
+    // **The pavement is part of the bay, not part of the hall**, which is
+    // what lets the alcove's orb light the stone in front of it: a floor
+    // built once and shared by every bay cannot know which kind it is under.
+    hall_floor_bay(_o, _kind);
 
     // **An empty buffer is not a buffer, and freezing one is a hard crash.**
     // Not every kind fills every slot: a bookcase bay writes nothing to
@@ -727,6 +883,7 @@ function hall_build_case(_kind) {
         }
         vertex_freeze(_vb);
     }
+    _o.books = hall_frames_end(_o.books);
     return _o;
 }
 
@@ -747,10 +904,18 @@ function hall_step(_b) {
     var _o = clamp(_b.omen, 0, 1);
     _b.reveal = _o * _o * _o * (_o * (_o * 6 - 15) + 10);
 
+    // **The arrival.** One number, eased, and it drives the veil at the end
+    // of the back pass and the speed of the flight -- the two together being
+    // what makes the opening read as a hall coming alight rather than as a
+    // curtain going up on one that was already running.
+    if (_b.intro < 1) _b.intro = min(1, _b.intro + 1 / HALL_INTRO_TIME);
+    var _in = hall_ease(_b.intro);
+
     // The flight gathers as the camera comes down: high above the floor there
     // is nothing near enough to read speed off, so phase A at flying speed
     // would look slower than phase B at the same number.
-    _b.spd = lerp(HALL_SPEED_A, HALL_SPEED, _b.reveal);
+    _b.spd = lerp(HALL_SPEED_A, HALL_SPEED, _b.reveal)
+             * lerp(HALL_INTRO_SPD, 1, _in);
     // ...and it breathes, for the reason the grove's swell exists: a constant
     // rate is arithmetically a flight and reads as a dolly on rails.
     _b.rush = _b.spd * (1 + HALL_SWELL * dsin(_b.t * 360 / HALL_SWELL_P));
@@ -856,9 +1021,6 @@ function hall_draw_back(_b, _fill) {
     var _st_filt = gpu_get_texfilter();
     var _st_zt = gpu_get_ztestenable();
     var _st_zw = gpu_get_zwriteenable();
-    var _st_at = gpu_get_alphatestenable();
-    var _st_ar = gpu_get_alphatestref();
-
     gpu_set_ztestenable(true);
     gpu_set_zwriteenable(true);
     gpu_set_cullmode(cull_noculling);
@@ -875,8 +1037,7 @@ function hall_draw_back(_b, _fill) {
     hall_draw_orrery(_b);
 
     gpu_set_ztestenable(true);
-    gpu_set_zwriteenable(true);
-    gpu_set_fog(true, HALL_FOG, HALL_FOG_START, HALL_FOG_END);
+    hall_pass_solid();
 
     // **Which bays are in front of the camera.** The hall is endless because
     // nothing is recycled: a bay is a translation, and the range is whichever
@@ -887,14 +1048,15 @@ function hall_draw_back(_b, _fill) {
     for (var _i = _b0; _i <= _b1; _i++) {
         var _z = _i * HALL_BAY_Z;
         matrix_set(matrix_world, matrix_build(0, 0, _z, 0, 0, 0, 1, 1, 1));
-        vertex_submit(_b.vb_floor, pr_trianglelist,
-                      sprite_get_texture(spr_hall_floor, 0));
         var _k = hall_bay_kind(_i);
         var _c = _b.joinery[_k];
+        hall_submit(_c.marble, sprite_get_texture(spr_hall_floor, 0));
+        hall_submit(_c.runner, sprite_get_texture(spr_hall_runner, 0));
+        hall_submit(_c.border, sprite_get_texture(spr_hall_border, 0));
         hall_submit(_c.stone, sprite_get_texture(spr_hall_stone, 0));
         hall_submit(_c.gilt, sprite_get_texture(spr_hall_pale, 0));
         hall_submit(_c.pil, sprite_get_texture(spr_hall_pil, 0));
-        hall_submit(_c.books, sprite_get_texture(spr_hall_books, 0));
+        hall_submit_frames(_c.books, spr_hall_books);
         hall_submit(_c.board, sprite_get_texture(spr_hall_board, 0));
         hall_submit(_c.dado, sprite_get_texture(spr_hall_dado, 0));
         hall_submit(_c.cornice, sprite_get_texture(spr_hall_cornice, 0));
@@ -905,9 +1067,6 @@ function hall_draw_back(_b, _fill) {
     // so an orb behind a pilaster stays behind it. Not written, so two lights
     // at the same depth both land instead of the second being rejected by the
     // first.
-    gpu_set_zwriteenable(false);
-    gpu_set_blendmode(bm_add);
-    gpu_set_fog(true, c_black, HALL_FOG_START, HALL_FOG_END);
     //
     // **Every kind, not just the alcove.** It was skipped for anything but
     // bay kind 2 on the grounds that the orb was the only light in the
@@ -916,23 +1075,29 @@ function hall_draw_back(_b, _fill) {
     // drawn as a cold grey bowl, with nothing anywhere saying why. A kind
     // with nothing to add has an empty `glow` slot, which is `-1`, which
     // `hall_submit` already knows to skip.
+    hall_pass_light();
     for (var _i = _b0; _i <= _b1; _i++) {
         var _k = hall_bay_kind(_i);
         matrix_set(matrix_world,
                    matrix_build(0, 0, _i * HALL_BAY_Z, 0, 0, 0, 1, 1, 1));
         hall_submit(_b.joinery[_k].glow, sprite_get_texture(spr_hall_pale, 0));
+        hall_submit(_b.joinery[_k].bloom, sprite_get_texture(spr_fx_bloom, 0));
     }
-    gpu_set_blendmode(bm_normal);
+    hall_pass_solid();
 
     hall_draw_props(_b, _b0, _b1);
 
+    // **And the shader goes back with everything else.** It is global state
+    // and it survives the room, which is the whole reason the note above
+    // exists: a hall that left its own shader set would draw the rest of the
+    // game -- every stage, every menu -- fogged and faded by a distance
+    // nothing outside this file has.
+    shader_reset();
     gpu_set_fog(false, c_black, 0, 1);
     gpu_set_ztestenable(_st_zt);
     gpu_set_zwriteenable(_st_zw);
     gpu_set_cullmode(_st_cull);
     gpu_set_texfilter(_st_filt);
-    gpu_set_alphatestenable(_st_at);
-    gpu_set_alphatestref(_st_ar);
     matrix_set(matrix_world, matrix_build_identity());
     matrix_set(matrix_view, matrix_build_identity());
     matrix_set(matrix_projection, matrix_build_identity());
@@ -940,6 +1105,99 @@ function hall_draw_back(_b, _fill) {
 
     matrix_set(matrix_world, _old_w);
     draw_surface_ext(_b.surf, _x0, _y0, 1, 1, 0, c_white, 1);
+    hall_draw_veil(_b, _x0, _y0, _w, _h);
+}
+
+/// @desc The dark the hall comes up out of.
+///
+///       **The stage used to begin at full speed in a lit room on its first
+///       frame**, which is the one moment in it nobody composed: the rack
+///       cuts and everything is simply there, at once, going past. So the
+///       lights come up instead -- and because `intro` is the same number the
+///       flight's speed is scaled by, what the player sees is one event
+///       rather than a fade happening over the top of a stage that had
+///       already started.
+///
+///       **Opaque, and that is affordable because this is the back pass.**
+///       Every bullet in the game is drawn over it, and in any case nothing
+///       has been fired on the frames it is dense -- which is the exception
+///       `grove_draw_veil` records, on the same terms.
+///
+///       Held near the top for the first fifth and then falling away, so the
+///       opening is a room being lit rather than a linear dissolve.
+function hall_draw_veil(_b, _x0, _y0, _w, _h) {
+    if (_b.intro >= 1) return;
+    draw_set_colour(c_black);
+    draw_set_alpha(power(1 - _b.intro, 1.30));
+    draw_rectangle(_x0, _y0, _x0 + _w, _y0 + _h, false);
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+}
+
+// ---------------------------------------------------------------------------
+// The two passes
+//
+// **Distance has to take a surface's alpha away, and not only its colour.**
+// The hall hid its far end with fog, which recolours a surface toward the air
+// -- and that works only where what is *behind* it is the air too. At the end
+// of this hall it is not: `hall_draw_far` hangs a lit rotunda at the vanishing
+// point, and the last few bays of shelving, their statues and their tabards
+// all project into the middle of it. So a prop arriving at the fog's own end
+// arrived as a perfectly fog-coloured silhouette cut out of a bright building,
+// which is exactly as visible as a black one.
+//
+// It was reported as things popping in at the far end, and the first answer
+// here was to make the props' fog agree with the architecture's -- they had
+// been fogging to black, inherited from the additive pass before them, which
+// was a real bug and not this one. Fixing it changed nothing anybody could
+// see, because the colour was never what was wrong.
+//
+// **Alpha is the only thing that hides a surface whatever is behind it**, and
+// `vertex_submit` has no per-draw alpha: what reaches the default shader is
+// the vertex buffer's own colour, and the buffers are frozen. So the fade is
+// computed in `sh_hall` from the one quantity a frozen buffer cannot carry --
+// how far the vertex is from the camera this frame -- and the fog is computed
+// there too, off the same distance, so the two cannot disagree about where the
+// end of the hall is.
+// ---------------------------------------------------------------------------
+
+/// @desc Set the hall's shader, and the state a solid surface wants.
+///
+///       `_ref` is the cut-out threshold. It is per pass rather than global
+///       because the two things drawn here want opposite answers: a tabard is
+///       a shape with transparent corners and has to punch them out of the
+///       depth buffer, and a bloom is a soft falloff whose whole outer half
+///       would become a hard disc if it were tested at all.
+function hall_pass_solid(_ref = 0) {
+    gpu_set_blendmode(bm_normal);
+    gpu_set_zwriteenable(true);
+    hall_shader(HALL_FOG, _ref);
+}
+
+/// @desc Begin the additive pass: light, rather than surface.
+///
+///       Depth writing off, because two lamps at one depth should both land,
+///       and the fog toward **black**, because what distance does to a light
+///       is take it away rather than wash it toward the colour of the air.
+function hall_pass_light() {
+    gpu_set_zwriteenable(false);
+    gpu_set_blendmode(bm_add);
+    hall_shader(c_black, 0);
+}
+
+/// @desc The shader, and everything the distance drives.
+function hall_shader(_fogcol, _ref) {
+    shader_set(sh_hall);
+    shader_set_uniform_f(shader_get_uniform(sh_hall, "u_fog"),
+                         HALL_FOG_START, HALL_FOG_END);
+    shader_set_uniform_f(shader_get_uniform(sh_hall, "u_fade"),
+                         HALL_FADE_START, HALL_FADE_END);
+    shader_set_uniform_f(shader_get_uniform(sh_hall, "u_fogcol"),
+                         colour_get_red(_fogcol) / 255,
+                         colour_get_green(_fogcol) / 255,
+                         colour_get_blue(_fogcol) / 255);
+    shader_set_uniform_f(shader_get_uniform(sh_hall, "u_alpharef"),
+                         _ref / 255);
 }
 
 /// @desc Draw a buffer, unless it turned out to have nothing in it.
@@ -950,6 +1208,72 @@ function hall_draw_back(_b, _fill) {
 function hall_submit(_vb, _tex) {
     if (_vb == -1) return;
     vertex_submit(_vb, pr_trianglelist, _tex);
+}
+
+// ---------------------------------------------------------------------------
+// One buffer per frame
+//
+// **A buffer holding two frames of a sprite is a buffer that can only be
+// right by luck.** `vertex_submit` takes one texture and `hall_uv` writes
+// page coordinates, so geometry using frame 1 is drawn against whichever page
+// `sprite_get_texture(spr, 0)` names -- which is correct exactly while the
+// packer happens to have put the two frames on the same page, and the packer
+// is under no obligation to. Adding two tiles to the hall's folder repacked
+// the atlas, the banner's two frames came apart, and every other bay's tabard
+// came back as a piece of masonry hanging off the cornice. It was reported by
+// a person looking at the screen.
+//
+// **And it cannot be asserted against**, which is why the answer is
+// construction rather than a guard. `sprite_get_texture` hands back a pointer
+// to the frame's own entry rather than to the page it sits on -- measured:
+// three single-frame sprites certainly packed together answer three different
+// pointers -- so no suite can ask whether two frames share a page. What a
+// suite *can* do is what `check_hall_frame_textures` does, which is refuse
+// the construction that needs the question asking.
+//
+// So a sprite the hall draws more than one frame of gets one buffer per
+// frame, each submitted with its own frame's texture. It costs a submit per
+// frame and it is right whatever the packer does.
+// ---------------------------------------------------------------------------
+
+/// @desc One buffer per frame of a sprite, begun and ready to be written.
+function hall_frames_begin(_spr, _f) {
+    var _a = [];
+    for (var _i = 0; _i < sprite_get_number(_spr); _i++) {
+        _a[_i] = vertex_create_buffer();
+        vertex_begin(_a[_i], _f);
+    }
+    return _a;
+}
+
+/// @desc ...and close them. A frame nothing was written for becomes `-1`, on
+///       `hall_build_case`'s terms: an empty buffer cannot be frozen.
+function hall_frames_end(_a) {
+    for (var _i = 0; _i < array_length(_a); _i++) {
+        vertex_end(_a[_i]);
+        if (vertex_get_number(_a[_i]) <= 0) {
+            vertex_delete_buffer(_a[_i]);
+            _a[_i] = -1;
+            continue;
+        }
+        vertex_freeze(_a[_i]);
+    }
+    return _a;
+}
+
+/// @desc Build, fill and freeze one buffer per frame.
+function hall_frames_buffer(_spr, _f, _fill) {
+    var _a = hall_frames_begin(_spr, _f);
+    _fill(_a);
+    return hall_frames_end(_a);
+}
+
+/// @desc Draw every frame's buffer, each with its own frame's texture.
+function hall_submit_frames(_a, _spr) {
+    for (var _i = 0; _i < array_length(_a); _i++) {
+        if (_a[_i] == -1) continue;
+        vertex_submit(_a[_i], pr_trianglelist, sprite_get_texture(_spr, _i));
+    }
 }
 
 /// @desc Build, fill, freeze. Answers `-1` if nothing was written.
@@ -995,20 +1319,22 @@ function hall_face_z(_vb, _spr, _frame, _x, _y, _z, _h, _l) {
               [_x + _hw, _y, _z], [_x - _hw, _y, _z]);
 }
 
-/// @desc One upright quad in the plane x = `_x`, running along the hall.
-function hall_face_x(_vb, _spr, _frame, _x, _y, _z, _h, _l) {
-    var _w = _h * sprite_get_width(_spr) / sprite_get_height(_spr);
-    var _hw = _w * 0.5;
+/// @desc A light, as two square cards at right angles centred on a point.
+///
+///       **Crossed cards are wrong for an object and right for a glow**,
+///       which is why every solid in this hall stopped using them and this
+///       did not. The seam where two quads intersect is a silhouette defect,
+///       and a bloom has no silhouette: it is additive, radially symmetric
+///       and soft to its own edge, so the pair reads the same from any angle
+///       the camera reaches and costs four triangles.
+function hall_cross(_vb, _spr, _frame, _x, _y, _z, _r, _l,
+                    _col = c_white, _a = 1) {
     hall_face(_vb, _spr, _frame, _l,
-              [_x, _y + _h, _z - _hw], [_x, _y + _h, _z + _hw],
-              [_x, _y, _z + _hw], [_x, _y, _z - _hw]);
-}
-
-/// @desc Two of those, at right angles. Kept only for the orb's glow, which
-///       is a light rather than an object and has no silhouette to get wrong.
-function hall_cross(_vb, _spr, _frame, _x, _y, _z, _h, _l) {
-    hall_face_z(_vb, _spr, _frame, _x, _y, _z, _h, _l);
-    hall_face_x(_vb, _spr, _frame, _x, _y, _z, _h, _l);
+              [_x - _r, _y + _r, _z], [_x + _r, _y + _r, _z],
+              [_x + _r, _y - _r, _z], [_x - _r, _y - _r, _z], _col, _a);
+    hall_face(_vb, _spr, _frame, _l,
+              [_x, _y + _r, _z - _r], [_x, _y + _r, _z + _r],
+              [_x, _y - _r, _z + _r], [_x, _y - _r, _z - _r], _col, _a);
 }
 
 // ---------------------------------------------------------------------------
@@ -1266,14 +1592,15 @@ function hall_build_prop_set(_v) {
         stone: vertex_create_buffer(),
         gilt: vertex_create_buffer(),
         glow: vertex_create_buffer(),
-        banner: vertex_create_buffer(),
         plinth: vertex_create_buffer(),
         statue: vertex_create_buffer(),
     };
-    var _names = ["stone", "gilt", "glow", "banner", "plinth", "statue"];
+    var _names = ["stone", "gilt", "glow", "plinth", "statue"];
     for (var _i = 0; _i < array_length(_names); _i++) {
         vertex_begin(_o[$ _names[_i]], _f);
     }
+    // The two tabards are two frames of one sprite, and one buffer each.
+    _o.banner = hall_frames_begin(spr_hall_banner, _f);
 
     // **The pedestal falls midway between two statues, on the statue line.**
     // Statues stand on the odd bays at the bay's centre, so the centre of an
@@ -1293,8 +1620,9 @@ function hall_build_prop_set(_v) {
         if (_statues) {
             hall_bastet(_o, _s, HALL_BAY_Z * 0.50, 0);
         } else {
-            hall_face_z(_o.banner, spr_hall_banner,
-                        (_s > 0) ? 1 : 0, _s * HALL_BANNER_X,
+            var _bf = (_s > 0) ? 1 : 0;
+            hall_face_z(_o.banner[_bf], spr_hall_banner,
+                        _bf, _s * HALL_BANNER_X,
                         HALL_CEIL_H - HALL_BANNER_DROP - HALL_BANNER_H,
                         HALL_BAY_Z * 0.50, HALL_BANNER_H, HALL_PROP_LIGHT);
         }
@@ -1310,6 +1638,7 @@ function hall_build_prop_set(_v) {
         }
         vertex_freeze(_vb);
     }
+    _o.banner = hall_frames_end(_o.banner);
     return _o;
 }
 
@@ -1329,10 +1658,15 @@ function hall_build_prop_set(_v) {
 ///       depth like anything else: a banner would punch a rectangular hole in
 ///       the hall behind it. Discarding the texels below the reference keeps
 ///       the depth buffer honest about the *shape* rather than about the quad.
+///       **The cut-out is the shader's now.** `gpu_set_alphatestenable` is
+///       a fixed-function state the *default* shader implements, so once the
+///       hall had one of its own the test had to move into it -- and it is
+///       better there, because `sh_hall` can test the texture's alpha rather
+///       than the result's, which is what lets a prop fade out by distance
+///       without the fade turning into a hard cut the moment it crosses the
+///       reference.
 function hall_draw_props(_b, _b0, _b1) {
-    gpu_set_zwriteenable(true);
-    gpu_set_alphatestenable(true);
-    gpu_set_alphatestref(HALL_ALPHA_REF);
+    hall_pass_solid(HALL_ALPHA_REF);
 
     for (var _i = _b1; _i >= _b0; _i--) {
         var _p = _b.prop[hall_prop_variant(_i)];
@@ -1342,22 +1676,19 @@ function hall_draw_props(_b, _b0, _b1) {
         hall_submit(_p.plinth, sprite_get_texture(spr_hall_plinth, 0));
         hall_submit(_p.gilt, sprite_get_texture(spr_hall_pale, 0));
         hall_submit(_p.statue, sprite_get_texture(spr_hall_bastet, 0));
-        hall_submit(_p.banner, sprite_get_texture(spr_hall_banner, 0));
+        hall_submit_frames(_p.banner, spr_hall_banner);
     }
 
     // ...and their light. Additive and depth-tested but not written, because
     // a glow is not a surface: two lamps at the same depth should both land.
-    gpu_set_zwriteenable(false);
-    gpu_set_alphatestenable(false);
-    gpu_set_blendmode(bm_add);
+    hall_pass_light();
     for (var _i = _b1; _i >= _b0; _i--) {
         matrix_set(matrix_world,
                    matrix_build(0, 0, _i * HALL_BAY_Z, 0, 0, 0, 1, 1, 1));
         hall_submit(_b.prop[hall_prop_variant(_i)].glow,
                     sprite_get_texture(spr_hall_pale, 0));
     }
-    gpu_set_blendmode(bm_normal);
-    gpu_set_zwriteenable(true);
+    hall_pass_solid();
 }
 
 // ---------------------------------------------------------------------------
@@ -1549,8 +1880,8 @@ function hall_star_mag(_i) {
     return 0;
 }
 
-/// @desc Every star, as a card apiece.
-function hall_fill_stars(_vb) {
+/// @desc Every star, as a card apiece, into its own magnitude's buffer.
+function hall_fill_stars(_bufs) {
     for (var _i = 0; _i < HALL_STARS; _i++) {
         var _d = hall_star_dir(_i);
         var _el = darcsin(clamp(_d[1], -1, 1));
@@ -1561,8 +1892,8 @@ function hall_fill_stars(_vb) {
         _sz *= 0.78 + hall_hash(_i, 77) * 0.5;
         var _a = (_g == 2 ? 0.88 : (_g == 1 ? 0.60 : 0.36))
                  * (0.7 + hall_hash(_i, 78) * 0.5) * _ex;
-        hall_sky_card(_vb, _d, _sz, spr_hall_star, _g, hall_star_col(_i),
-                      _a, HALL_SKY_R * 0.96);
+        hall_sky_card(_bufs[_g], _d, _sz, spr_hall_star, _g,
+                      hall_star_col(_i), _a, HALL_SKY_R * 0.96);
     }
 }
 
@@ -1572,7 +1903,7 @@ function hall_fill_stars(_vb) {
 ///       ground have no depth to be at; the same points over cloud that has
 ///       edges and holes in it read as being *in front of* something, which
 ///       is the whole of why the sky looks far away.
-function hall_fill_neb(_vb) {
+function hall_fill_neb(_bufs) {
     // **Blue first, and the other three are what stop it being one colour.**
     // A nebula palette spread evenly across the wheel reads as stained glass;
     // what a sky does is one dominant hue with a little else in it, which is
@@ -1595,8 +1926,8 @@ function hall_fill_neb(_vb) {
         var _c = _cols[floor(hall_hash(_i, 84) * 6) % 6];
         var _a = HALL_NEB_A * (0.45 + hall_hash(_i, 85) * 0.75)
                  * hall_star_extinction(darcsin(clamp(_d[1], -1, 1)));
-        hall_sky_card(_vb, _d, _r, spr_hall_neb,
-                      floor(hall_hash(_i, 86) * 3) % 3, _c, _a,
+        var _fr = floor(hall_hash(_i, 86) * 3) % 3;
+        hall_sky_card(_bufs[_fr], _d, _r, spr_hall_neb, _fr, _c, _a,
                       HALL_SKY_R * 0.99);
     }
 }
@@ -1686,9 +2017,9 @@ function hall_fill_const(_vb) {
 function hall_build_sky(_b) {
     var _f = hall_format();
     _b.vb_dome = hall_prop_buffer(_f, hall_fill_dome);
-    _b.vb_neb = hall_prop_buffer(_f, hall_fill_neb);
+    _b.vb_neb = hall_frames_buffer(spr_hall_neb, _f, hall_fill_neb);
     _b.vb_const = hall_prop_buffer(_f, hall_fill_const);
-    _b.vb_stars = hall_prop_buffer(_f, hall_fill_stars);
+    _b.vb_stars = hall_frames_buffer(spr_hall_star, _f, hall_fill_stars);
     _b.vb_rot = hall_prop_buffer(_f, hall_fill_rotunda);
     _b.vb_rot_lit = hall_prop_buffer(_f, hall_fill_rotunda_lit);
 }
@@ -1711,9 +2042,9 @@ function hall_draw_sky(_b) {
 
     // ...and its lights, which are everything else out there.
     gpu_set_blendmode(bm_add);
-    hall_submit(_b.vb_neb, sprite_get_texture(spr_hall_neb, 0));
+    hall_submit_frames(_b.vb_neb, spr_hall_neb);
     hall_submit(_b.vb_const, sprite_get_texture(spr_hall_pale, 0));
-    hall_submit(_b.vb_stars, sprite_get_texture(spr_hall_star, 0));
+    hall_submit_frames(_b.vb_stars, spr_hall_star);
     gpu_set_blendmode(bm_normal);
 }
 
@@ -2147,7 +2478,9 @@ function hall_draw_orrery(_b) {
 ///       foreground cannot conceal a bullet at any alpha, at any size, in any
 ///       arrangement.
 function hall_draw_front(_b, _spell, _fill) {
-    var _a = (1 - 0.86 * clamp(_spell, 0, 1));
+    // ...and the dust comes up with the room. It is drawn after the veil, so
+    // without this the one thing visible during the arrival is the motes.
+    var _a = (1 - 0.86 * clamp(_spell, 0, 1)) * hall_ease(_b.intro);
     if (_a <= 0.01) return;
     var _x0 = _fill ? 0 : FIELD_X0;
     var _y0 = _fill ? 0 : FIELD_Y0;

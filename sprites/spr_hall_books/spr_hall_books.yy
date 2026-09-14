@@ -91,8 +91,8 @@
   "swatchColours":null,
   "swfPrecision":0.5,
   "textureGroupId":{
-    "name":"Default",
-    "path":"texturegroups/Default",
+    "name":"HallFrames",
+    "path":"texturegroups/HallFrames",
   },
   "type":0,
   "VTile":false,
