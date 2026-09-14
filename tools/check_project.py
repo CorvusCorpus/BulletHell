@@ -11,6 +11,7 @@ Exits non-zero if anything looks wrong.
 """
 import glob
 import json
+import math
 import os
 import re
 import sys
@@ -1349,6 +1350,45 @@ def check_bg_keepout():
                  % (name, len(cols), lo, hi))
 
 
+def check_rotunda_scale_agrees():
+    """The far chamber's painting and its quad have to agree about its size.
+
+    `rotunda` in `tools/make_sanctum.py` computes its own perspective: how
+    much a gallery ring is foreshortened depends on how far above the eye it
+    sits *in the finished frame*, which means the painting has to know how
+    many design pixels wide it is going to be hung. That number is
+    `HALL_ROT_HW_SCREEN` there and it is derivable here, from the world
+    half-width, the distance and the lens.
+
+    Nothing else would notice them drifting apart. The card would still be a
+    valid PNG at a valid size on a valid quad, and what it would draw is a
+    round room whose rings curve by the wrong amount -- which reads as a
+    slightly odd building rather than as a mistake, and which is exactly the
+    sort of thing this project has learnt only a measurement finds.
+    """
+    src_path = os.path.join(ROOT, "tools", "make_sanctum.py")
+    with open(src_path, encoding="utf-8") as fh:
+        src = fh.read()
+    match = re.search(r"^HALL_ROT_HW_SCREEN\s*=\s*([\d.]+)", src, re.M)
+    if match is None:
+        fail("make_sanctum.py has no HALL_ROT_HW_SCREEN for the far chamber")
+        return
+    drawn = float(match.group(1))
+
+    field_h = read_macro_number("FIELD_H")
+    fov = read_macro_number("HALL_FOV")
+    hw = read_macro_number("HALL_ROT_HW")
+    z = read_macro_number("HALL_ROT_Z")
+    if None in (field_h, fov, hw, z):
+        return
+    focal = (field_h * 0.5) / math.tan(math.radians(fov * 0.5))
+    want = focal * hw / z
+    if abs(want - drawn) > 2.0:
+        fail("the far chamber is painted %.1f design pixels wide and hung at "
+             "%.1f: HALL_ROT_HW_SCREEN in make_sanctum.py disagrees with "
+             "HALL_ROT_HW / HALL_ROT_Z in constants.gml"
+             % (drawn, want))
+
 def check_scrub_covers_horizon():
     """The hedgerow must never fall below the line it is there to hide.
 
@@ -1679,6 +1719,7 @@ def main():
     check_bg_seams()
     check_bg_keepout()
     check_scrub_covers_horizon()
+    check_rotunda_scale_agrees()
     check_bands_are_rooted()
     check_font_accessors_called()
     check_sprite_draws_are_explicit()

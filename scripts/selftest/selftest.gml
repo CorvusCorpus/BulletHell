@@ -3464,6 +3464,30 @@ function test_hall_sky() {
     ok("...and one where the orrery hangs is fully lit",
        hall_star_extinction(_sky_el) > 0.9);
 
+    // ---- the chamber at the end of it -------------------------------------
+    //
+    // **It is a floor under the landmark, not a second thing over it.** The
+    // first version was hung over the whole wedge and its galleries swept up
+    // past the orrery, which read as pale arcs across the sky rather than as
+    // a building under one.
+    var _rot_top = _f * (HALL_ROT_Y0 + 2 * HALL_ROT_HH - _cam) / HALL_ROT_Z;
+    var _rot_bot = _f * (HALL_ROT_Y0 - _cam) / HALL_ROT_Z;
+    ok("the far chamber tops out under the orrery",
+       _rot_top < _cy + _cr);
+    // **Its foot is under the horizon.** The hall's own floor runs out a few
+    // thousand units short of it, so anything that stopped *above* the
+    // vanishing point would leave a band of bare sky between the marble and
+    // the chamber -- a ruled line across the field, which is the defect the
+    // open roof was built to avoid rather than to introduce.
+    ok("...and its foot is below the vanishing point", _rot_bot < 0);
+    // Behind the orrery, past the last bay, inside the far plane: the three
+    // facts that let it be drawn as a backdrop and still sort correctly.
+    ok("...and it stands behind the orrery",
+       HALL_ROT_Z > HALL_ORRERY_Z);
+    ok("...past the last bay the hall draws",
+       HALL_ROT_Z > HALL_BAYS * HALL_BAY_Z);
+    ok("...and inside the far plane", HALL_ROT_Z < HALL_ZFAR);
+
     // **A banner is placed by its centre and has a width.** It hangs in front
     // of the wall, so how far out it may go is bounded by the cornice face
     // rather than by the wall -- moved outboard to hang off the new wall head

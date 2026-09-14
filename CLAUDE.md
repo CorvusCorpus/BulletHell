@@ -37,7 +37,7 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 |---|---|
 | `tools/build.py` | The GML compiles. Reports real diagnostics with line numbers. |
 | `tools/test.py` | The GML is *correct*: builds, runs with `-selftest`, grades the suites in `scripts/selftest` off stdout. |
-| `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, no bare `draw_sprite` inheriting the draw state, **the hedgerow still covering the horizon it hides**, and **the rings eating the player's shots before the enemies are offered them**. |
+| `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, no bare `draw_sprite` inheriting the draw state, **the hedgerow still covering the horizon it hides**, **the far chamber painted at the size it is hung at**, and **the rings eating the player's shots before the enemies are offered them**. |
 | `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Forty-one scenes; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
 
 **`shot.py` is not a nicety, and in this genre it is the most important of the
@@ -2850,6 +2850,15 @@ A constellation is **local**: a seed direction and the four brightest stars
 near it. Joined in index order instead, bright stars are scattered all over
 the dome and what gets drawn is a cat's cradle the width of the sky.
 
+**And the shafts of light went with the ceiling.** The hall used to have four
+soft blades of light falling through the coffers in every other bay, with a
+pool where each landed on the marble. They were right while there were coffers
+to fall through; with the roof off they were two columns of haze arriving out
+of nowhere, and what they actually did to the frame was grey the one part of
+it the roof had been opened to show. What lights the hall now is the orbs set
+into the wall and the braziers on the parapet, both of which are objects that
+are *there*.
+
 ### The grand orrery
 
 **The thing at the end of the hall, and the reason the roof came off.** A
@@ -2877,22 +2886,37 @@ outer limb **not turning at all** -- an armillary has a fixed meridian
 everything else is measured against, and something stationary in the middle of
 all that movement is what makes the movement legible.
 
-Three things about how it is built are worth keeping:
+**Gold is contrast, not hue, and the first limb was neither.** It was drawn as
+a pale ground with dark divisions cut into it -- arithmetically a graduated
+band, and at nine thousand units it averages to a flat mid-tone which the tint
+then turns into a flat mid-brown. Reported as reading like thin wood rather
+than ornate gold, which is exactly what an even texture in a warm hue is. Two
+things fixed it and only one of them is the colour:
 
-- **A ring has a square section rather than being a flat annulus**, because an
-  armillary's rings go edge-on: a flat one would vanish twice a turn and come
-  back, which reads as a bug. With a section it narrows to a bright line
-  instead, which is what a band of metal does.
-- **A body riding on a ring goes in the ring's own buffer**, at the ring's
-  radius in the ring's own plane, so the orbit is the same matrix and cannot
-  drift out of the ring it belongs to. It is in a *separate* buffer only when
-  it needs a different texture, which is the rule this file learnt when the
-  ceiling drew the floor's ankhs.
-- **The limb is graduated and a graduation has a pitch.** `hall_face` puts the
-  whole sprite on one quad, which for a ring of forty segments is forty copies
-  of a forty-eight-division band -- nineteen hundred marks around a circle
-  seven hundred pixels round, which is not a scale, it is grey.
-  `hall_face_u` is what lets the band repeat twice instead.
+- **The band has a section.** A dark shadowed edge, a body rising to a hot
+  specular line well off centre, a fall to a mid tone, and a second cooler
+  line where light bounces back up off whatever is underneath. That profile
+  across four pixels of screen is worth more than any amount of detail along
+  the band, because it is the thing that *changes as the ring turns*. The
+  divisions are cut into the body only and stop clear of the specular, so the
+  highlight runs unbroken down the whole limb -- a graduation that crosses it
+  breaks the one line doing the work.
+- **`HALL_ORRERY_DIM` went from 0.62 to 0.80**, which is the multiply that had
+  been turning (206, 170, 92) into (128, 105, 57). Gold is read off the
+  *distance* between its lit and its shaded faces, and a dim applied to both
+  ends of that closes it.
+
+**The armature is the half of it that is not the rings.** Six hoops sharing a
+middle are six hoops. A polar axis through them ending in a point at each end,
+with collars down it, lens-shaped glass bubbles hung off it and a long pointed
+plumb beneath, is an *instrument somebody mounted* -- and every one of those
+is silhouette rather than detail, which is what survives at three hundred
+pixels. The pillar below is longer than the finial above because the thing is
+hanging: what is over it is a cap and what is under it is a plumb. The bubbles
+are the one part that is not metal and they have to say so by being **cool and
+bright against the gold** rather than by being a different grey; drawn in
+`HALL_GLASS` -- which is the colour of an hourglass six hundred units from a
+lamp -- they came back as dull grey lozenges.
 
 **It is depth-tested and depth-written, unlike the sky.** A solid object drawn
 with the test off shows its own far side through its near one, which on six
@@ -2909,6 +2933,65 @@ its size is one matrix.
 than a taste. Driven hard enough to clip every channel it came back as a
 twenty-pixel white-hot blob -- which is what a bullet's core is, in a sky
 bullets cross.
+
+### The chamber at the end of the hall
+
+**The sky needed a floor.** With the roof off, the hall's own perspective ran
+out at the vanishing point and everything past it was stars -- so the nave did
+not read as a room open to the night, it read as a corridor trailing off into
+space. What was missing is what every real view of a horizon has: something
+the ground *becomes*.
+
+It is **one painted quad at a fixed depth**, and painted is the point. A
+second room in three dimensions at the end of an endless hall is a room the
+flight would have to either reach or visibly never reach, and both of those
+are worse than a backdrop -- which is what `bg_grove`'s moon is and what this
+is. It is drawn with the depth test off immediately after the sky, which is
+what puts it in front of the stars: a building occludes what is behind it.
+
+**Only the far wall is drawn, and that is not a saving.** The chamber's near
+rim is a third of the way closer than its centre, which puts it inside the
+bays the hall is already drawing -- so it would be behind the shelving whether
+it were painted or not. What is left is the half of a cylinder facing us,
+which is the half that reads as a room. Its galleries are a real projection
+rather than a curve somebody liked: a horizontal ring above the eye projects
+to `Y / (1 + rho cos t)`, so its far point is furthest away, subtends least,
+and sits **lowest** on the screen -- the arcs sag in the middle and rise at the
+ends. Drawn the other way round the chamber reads as a basket.
+
+**It is wide and short, because that is the shape of the hole it fills.** The
+band available is the vanishing point up to the orrery's skirt -- two hundred
+and sixty pixels of a 992-pixel field -- so the card is three times as wide as
+it is tall. The first one was drawn on a square-ish canvas and hung over the
+whole wedge: its galleries swept up past the orrery and read as a set of pale
+arcs across the sky rather than as a building under one. `test_hall_sky`
+asserts the top of it is under the orrery now, and that its foot is *below*
+the vanishing point -- the hall's floor runs out a few thousand units short of
+it, so a chamber stopping above the line would leave a band of bare sky
+between the marble and the building, which is the ruled line the open roof was
+built to avoid rather than to introduce.
+
+**And everything on it is drawn at the size it will be seen at.** Eight tiers
+with a one-pixel parapet and a row of one-pixel windows is, at the distance it
+is actually read from, a grey smear with stripes in it. Four tiers, a
+four-pixel parapet, windows at three, and one **large lit archway dead ahead**
+is what survives -- and the archway is the part that matters, because the
+wedge is narrowest at the vanishing point, so whatever is directly ahead and
+low down is the part the player actually gets. The arch is dark and what is
+inside it is the light: the first one filled its whole opening with a pale
+grey and read as a featureless dome, which is the brightest thing in the frame
+doing the least.
+
+**The painting computes its own perspective, so it has to know how wide it
+will be hung.** How much a gallery ring is foreshortened depends on how far
+above the eye it sits *in the finished frame*, which means
+`HALL_ROT_HW_SCREEN` in `tools/make_sanctum.py` and `HALL_ROT_HW` /
+`HALL_ROT_Z` in `constants` are the same fact twice.
+`check_rotunda_scale_agrees` does that division, because nothing else would
+notice them drifting apart: the card would still be a valid PNG at a valid
+size on a valid quad, and what it would draw is a round room whose rings curve
+by the wrong amount.
+
 
 ### The review card
 
@@ -3328,7 +3411,7 @@ once, because PIL's draw calls are hard-edged and a bevel drawn at 1x reads as
 | `tools/make_bg.py` | Stage one's three parallax layers |
 | `tools/make_grove.py` | Stage two's scenery: trunks, trees, ivy, hanging charms, ferns, the moon, the forest floor, the far treeline, the canopy, mist — **and `scripts/grove_table`** |
 | `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint |
-| `tools/make_sanctum.py` | Stage three's hall: the marble, the joinery, the statues and banners -- **and the sky over it**: stars in three magnitudes, nebulae, and the graduated limb the orrery's rings are made of |
+| `tools/make_sanctum.py` | Stage three's hall: the marble, the joinery, the statues and banners -- **the sky over it** (stars in three magnitudes, nebulae, the graduated limb the orrery's rings are made of) **and the chamber at the end of it**, which is one painting rather than a second room |
 | `tools/make_rings.py` | Mika's ring, **one sprite with its colour baked in** -- see the note under "Rings" |
 | `tools/make_mika.py` | Mika and his eye card, **cut out of the owner's own reference sheet**, plus his idle as a shareable GIF |
 | `tools/make_player.py` | Szuix, from the commissioned sheet; his aura, for the low-life warning; and his eye card, drawn from nothing |
@@ -4045,7 +4128,7 @@ plus attack practice, which drills any one of the twenty-six attacks across
 six casters on its own, the drafting table, which does the same for five
 attacks that have no boss yet, and the review card, which flies stage three's
 hall with nothing in it so the reveal can be watched rather than played for.
-524 assertions pass.
+529 assertions pass.
 
 Not done, in rough order of how much it is missed:
 
@@ -4079,6 +4162,13 @@ Not done, in rough order of how much it is missed:
   is the second — the wedge sits directly above where the boss stands, which
   is where the pattern is thickest. `HALL_STARS`, `HALL_CONST_A` and
   `HALL_ORRERY_HALO_A` are one number each.
+- **The chamber at the end of the hall is a painting and cannot be reached.**
+  It is `bg_grove`'s moon on the same terms -- a destination that stays at a
+  fixed distance for ever -- and whether five minutes of flying toward
+  something that never arrives reads as *distance* or as a cheat is a question
+  for somebody playing it. The honest answer if it reads as a cheat is to let
+  it grow very slowly over a stage, which is one line in `hall_draw_far` and a
+  number nobody has any feel for yet.
 - **There is no upper storey, and the reason is a constraint rather than a
   choice.** A second register of stacks set back far enough not to narrow the
   sky is a register entirely hidden behind the first, so above the bookcases

@@ -1648,37 +1648,6 @@ enum BossMove {
 #macro HALL_LAMP_EMISSIVE make_colour_rgb(96, 96, 96)
 
 // ---------------------------------------------------------------------------
-// The shafts
-//
-// **The light from overhead is the one thing in the hall that is drawn as
-// light rather than as a lit surface**, and it is what stops the nave reading
-// as a corridor with lamps down the sides. It is also completely free of the
-// fairness problem every other piece of foreground has: it is additive, so it
-// can only ever brighten what is behind it, and no arrangement of it can hide
-// a bullet.
-//
-// A shaft is four blades through one axis, not a cone -- see `shaft_blade` in
-// `tools/make_sanctum.py` for why light must not have a silhouette.
-// ---------------------------------------------------------------------------
-#macro HALL_SHAFT_X 336       // how far off the centre line a shaft falls
-#macro HALL_SHAFT_BLADES 4
-#macro HALL_SHAFT_TOP (HALL_CEIL_H + 120)
-#macro HALL_SHAFT_R0 132      // its width where it enters the hall
-#macro HALL_SHAFT_R1 250      // ...and where it reaches the floor
-#macro HALL_SHAFT_COL make_colour_rgb(116, 170, 255)
-#macro HALL_SHAFT_A 0.095
-// **Every other bay, not every bay.** One per bay is a colonnade of light and
-// the eye stops reading them as individual beams; spaced out, each one is an
-// event the camera passes through.
-#macro HALL_SHAFT_EVERY 2
-#macro HALL_POOL_R 340
-#macro HALL_POOL_A 0.30
-// Just clear of the marble. Coplanar with it, the pool and the floor fight
-// for the same depth and the result flickers a band at a time as the camera
-// moves -- which is z-fighting, and two units is the cheapest possible fix.
-#macro HALL_POOL_Y 8
-
-// ---------------------------------------------------------------------------
 // The open roof
 //
 // **The hall has no ceiling, and that is what stopped it reading as a
@@ -1836,6 +1805,45 @@ enum BossMove {
 #macro HALL_CONST_A 0.22
 
 // ---------------------------------------------------------------------------
+// The chamber at the end of the hall
+//
+// **The sky needed a floor.** With the roof off, the hall's perspective ran
+// out at the vanishing point and everything past it was stars -- so the nave
+// read as a corridor trailing off into space rather than as a room open to
+// the night. What was missing is what every real view of a horizon has:
+// something the ground *becomes*.
+//
+// It is one painted quad at a fixed depth. A second room in three dimensions
+// at the end of an endless hall is a room the flight would have to either
+// reach or visibly never reach, and both are worse than a backdrop -- which
+// is what `bg_grove`'s moon is and what this is.
+//
+// The half-width in *screen* pixels is shared with `HALL_ROT_HW_SCREEN` in
+// `tools/make_sanctum.py`, because the painting's own perspective is computed
+// from how far above the eye each gallery sits in the finished frame.
+// `test_hall_sky` checks the two agree.
+// ---------------------------------------------------------------------------
+#macro HALL_ROT_Z 12500
+#macro HALL_ROT_HW 5600
+// **Wide and short, because that is the shape of the hole it fills.** The
+// band available for it is the vanishing point up to the orrery's skirt --
+// 260 pixels of a 992-pixel field. Hung over the whole wedge instead, its
+// galleries swept up past the orrery and read as pale arcs across the sky
+// rather than as a building under one.
+#macro HALL_ROT_HH 1830
+// Its foot, in world y. Two hundred units under the hall's own floor, so the
+// thin band between where the marble runs out and the horizon is covered
+// rather than showing a seam -- the card's bottom dissolves there anyway.
+#macro HALL_ROT_Y0 -200
+#macro HALL_ROT_COL make_colour_rgb(124, 152, 232)
+// Under one on purpose: what shows through is the sky behind it, which is
+// aerial perspective done the cheapest possible way and the reason it sits
+// *in* the air rather than on top of it.
+#macro HALL_ROT_A 0.88
+#macro HALL_ROT_LIT make_colour_rgb(255, 206, 132)
+#macro HALL_ROT_LIT_A 0.82
+
+// ---------------------------------------------------------------------------
 // The grand orrery
 //
 // **It is this stage's moon**, in the sense `bg_grove` means one: a fixed
@@ -1857,8 +1865,8 @@ enum BossMove {
 // fogged orrery is a rectangle of fog colour. What distance actually does to
 // a bright thing is take its contrast away, which is a multiply, and this is
 // it.
-#macro HALL_ORRERY_DIM 0.62
-#macro HALL_ORRERY_GILT make_colour_rgb(206, 170, 92)
+#macro HALL_ORRERY_DIM 0.80
+#macro HALL_ORRERY_GILT make_colour_rgb(226, 184, 100)
 #macro HALL_ORRERY_CORE make_colour_rgb(150, 205, 255)
 #macro HALL_ORRERY_HALO_R 2900
 #macro HALL_ORRERY_HALO_A 0.16

@@ -86,6 +86,14 @@ NAVY      = (16, 17, 38)
 WALL_W, WALL_H = 512, 1024
 FLOOR_N = 512
 
+# **The chamber's half-width on screen, in design pixels, and it is shared
+# with `HALL_ROT_HW` in `scripts/constants`.** The painting's perspective is
+# computed from it -- how much a gallery ring is foreshortened depends on how
+# far above the eye it is *in the finished frame*, not on where it falls on
+# the canvas -- so a card drawn at one size and hung at another is a card
+# whose rings curve by the wrong amount. `test_hall_sky` checks the two agree.
+HALL_ROT_HW_SCREEN = 401.0
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -619,51 +627,269 @@ def nebula(seed, n=256):
     return im.resize((n, n), Image.LANCZOS)
 
 
-def zodiac_band(w=512, h=48):
+def zodiac_band(w=512, h=56):
     """The graduated band an armillary's rings are made of.
 
-    **An instrument is not a hoop.** The orrery hangs at nine thousand units
-    and is three hundred pixels across, which is easily enough to tell a
-    graduated brass ring from a smooth gold one -- and the difference is the
-    whole of whether it reads as something that was *made to measure
-    something* or as a decorative circle. Divisions at three depths (a long
-    mark at the quarter, a medium one at the twelfth, a hairline between) plus
-    a hairline rule down each edge, which is the profile of every astrolabe
-    limb ever cut.
+    **Gold is contrast, not hue.** The first version of this was a pale ground
+    with dark divisions cut into it -- arithmetically a limb, and at nine
+    thousand units it averages to a flat mid-tone which the tint then turns
+    into a flat mid-brown. Reported as reading like thin wood rather than
+    ornate gold, which is exactly what an even texture in a warm hue is.
 
-    Pale, so the gilt is the tint: see `pale_tile`.
+    What says metal is a *section*: a dark shadowed edge, a body rising to a
+    hot specular line well off centre, a fall to a mid tone, and a second,
+    cooler line where light bounces back up off whatever is underneath. That
+    profile across four pixels of screen is worth more than any amount of
+    detail along the band, because it is the thing that changes as the ring
+    turns.
+
+    The divisions are cut into the *body* only and stop short of the
+    specular, so the highlight runs unbroken down the whole limb. A graduation
+    that crosses the highlight breaks the one line that is doing the work.
     """
-    im, d = canvas(w, h, (232, 230, 226))
     W, H = w * SS, h * SS
+    # the cross-section, as a value ramp down the band's width
+    v = np.linspace(0, 1, H, dtype=np.float32)
+    prof = np.interp(v,
+                     [0.00, 0.05, 0.14, 0.26, 0.33, 0.46, 0.66, 0.82, 0.90,
+                      0.96, 1.00],
+                     [0.16, 0.30, 0.72, 0.97, 1.00, 0.74, 0.50, 0.34, 0.58,
+                      0.40, 0.14]).astype(np.float32)
+    base = np.repeat(prof[:, None], W, axis=1)
+    # a slow swell along the limb, so it is a cast object rather than an
+    # extrusion: metal is never the same brightness for five hundred pixels
+    x = np.linspace(0, 1, W, dtype=np.float32)
+    base = base * (0.90 + 0.10 * np.cos(x * math.pi * 6.0))[None, :]
+    rgb = np.dstack([base * 255, base * 251, base * 242])
+    im = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), "RGB")
+    d = ImageDraw.Draw(im, "RGBA")
     s = SS
-    # the two rules that bound the limb
-    d.rectangle([0, 0, W, 2 * s], fill=(255, 252, 244, 255))
-    d.rectangle([0, H - 2 * s, W, H], fill=(28, 22, 10, 255))
-    d.rectangle([0, H * 0.30, W, H * 0.32], fill=(40, 32, 14, 190))
-    n_min = 48
-    for i in range(n_min):
-        x = W * i / n_min
-        if i % 12 == 0:
-            d.rectangle([x, H * 0.32, x + 2.2 * s, H * 0.92],
-                        fill=(24, 18, 8, 255))
-        elif i % 4 == 0:
-            d.rectangle([x, H * 0.34, x + 1.6 * s, H * 0.72],
-                        fill=(36, 28, 12, 235))
+
+    # the divisions, engraved into the body and stopping clear of the light
+    n = 24
+    for i in range(n):
+        px = W * i / n
+        if i % 6 == 0:
+            d.rectangle([px, H * 0.47, px + 2.4 * s, H * 0.86],
+                        fill=(0, 0, 0, 205))
+            d.rectangle([px + 2.4 * s, H * 0.47, px + 3.4 * s, H * 0.86],
+                        fill=(255, 246, 226, 120))
+        elif i % 2 == 0:
+            d.rectangle([px, H * 0.49, px + 1.7 * s, H * 0.72],
+                        fill=(0, 0, 0, 165))
         else:
-            d.rectangle([x, H * 0.36, x + 1.0 * s, H * 0.54],
-                        fill=(52, 42, 20, 200))
-    # a mark in each quarter, so the limb is read rather than only counted
-    for i in range(4):
-        cx = W * (i + 0.5) / 4
-        cy = H * 0.16
-        rr = H * 0.10
-        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr],
-                  outline=(30, 24, 10, 230), width=max(1, int(1.4 * s)))
-        d.line([(cx - rr * 1.8, cy), (cx + rr * 1.8, cy)],
-               fill=(30, 24, 10, 190), width=max(1, int(1.1 * s)))
+            d.rectangle([px, H * 0.51, px + 1.2 * s, H * 0.63],
+                        fill=(0, 0, 0, 120))
+
+    # a bead-and-reel at the shadowed edge, which is the ornament the whole
+    # band was said to be missing: a rhythm of small round lights against the
+    # dark, read as turned moulding rather than as marks on a flat strip
+    for i in range(n * 2):
+        px = W * (i + 0.5) / (n * 2)
+        rr = H * 0.055
+        d.ellipse([px - rr, H * 0.90 - rr, px + rr, H * 0.90 + rr],
+                  fill=(238, 226, 196, 235))
+        d.ellipse([px - rr * 0.45, H * 0.90 - rr * 0.45,
+                   px + rr * 0.45, H * 0.90 + rr * 0.45],
+                  fill=(255, 252, 242, 255))
     out = grain(down(im, w, h), 2, 41).convert("RGBA")
     out.putalpha(255)
     return out
+
+
+# ---------------------------------------------------------------------------
+# The chamber at the end of the hall
+# ---------------------------------------------------------------------------
+def rotunda(w=1152, h=376):
+    """The great round room the corridor is flying towards, as one painting.
+
+    **The sky needed a floor.** With the roof off, the hall's own perspective
+    ran out at the vanishing point and everything past it was stars -- so the
+    nave did not read as a room open to the night, it read as a corridor
+    trailing off into space. What was missing is what every real view of a
+    horizon has: something the ground *becomes*.
+
+    It is painted rather than built, and that is the point of it. A second
+    room in three dimensions at the end of an endless hall is a room the
+    flight would have to either reach or visibly never reach; a backdrop at a
+    fixed depth is a *destination*, which is what `bg_grove`'s moon is and
+    what this is. It costs two quads.
+
+    **Only the far wall is drawn, and that is not a saving.** The chamber's
+    near rim is a third of the way closer than its centre, which puts it
+    inside the bays the hall is already drawing -- so it would be behind the
+    shelving whether it were painted or not. What is left is the half of a
+    cylinder facing us, which is the half that reads as a room.
+
+    **It is wide and short, because that is the shape of the hole it fills.**
+    The first version was drawn on a square-ish canvas and hung over the whole
+    wedge: its galleries swept up past the orrery and read as a set of pale
+    arcs across the sky rather than as a building under one. The band actually
+    available is from the vanishing point up to the orrery's skirt -- 260
+    pixels of a 992-pixel field -- so the card is three times as wide as it is
+    tall and every tier is inside that.
+
+    **The near arc of a ring above your eye is its *upper* half**, which is
+    the one piece of this easy to get backwards. A point on the near side of
+    the ring is closer, so its height above the eye subtends a larger angle --
+    it lands higher up the screen. Drawn the other way round the galleries
+    read as bowls rather than as rings seen from below.
+
+    **And it is dark.** Every value in here is under a tenth of white before
+    the tint touches it: this is a thing seen through twelve thousand units of
+    the same haze the far bays dissolve into, and the lamps are the only part
+    of it allowed to be a light.
+    """
+    im, dc = canvas(w, h, (0, 0, 0))
+    mk, dm = mask(w, h)
+    li, ld = canvas(w, h, (0, 0, 0))
+    d = Tee(dc, dm)
+    W, H = w * SS, h * SS
+    s = SS
+    cx = W * 0.5
+    # Where the hall's own horizon falls on the card -- see `HALL_ROT_Y0`.
+    horiz = H * 0.877
+    # Card pixels per design pixel, so the projection below is the real one
+    # rather than a curve somebody liked the look of.
+    sc = W / (2.0 * HALL_ROT_HW_SCREEN)
+    FOCAL = 894.8
+    RHO = 0.42             # the chamber's radius over its distance
+
+    def proj(t, ys):
+        """A point on the far half of a ring `ys` design-pixels above the
+        eye, at angle `t` degrees from dead ahead."""
+        k = 1.0 + RHO * math.cos(math.radians(t))
+        return (cx + FOCAL * RHO * math.sin(math.radians(t)) / k * sc,
+                horiz - ys / k * sc)
+
+    TH = [(-90 + 180.0 * i / 96) for i in range(97)]
+
+    # --- the floor, which is the whole reason this exists -----------------
+    # It runs from the chamber's far edge down off the bottom of the card, so
+    # there is ground under everything rather than sky.
+    floor = [proj(t, -6) for t in TH]
+    d.polygon(floor + [(W, H), (0, H)], fill=(16, 17, 22, 255))
+    for yy, val in ((-9, 24), (-14, 33), (-21, 44)):
+        d.line([proj(t, yy) for t in TH], fill=(val, val, val + 3, 255),
+               width=max(1, int(2.0 * s)), joint="curve")
+    for t in range(-84, 85, 7):
+        p = proj(t, -11)
+        rr = 5 * s
+        ld.ellipse([p[0] - rr * 3, p[1] - rr, p[0] + rr * 3, p[1] + rr],
+                   fill=(46, 38, 24, 255))
+
+    # --- the wall, in tiers of gallery ------------------------------------
+    # **Four tiers, not eight, and every mark on them is drawn at the size it
+    # will be seen at.** The wedge this shows through is about two hundred and
+    # eighty pixels wide where it is widest, so eight tiers put a parapet
+    # every twenty-nine pixels with a one-pixel line on it and a row of
+    # one-pixel windows under that -- which at the distance it is actually
+    # read from is a grey smear with stripes in it. What survives out here is
+    # big shapes and lights, so that is what it is made of.
+    TIERS = 4
+    ys = [8 + 60.0 * k for k in range(TIERS + 1)]
+    for k in range(TIERS):
+        pts = ([proj(t, ys[k]) for t in TH]
+               + [proj(t, ys[k + 1]) for t in reversed(TH)])
+        v = 13 + k * 2
+        d.polygon(pts, fill=(v, v, v + 5, 255))
+        # the parapet along its head, which is the one lit line on a tier
+        d.line([proj(t, ys[k + 1]) for t in TH],
+               fill=(104 - k * 9, 98 - k * 9, 82 - k * 7, 255),
+               width=max(1, int(4.0 * s)), joint="curve")
+        d.line([proj(t, ys[k + 1] - 5) for t in TH],
+               fill=(6, 6, 9, 255), width=max(1, int(2.4 * s)), joint="curve")
+
+        # the openings: a run of lit windows under each parapet
+        n = 21 - k * 2
+        for i in range(n):
+            t = -86 + 172.0 * (i + 0.5) / n
+            p0 = proj(t, ys[k + 1] - 26)
+            rw = (3.2 - k * 0.3) * s
+            val = int(190 - k * 18)
+            ld.ellipse([p0[0] - rw, p0[1] - rw * 1.7,
+                        p0[0] + rw, p0[1] + rw * 1.7],
+                       fill=(val, int(val * 0.80), int(val * 0.48), 255))
+
+    # the piers, standing the whole height so the wall has a structure
+    for i in range(13):
+        t = -86 + 172.0 * i / 12
+        a = proj(t, ys[0] - 6)
+        b = proj(t, ys[TIERS])
+        hw = 5.0 * s * (1.0 - 0.5 * abs(math.sin(math.radians(t))))
+        d.polygon([(a[0] - hw, a[1]), (a[0] + hw, a[1]),
+                   (b[0] + hw * 0.7, b[1]), (b[0] - hw * 0.7, b[1])],
+                  fill=(8, 8, 12, 255))
+
+    # --- the portal, dead ahead and low, which is the part that is seen ---
+    # The wedge is narrowest at the vanishing point, so whatever is directly
+    # ahead and low down is what the player actually gets. **The arch is dark
+    # and what is inside it is the light** -- the first one filled its whole
+    # opening with a pale grey and read as a featureless dome sitting on the
+    # floor, which is the brightest thing in the frame doing the least.
+    pw = FOCAL * RHO * math.sin(math.radians(9.5)) / (1 + RHO) * sc
+    pb = proj(0, -4)[1]
+    ph = pw * 2.5
+
+    def arch_at(half, top_y, rise):
+        pts = [(cx - half, pb), (cx - half, top_y + rise)]
+        for i in range(17):
+            a = math.pi * i / 16.0
+            pts.append((cx - math.cos(a) * half,
+                        top_y + rise - math.sin(a) * rise))
+        pts.append((cx + half, pb))
+        return pts
+
+    d.polygon(arch_at(pw * 1.55, pb - ph * 1.2, pw * 1.55),
+              fill=(9, 9, 13, 255))
+    # the lit opening, warm and falling off upward into the chamber's depth
+    for f, val in ((1.00, 58), (0.86, 96), (0.66, 140), (0.42, 176)):
+        ld.polygon(arch_at(pw * f, pb - ph * f, pw * f),
+                   fill=(val, int(val * 0.76), int(val * 0.42), 255))
+    # something standing in it, so the arch has a scale
+    d.polygon([(cx - pw * 0.16, pb), (cx + pw * 0.16, pb),
+               (cx + pw * 0.10, pb - ph * 0.55),
+               (cx - pw * 0.10, pb - ph * 0.55)], fill=(7, 7, 10, 255))
+    # its jambs, so it is cut into the wall rather than painted on it
+    for e in (-1, 1):
+        d.polygon([(cx + e * pw * 1.55, pb), (cx + e * pw * 1.86, pb),
+                   (cx + e * pw * 1.86, pb - ph * 1.1),
+                   (cx + e * pw * 1.55, pb - ph * 1.15)],
+                  fill=(52, 50, 44, 255))
+
+    # --- and the rim, with what stands on it ------------------------------
+    rim = [proj(t, ys[TIERS]) for t in TH]
+    d.line(rim, fill=(74, 70, 60, 255), width=max(1, int(3.2 * s)),
+           joint="curve")
+    for i in range(11):
+        t = -82 + 164.0 * i / 10
+        p = proj(t, ys[TIERS])
+        th = H * (0.052 + 0.034 * abs(math.cos(math.radians(t))))
+        hw = 7 * s
+        d.polygon([(p[0] - hw, p[1]), (p[0] + hw, p[1]),
+                   (p[0] + hw * 0.5, p[1] - th), (p[0] - hw * 0.5, p[1] - th)],
+                  fill=(11, 11, 16, 255))
+        d.polygon([(p[0] - hw * 0.5, p[1] - th), (p[0] + hw * 0.5, p[1] - th),
+                   (p[0], p[1] - th - hw * 1.8)], fill=(40, 36, 30, 255))
+        ld.ellipse([p[0] - 3.4 * s, p[1] - th - 3.4 * s,
+                    p[0] + 3.4 * s, p[1] - th + 3.4 * s],
+                   fill=(168, 140, 92, 255))
+
+    body = cut(im, mk, w, h)
+    # **The bottom dissolves.** The hall's own floor runs out a few thousand
+    # units short of this, so there is a thin band under the horizon where
+    # neither the marble nor the chamber is drawn -- and a hard edge across it
+    # is the ruled line the whole open roof was built to avoid.
+    a = np.asarray(body.split()[3]).astype(np.float32)
+    ramp = np.clip((np.arange(h)[:, None] - h * 0.90) / (h * 0.08), 0, 1)
+    body.putalpha(Image.fromarray(
+        np.clip(a * (1 - ramp), 0, 255).astype(np.uint8), "L"))
+
+    lit = down(li, w, h).convert("RGBA")
+    la = np.asarray(lit.convert("L")).astype(np.float32)
+    lit.putalpha(Image.fromarray(
+        np.clip(la * (1 - ramp), 0, 255).astype(np.uint8), "L"))
+    return body, lit
 
 
 # ---------------------------------------------------------------------------
@@ -1476,53 +1702,6 @@ def orb(n=192):
     return body, lit
 
 
-def shaft_blade(w=160, h=640):
-    """One blade of a light shaft.
-
-    **A shaft is built out of these rather than out of a cone**, and the
-    reason is the same one that took the billboards out: a cone is a surface,
-    and a surface has a silhouette. Light does not. Four blades through the
-    same axis, each soft at its own edges and each added to whatever is behind
-    it, sum to something with no outline anywhere -- brightest where the most
-    of them overlap, which is the middle, which is where a shaft *is*
-    brightest.
-
-    The gradient does two things at once. Down its length it falls away, so
-    the beam dies before it reaches the floor rather than ending in a line.
-    Across its width it is a raised cosine, which is what stops a blade seen
-    face-on from reading as a pane of glass.
-    """
-    xs = np.linspace(-1, 1, w * SS)
-    ys = np.linspace(0, 1, h * SS)
-    gx = np.cos(np.clip(xs, -1, 1) * math.pi * 0.5) ** 1.7
-    gy = (1.0 - ys) ** 1.5
-    # a slow ripple down the beam, so it reads as air rather than as glass
-    gy = gy * (0.82 + 0.18 * np.cos(ys * math.pi * 3.4))
-    a = np.clip(gy[:, None] * gx[None, :], 0, 1)
-
-    rgb = np.zeros((h * SS, w * SS, 3), np.float32)
-    # cooler at the top where it leaves the coffer, warmer as it picks up the
-    # lamps on the way down -- one more thing that says it is travelling
-    for i, (c0, c1) in enumerate(zip((188, 214, 255), (236, 226, 198))):
-        rgb[..., i] = c0 + (c1 - c0) * ys[:, None]
-    out = np.dstack([rgb, a * 255.0])
-    im = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), "RGBA")
-    return im.resize((w, h), Image.LANCZOS)
-
-
-def pool(n=256):
-    """Where a shaft lands. A soft ellipse with a brighter heart."""
-    g = A.grid(n * SS, n * SS)
-    r = np.sqrt(g[0] ** 2 + g[1] ** 2)
-    a = np.clip(1 - r, 0, 1) ** 2.6 * 0.82 + np.clip(1 - r * 2.4, 0, 1) ** 2 * 0.5
-    a = np.clip(a, 0, 1)
-    rgb = np.zeros((n * SS, n * SS, 3), np.float32)
-    rgb[..., 0], rgb[..., 1], rgb[..., 2] = 206, 222, 255
-    im = Image.fromarray(
-        np.clip(np.dstack([rgb, a * 255.0]), 0, 255).astype(np.uint8), "RGBA")
-    return im.resize((n, n), Image.LANCZOS)
-
-
 # ---------------------------------------------------------------------------
 def main():
     gm_new.folder("Sprites/sanctum")
@@ -1539,7 +1718,13 @@ def main():
     # unreferenced, because a sprite nothing draws is a sprite somebody has to
     # work out the status of later; the atlas it frees is the whole of the
     # cost of the starfield that replaced it.
-    for stale in ("spr_hall_wall", "spr_hall_wall_lit", "spr_hall_ceil"):
+    # **And the shafts of light with it.** They fell from the coffers, and
+    # with no coffers to fall from they were two columns of haze arriving out
+    # of nowhere -- greying the one part of the frame the roof was opened to
+    # show. What lights the hall is the orbs in the wall and the braziers on
+    # the parapet, both of which are objects that are there.
+    for stale in ("spr_hall_wall", "spr_hall_wall_lit", "spr_hall_ceil",
+                  "spr_hall_shaft", "spr_hall_pool"):
         gm_new.delete(stale, "sprites")
     bays = [wall_bay(k)[0] for k in range(3)]
     gm_new.sprite("spr_hall_floor", [floor_tile()], origin="topleft", folder=f)
@@ -1552,6 +1737,9 @@ def main():
                   origin="center", folder=f)
     gm_new.sprite("spr_hall_zodiac", [zodiac_band()], origin="topleft",
                   folder=f)
+    rot, rot_lit = rotunda()
+    gm_new.sprite("spr_hall_rot", [rot], origin="topleft", folder=f)
+    gm_new.sprite("spr_hall_rot_lit", [rot_lit], origin="topleft", folder=f)
 
     cat, cat_rim = bastet()
     gm_new.sprite("spr_hall_bastet", [cat], origin="topleft", folder=f)
@@ -1588,10 +1776,6 @@ def main():
     gm_new.sprite("spr_hall_orb", [ob], origin="topleft", folder=f)
     gm_new.sprite("spr_hall_orb_lit", [ob_lit], origin="topleft", folder=f)
 
-    gm_new.sprite("spr_hall_shaft", [shaft_blade()], origin="topleft",
-                  folder=f)
-    gm_new.sprite("spr_hall_pool", [pool()], origin="topleft", folder=f)
-
     lamp, lamp_em = orb_lamp()
     gm_new.sprite("spr_hall_lamp", [lamp], origin="topleft", folder=f)
     gm_new.sprite("spr_hall_lamp_lit", [lamp_em], origin="topleft", folder=f)
@@ -1611,10 +1795,12 @@ def main():
               bg=(6, 6, 10),
               labels=["star: faint", "star: middling", "star: bright",
                       "nebula", "nebula", "zodiac limb"])
-    A.preview([shaft_blade(), pool(), ob, ob_lit],
-              os.path.join(A.PREVIEW, "sanctum_light.png"), cols=4,
-              bg=(8, 8, 12),
-              labels=["shaft blade", "floor pool", "orb", "orb light"])
+    A.preview([rot, rot_lit], os.path.join(A.PREVIEW, "sanctum_rotunda.png"),
+              cols=1, bg=(10, 14, 34),
+              labels=["the far chamber", "...and its lamps"])
+    A.preview([ob, ob_lit],
+              os.path.join(A.PREVIEW, "sanctum_light.png"), cols=2,
+              bg=(8, 8, 12), labels=["orb", "orb light"])
     A.preview([stone_tile(), books_tile(701), books_tile(702),
                pilaster_face()],
               os.path.join(A.PREVIEW, "sanctum_mat.png"), cols=4,
