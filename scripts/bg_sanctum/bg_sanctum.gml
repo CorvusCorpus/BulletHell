@@ -286,7 +286,7 @@ function hall_build(_b) {
     }
 
     hall_build_props(_b);
-
+    hall_build_instruments(_b);
 
     hall_build_sky(_b);
     hall_build_orrery(_b);
@@ -319,6 +319,19 @@ function hall_wall_light(_x, _y, _z, _side, _kind) {
               / (1 + (_od / HALL_ORB_LIGHT_R) * (_od / HALL_ORB_LIGHT_R));
     }
     return min(_l, 1.35);
+}
+
+/// @desc No falloff at all.
+///
+///       **What a thing built at the origin has to take.** `hall_wall_light`
+///       is a function of a world position, and an instrument built about
+///       `(0, 0, 0)` and placed by a matrix has none at build time -- so the
+///       falloff it would be handed is the falloff at the middle of the nave
+///       of bay zero, which is not where any of them stand. They carry
+///       `HALL_PROP_LIGHT` instead, which is what every card in the hall
+///       already carries and for the same reason.
+function hall_no_light(_x, _y, _z, _side, _kind) {
+    return 1;
 }
 
 /// @desc Where the alcove's orb stands along x, on the side given.
@@ -1390,7 +1403,8 @@ function hall_taper(_vb, _cx, _cz, _y0, _y1, _w0, _d0, _w1, _d1,
 ///       this size, and the facets read as a cut stone rather than as a
 ///       failure to be round.
 function hall_sphere(_vb, _cx, _cy, _cz, _r, _nu, _nv,
-                     _spr, _frame, _side, _kind, _col = c_white, _face = 1) {
+                     _spr, _frame, _side, _kind, _col = c_white, _face = 1,
+                     _lightfn = hall_wall_light) {
     for (var _i = 0; _i < _nu; _i++) {
         for (var _j = 0; _j < _nv; _j++) {
             var _a0 = 360 * _i / _nu, _a1 = 360 * (_i + 1) / _nu;
@@ -1406,14 +1420,56 @@ function hall_sphere(_vb, _cx, _cy, _cz, _r, _nu, _nv,
             // the top of a sphere catches the light, the underside does not
             var _f = _face * (0.52 + 0.62 * (0.5 + 0.5 * dsin(_p1)));
             hall_tiles(_vb, _v[0], _v[1], _v[2], _v[3],
-                       _spr, _frame, 1, 1, _f, _side, _kind, _col);
+                       _spr, _frame, 1, 1, _f, _side, _kind, _col, _lightfn);
+        }
+    }
+}
+
+/// @desc A surface of revolution about the y axis, from a profile.
+///
+///       `_prof` is a list of `[radius, y]` read foot upward, and what comes
+///       back is a quad between each consecutive pair, `_nu` of them round.
+///       It is what `hall_taper` is for a box and `hall_sphere` is for a
+///       ball: the third solid this hall needs, and the one that lets a shape
+///       be *drawn* rather than assembled out of primitives that happen to be
+///       near each other.
+///
+///       **The shading carries the silhouette rather than a light
+///       direction.** A lathe is seen against the nave from every angle the
+///       camera reaches, so a fixed lamp would light one pedestal and leave
+///       its mirror flat. What reads instead is the facing: a segment turned
+///       edge-on to the camera is bright and one turned toward it is not,
+///       which is the cheapest possible fresnel and is exactly what says
+///       *glass* -- a bulb lit at its rim and dark through its middle is a
+///       bulb you can see through. `_rim` is how much of it there is, so a
+///       metal collar can ask for none and read as solid.
+function hall_lathe(_vb, _cx, _cy, _cz, _prof, _nu, _spr, _frame, _side,
+                    _kind, _col = c_white, _face = 1, _rim = 0.55,
+                    _lightfn = hall_wall_light) {
+    var _n = array_length(_prof) - 1;
+    for (var _j = 0; _j < _n; _j++) {
+        var _r0 = _prof[_j][0], _y0 = _prof[_j][1];
+        var _r1 = _prof[_j + 1][0], _y1 = _prof[_j + 1][1];
+        for (var _i = 0; _i < _nu; _i++) {
+            var _a0 = 360 * _i / _nu, _a1 = 360 * (_i + 1) / _nu;
+            var _v = [[_cx + _r1 * dcos(_a0), _cy + _y1, _cz + _r1 * dsin(_a0)],
+                      [_cx + _r1 * dcos(_a1), _cy + _y1, _cz + _r1 * dsin(_a1)],
+                      [_cx + _r0 * dcos(_a1), _cy + _y0, _cz + _r0 * dsin(_a1)],
+                      [_cx + _r0 * dcos(_a0), _cy + _y0, _cz + _r0 * dsin(_a0)]];
+            // the camera looks down -z, so a segment facing it is at
+            // sin(a) = -1 and one edge-on to it is at cos(a) = +-1
+            var _ca = dcos((_a0 + _a1) * 0.5);
+            var _f = _face * (1 - _rim + _rim * 1.9 * _ca * _ca);
+            hall_tiles(_vb, _v[0], _v[1], _v[2], _v[3],
+                       _spr, _frame, 1, 1, _f, _side, _kind, _col, _lightfn);
         }
     }
 }
 
 /// @desc A flat ring, tilted. What an armillary is three of.
 function hall_ring(_vb, _cx, _cy, _cz, _r, _w, _tilt, _yaw, _n,
-                   _spr, _frame, _side, _kind, _col = c_white, _face = 1) {
+                   _spr, _frame, _side, _kind, _col = c_white, _face = 1,
+                   _lightfn = hall_wall_light) {
     for (var _i = 0; _i < _n; _i++) {
         var _a0 = 360 * _i / _n, _a1 = 360 * (_i + 1) / _n;
         var _v = [];
@@ -1429,93 +1485,237 @@ function hall_ring(_vb, _cx, _cy, _cz, _r, _w, _tilt, _yaw, _n,
             _v[_k] = [_cx + _o[0], _cy + _o[1], _cz + _o[2]];
         }
         hall_tiles(_vb, _v[0], _v[1], _v[2], _v[3],
-                   _spr, _frame, 1, 1, _face, _side, _kind, _col);
+                   _spr, _frame, 1, 1, _face, _side, _kind, _col, _lightfn);
+    }
+}
+
+/// @desc One point on the swept Bastet, in world space.
+///
+///       `_v` is the height down her own card and `_a` is the angle round
+///       the cross-section at that height, so the pair of them parameterise
+///       the whole surface -- which is what lets the normals come off finite
+///       differences rather than off a derivation nobody can check.
+///
+///       **The mirror is one flip, and it goes on the world position.** The
+///       cross-section and the texture are both read in the *sprite's* own
+///       coordinates, and only where the point lands in the hall changes --
+///       which is the whole of what makes one drawing serve both walls.
+///       Flipping the texture as well is the mistake that is easy to make
+///       and hard to see: two mirrors cancel, so the geometry comes out
+///       reversed with the picture the right way round on it, and what that
+///       draws is a cat with her tail painted on her face. It shipped for
+///       one screenshot and read as a featureless lump, because the widest
+///       part of her is the haunch and the haunch then wore the head.
+function hall_bastet_point(_v, _a, _x, _y0, _h, _z, _w, _flip) {
+    var _vc = clamp(_v, 0, 1);
+    var _c = bastet_at(_vc);
+    var _u = _c[0] + _c[1] * dcos(_a);
+    var _wu = _flip ? 1 - _u : _u;
+    return [_x + (_wu - 0.5) * _w, _y0 + (1 - _vc) * _h,
+            _z + _c[2] * _w * dsin(_a), _u, _vc];
+}
+
+/// @desc One vertex of the sweep: where it is, what of the sprite is on it,
+///       and how the lamp finds it.
+///
+///       **The texture is projected along z**, which is to say `u` is the
+///       point's own position across her card. So the view down the hall is
+///       the sprite exactly, pixel for pixel -- the whole reason the solid
+///       could replace the card without the phase-B picture changing -- and
+///       every other angle is that same drawing shrink-wrapped onto the
+///       form. The sides of the head get the head's own pixels, the collar's
+///       gold bands wrap the neck, and nothing had to be painted twice.
+///
+///       **The alpha test is doing more work here than anywhere else in the
+///       hall.** A cross-section spans her *whole* silhouette at that height,
+///       so between the two ear tips it spans the notch as well -- and what
+///       cuts that back out is `HALL_ALPHA_REF` discarding the texels where
+///       the sprite is transparent. The sweep is a block; the drawing is the
+///       stencil.
+function hall_bastet_vertex(_vb, _v, _a, _x, _y0, _h, _z, _w, _flip, _spr,
+                            _l) {
+    var _p = hall_bastet_point(_v, _a, _x, _y0, _h, _z, _w, _flip);
+
+    // the surface normal, as the cross product of the two tangents. Central
+    // differences, because a one-sided one at the ends of the sweep reads a
+    // height that is off the card.
+    var _e = 0.008;
+    var _pv0 = hall_bastet_point(_v - _e, _a, _x, _y0, _h, _z, _w, _flip);
+    var _pv1 = hall_bastet_point(_v + _e, _a, _x, _y0, _h, _z, _w, _flip);
+    var _pa0 = hall_bastet_point(_v, _a - 5, _x, _y0, _h, _z, _w, _flip);
+    var _pa1 = hall_bastet_point(_v, _a + 5, _x, _y0, _h, _z, _w, _flip);
+    var _tv = [_pv1[0] - _pv0[0], _pv1[1] - _pv0[1], _pv1[2] - _pv0[2]];
+    var _ta = [_pa1[0] - _pa0[0], _pa1[1] - _pa0[1], _pa1[2] - _pa0[2]];
+    var _nx = _ta[1] * _tv[2] - _ta[2] * _tv[1];
+    var _ny = _ta[2] * _tv[0] - _ta[0] * _tv[2];
+    var _nz = _ta[0] * _tv[1] - _ta[1] * _tv[0];
+    var _len = sqrt(_nx * _nx + _ny * _ny + _nz * _nz);
+    if (_len > 0.00001) {
+        _nx /= _len; _ny /= _len; _nz /= _len;
+    } else {
+        _nx = 0; _ny = 0; _nz = -1;
+    }
+    // **Turned outward by construction rather than by trusting the winding.**
+    // The cross product's sign depends on which way round the cross-section
+    // is walked and on which way the height runs, and both of those are
+    // choices somebody can change; whether a normal points away from the axis
+    // is a fact about the surface.
+    if (_nx * (_p[0] - _x) + _nz * (_p[2] - _z) < 0) {
+        _nx = -_nx; _ny = -_ny; _nz = -_nz;
+    }
+
+    // **The face looking back down the hall keeps exactly `_l`.** That is
+    // what makes this a change of geometry rather than a change of picture:
+    // in phase B the visible surface is the near one, its normal is -z, and
+    // both terms below are zero there. What the terms buy is phase A, where
+    // the tops of the head, the back and the haunch turn up into the light
+    // and the card had nothing to turn.
+    var _f = _l * (1 + HALL_STATUE_TOP * max(0, _ny)
+                   - HALL_STATUE_AWAY * max(0, _nz));
+
+    vertex_position_3d(_vb, _p[0], _p[1], _p[2]);
+    vertex_colour(_vb, hall_shade(c_white, _f), 1);
+    var _q = hall_uv(_spr, 0, _p[3], _p[4]);
+    vertex_texcoord(_vb, _q[0], _q[1]);
+}
+
+/// @desc The Bastet as a solid: her own profile swept into three dimensions.
+///
+///       **A card is a card from above, whatever is painted on it.** She was
+///       one upright quad, which is right looking down the hall and wrong
+///       everywhere else -- phase A is nine hundred units up aimed at the
+///       marble, and from there the figure was a sheet of paper leaning back
+///       over a plinth that is plainly a box. Reported as exactly that.
+///
+///       The cross-section comes from `scripts/sanctum_table`, which is
+///       **measured off the shipped sprite's alpha** rather than restated
+///       here: a solid whose outline disagrees with the drawing on it is a
+///       figure with two silhouettes, and the only construction where those
+///       cannot drift is reading one off the other. See `grove_table`, which
+///       makes the same argument about where a branch is.
+function hall_bastet_sweep(_vb, _spr, _x, _y0, _h, _z, _flip, _l) {
+    var _w = _h * sprite_get_width(_spr) / sprite_get_height(_spr);
+    var _t = global.bastet_slice;
+    var _n = array_length(_t);
+    var _s = HALL_STATUE_STEPS;
+    for (var _i = 0; _i < _n - 1; _i++) {
+        var _v0 = _t[_i][0];
+        var _v1 = _t[_i + 1][0];
+        for (var _j = 0; _j < _s; _j++) {
+            var _a0 = 360 * _j / _s;
+            var _a1 = 360 * (_j + 1) / _s;
+            var _c = [[_v0, _a0], [_v0, _a1], [_v1, _a1],
+                      [_v0, _a0], [_v1, _a1], [_v1, _a0]];
+            for (var _k = 0; _k < 6; _k++) {
+                hall_bastet_vertex(_vb, _c[_k][0], _c[_k][1],
+                                   _x, _y0, _h, _z, _w, _flip, _spr, _l);
+            }
+        }
     }
 }
 
 /// @desc A seated Bastet: the drawn figure, on a built plinth.
 ///
-///       **The plinth is geometry and the cat is not, and that division is
-///       deliberate.** A plinth is a tapered box with a moulded cap -- a box
-///       is genuinely what it is, and building it fixes the thing that looked
-///       worst from overhead. A *cat* is not a box, and four passes of
-///       stacked tapers proved it: the silhouette went from an obelisk to a
-///       rounded monolith and never once to an animal, because the forms that
-///       make a seated cat legible at this size are a haunch and a shoulder,
-///       and a taper cannot do either.
+///       **The plinth is a box and the cat is a sweep, and neither is a
+///       card.** A plinth is a tapered box with a moulded cap, because a box
+///       is genuinely what it is. A *cat* is not, and four passes of stacked
+///       tapers proved it: the silhouette went from an obelisk to a rounded
+///       monolith and never once to an animal, because the forms that make a
+///       seated cat legible at this size are a haunch and a shoulder, and a
+///       taper cannot do either. What does both is her own drawn profile
+///       revolved -- see `hall_bastet_sweep`, which is where the geometry and
+///       the argument for it are.
 ///
-///       So the figure is `spr_hall_bastet`, which is drawn, detailed, and
-///       already right. It is a **fixed** quad, not a billboard: it faces
-///       back down the hall and stays there, so it takes the perspective
-///       exactly as the walls do and nothing silently re-aims as the camera
-///       moves. What is given up is that from directly overhead, in phase A,
-///       it is edge-on -- and what is seen there instead is the plinth's own
-///       top, which is real.
+///       **The two of them face each other across the nave.** A surface in
+///       the plane `z = const` shows whatever faces across the hall, so the
+///       cat painted on the old card was frontal and read as a mask with two
+///       lit eyes -- reported as cartoonish, and as billboarded, which is
+///       what a flat thing aimed at you looks like whether or not it tracks.
+///       The sprite is a profile now and the sweep mirrors it on the far
+///       wall, so a statue on the left looks right and one on the right looks
+///       left: an avenue rather than a row of faces. `_s` is the wall, so
+///       `_s > 0` is the flip and there is nothing to keep in step.
+///
+///       **The rim is drawn and it used to be generated and dropped.**
+///       `spr_hall_bastet_rim` has always been built beside the figure --
+///       the body-and-the-light-on-it contract every solid in the grove
+///       keeps -- and nothing ever submitted it. A black statue against
+///       black shelving with no lit edge is a hole in the picture, which is
+///       the rule that split was invented for.
+///
+///       **And the sprite is the figure alone, which it was not.** It carried
+///       a plinth of its own in its bottom third -- drawn flat, on a card --
+///       and this function stood that card on a tapered box. So the cat sat
+///       on a painted slab and the painted slab stood on the masonry, which
+///       from the nave is a billboard plinth hovering over a built one: the
+///       very defect the box was added to fix, surviving underneath the fix.
+///       `bastet` in `tools/make_sanctum.py` crops to the figure now --
+///       barring the shallow oval base every one of these is carved with --
+///       and `HALL_STATUE_BASE` carries the pedestal.
 function hall_bastet(_o, _s, _z, _kind) {
     var _x = _s * HALL_STATUE_X;
     var _pl = spr_hall_plinth;
     var _pa = spr_hall_pale;
     var _b = HALL_STATUE_BASE;
 
-    hall_taper(_o.plinth, _x, _z, 0, _b - 16, 74, 68, 66, 60,
+    // a die, a moulded cap and a plinth block at the foot -- the cap is what
+    // the figure stands on and the fillets are what stop each stage of it
+    // reading as one more length of the same box
+    hall_taper(_o.plinth, _x, _z, 14, _b - 22, 74, 68, 65, 59,
                _pl, 0, _s, _kind, c_white, 1.0);
-    hall_taper(_o.plinth, _x, _z, _b - 16, _b, 78, 72, 74, 68,
+    hall_taper(_o.plinth, _x, _z, _b - 22, _b, 79, 73, 75, 69,
                _pl, 0, _s, _kind, c_white, 1.15);
-    hall_taper(_o.gilt, _x, _z, _b - 20, _b - 13, 80, 74, 80, 74,
+    hall_taper(_o.plinth, _x, _z, 0, 14, 82, 76, 79, 73,
+               _pl, 0, _s, _kind, c_white, 0.92);
+    hall_taper(_o.gilt, _x, _z, _b - 26, _b - 19, 81, 75, 81, 75,
                _pa, 0, _s, _kind, HALL_GILT, 1.40);
-    hall_taper(_o.gilt, _x, _z, 8, 15, 78, 72, 78, 72,
+    hall_taper(_o.gilt, _x, _z, 14, 21, 80, 74, 80, 74,
                _pa, 0, _s, _kind, HALL_GILT, 1.10);
 
-    hall_face_z(_o.statue, spr_hall_bastet, 0, _x, _b, _z,
-                HALL_STATUE_H, HALL_PROP_LIGHT);
+    var _mirror = (_s > 0);
+    hall_bastet_sweep(_o.statue, spr_hall_bastet, _x, _b, HALL_STATUE_H, _z,
+                      _mirror, HALL_PROP_LIGHT);
+    hall_bastet_sweep(_o.statue_rim, spr_hall_bastet_rim, _x, _b,
+                      HALL_STATUE_H, _z, _mirror, HALL_STATUE_RIM);
 }
 
-/// @desc A reading desk, with an hourglass or an armillary standing on it.
-function hall_desk(_o, _s, _z, _kind, _which) {
+/// @desc The pedestal an instrument stands over. The instrument is not built
+///       into it -- see `hall_build_instruments`.
+///
+///       **Its shaft was drawn against somebody else's page, and that is what
+///       came and went.** The shaft is textured `spr_hall_deskface` and went
+///       into `_o.plinth`, which `hall_draw_props` submits with
+///       `spr_hall_plinth`; the cap is textured `spr_hall_pale` and went into
+///       `_o.stone`, which is submitted with `spr_hall_stone`. Both break the
+///       rule at the head of `hall_build_case` -- one buffer per texture --
+///       and both were *right by luck*, because what those coordinates index
+///       is whatever the packer happened to leave at that spot on the page
+///       the submit bound.
+///
+///       It was reported as the pedestals sometimes coming back as white
+///       paper, and "sometimes" is the whole diagnosis: adding a sprite to
+///       the hall's folder repacks the atlas, and a repack that separates two
+///       sprites turns a pedestal into a slice of whatever is now at those
+///       coordinates -- here a blank corner, which is why it went *white*
+///       rather than going wrong in some way that looked like art. The
+///       banner's two frames had already done this once; this is the same
+///       fault between two sprites rather than between two frames of one, and
+///       `check_hall_buffer_textures` now refuses both shapes.
+///
+///       Nothing about how it looks changed with the fix. The cap keeps
+///       `spr_hall_pale` and `HALL_MASONRY`, because that is what the frames
+///       where the packer got it right were already showing.
+function hall_desk(_o, _s, _z, _kind) {
     var _x = _s * HALL_DESK_X;
     var _pa = spr_hall_pale;
-    var _st = _pa;
     var _t = HALL_DESK_TOP;
 
-    hall_taper(_o.plinth, _x, _z, 0, _t - 12, 52, 74, 44, 64,
+    hall_taper(_o.deskface, _x, _z, 0, _t - 12, 52, 74, 44, 64,
                spr_hall_deskface, 0, _s, _kind, c_white, 1.0);
-    hall_taper(_o.stone, _x, _z, _t - 12, _t, 60, 82, 60, 82,
-               _st, 0, _s, _kind, HALL_MASONRY, 1.1);
+    hall_taper(_o.gilt, _x, _z, _t - 12, _t, 60, 82, 60, 82,
+               _pa, 0, _s, _kind, HALL_MASONRY, 1.1);
     hall_taper(_o.gilt, _x, _z, _t - 15, _t - 9, 62, 84, 62, 84,
                _pa, 0, _s, _kind, HALL_GILT, 1.30);
-
-    if (_which == 0) {
-        // an hourglass: two cones meeting at the waist, in a gilt frame
-        var _g = 74;
-        hall_taper(_o.gilt, _x, _z, _t, _t + _g * 0.5, 26, 26, 4, 4,
-                   _pa, 0, _s, _kind, HALL_GLASS, 1.2);
-        hall_taper(_o.gilt, _x, _z, _t + _g, _t + _g * 0.5, 26, 26, 4, 4,
-                   _pa, 0, _s, _kind, HALL_GLASS, 1.0);
-        for (var _c = 0; _c <= 1; _c++) {
-            var _yy = _t + _c * _g;
-            hall_taper(_o.gilt, _x, _z, _yy - 5, _yy + 5, 30, 30, 30, 30,
-                       _pa, 0, _s, _kind, HALL_GILT, 1.30);
-        }
-        for (var _px = -1; _px <= 1; _px += 2) {
-            for (var _pz = -1; _pz <= 1; _pz += 2) {
-                hall_taper(_o.gilt, _x + _px * 26, _z + _pz * 26, _t, _t + _g,
-                           4, 4, 4, 4, _pa, 0, _s, _kind, HALL_GILT, 1.15);
-            }
-        }
-    } else {
-        // an armillary: three real rings on a stem, and a cold heart
-        var _cy = _t + 78;
-        hall_taper(_o.gilt, _x, _z, _t, _t + 30, 6, 6, 5, 5,
-                   _pa, 0, _s, _kind, HALL_GILT, 1.2);
-        hall_ring(_o.gilt, _x, _cy, _z, 46, 3.5, 0, 0, 18, _pa, 0, _s, _kind,
-                  HALL_GILT, 1.25);
-        hall_ring(_o.gilt, _x, _cy, _z, 46, 3.5, 90, 0, 18, _pa, 0, _s, _kind,
-                  HALL_GILT, 1.10);
-        hall_ring(_o.gilt, _x, _cy, _z, 46, 3.0, 62, 54, 18, _pa, 0, _s, _kind,
-                  HALL_GILT, 0.95);
-        hall_sphere(_o.glow, _x, _cy, _z, 11, 8, 5, _pa, 0, _s, _kind,
-                    HALL_ORB_COL, 0.85);
-    }
 }
 
 // **The standing lamps are gone, and so are the shafts of light.** The lamps
@@ -1593,9 +1793,20 @@ function hall_build_prop_set(_v) {
         gilt: vertex_create_buffer(),
         glow: vertex_create_buffer(),
         plinth: vertex_create_buffer(),
+        deskface: vertex_create_buffer(),
         statue: vertex_create_buffer(),
+        statue_rim: vertex_create_buffer(),
     };
-    var _names = ["stone", "gilt", "glow", "plinth", "statue"];
+    // **`deskface` is a slot rather than a share of `plinth`**, and the whole
+    // of why is that the two are different sprites. See `hall_desk`: the
+    // pedestal's shaft rode in `plinth`, which is submitted with
+    // `spr_hall_plinth`, so what it actually drew was whatever the packer had
+    // left at the shaft's coordinates on that page -- a blank corner, most
+    // repacks, which is why it was reported as white paper.
+    // **`statue_rim` is a slot of its own for `deskface`'s reason**: it is
+    // a different sprite, so it has to be a different submit.
+    var _names = ["stone", "gilt", "glow", "plinth", "deskface", "statue",
+                  "statue_rim"];
     for (var _i = 0; _i < array_length(_names); _i++) {
         vertex_begin(_o[$ _names[_i]], _f);
     }
@@ -1612,8 +1823,7 @@ function hall_build_prop_set(_v) {
     // against, so the one thing it must not do is claim to be the alcove --
     // that would add the orb's light to a bay with no orb in it.
     if (_pedestal) {
-        var _dside = (_v == 3) ? 1 : -1;
-        hall_desk(_o, _dside, HALL_BAY_Z * 0.5, 0, (_v == 3) ? 1 : 0);
+        hall_desk(_o, hall_inst_side(_v), HALL_BAY_Z * 0.5, 0);
     }
 
     for (var _s = -1; _s <= 1; _s += 2) {
@@ -1640,6 +1850,286 @@ function hall_build_prop_set(_v) {
     }
     _o.banner = hall_frames_end(_o.banner);
     return _o;
+}
+
+// ---------------------------------------------------------------------------
+// The instruments
+//
+// **Everything else in the hall is frozen into a bay's buffers and drawn by
+// one translation, which is the same as saying it can never do anything.**
+// That is right for masonry, and it was the whole of why the armillary on the
+// pedestal stood dead still in a hall whose centrepiece is an armillary
+// turning -- a model of the orrery that does not do the one thing the orrery
+// is for.
+//
+// So an instrument is built **at the origin** and drawn under a matrix of its
+// own, which is `hall_draw_orrery`'s construction at a five-hundredth of the
+// size: the rings take their own rates and the pair of them rise and fall on
+// a slow bob. Being built about the origin is also why every piece of them
+// takes `hall_no_light` -- there is no world position at build time for a
+// falloff to be measured from.
+//
+// **Two instruments, one texture.** Every piece of both is `spr_hall_pale`
+// with its colour in the tint, so each buffer is one submit and none of them
+// can repeat the fault `hall_desk`'s shaft spent this long carrying.
+// ---------------------------------------------------------------------------
+
+/// @desc The hourglass's outline, foot to head, as `[radius, y]` about its
+///       own middle.
+///
+///       **A table rather than a formula, because a bulb's belly is not any
+///       curve with a name.** What it replaced was two square tapers meeting
+///       at a point -- four flat facets a side, which at this size is origami
+///       and was reported as such. The waist is the one point both halves
+///       share and the upper half is the lower one read backwards, so the two
+///       bulbs cannot drift apart.
+function hall_glass_profile() {
+    var _t = [[0.60, 0.000], [0.90, 0.052], [1.00, 0.132], [0.98, 0.222],
+              [0.85, 0.312], [0.62, 0.398], [0.32, 0.458], [0.14, 0.488]];
+    var _n = array_length(_t);
+    var _h = HALL_GLASS_H;
+    var _p = [];
+    for (var _i = 0; _i < _n; _i++) {
+        _p[_i] = [_t[_i][0] * HALL_GLASS_R, _t[_i][1] * _h - _h * 0.5];
+    }
+    _p[_n] = [HALL_GLASS_NECK, 0];
+    for (var _i = 0; _i < _n; _i++) {
+        var _s = _t[_n - 1 - _i];
+        _p[_n + 1 + _i] = [_s[0] * HALL_GLASS_R, _h * 0.5 - _s[1] * _h];
+    }
+    return _p;
+}
+
+/// @desc The glass, as a shell.
+///
+///       **Additive, and drawn in the light pass**, which is what lets the
+///       sand inside it be seen at all: the solid pass writes depth, so a
+///       bulb drawn there is a bulb with its own contents hidden behind it.
+///       It is also simply what glass is -- `hall_lathe`'s rim term lights
+///       the edges and leaves the middle dark, which is a bulb you can see
+///       through rather than a lozenge of pale plastic.
+function hall_fill_glass(_vb) {
+    hall_lathe(_vb, 0, 0, 0, hall_glass_profile(), HALL_GLASS_SEG,
+               spr_hall_pale, 0, 1, 0, HALL_GLASS, HALL_PROP_LIGHT * 0.30,
+               0.80, hall_no_light);
+}
+
+/// @desc The gilt it is mounted in: a plate at each end and three posts.
+///
+///       **Three posts rather than four.** Four at the corners of a square is
+///       what the boxed version had, and from the nave two of them line up
+///       behind the other two -- so what is actually seen is a pair of
+///       uprights with a shape between them. Three never present fewer than
+///       two edges at any angle the camera reaches, which is the same
+///       argument the armillary's tilts are picked on.
+function hall_fill_glass_frame(_vb) {
+    var _h = HALL_GLASS_H * 0.5;
+    var _r = HALL_GLASS_R * 1.18;
+    var _c = HALL_PROP_LIGHT * 1.30;
+    for (var _e = -1; _e <= 1; _e += 2) {
+        var _y0 = _e * _h;
+        var _y1 = _e * (_h + 7);
+        hall_lathe(_vb, 0, 0, 0,
+                   [[0, _y0], [_r, _y0], [_r * 0.96, _y1], [0, _y1]],
+                   HALL_GLASS_SEG, spr_hall_pale, 0, 1, 0, HALL_GILT, _c,
+                   0.30, hall_no_light);
+    }
+    for (var _i = 0; _i < 3; _i++) {
+        var _a = 90 + 120 * _i;
+        hall_lathe(_vb, dcos(_a) * _r * 0.90, 0, dsin(_a) * _r * 0.90,
+                   [[0, -_h - 5], [3.1, -_h - 2], [3.1, _h + 2], [0, _h + 5]],
+                   7, spr_hall_pale, 0, 1, 0, HALL_GILT, _c * 1.05, 0.25,
+                   hall_no_light);
+    }
+}
+
+/// @desc What is in it: a heap below, a body above, and the thread between.
+///
+///       **The level does not change, and that is a decision rather than a
+///       shortcut.** A draining glass has a state and a state has to reset,
+///       which on a prop the player flies past for four minutes is a pop at a
+///       moment nobody chose. What is drawn instead is an hourglass that has
+///       been running for ever and is not going to stop, which in this hall
+///       is the more honest object anyway.
+function hall_fill_sand(_vb) {
+    var _p = hall_glass_profile();
+    var _h = HALL_GLASS_H;
+    var _c = HALL_PROP_LIGHT * 1.00;
+    var _sy = -_h * 0.5 + _h * 0.5 * HALL_SAND_FILL;
+
+    // the heap: the glass's own contour up to the level it is full to, and
+    // then a cone, because sand arriving on a point makes one
+    var _heap = [];
+    var _n = 0;
+    for (var _i = 0; _i < array_length(_p); _i++) {
+        if (_p[_i][1] > _sy) break;
+        _heap[_n++] = [_p[_i][0] * 0.90, _p[_i][1] + 1.5];
+    }
+    var _hr = _heap[_n - 1][0];
+    _heap[_n++] = [_hr * 0.66, _sy + _h * 0.055];
+    _heap[_n++] = [0, _sy + _h * 0.105];
+    hall_lathe(_vb, 0, 0, 0, _heap, HALL_GLASS_SEG, spr_hall_pale, 0, 1, 0,
+               HALL_SAND, _c, 0.18, hall_no_light);
+
+    // the body above it, resting on the neck, with its surface dished --
+    // which is what a body of sand draining through a hole looks like and is
+    // the cheapest thing that says it is *going* somewhere
+    var _uy = _h * HALL_SAND_HEAD;
+    var _body = [[HALL_GLASS_NECK * 0.85, 1.0]];
+    var _m = 1;
+    for (var _i = 0; _i < array_length(_p); _i++) {
+        if (_p[_i][1] <= 1.0 || _p[_i][1] > _uy) continue;
+        _body[_m++] = [_p[_i][0] * 0.90, _p[_i][1]];
+    }
+    var _br = _body[_m - 1][0];
+    _body[_m++] = [_br * 0.70, _uy - _h * 0.030];
+    _body[_m++] = [0, _uy - _h * 0.060];
+    hall_lathe(_vb, 0, 0, 0, _body, HALL_GLASS_SEG, spr_hall_pale, 0, 1, 0,
+               HALL_SAND, _c * 0.92, 0.18, hall_no_light);
+
+    // and the thread between them
+    hall_lathe(_vb, 0, 0, 0, [[1.5, _sy + _h * 0.10], [1.1, 0]], 6,
+               spr_hall_pale, 0, 1, 0, HALL_SAND, _c * 1.25, 0.10,
+               hall_no_light);
+}
+
+/// @desc The armillary's spindle: a rod through the rings, pointed at both
+///       ends, with a collar either side of the heart. It is the orrery's
+///       polar axis and it is here for the reason that one is -- something
+///       *not* turning in the middle of all that turning is what makes the
+///       turning legible.
+function hall_fill_arm_axis(_vb) {
+    var _h = HALL_ARM_R * 1.34;
+    var _c = HALL_PROP_LIGHT * 1.25;
+    hall_lathe(_vb, 0, 0, 0,
+               [[0, -_h], [2.2, -_h * 0.86], [2.2, -_h * 0.60],
+                [4.0, -_h * 0.54], [2.2, -_h * 0.48], [2.2, _h * 0.48],
+                [4.0, _h * 0.54], [2.2, _h * 0.60], [2.2, _h * 0.86],
+                [0, _h]],
+               8, spr_hall_pale, 0, 1, 0, HALL_GILT, _c, 0.28, hall_no_light);
+}
+
+/// @desc One of its rings, with its tilt and its standing yaw baked in.
+function hall_fill_arm_ring(_vb, _tilt, _yaw, _w, _face) {
+    hall_ring(_vb, 0, 0, 0, HALL_ARM_R, _w, _tilt, _yaw, 20,
+              spr_hall_pale, 0, 1, 0, HALL_GILT,
+              HALL_PROP_LIGHT * _face, hall_no_light);
+}
+
+/// @desc Build both, once.
+function hall_build_instruments(_b) {
+    var _f = hall_format();
+    _b.inst = {
+        glass: hall_prop_buffer(_f, hall_fill_glass),
+        frame: hall_prop_buffer(_f, hall_fill_glass_frame),
+        sand:  hall_prop_buffer(_f, hall_fill_sand),
+        axis:  hall_prop_buffer(_f, hall_fill_arm_axis),
+        // **Driven at 1.15 it came back a white-hot bead**, which is the
+        // finding `hall_fill_orrery_core` already carries one landmark up:
+        // additive, and a sphere's near and far shells both land, so the
+        // colour clips every channel and what is left is a bullet's core in
+        // the half of the field the player lives in.
+        core:  hall_prop_buffer(_f, function(_vb) {
+                   hall_sphere(_vb, 0, 0, 0, HALL_ARM_CORE, 10, 6,
+                               spr_hall_pale, 0, 1, 0, HALL_ORB_COL,
+                               HALL_PROP_LIGHT * 0.38, hall_no_light);
+               }),
+        // **No two rates and no two tilts alike**, on the orrery's terms: a
+        // pair that agree settle into a shape the eye learns in a few
+        // seconds, and the point of the thing is that it never does. The
+        // horizontal one is the equator and is deliberately still, because a
+        // ring turning about its own axis is a ring doing nothing.
+        //
+        // **And they may not go edge-on together, which is not the same as
+        // no two being alike.** A ring turning about the spindle presents its
+        // own plane to the camera as `cos(yaw) * cos(tilt)`, so every ring
+        // but the equator goes to a *line* twice a turn whatever its tilt --
+        // three of them with no offset between them produced frames holding
+        // nothing but the equator and the axis, which is an armillary that
+        // has momentarily stopped being one. So each carries a baked yaw as
+        // well as its own rate, which spreads the four thin moments out and
+        // is why there is a fourth ring at all: at this size the figure has
+        // to keep two open faces however the clock lands.
+        ring: [
+            { vb: hall_prop_buffer(_f, function(_vb) {
+                      hall_fill_arm_ring(_vb, 90, 0, 3.6, 1.10); }),
+              rate: 0 },
+            { vb: hall_prop_buffer(_f, function(_vb) {
+                      hall_fill_arm_ring(_vb, 28, 0, 3.6, 1.25); }),
+              rate: 0.41 },
+            { vb: hall_prop_buffer(_f, function(_vb) {
+                      hall_fill_arm_ring(_vb, 64, 52, 3.0, 0.98); }),
+              rate: -0.27 },
+            { vb: hall_prop_buffer(_f, function(_vb) {
+                      hall_fill_arm_ring(_vb, 46, 104, 2.6, 0.88); }),
+              rate: 0.17 },
+        ],
+    };
+}
+
+/// @desc Which side of the nave a pedestal bay's instrument stands on.
+///
+///       **One answer, read by the pedestal at build time and by the
+///       instrument at draw time.** That is `hall_orb_x`'s lesson: a thing
+///       and where it is are not allowed to be written down twice, because
+///       the two halves disagreeing draws a perfectly valid picture of an
+///       instrument hovering over open floor beside an empty pedestal.
+function hall_inst_side(_v) {
+    return (_v == 3) ? 1 : -1;
+}
+
+/// @desc Where a bay's instrument floats this frame, as a world matrix.
+///
+///       The bob is phased off the bay index, because a row of them rising
+///       and falling together is one object repeated rather than several.
+function hall_inst_matrix(_b, _i, _v, _spin) {
+    var _ph = _b.t * 360 / HALL_INST_BOB_P + _i * 63;
+    return matrix_build(hall_inst_side(_v) * HALL_DESK_X,
+                        HALL_DESK_TOP + HALL_INST_Y
+                            + HALL_INST_BOB * dsin(_ph),
+                        _i * HALL_BAY_Z + HALL_BAY_Z * 0.5,
+                        0, _spin, 0, 1, 1, 1);
+}
+
+/// @desc The instruments in front of the camera. Called twice: once in the
+///       solid pass for the metal and the sand, and once in the light pass
+///       for the glass and the heart, which are the two pieces that are light
+///       rather than surface.
+function hall_draw_instruments(_b, _b0, _b1, _lit) {
+    var _t = sprite_get_texture(spr_hall_pale, 0);
+    for (var _i = _b1; _i >= _b0; _i--) {
+        var _v = hall_prop_variant(_i);
+        if (_v < 2) continue;
+
+        if (_v == 2) {
+            matrix_set(matrix_world,
+                       hall_inst_matrix(_b, _i, _v, _b.t * HALL_INST_SPIN));
+            if (_lit) {
+                hall_submit(_b.inst.glass, _t);
+            } else {
+                hall_submit(_b.inst.sand, _t);
+                hall_submit(_b.inst.frame, _t);
+            }
+            continue;
+        }
+
+        var _base = hall_inst_matrix(_b, _i, _v, 0);
+        matrix_set(matrix_world, _base);
+        if (_lit) {
+            hall_submit(_b.inst.core, _t);
+            continue;
+        }
+        hall_submit(_b.inst.axis, _t);
+        var _n = array_length(_b.inst.ring);
+        for (var _k = 0; _k < _n; _k++) {
+            var _r = _b.inst.ring[_k];
+            matrix_set(matrix_world,
+                       matrix_multiply(matrix_build(0, 0, 0, 0,
+                                                    _b.t * _r.rate, 0,
+                                                    1, 1, 1), _base));
+            hall_submit(_r.vb, _t);
+        }
+    }
 }
 
 /// @desc Every prop in front of the camera, far to near.
@@ -1674,20 +2164,29 @@ function hall_draw_props(_b, _b0, _b1) {
                    matrix_build(0, 0, _i * HALL_BAY_Z, 0, 0, 0, 1, 1, 1));
         hall_submit(_p.stone, sprite_get_texture(spr_hall_stone, 0));
         hall_submit(_p.plinth, sprite_get_texture(spr_hall_plinth, 0));
+        hall_submit(_p.deskface, sprite_get_texture(spr_hall_deskface, 0));
         hall_submit(_p.gilt, sprite_get_texture(spr_hall_pale, 0));
         hall_submit(_p.statue, sprite_get_texture(spr_hall_bastet, 0));
         hall_submit_frames(_p.banner, spr_hall_banner);
     }
 
+    // ...and what is standing on the pedestals, which is not built into them
+    // -- see the section above. It shares this pass rather than getting one
+    // of its own, because the metal and the sand are surfaces like any other.
+    hall_draw_instruments(_b, _b0, _b1, false);
+
     // ...and their light. Additive and depth-tested but not written, because
     // a glow is not a surface: two lamps at the same depth should both land.
     hall_pass_light();
     for (var _i = _b1; _i >= _b0; _i--) {
+        var _p = _b.prop[hall_prop_variant(_i)];
         matrix_set(matrix_world,
                    matrix_build(0, 0, _i * HALL_BAY_Z, 0, 0, 0, 1, 1, 1));
-        hall_submit(_b.prop[hall_prop_variant(_i)].glow,
-                    sprite_get_texture(spr_hall_pale, 0));
+        hall_submit(_p.glow, sprite_get_texture(spr_hall_pale, 0));
+        hall_submit(_p.statue_rim,
+                    sprite_get_texture(spr_hall_bastet_rim, 0));
     }
+    hall_draw_instruments(_b, _b0, _b1, true);
     hall_pass_solid();
 }
 
@@ -2469,6 +2968,57 @@ function hall_draw_orrery(_b) {
     gpu_set_zwriteenable(true);
 }
 
+/// @desc `frac` folded into [0, 1).
+///
+///       **`frac` keeps its sign in GML**, which is the trap `hex_spray_dir`
+///       and `corridor_hash` both record and which `hall_hash` itself already
+///       folds for. A cycle that only ever *adds* survives it; the sand's
+///       depth is measured by *subtracting* the camera's travel, so past the
+///       first few hundred units half the cloud came back negative -- which
+///       put those grains behind the eye and took their fade below zero, so
+///       they were dropped twice over. What that draws is a thinning cloud
+///       that empties as the stage runs, which reads as nothing at all being
+///       there rather than as anything being wrong.
+function hall_wrap01(_v) {
+    var _f = frac(_v);
+    return (_f < 0) ? _f + 1 : _f;
+}
+
+/// @desc The camera, packed for projecting a point by hand.
+///
+///       **The hall's camera never yaws**, so this is a translation and one
+///       rotation about x. `_back` winds the eye down the hall by that many
+///       units, which is how a grain's streak is drawn: the same grain
+///       projected through the camera as it was a few frames ago.
+function hall_eye(_b, _x0, _y0, _w, _h, _back) {
+    return {
+        x: _b.cam_x, y: _b.cam_y, z: _b.dist - _back,
+        cp: dcos(_b.pitch), sp: dsin(_b.pitch),
+        foc: (_h * 0.5) / dtan(HALL_FOV * 0.5),
+        mx: _x0 + _w * 0.5, my: _y0 + _h * 0.5,
+    };
+}
+
+/// @desc A world point on the screen, as `[x, y, scale]`. `undefined` behind
+///       the eye.
+///
+///       **The same projection the hall is already drawn with, done once in
+///       GML.** Everything in this stage but the motes goes through the
+///       matrices, and the motes could not: they are drawn over the finished
+///       picture, in the pass that has to stay additive, long after the 3D
+///       state has been put back. Reconstructing the projection is what lets
+///       them live in the room anyway -- and it is fifteen lines against a
+///       second render target and a depth buffer to share.
+function hall_project(_e, _wx, _wy, _wz) {
+    var _dy = _wy - _e.y;
+    var _dz = _wz - _e.z;
+    var _vz = _dy * _e.sp + _dz * _e.cp;
+    if (_vz < HALL_SAND_ZNEAR) return undefined;
+    var _k = _e.foc / _vz;
+    return [_e.mx + (_wx - _e.x) * _k,
+            _e.my - (_dy * _e.cp - _dz * _e.sp) * _k, _k];
+}
+
 /// @desc The one pass drawn over live danmaku.
 ///
 ///       **Additive without exception**, which is the rule `grove_draw_front`
@@ -2478,8 +3028,8 @@ function hall_draw_orrery(_b) {
 ///       foreground cannot conceal a bullet at any alpha, at any size, in any
 ///       arrangement.
 function hall_draw_front(_b, _spell, _fill) {
-    // ...and the dust comes up with the room. It is drawn after the veil, so
-    // without this the one thing visible during the arrival is the motes.
+    // ...and the sand comes up with the room. It is drawn after the veil, so
+    // without this the one thing visible during the arrival is the grains.
     var _a = (1 - 0.86 * clamp(_spell, 0, 1)) * hall_ease(_b.intro);
     if (_a <= 0.01) return;
     var _x0 = _fill ? 0 : FIELD_X0;
@@ -2487,20 +3037,99 @@ function hall_draw_front(_b, _spell, _fill) {
     var _w = _fill ? GAME_W : FIELD_W;
     var _h = _fill ? GAME_H : FIELD_H;
 
-    // Dust. Derived from the clock rather than simulated, the way the
-    // brimstone stage's embers are: a phase and a rate, and where a mote is
-    // this frame is `frac` of the two.
+    // ---- the sand ------------------------------------------------------
+    //
+    // **It is in the room, and it used to be on the glass.** The grains were
+    // screen-space: a position across the field, a rate down it, and nothing
+    // else -- so they did not parallax, did not grow as they came, did not
+    // move when the camera leaned or rose, and never passed anybody. In a
+    // stage that is a real room seen through a real lens, that reads as a
+    // sheet of acetate held in front of the picture, which is the defect
+    // `bg_grove` records about its canopy bands and the one thing a
+    // *density* or a *speed* can never fix. Reported in those terms.
+    //
+    // Every grain has a world position now and is projected through the
+    // camera by hand. What that buys is not realism, it is all the motion
+    // the flight already had and was not sharing: grains stream past, the
+    // near ones fast and the far ones barely, they swing when the flyer
+    // leans, and they rise up the frame through the reveal because the
+    // camera is coming down to them.
+    //
+    // **And it is sand rather than dust, which is a question of direction
+    // before it is one of colour.** Dust hangs and falls, each speck to
+    // itself. Sand is *driven*: it crosses the hall on one wind, so every
+    // grain leans the same way, and it keeps low -- what a desert temple has
+    // is a drift over the floor, not a fog in the air. `HALL_SAND_TOP` is
+    // biased hard toward the pavement for that reason, and the whole cloud
+    // shares one `HALL_SAND_WIND` rather than a per-grain direction, because
+    // what says *blown* is that they agree.
+    var _eye = hall_eye(_b, _x0, _y0, _w, _h, 0);
+    var _was = hall_eye(_b, _x0, _y0, _w, _h, _b.rush * HALL_SAND_TRAIL);
+
     gpu_set_blendmode(bm_add);
-    for (var _i = 0; _i < HALL_DUST_N; _i++) {
-        var _ph = hall_hash(_i, 11);
-        var _rate = 0.00018 + hall_hash(_i, 12) * 0.0007;
-        var _fy = frac(_ph + _b.t * _rate);
-        var _px = _x0 + hall_hash(_i, 13) * _w
-                  + dsin(_b.t * 0.5 + _i * 37) * 22;
-        var _py = _y0 + (1 - _fy) * _h;
-        var _sz = 1.4 + hall_hash(_i, 14) * 3.0;
-        draw_sprite_ext(spr_fx_bloom, 0, _px, _py, _sz * 0.05, _sz * 0.05, 0,
-                        HALL_DUST_COL, 0.24 * _a * (0.35 + 0.65 * _fy));
+    for (var _i = 0; _i < HALL_SAND_N; _i++) {
+        // **One hash sets the size, the fall and the wander**, so a heavy
+        // grain is large, falls fast and travels nearly straight while a
+        // fine one is small, hangs and is pushed about. Drawn from three
+        // independent hashes this is a cloud of unrelated dots; from one, it
+        // is grains of different weights in the same air.
+        var _g = hall_hash(_i, 14);
+        var _rate = HALL_SAND_FALL * (0.55 + 1.30 * _g);
+        var _top = HALL_SAND_TOP * (0.10 + 0.90 * sqr(hall_hash(_i, 15)));
+        var _sx = hall_hash(_i, 13) * 2 * HALL_SAND_SPREAD - HALL_SAND_SPREAD
+                  - HALL_SAND_WIND * 0.5;
+        var _wind = HALL_SAND_WIND * (0.72 + 0.56 * hall_hash(_i, 16));
+
+        // Its own fall, and how far down the hall it stands. **The depth is
+        // measured against the camera's travel**, so the grain holds a fixed
+        // world z and the flight carries the eye past it -- which is the
+        // whole of the parallax. It wraps to the far end once it is passed,
+        // and the wrap is behind the fade.
+        var _l = hall_wrap01(hall_hash(_i, 12) + _b.t * _rate);
+        var _s = hall_wrap01(hall_hash(_i, 11)
+                             - _b.dist / HALL_SAND_RANGE);
+        var _wz = _b.dist + HALL_SAND_NEAR + _s * HALL_SAND_RANGE;
+
+        var _p = hall_project(_eye, _sx + _wind * _l, _top * (1 - _l), _wz);
+        if (is_undefined(_p)) continue;
+        if (_p[0] < _x0 - 48 || _p[0] > _x0 + _w + 48
+            || _p[1] < _y0 - 48 || _p[1] > _y0 + _h + 48) continue;
+
+        // **The streak is the same grain projected through the camera as it
+        // was**, which is the cheapest correct answer and the only one that
+        // gets both halves: a grain far down the hall barely moves and draws
+        // a point, one passing the lens draws a line, and the wind shears
+        // every one of them the same way. Reasoning it out from a velocity
+        // would need the flight, the fall and the lean composed by hand.
+        var _lb = max(0, _l - _rate * HALL_SAND_TRAIL);
+        var _q = hall_project(_was, _sx + _wind * _lb, _top * (1 - _lb), _wz);
+        var _len = 0;
+        var _ang = 0;
+        if (!is_undefined(_q)) {
+            var _ex = _p[0] - _q[0];
+            var _ey = _p[1] - _q[1];
+            _len = min(sqrt(_ex * _ex + _ey * _ey), HALL_SAND_TRAIL_MAX);
+            _ang = point_direction(_q[0], _q[1], _p[0], _p[1]);
+        }
+
+        // Fades at both ends of both cycles, so nothing is on screen at the
+        // frame it wraps -- and the *near* end of the depth fade is what
+        // keeps a grain from arriving at the lens as a bright lozenge, which
+        // is the one thing this pass may not do.
+        var _fade = min(1, _s * 5) * min(1, (1 - _s) * 3)
+                    * min(1, _l * 8) * min(1, (1 - _l) * 8);
+        if (_fade <= 0.01) continue;
+
+        // The streak is drawn with its *head* on the grain and its tail
+        // behind, so clamping the length shortens the tail rather than
+        // sliding the grain backwards along its own path.
+        var _r = (0.55 + 1.70 * _g) * HALL_SAND_R * _p[2];
+        var _bw = sprite_get_width(spr_fx_bloom);
+        draw_sprite_ext(spr_fx_bloom, 0,
+                        _p[0] - dcos(_ang) * _len * 0.5,
+                        _p[1] + dsin(_ang) * _len * 0.5,
+                        (_r * 2 + _len) / _bw, _r * 2 / _bw, _ang,
+                        HALL_SAND_COL, HALL_SAND_A * _a * _fade);
     }
     gpu_set_blendmode(bm_normal);
     draw_set_alpha(1);

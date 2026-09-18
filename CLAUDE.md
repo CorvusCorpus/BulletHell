@@ -37,7 +37,7 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 |---|---|
 | `tools/build.py` | The GML compiles. Reports real diagnostics with line numbers. |
 | `tools/test.py` | The GML is *correct*: builds, runs with `-selftest`, grades the suites in `scripts/selftest` off stdout. |
-| `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, no bare `draw_sprite` inheriting the draw state, **the hedgerow still covering the horizon it hides**, **the far chamber painted at the size it is hung at**, **no hall buffer drawn with a multi-frame sprite's page**, and **the rings eating the player's shots before the enemies are offered them**. |
+| `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, no bare `draw_sprite` inheriting the draw state, **the hedgerow still covering the horizon it hides**, **the far chamber painted at the size it is hung at**, **no hall buffer drawn with a multi-frame sprite's page or against another sprite's**, and **the rings eating the player's shots before the enemies are offered them**. |
 | `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Forty-two scenes; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
 
 **`shot.py` is not a nicety, and in this genre it is the most important of the
@@ -3025,6 +3025,135 @@ than a surface. Crossed cards are wrong for an object and right for a glow: the
 seam where two quads intersect is a silhouette defect, and a bloom has no
 silhouette.
 
+### What stands in the nave
+
+**A statue's plinth was drawn twice, and one of the two was a billboard.**
+`spr_hall_bastet` carried a plinth in its own bottom third -- flat, on a card
+that faces down the hall -- and `hall_bastet` stood that card on a *tapered
+box*. So the cat sat on a painted slab, the painted slab hovered over the
+masonry, and what the frame held was the exact defect the box was added to
+remove, surviving underneath the fix. Neither half looks wrong on its own; the
+two simply both did it. `bastet` crops to the figure now and
+`HALL_STATUE_BASE` carries the whole height.
+
+**The Bastet is in profile, and that is a fact about the projection rather
+than about the drawing.** She hangs in the plane `z = const`, which faces back
+down the hall -- so what the card shows is whatever faces *across* the nave. A
+frontal cat on it is a statue whose nose points down the hall at the player,
+which is nothing an avenue of them was ever carved to do, and at eighty pixels
+a triangle with two ears on it is a mask. It was reported as cartoonish and as
+billboarded, which is what a flat thing aimed at you looks like whether or not
+it tracks. The sprite is a profile now and `hall_bastet` mirrors it on the far
+wall, so a statue on the left looks right and one on the right looks left.
+**The mirror is one flip and it goes on the world position**; the
+cross-section and the texture are both read in the sprite's own coordinates.
+Flipping both cancels, which draws the geometry reversed with the picture the
+right way round on it -- a cat with her tail painted on her face. That shipped
+for one screenshot and read as a featureless lump, because the widest part of
+her is the haunch and the haunch was then wearing the head.
+
+**Nothing in the drawing is flat fill, and that is most of what made the old
+one a cartoon.** It was a black silhouette, a black neck, a gold bucket of a
+pectoral and two round eyes: a shape with one value in it has no form in it,
+and two bright discs on a dark shape is a face with its lights on -- the one
+thing a piece of furniture in a danmaku field must not be. So she is built as
+a **height field**, a dome per mass, and lit through the gradient of it by one
+lamp. **And the ornament goes into the same field rather than onto the picture
+afterwards**: a collar band painted over a shaded body carries the body's own
+light wherever it lies, so it reads as a decal at any colour -- reported, in
+those words, as tacked on and flat. Put the band into the height field and the
+lamp that carves the haunch carves the band, which is `moulding`'s own rule --
+a bright line above a dark one -- got as geometry rather than as two drawn
+lines. The eye and the ear's conch go in the same way and *downward*, because
+they are cut into her.
+
+**And then she is swept into a solid, because a card is a card from above.**
+Phase A is nine hundred units up aimed at the marble, and from there an
+upright quad is a sheet of paper leaning back over a plinth that is plainly a
+box. Reported as exactly that, and nothing about the drawing fixes it -- the
+defect is that there is no depth to have. `hall_bastet_sweep` revolves her
+profile into a shell, textured by **projecting the sprite along z**: the view
+down the hall is the drawing pixel for pixel, which is why the picture phase B
+was already right about did not change, and every other angle is that same
+drawing shrink-wrapped onto the form.
+
+Three things about the sweep are load-bearing:
+
+- **The cross-section is measured off the shipped PNG's alpha, not restated
+  in GML.** A solid whose outline disagrees with the drawing on it is a figure
+  with two silhouettes, and reading one off the other is the only
+  construction where they cannot drift. `scripts/sanctum_table` is where it
+  lands, on `grove_table`'s argument -- a number describing a picture, kept in
+  the same language as the picture.
+- **The alpha test is doing more work here than anywhere else in the hall.** A
+  cross-section spans her *whole* silhouette at its height, so between the two
+  ear tips it spans the notch as well; what cuts that back out is
+  `HALL_ALPHA_REF` discarding the texels where the sprite is transparent. The
+  sweep is the block and the drawing is the stencil.
+- **The face looking back down the hall keeps exactly `HALL_PROP_LIGHT`.**
+  `HALL_STATUE_TOP` and `HALL_STATUE_AWAY` are both zero on a normal pointing
+  at the camera, so what the form's own light buys is phase A -- where the
+  tops of the head, the back and the haunch turn up into the lamp and the card
+  had nothing to turn.
+
+The one thing a profile cannot supply is how *wide* she is, so `BASTET_DEPTH`
+is authored: a half-depth per height as a fraction of the card's own width,
+which follows the figure at any size.
+
+**An instrument is built at the origin and drawn under a matrix**, which is
+the whole of why it can move at all. Everything else in the hall is frozen
+into a bay's buffers and drawn by one translation -- right for masonry, and
+the reason the armillary on the pedestal stood dead still in a hall whose
+centrepiece is an armillary turning. It is `hall_draw_orrery`'s construction
+at a five-hundredth of the size, and it costs a handful of submits on the one
+bay in four that has a pedestal.
+
+They **levitate**, which is not decoration: `HALL_INST_Y` has to clear half
+the instrument's own height before anything reads as floating rather than as
+resting, and at 52 against a glass 104 tall the hourglass's foot sat exactly
+on the cap.
+
+**The hourglass is a lathe, not two boxes.** It was a pair of square tapers
+meeting at a point inside a frame of four square posts -- four flat facets a
+side, which at this size is origami. `hall_lathe` is the third solid this hall
+has, after the taper and the sphere: a profile of `[radius, y]` revolved, and
+the profile is a *table* rather than a formula because a bulb's belly is not
+any curve with a name. Three posts rather than four, because from the nave two
+of a square's four line up behind the other two and what is seen is a pair of
+uprights.
+
+**Its shading carries the silhouette rather than a light direction**, which is
+what makes it glass. A lathe is seen against the nave from every angle the
+camera reaches, so a fixed lamp would light one pedestal and leave its mirror
+flat; a segment turned edge-on to the camera being *brighter* than one facing
+it is the cheapest possible fresnel, and a bulb lit at its rim and dark
+through its middle is a bulb you can see through. The glass is drawn
+additively in the light pass for the same reason the alcove's bloom is -- the
+solid pass writes depth, so a bulb drawn there is a bulb with its own contents
+hidden behind it.
+
+**Two brightness findings, and both are the same one this file already
+records.** The sand at (176, 134, 60) under that additive shell measured a
+99th percentile of 205 against a pedestal at 122 -- a prop twice as bright as
+the masonry it stands on, in the half of the field the player lives in. And
+the armillary's heart, driven at 1.15, clipped every channel and came back a
+white-hot bead, which is what a bullet's core is. Both are `HALL_ORRERY_CORE`'s
+note arriving from a new direction, and both were measured off a screenshot
+rather than looked at.
+
+**The sand's level does not change**, which is a decision rather than a
+shortcut: a draining glass has a state and a state has to reset, which on a
+prop the player flies past for four minutes is a pop at a moment nobody chose.
+What is drawn is an hourglass that has been running for ever.
+
+**And the armillary's rings may not go edge-on together**, which is not the
+same as no two being alike. A ring turning about the spindle presents its own
+plane as `cos(yaw) * cos(tilt)`, so every ring but the equator goes to a
+*line* twice a turn whatever its tilt -- three with no offset between them
+produced frames holding nothing but the equator and the axis. Each carries a
+baked yaw as well as its own rate, and there is a fourth ring, because at this
+size the figure has to keep two open faces however the clock lands.
+
 ### The arrival
 
 **The stage used to begin at full speed in a lit room on its first frame**,
@@ -3043,6 +3172,37 @@ on the frames it is dense. `HALL_INTRO_SPD` is not zero, for the reason
 Every hall screenshot scene but one writes `intro` to 1, because a stage that
 opens dark means every posed picture of it is a picture of the veil otherwise.
 `hall_arrive` is the one that wants one.
+
+### The motes in the air
+
+**It is sand, and it used to be a cold grey dust.** At (150, 190, 255) the
+motes were the alcove orb's own blue at a fifth of its size, drifting
+*upward* -- which is an ember's movement and a lamp's colour, and neither
+belongs in a hall somebody built out of stone in a desert. It was reported as
+distracting and as unfitting, and the two halves have their own causes: the
+colour put it in the same family as the only light source in the room, and the
+direction made it look like something burning.
+
+So it falls, and it is warm. What it may **not** be is *saturated* warm: Mika
+fires gold, amber and bone, and a small bright warm dot over live danmaku is
+the brimstone stage's ember-and-pellet finding exactly -- a player cannot be
+asked to tell an obstacle from scenery by watching which of them accelerates.
+A desaturated tan is a hue no bullet in his table reaches, and every bullet
+carries a white core and a hard dark contour that additive scenery is
+structurally incapable of drawing.
+
+**One hash sets the size, the fall and the wander, and that is the whole of
+what makes it read as sand.** From three independent hashes it is a cloud of
+unrelated dots; from one, a heavy grain is large, falls fast and travels
+nearly straight while a fine one is small, hangs and is pushed about -- which
+is what the eye reads as grains of different weights in still air. It sorts
+the cloud by itself as well, so nothing has to be layered. Each grain is also
+dimmest at the two ends of its fall, so it arrives and leaves rather than
+appearing at the ceiling and being deleted at the floor.
+
+`HALL_DUST_N`, `HALL_DUST_A` and `HALL_DUST_FALL` are three numbers nobody has
+played. How much sand a room should have is exactly the kind of question a
+still frame cannot answer -- the complaint that started this was about motion.
 
 ### Distance takes the alpha, not just the colour
 
@@ -3132,6 +3292,29 @@ each submitted with its own frame's texture: `hall_frames_begin`,
 right whatever the packer does. `check_hall_frame_textures` refuses the other
 shape at source level, and it was tested against a deliberate violation before
 being believed.
+
+**And the same fault runs between two *sprites*, which is where it was
+actually shipping.** The pedestals' shaft was textured `spr_hall_deskface` and
+written into the buffer submitted with `spr_hall_plinth`; their cap was
+textured `spr_hall_pale` and written into the one submitted with
+`spr_hall_stone`. Both are this file's own "one buffer per texture" rule
+broken, and both had been right by luck for as long as the packer happened to
+keep each pair together.
+
+It was reported as the pedestals **sometimes** rendering as white paper, and
+"sometimes" is the whole diagnosis: a repack that separates two sprites puts a
+shaft's coordinates over whatever is now at that spot on the bound page, and
+what was there was a blank corner. A defect that depends on the atlas is a
+defect that comes and goes with changes that have nothing to do with it --
+which is why the screenshot taken to look for it came back clean and the
+person playing the game kept seeing it.
+
+`check_hall_buffer_textures` is the general rule: the set of sprites a buffer
+slot's geometry is written from must be a subset of the set it is submitted
+with. It resolves local sprite aliases and fills handed to `hall_prop_buffer`,
+and it skips a slot whose submit names no sprite statically rather than
+guessing -- the orrery's rings carry theirs on the struct. It was tested
+against three deliberate violations, including the two that shipped.
 
 ### The chamber at the end of the hall
 
@@ -3610,7 +3793,7 @@ once, because PIL's draw calls are hard-edged and a bevel drawn at 1x reads as
 | `tools/make_bg.py` | Stage one's three parallax layers |
 | `tools/make_grove.py` | Stage two's scenery: trunks, trees, ivy, hanging charms, ferns, the moon, the forest floor, the far treeline, the canopy, mist — **and `scripts/grove_table`** |
 | `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint |
-| `tools/make_sanctum.py` | Stage three's hall: **the pavement's three courses** (the marble field, the processional runner, the lotus border), the joinery, the statues and banners -- **the sky over it** (stars in three magnitudes, nebulae, the graduated limb the orrery's rings are made of) **and the chamber at the end of it**, which is one painting rather than a second room |
+| `tools/make_sanctum.py` | Stage three's hall: **the pavement's three courses** (the marble field, the processional runner, the lotus border), the joinery, the banners, **the Bastet and the table of slices she is swept into a solid from** -- **the sky over it** (stars in three magnitudes, nebulae, the graduated limb the orrery's rings are made of) **and the chamber at the end of it**, which is one painting rather than a second room |
 | `tools/make_rings.py` | Mika's ring, **one sprite with its colour baked in** -- see the note under "Rings" |
 | `tools/make_mika.py` | Mika and his eye card, **cut out of the owner's own reference sheet**, plus his idle as a shareable GIF |
 | `tools/make_player.py` | Szuix, from the commissioned sheet; his aura, for the low-life warning; and his eye card, drawn from nothing |
@@ -4540,3 +4723,23 @@ Not done, in rough order of how much it is missed:
   It looks fine and is not what the constant claims.
 - **Two thousand bullets cost 4ms a frame under the VM.** Not a problem, and the
   fix if it ever becomes one is written down under "Bullets are structs".
+
+  **Measured whole-frame, off `fps_real` with vsync off, over 200 frames**
+  -- which is the number that actually matters, since the bullet figure is
+  simulation only and says nothing about what a stage costs to draw. At
+  roughly 1500 bullets: stage one 5.6ms, stage three 5.9ms, stage two
+  **10.2ms**. Worst case run -- Mika's fight, his rings, and 2250 bullets,
+  which is more than a busy screen ever carries -- is 8.0ms median and 8.9ms
+  at the tenth percentile, against a 16.7ms budget.
+
+  **The hall costs almost nothing despite being a real 3D room**, because it
+  is frozen vertex buffers and a couple of hundred submits: the work is the
+  GPU's. **The grove is the expensive stage**, at nearly twice the hall, and
+  the reason is the opposite -- a corridor is hundreds of individually
+  positioned billboards drawn from GML every frame, which is interpreter time,
+  which is the kind this runtime is slow at. If anything here ever needs
+  optimising it is that, and not the room.
+
+  Measured minimised and again full screen and visible, because a minimised
+  window that skipped presentation would understate every one of these; the
+  two agree to within one per cent.

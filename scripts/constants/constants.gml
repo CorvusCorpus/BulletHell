@@ -1647,7 +1647,14 @@ enum BossMove {
 #macro HALL_LAMP_GLOW 0.40
 
 // Where the furniture sits, in world units.
-#macro HALL_STATUE_BASE 132     // the height of a statue's plinth
+// **A statue's plinth is built, and it used to be built and painted.**
+// `spr_hall_bastet` carried a plinth in its own bottom third -- a flat one,
+// on a card that faces down the hall -- and `hall_bastet` stood that card on
+// a *tapered box*, so what the frame actually held was a billboard plinth
+// balanced on a real one. From the nave it read as the cat sitting on a
+// painted slab hovering over the masonry, which is what it was. The card is
+// the figure alone now and this is the whole of the plinth.
+#macro HALL_STATUE_BASE 262     // the height of a statue's plinth
 #macro HALL_DESK_TOP 150
 
 // The orb in the alcove: a real object at a real position, and the thing the
@@ -1713,7 +1720,24 @@ enum BossMove {
 
 // What stands in it, in world units.
 #macro HALL_STATUE_X 548
-#macro HALL_STATUE_H 430
+// The figure alone, standing on `HALL_STATUE_BASE`. The two sum to what the
+// cat and its painted plinth used to come to together.
+#macro HALL_STATUE_H 300
+// How hard the moonward edge is lit, in the additive pass. Low, because it
+// is there to keep a black statue against black shelving from reading as a
+// hole rather than to make one a lamp -- see `hall_bastet`.
+#macro HALL_STATUE_RIM 0.42
+// How many facets round the sweep's cross-section. Sixteen, because she is
+// smooth-shaded off analytic normals -- the faceting that `hall_sphere` is
+// happy to show at eight would read as a cut gem, and a polished basalt cat
+// is the one thing in this hall that must not.
+#macro HALL_STATUE_STEPS 16
+// What the sweep's own form adds to the sprite's baked light: a lift where
+// the surface turns up into the lamp, and a fall where it turns away down
+// the hall. Both are zero on the face looking back at the camera, which is
+// why the view the card was right for did not change when it became a solid.
+#macro HALL_STATUE_TOP 0.34
+#macro HALL_STATUE_AWAY 0.32
 // **Out on the statue line, not adrift in the nave.** At 430 the pedestals
 // stood in open floor with nothing behind them and nothing beside them, which
 // is what read as floating: a thing against a wall is furnished, a thing in
@@ -1721,6 +1745,41 @@ enum BossMove {
 // fall at the midpoint between two of them.
 #macro HALL_DESK_X 548
 #macro HALL_DESK_H 165
+
+// The instruments the pedestals carry: an hourglass on one and a small
+// armillary on the other.
+//
+// **They are built at the origin and drawn under a matrix**, which is the
+// whole of why they can move at all. Everything else in the hall is frozen
+// into a bay's buffers and drawn by one translation, so a thing built into
+// one is a thing that can never do anything -- which is why the armillary
+// stood dead still in a hall whose centrepiece is an armillary turning. This
+// is `hall_draw_orrery`'s construction at a five-hundredth of the size.
+#macro HALL_INST_Y 88          // how far over the cap the instrument floats
+#macro HALL_INST_BOB 9         // ...and how far it rises and falls
+#macro HALL_INST_BOB_P 274     // frames a rise and a fall takes
+#macro HALL_INST_SPIN 0.17     // degrees a frame the hourglass turns
+// The hourglass. **Two bulbs of revolution, not two boxes**: it was a pair of
+// square tapers meeting at a point inside a frame of four square posts, which
+// at this size is four flat facets a side and reads as origami. A lathe costs
+// the same handful of triangles and is round from every angle the camera
+// reaches.
+#macro HALL_GLASS_H 104        // the glass, foot to head
+#macro HALL_GLASS_R 31         // ...at its belly
+#macro HALL_GLASS_NECK 3.2     // ...and at its waist
+#macro HALL_GLASS_SEG 18       // segments round
+// **Dark, like everything else out here.** At (176, 134, 60) under an
+// additive shell the glass measured a 99th percentile of 205 against a
+// pedestal at 122 -- a prop twice as bright as the masonry it stands on, in
+// the half of the field the player lives in. It is scenery, and the rule is
+// the one the brimstone stage is built on: every point of value spent on it
+// is a point the bullets no longer have.
+#macro HALL_SAND make_colour_rgb(118, 90, 40)
+#macro HALL_SAND_FILL 0.40     // how much of the lower bulb is full
+#macro HALL_SAND_HEAD 0.18     // ...and how far up the upper bulb reaches
+// The armillary: rings at their own rates, on `hall_draw_orrery`'s terms.
+#macro HALL_ARM_R 46
+#macro HALL_ARM_CORE 11
 // **A banner is placed by its centre and is two hundred units wide**, so
 // how far out it may hang is bounded by the cornice face it would otherwise
 // go through rather than by the wall. Moved out to 628 to hang it off the
@@ -1977,5 +2036,66 @@ enum BossMove {
 // How long the core takes to breathe once, in frames.
 #macro HALL_ORRERY_PULSE 310
 
-#macro HALL_DUST_N 46
-#macro HALL_DUST_COL make_colour_rgb(150, 190, 255)
+// ---------------------------------------------------------------------------
+// The sand
+//
+// **It is sand in a desert temple, and it used to be grey dust on the
+// glass.** Two things were wrong with it and they are different kinds of
+// wrong.
+//
+// The colour and the direction were the small one: at (150, 190, 255)
+// drifting *upward* the motes were the alcove orb's own blue at a fifth of
+// its size, moving the way an ember moves. Neither belongs in a hall
+// somebody built out of stone in a desert.
+//
+// The large one is that they were **screen-space** -- a position across the
+// field and a rate down it -- in a stage that is a real room seen through a
+// real lens. So they did not parallax, did not grow as they came, did not
+// answer the lean or the reveal, and nothing ever passed anybody: a sheet of
+// acetate in front of the picture, which is the defect `bg_grove` records
+// about its canopy bands, and which no amount of density or speed can reach.
+// They are projected through the camera now; see `hall_draw_front`.
+//
+// **Sand differs from dust by direction before it differs by colour.** Dust
+// hangs and falls, each speck to itself. Sand is driven -- it crosses on one
+// wind, so every grain leans the same way -- and it keeps low, because what
+// a temple in a desert has is a drift over the floor rather than a fog in
+// the air. Hence a shared `HALL_SAND_WIND` and a `HALL_SAND_TOP` biased hard
+// toward the pavement.
+//
+// What it may **not** be is *saturated* warm: Mika fires gold, amber and
+// bone, and a small bright warm dot over live danmaku is the brimstone
+// stage's ember-and-pellet finding exactly -- a player cannot be asked to
+// tell an obstacle from scenery by watching which of them accelerates. A
+// desaturated tan is a hue no bullet in his table reaches, and every bullet
+// carries a white core and a hard dark contour that additive scenery is
+// structurally incapable of drawing.
+#macro HALL_SAND_N 130
+#macro HALL_SAND_COL make_colour_rgb(206, 180, 142)
+#macro HALL_SAND_A 0.30
+// The volume it blows through, in world units: how near a grain may come
+// before it is gone, how deep the cloud runs, how far out either side of the
+// nave it starts, and how high the drift reaches. The ceiling is under the
+// camera's own flying height, so most of the sand is below the eye.
+#macro HALL_SAND_NEAR 300
+#macro HALL_SAND_RANGE 3400
+#macro HALL_SAND_SPREAD 360
+#macro HALL_SAND_TOP 900
+// How far across the hall the wind carries a grain over one fall. Well over
+// the height it drops in the same time, because blown sand travels sideways
+// faster than it settles -- that ratio is the whole of what reads as wind.
+#macro HALL_SAND_WIND 680
+#macro HALL_SAND_FALL 0.00042
+// A grain's radius in world units, so perspective sizes it rather than a
+// hash. **Grain, and grain is what separates sand from dust**: one hash sets
+// the size, the fall and the wander together, so the heavy ones fall faster
+// and wander less and the fine ones hang.
+#macro HALL_SAND_R 7.0
+// How many frames back the streak is drawn from, and the longest it may be
+// in pixels. The cap is what stops a grain passing the lens drawing a line
+// across the field.
+#macro HALL_SAND_TRAIL 5
+#macro HALL_SAND_TRAIL_MAX 26
+// Nearer than this in view space a grain is dropped rather than projected,
+// because the divide runs away.
+#macro HALL_SAND_ZNEAR 60

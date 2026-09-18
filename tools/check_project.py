@@ -1746,6 +1746,203 @@ def check_hall_frame_textures():
                  "together. Use hall_submit_frames()." % (spr, spr, frames))
 
 
+# The geometry writers in `bg_sanctum`, and which argument of each carries the
+# sprite its texture coordinates are read from.
+_HALL_WRITERS = {
+    "hall_tiles": 5, "hall_quad": 5, "hall_face": 1, "hall_face_u": 1,
+    "hall_face_z": 1, "hall_cross": 1, "hall_taper": 9, "hall_sphere": 7,
+    "hall_ring": 9, "hall_lathe": 6,
+}
+
+
+def _hall_args(src, start):
+    """The argument list of the call whose name ends at `start`, split at the
+    commas that are not inside brackets."""
+    i = src.find("(", start)
+    if i < 0:
+        return []
+    depth = 0
+    args = [""]
+    for j in range(i, len(src)):
+        ch = src[j]
+        if ch in "([{":
+            depth += 1
+            if depth == 1:
+                continue
+        elif ch in ")]}":
+            depth -= 1
+            if depth == 0:
+                return [a.strip() for a in args]
+        if depth == 1 and ch == ",":
+            args.append("")
+            continue
+        args[-1] += ch
+    return [a.strip() for a in args]
+
+
+def check_hall_buffer_textures():
+    """A hall buffer may not be written from one sprite and drawn with another.
+
+    `vertex_submit` takes **one** texture and `bg_sanctum`'s `hall_uv` writes
+    coordinates in *page* space, so a buffer's geometry is drawn against
+    whichever page the submit binds. Write it from a second sprite and what
+    those coordinates index is whatever the packer happened to leave at that
+    spot on the bound page -- which is correct exactly while the two sprites
+    land together, and the packer is under no obligation to keep them there.
+
+    That is the rule `hall_build_case` states in a comment, and the pedestals
+    broke it twice: the shaft was textured `spr_hall_deskface` and rode in the
+    buffer submitted with `spr_hall_plinth`, and the cap was textured
+    `spr_hall_pale` and rode in the one submitted with `spr_hall_stone`. It was
+    reported as the pedestals *sometimes* coming back as white paper, and
+    "sometimes" is the whole diagnosis -- a repack that separated the two
+    sprites put the shaft's coordinates over a blank corner of another page.
+
+    Nothing else could see it. The build is clean, both sprites exist and are
+    inked, every coordinate is in range, and what lands on screen is a
+    perfectly valid picture of the wrong thing. This is
+    `check_hall_frame_textures`' rule between two *sprites* rather than
+    between two frames of one, and it was tested against a deliberate
+    violation before being believed.
+
+    A slot whose submit names no sprite statically -- the orrery's rings carry
+    theirs on the struct -- is skipped rather than guessed at.
+    """
+    path = os.path.join(ROOT, "scripts", "bg_sanctum", "bg_sanctum.gml")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8-sig") as fh:
+        src = _strip_noise(fh.read())
+
+    # locals standing in for a sprite, either directly or through its texture
+    alias = {}
+    for m in re.finditer(r"\bvar\s+(_\w+)\s*=\s*(spr_\w+)\s*;", src):
+        alias[m.group(1)] = m.group(2)
+    for m in re.finditer(
+            r"\bvar\s+(_\w+)\s*=\s*sprite_get_texture\s*\(\s*(spr_\w+)",
+            src):
+        alias[m.group(1)] = m.group(2)
+
+    def sprite_of(expr):
+        expr = expr.strip()
+        if expr.startswith("spr_"):
+            return expr
+        return alias.get(expr)
+
+    # every geometry write, as (buffer expression, sprite)
+    writes = []
+    for name, idx in _HALL_WRITERS.items():
+        for m in re.finditer(r"\b%s\s*\(" % name, src):
+            args = _hall_args(src, m.start())
+            if len(args) <= idx:
+                continue
+            writes.append((m.start(), args[0], sprite_of(args[idx])))
+
+    # ...and the functions they sit in, so a fill handed to hall_prop_buffer
+    # can be resolved back to what it writes
+    funcs = [(m.start(), m.group(1))
+             for m in re.finditer(r"\bfunction\s+(\w+)\s*\(", src)]
+    func_sprites = {}
+    for pos, buf, spr in writes:
+        if not buf.startswith("_vb") or spr is None:
+            continue
+        owner = None
+        for fpos, fname in funcs:
+            if fpos < pos:
+                owner = fname
+            else:
+                break
+        if owner:
+            func_sprites.setdefault(owner, set()).add(spr)
+
+    slot_writes = {}
+
+    def note(slot, sprites):
+        if slot and sprites:
+            slot_writes.setdefault(slot, set()).update(sprites)
+
+    member = re.compile(r"^[\w.\[\]]*\.(\w+)(?:\[[^\]]*\])?$")
+    for _pos, buf, spr in writes:
+        m = member.match(buf)
+        if m and spr:
+            note(m.group(1), {spr})
+
+    # a slot filled through hall_prop_buffer, by named function or inline
+    for m in re.finditer(r"(\w+)\s*:\s*hall_prop_buffer\s*\(", src):
+        args = _hall_args(src, m.end(1))
+        if len(args) < 2:
+            continue
+        fill = args[1].strip()
+        if re.fullmatch(r"\w+", fill):
+            note(m.group(1), func_sprites.get(fill, set()))
+        else:
+            note(m.group(1), set(re.findall(r"\bspr_\w+", fill)))
+
+    # what each slot is actually drawn with
+    slot_subs = {}
+    unresolved = set()
+    for m in re.finditer(r"\bhall_submit\s*\(", src):
+        args = _hall_args(src, m.start())
+        if len(args) < 2:
+            continue
+        sm = member.match(args[0])
+        if not sm:
+            continue
+        slot = sm.group(1)
+        tex = re.match(r"sprite_get_texture\s*\(\s*([^,\s]+)", args[1])
+        spr = sprite_of(tex.group(1)) if tex else sprite_of(args[1])
+        if spr is None:
+            unresolved.add(slot)
+            continue
+        slot_subs.setdefault(slot, set()).add(spr)
+
+    for slot in sorted(slot_writes):
+        if slot in unresolved or slot not in slot_subs:
+            continue
+        stray = slot_writes[slot] - slot_subs[slot]
+        if stray:
+            fail("bg_sanctum writes .%s from %s but submits it with %s -- a "
+                 "buffer is drawn against one page, so geometry from another "
+                 "sprite indexes whatever the packer left at those "
+                 "coordinates. One buffer per texture."
+                 % (slot, ", ".join(sorted(stray)),
+                    ", ".join(sorted(slot_subs[slot]))))
+
+
+def check_texture_groups_exist(yyp):
+    """A sprite may not name a texture group the project does not have.
+
+    GameMaker does not complain: an unknown `textureGroupId` falls back to
+    Default and the sprite packs there, so the group is *silently* not applied
+    and nothing anywhere says so. What that hides is a mitigation that was
+    never wired up -- five of the hall's multi-frame sprites named a
+    `HallFrames` group, presumably to force each sprite's frames onto one page,
+    and the group had never been added to the `.yyp`. It is the `GAME_ERROR`
+    shape again: the thing that makes it hard to notice is that the sprites
+    look exactly as though the group is doing its job.
+
+    (The hall no longer needs one. `hall_submit_frames` is right whatever the
+    packer does, which is the whole argument for building it that way.)
+    """
+    if yyp is None:
+        return
+    known = {g.get("name") for g in yyp.get("TextureGroups", [])}
+    if not known:
+        return
+    for yy in glob.glob(os.path.join(ROOT, "sprites", "*", "*.yy")):
+        if yy.endswith(".old.yy"):
+            continue
+        data = load_yy(yy)
+        if not isinstance(data, dict):
+            continue
+        group = (data.get("textureGroupId") or {}).get("name")
+        if group and group not in known:
+            fail("%s names texture group %r, which %s.yyp does not have -- "
+                 "GameMaker falls back to Default silently, so the grouping "
+                 "is not being applied."
+                 % (rel(yy), group, PROJECT))
+
+
 def main():
     yyp_path = os.path.join(ROOT, PROJECT + ".yyp")
     yyp = load_yy(yyp_path)
@@ -1753,6 +1950,7 @@ def main():
 
     if yyp is not None:
         check_yyp_resources(yyp)
+        check_texture_groups_exist(yyp)
         check_resource_folders(yyp)
         check_gml_asset_references(yyp)
     check_record_shapes()
@@ -1779,6 +1977,7 @@ def main():
     check_run_clears_the_field()
     check_rings_block_before_enemies()
     check_hall_frame_textures()
+    check_hall_buffer_textures()
     check_sprites_not_blank()
     check_enum_references()
     check_brace_balance()

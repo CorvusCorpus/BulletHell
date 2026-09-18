@@ -76,6 +76,7 @@
     {"id":{"name":"practice_functions","path":"scripts/practice_functions/practice_functions.yy",},},
     {"id":{"name":"rank_functions","path":"scripts/rank_functions/rank_functions.yy",},},
     {"id":{"name":"ring_functions","path":"scripts/ring_functions/ring_functions.yy",},},
+    {"id":{"name":"sanctum_table","path":"scripts/sanctum_table/sanctum_table.yy",},},
     {"id":{"name":"save_functions","path":"scripts/save_functions/save_functions.yy",},},
     {"id":{"name":"selftest","path":"scripts/selftest/selftest.yy",},},
     {"id":{"name":"shot_scenes","path":"scripts/shot_scenes/shot_scenes.yy",},},

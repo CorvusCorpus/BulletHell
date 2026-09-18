@@ -50,7 +50,7 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import art_common as A
@@ -82,6 +82,17 @@ CREST_RED = (94, 20, 24)
 # the dark disc set inside the crest's ring
 CREST_EYE = (15, 8, 10)
 NAVY      = (16, 17, 38)
+# The statues, as three stops of one material rather than one colour: what
+# reads as polished stone is the *distance* between its shaded and its lit
+# face, plus a specular that is narrower and cooler than either. Gold is the
+# same three stops with the distance opened further and the highlight wider,
+# which is the whole of what separates metal from stone at this size.
+CAT_DARK  = (9, 9, 13)
+CAT_LIT   = (54, 56, 70)
+CAT_SPEC  = (138, 152, 184)
+AU_DARK   = (36, 26, 10)
+AU_LIT    = (206, 164, 74)
+AU_SPEC   = (255, 238, 182)
 
 # One bay of shelving, and one square of floor and of ceiling. Big enough that
 # a bay passing the lens at two metres is not a blur: the nearest wall quad
@@ -200,6 +211,55 @@ def moulding(d, x0, y0, x1, y1, lit=GILT, shade=GILT_DARK, t=1):
     d.rectangle([x0, y0, x1, y1], fill=rgba(shade, 255))
     d.rectangle([x0, y0, x1, y0 + t * s], fill=rgba(lit, 255))
     d.rectangle([x0, y1 - t * s, x1, y1], fill=(0, 0, 0, 190))
+
+
+def spline(pts, n=16, closed=True):
+    """Catmull-Rom through the control points.
+
+    **Architecture is straight and an animal is not.** Every other outline in
+    this file is masonry, where a polygon through its own corners is the
+    shape; a cat's back is one continuous curve from the nape to the rump and
+    a polygon through it is a chain of flats, which at any size reads as
+    faceted. Densifying does not help -- more points on a straight segment are
+    still straight. A spline is what turns the control points into the curve
+    they describe.
+    """
+    p = list(pts)
+    m = len(p)
+    out = []
+    for i in (range(m) if closed else range(m - 1)):
+        p0 = p[(i - 1) % m] if closed else p[max(0, i - 1)]
+        p1 = p[i]
+        p2 = p[(i + 1) % m] if closed else p[min(m - 1, i + 1)]
+        p3 = p[(i + 2) % m] if closed else p[min(m - 1, i + 2)]
+        for k in range(n):
+            t = k / n
+            t2, t3 = t * t, t * t * t
+            out.append((
+                0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t
+                       + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2
+                       + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+                0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t
+                       + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2
+                       + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)))
+    return out
+
+
+def bow(p0, p1, sag, n=16):
+    """A quadratic arc from `p0` to `p1`, sagging by `sag` in the middle.
+
+    What a ring round a tube shows in profile: the near half of it, which is
+    a curve bellying toward the viewer and therefore downward on the page. A
+    straight line between the same two points is a ring seen from nowhere.
+    """
+    mx, my = (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2 + sag
+    out = []
+    for k in range(n + 1):
+        t = k / n
+        a, b, c = (1 - t) ** 2, 2 * (1 - t) * t, t * t
+        out.append((a * p0[0] + b * mx + c * p1[0],
+                    a * p0[1] + b * my + c * p1[1]))
+    return out
 
 
 def grain(im, amount=4, seed=1):
@@ -1085,122 +1145,308 @@ def rotunda(w=1152, h=376):
 # ---------------------------------------------------------------------------
 # The things that stand in it
 # ---------------------------------------------------------------------------
-def bastet(w=256, h=768):
-    """A seated Bastet on her plinth.
+# Her outline, in figure coordinates and **facing +u**, which is to say
+# across the nave rather than down it. `hall_bastet` mirrors the card on the
+# far side, so a pair of them look at each other over the floor.
+#
+# The proportions are a seated Egyptian cat's rather than a cat's: the neck
+# is a column a third of the standing height, the forelegs are straight, and
+# the haunch is one large rounded mass behind them. That S, from the ear tip
+# down the back to the base, is the whole read -- which is why a profile
+# works at this size where the frontal one could not. A cat seen head-on is a
+# triangle with two ears on it, and at eighty pixels a triangle with two ears
+# on it is a mask.
+BASTET_OUTLINE = [
+    (0.724, 0.100), (0.760, 0.046),
+    (0.806, 0.002), (0.828, 0.014),                   # near ear, tip
+    (0.856, 0.056), (0.876, 0.090),
+    (0.902, 0.106), (0.920, 0.124),                   # forehead, brow
+    (0.948, 0.148), (0.972, 0.168),                   # the bridge
+    (0.984, 0.178), (0.988, 0.188),                   # the nose, blunt
+    (0.980, 0.199),                                   # the lip
+    (0.962, 0.209), (0.948, 0.219),                   # the chin
+    (0.916, 0.232), (0.874, 0.252),                   # jaw
+    (0.828, 0.276), (0.808, 0.308),                   # throat
+    (0.800, 0.352), (0.804, 0.428), (0.801, 0.512),   # chest
+    (0.794, 0.620), (0.790, 0.742), (0.792, 0.826),   # foreleg
+    (0.806, 0.868), (0.848, 0.888),                   # ankle, toes
+    (0.892, 0.902), (0.928, 0.916),
+    (0.944, 0.936), (0.946, 0.982), (0.926, 0.999),   # base, front
+    (0.500, 1.000),
+    (0.064, 0.999), (0.044, 0.982), (0.046, 0.936),
+    (0.066, 0.916),                                   # base, rear
+    (0.064, 0.856), (0.030, 0.766),                   # rump
+    (0.016, 0.664), (0.040, 0.566), (0.104, 0.498),
+    (0.198, 0.452), (0.308, 0.410), (0.420, 0.356),   # the back
+    (0.502, 0.298), (0.552, 0.244), (0.592, 0.192),   # neck
+    (0.616, 0.156), (0.646, 0.126), (0.680, 0.110),
+]
 
-    Frontal, because a billboard faces the camera and a frontal seated cat is
-    the one silhouette in this set that cannot be mistaken for anything else.
-    Black stone: the only bright things on her are the collar, the pectoral
-    and the eyes, which is the gold-is-a-line rule at prop scale.
+
+# **The far ear, which is the one piece of her that is behind something
+# else.** Drawn as a second ear beside the first it is a cat seen from the
+# front: what a profile shows is the tip and nothing more, and its base has
+# to die *inside* the skull -- a base that stops short leaves a notch between
+# the two where neither ear is, which is what it did.
+BASTET_FAR_EAR = [
+    (0.660, 0.136), (0.688, 0.078), (0.720, 0.034), (0.748, 0.022),
+    (0.784, 0.060), (0.816, 0.100), (0.752, 0.132),
+]
+
+
+# The collar's bands, each as the two ends of an arc round the neck.
+BASTET_COLLAR = [
+    ((0.596, 0.196), (0.868, 0.248)), ((0.584, 0.213), (0.854, 0.260)),
+    ((0.570, 0.230), (0.842, 0.270)), ((0.552, 0.248), (0.832, 0.280)),
+]
+
+
+# Where the light on her falls from: above, and out of the nave. Mirroring
+# the card mirrors this with it, so the pair either side of the hall are lit
+# from the middle of the room -- which is where the orbs in the alcoves are,
+# and the one lighting that survives being flipped.
+BASTET_LIGHT = (0.50, -0.70, 0.51)
+
+
+def bastet(w=384, h=768):
+    """A seated Bastet, in profile, as one card.
+
+    **In profile, and that is a fact about the projection rather than about
+    the drawing.** `hall_bastet` hangs her on a quad in the plane `z = const`,
+    which faces back down the hall -- so what the card shows is whatever faces
+    *across* the nave. A frontal cat on it is a statue whose nose points down
+    the hall at the player, which is nothing an avenue of them was ever carved
+    to do; a profile one looks across the floor at its opposite number, which
+    is. The quad is the same either way and the mirroring is one flag -- see
+    `hall_bastet`.
+
+    **Nothing in here is flat fill, and that is most of what was wrong.** The
+    frontal one was: a black silhouette, a black neck, a gold bucket of a
+    pectoral and two round eyes, which reads as a cartoon whatever the
+    outline is doing -- a shape with one value in it has no form in it, and
+    two bright discs on a dark shape is a face with its lights on. So she is
+    built as a **height field** -- a dome per mass, haunch and ribs and chest
+    and neck and skull -- and lit through the gradient of it by one lamp. The
+    haunch bulges, the neck is a column, the chest catches the light and the
+    flank falls away, and none of that is drawn.
+
+    **And the ornament goes into the same field rather than onto the picture
+    afterwards.** A collar band painted over a shaded body carries the body's
+    own light wherever it lies, so it reads as a decal at any colour -- which
+    is what "tacked on and flat" means, and no amount of gold fixes it. Put
+    the band into the height field and the lamp that carves the haunch carves
+    the band: a lit top, a shaded underside, a specular running along it.
+    That is `moulding`'s own rule -- a bright line above a dark one -- got as
+    geometry rather than as two drawn lines, which is why it also works on
+    the things that go the other way. The eye, the mouth and the ear's conch
+    are cut *downward* into the same field, because they are cut into her.
+
+    The gold is then a mask over that one field rather than a second drawing:
+    the same normals, a wider gap between shaded and lit, a broader
+    highlight. So the collar cannot disagree with the neck it sits on.
+
+    Returns the figure and its moonward rim, on `make_grove.py`'s contract --
+    a body and the light on it, tinted at draw time.
     """
-    im, dc = canvas(w, h, (9, 9, 13))
-    mk, dm = mask(w, h)
-    d = Tee(dc, dm)
     W, H = w * SS, h * SS
+    size = (W, H)
+    fh = 0.94 * H
+    fw = 0.50 * fh
+    fx = (W - fw) / 2
+    fy = 0.03 * H
     s = SS
-    cx = W / 2
-    body = (13, 13, 18, 255)
-    dark = (8, 8, 11, 255)
 
-    # the plinth
-    pw = W * 0.46
-    py = H * 0.615
-    d.polygon([(cx - pw * 0.60, H), (cx + pw * 0.60, H),
-               (cx + pw * 0.51, py), (cx - pw * 0.51, py)],
-              fill=(17, 17, 23, 255))
-    d.polygon([(cx - pw * 0.60, H), (cx - pw * 0.30, H),
-               (cx - pw * 0.24, py), (cx - pw * 0.51, py)],
-              fill=(255, 255, 255, 14))
-    moulding(d, cx - pw * 0.66, py - 9 * s, cx + pw * 0.66, py + 3 * s, t=1.4)
-    moulding(d, cx - pw * 0.64, H - 16 * s, cx + pw * 0.64, H - 4 * s,
-             lit=GILT_DIM, shade=(22, 18, 10), t=1.2)
-    d.rectangle([cx - pw * 0.22, py + H * 0.045, cx + pw * 0.22, H - H * 0.075],
-                outline=rgba(GILT_DIM, 180), width=int(1.6 * s))
-    glyph_run(d, cx, py + H * 0.055, H - H * 0.085, pw * 0.34, 77,
-              col=GILT_DIM, alpha=170)
+    def X(u):
+        return fx + u * fw
 
-    top = H * 0.205
-    # haunches and body
-    d.ellipse([cx - W * 0.285, py - H * 0.135, cx + W * 0.285, py + H * 0.012],
-              fill=body)
-    d.polygon([(cx - W * 0.265, py - H * 0.03), (cx + W * 0.265, py - H * 0.03),
-               (cx + W * 0.150, top + H * 0.055),
-               (cx - W * 0.150, top + H * 0.055)], fill=body)
-    # forelegs, with a groove between them
-    for sgn in (-1, 1):
-        d.rectangle([cx + sgn * W * 0.055 - W * 0.036, py - H * 0.205,
-                     cx + sgn * W * 0.055 + W * 0.036, py - H * 0.018],
-                    fill=body)
-        d.ellipse([cx + sgn * W * 0.055 - W * 0.062, py - H * 0.058,
-                   cx + sgn * W * 0.055 + W * 0.062, py - H * 0.004],
-                  fill=body)
-        for toe in range(3):
-            tx = cx + sgn * W * 0.055 - W * 0.040 + toe * W * 0.027
-            d.line([(tx, py - H * 0.040), (tx, py - H * 0.010)],
-                   fill=(0, 0, 0, 130), width=max(1, int(s)))
-    d.line([(cx, py - H * 0.195), (cx, py - H * 0.020)],
-           fill=(0, 0, 0, 120), width=int(1.6 * s))
-    # the tail, curled round the base
-    d.arc([cx - W * 0.03, py - H * 0.118, cx + W * 0.42, py + H * 0.018],
-          -92, 96, fill=dark, width=int(W * 0.052))
+    def Y(v):
+        return fy + v * fh
 
-    # neck and head
-    d.rectangle([cx - W * 0.088, top + H * 0.018, cx + W * 0.088,
-                 top + H * 0.078], fill=body)
-    d.ellipse([cx - W * 0.128, top - H * 0.058, cx + W * 0.128,
-               top + H * 0.058], fill=body)
-    d.polygon([(cx - W * 0.122, top - H * 0.030),
-               (cx + W * 0.122, top - H * 0.030),
-               (cx + W * 0.102, top - H * 0.058),
-               (cx - W * 0.102, top - H * 0.058)], fill=body)
-    d.ellipse([cx - W * 0.058, top + H * 0.008, cx + W * 0.058,
-               top + H * 0.055], fill=(16, 16, 21, 255))
-    d.line([(cx, top + H * 0.014), (cx, top + H * 0.030)],
-           fill=(0, 0, 0, 150), width=int(1.4 * s))
+    def pt(p):
+        return (X(p[0]), Y(p[1]))
 
-    # ears: tall, pointed, and the most identifying thing about her
-    for sgn in (-1, 1):
-        bx = cx + sgn * W * 0.074
-        d.polygon([(bx - W * 0.064, top - H * 0.029),
-                   (bx + W * 0.060, top - H * 0.031),
-                   (bx + sgn * W * 0.021, top - H * 0.110)], fill=body)
-        d.polygon([(bx - W * 0.034, top - H * 0.035),
-                   (bx + W * 0.031, top - H * 0.037),
-                   (bx + sgn * W * 0.014, top - H * 0.090)],
-                  fill=(48, 32, 16, 255))
-        d.line([(bx - W * 0.064, top - H * 0.029),
-                (bx + sgn * W * 0.021, top - H * 0.110)],
-               fill=rgba(GILT, 220), width=int(1.5 * s))
+    def sil_of(pts, blur):
+        """A silhouette, smoothed. Blur-and-threshold takes the corners
+        off the spline's own control points without rounding the ear tips
+        away, which a wider spline alone would."""
+        im = Image.new("L", size, 0)
+        ImageDraw.Draw(im).polygon([pt(p) for p in spline(pts)], fill=255)
+        im = im.filter(ImageFilter.GaussianBlur(blur))
+        return im.point(lambda v: 255 if v > 128 else 0)
 
-    # the gold
-    d.arc([cx - W * 0.128, top + H * 0.026, cx + W * 0.128, top + H * 0.108],
-          194, 346, fill=rgba(GILT, 245), width=int(3.4 * s))
-    d.arc([cx - W * 0.156, top + H * 0.046, cx + W * 0.156, top + H * 0.166],
-          198, 342, fill=rgba(GILT_DIM, 225), width=int(2.6 * s))
-    pect = [(cx - W * 0.128, top + H * 0.086), (cx + W * 0.128, top + H * 0.086),
-            (cx + W * 0.088, top + H * 0.210), (cx - W * 0.088, top + H * 0.210)]
-    d.polygon(pect, fill=(33, 26, 13, 255))
-    d.polygon(pect, outline=rgba(GILT, 238), width=int(2.0 * s))
+    def lobe(cu, cv, ru, rv, rot=0.0):
+        im = Image.new("L", size, 0)
+        pts = []
+        for k in range(72):
+            a = 2 * math.pi * k / 72
+            x, y = ru * math.cos(a), rv * math.sin(a)
+            pts.append((X(cu + x * math.cos(rot) - y * math.sin(rot)),
+                        Y(cv + x * math.sin(rot) + y * math.cos(rot))))
+        ImageDraw.Draw(im).polygon(pts, fill=255)
+        return im
+
+    body = sil_of(BASTET_OUTLINE, 1.1 * s)
+    far_ear = sil_of(BASTET_FAR_EAR, 1.1 * s)
+    sil = ImageChops.lighter(body, far_ear)
+
+    # --- the height field: one dome per mass -----------------------------
+    hgt = np.zeros((H, W), np.float32)
+    lobes = [
+        (far_ear, 0.22),
+        (lobe(0.500, 0.962, 0.450, 0.038), 0.38),            # the base slab
+        (lobe(0.260, 0.660, 0.238, 0.208), 1.00),            # the haunch
+        (lobe(0.470, 0.782, 0.240, 0.096, -0.07), 0.58),     # the hind leg
+        (lobe(0.590, 0.470, 0.195, 0.150, -0.42), 0.76),     # the ribs
+        (lobe(0.762, 0.418, 0.108, 0.128, -0.10), 0.66),     # the chest
+        (lobe(0.746, 0.706, 0.056, 0.152), 0.50),            # the foreleg
+        (lobe(0.672, 0.258, 0.098, 0.088, -0.62), 0.56),     # the neck
+        (lobe(0.836, 0.156, 0.110, 0.050, -0.18), 0.66),     # the skull
+        (lobe(0.950, 0.190, 0.032, 0.019, -0.16), 0.40),     # the muzzle
+        (lobe(0.800, 0.052, 0.040, 0.050, -0.04), 0.42),     # the near ear
+    ]
+    # **The masses are joined with a smooth union, not with `max`.** Two
+    # domes combined by `max` meet at the curve where they cross, and that
+    # curve is a crease -- which at the muzzle read as a knob stuck on the
+    # front of the face rather than as part of it. This rounds every junction
+    # by `k`, so the surface swells into a join the way carved stone does.
+    k = 0.07
+    for m, amp in lobes:
+        b = np.sqrt(np.clip(A.depth_field(m), 0, 1)) * amp
+        t = np.clip(0.5 + 0.5 * (b - hgt) / k, 0, 1)
+        hgt = hgt * (1 - t) + b * t + k * t * (1 - t)
+    hgt = np.asarray(
+        Image.fromarray((np.clip(hgt, 0, 1) * 255).astype(np.uint8), "L")
+        .filter(ImageFilter.GaussianBlur(8.0 * s)), np.float32) / 255.0
+
+    # --- relief: what is cut into the stone and what stands out of it ----
+    rel = Image.new("L", size, 128)
+    dr = ImageDraw.Draw(rel)
+    gold = Image.new("L", size, 0)
+    dg = ImageDraw.Draw(gold)
+
+    def ridge(pts, up, wd, gilt=False):
+        ln = [pt(p) for p in pts]
+        dr.line(ln, fill=up, width=max(1, int(wd * s)), joint="curve")
+        if gilt:
+            dg.line(ln, fill=255, width=max(1, int(wd * s)), joint="curve")
+
+    # the collar: four raised bands and a row of beads under them, with a
+    # groove above and below the lot so the band sits *in* the neck
+    ridge(bow((0.602, 0.188), (0.874, 0.242), 0.013), 76, 2.2)
+    ridge(bow((0.542, 0.258), (0.826, 0.292), 0.013), 76, 2.2)
+    for a, b in BASTET_COLLAR:
+        ridge(bow(a, b, 0.013), 190, 3.4, gilt=True)
+    for i in range(10):
+        t = i / 9.0
+        u = 0.538 + t * 0.278
+        v = 0.266 + t * 0.028 + 0.026 * math.sin(math.pi * t)
+        r = 0.0062
+        box = [X(u - r), Y(v - r * 1.9), X(u + r), Y(v + r * 1.9)]
+        dr.ellipse(box, fill=208)
+        dg.ellipse(box, fill=255)
+
+    # the hoop in the near ear
+    hoop = [X(0.800), Y(0.078), X(0.838), Y(0.114)]
+    dr.ellipse(hoop, outline=198, width=int(2.6 * s))
+    dg.ellipse(hoop, outline=255, width=int(2.6 * s))
+
+    # the eye: cut in, with a lid standing over it. Stone, not gold -- a
+    # bright eye at this size is a lamp, which is what the frontal one was.
+    dr.polygon([pt(p) for p in spline(
+        [(0.852, 0.150), (0.878, 0.140), (0.904, 0.148), (0.878, 0.157)])],
+        fill=58)
+    dr.line([pt(p) for p in spline(
+        [(0.848, 0.148), (0.878, 0.137), (0.907, 0.146)], closed=False)],
+        fill=200, width=int(1.7 * s), joint="curve")
+    # ...and the cosmetic line back from its outer corner, which is the one
+    # mark on her that is Egyptian rather than feline
+    dr.line([pt(p) for p in ((0.848, 0.150), (0.812, 0.144))],
+            fill=78, width=int(1.4 * s))
+    # the nose, the mouth, the ear's hollow
+    dr.line([pt(p) for p in ((0.972, 0.178), (0.980, 0.186), (0.972, 0.193))],
+            fill=56, width=int(1.6 * s), joint="curve")
+    dr.line([pt(p) for p in ((0.972, 0.196), (0.952, 0.200))],
+            fill=84, width=int(1.4 * s))
+    # **The ear is a bowl, not a flap.** A triangle of one value has no depth
+    # in it whichever way it is shaded, and two of them side by side read as
+    # cardboard -- so the conch is cut well in and its two edges stand round
+    # it, which is the one thing that makes an ear jut.
+    dr.polygon([pt(p) for p in spline(
+        [(0.762, 0.084), (0.784, 0.046), (0.806, 0.022), (0.826, 0.052),
+         (0.834, 0.080), (0.798, 0.092)])], fill=20)
+    dr.line([pt(p) for p in spline(
+        [(0.752, 0.094), (0.782, 0.042), (0.810, 0.012)], closed=False)],
+        fill=214, width=int(2.8 * s), joint="curve")
+    dr.line([pt(p) for p in spline(
+        [(0.816, 0.014), (0.840, 0.052), (0.860, 0.086)], closed=False)],
+        fill=206, width=int(2.8 * s), joint="curve")
+    # the far ear gets no hollow: what is visible of it is its tip, and a
+    # bowl drawn on a tip is a mark with nothing to be a bowl in
+
+    # the tail, lying round the near side of the base
+    ridge(spline([(0.098, 0.842), (0.126, 0.882), (0.250, 0.901),
+                  (0.430, 0.906), (0.610, 0.901), (0.712, 0.890),
+                  (0.744, 0.872)], closed=False), 178, 4.0)
     for i in range(3):
-        yy = top + H * (0.112 + i * 0.032)
-        d.line([(cx - W * (0.120 - i * 0.011), yy),
-                (cx + W * (0.120 - i * 0.011), yy)],
-               fill=rgba(GILT_DIM, 205), width=int(1.5 * s))
-    d.ellipse([cx - W * 0.032, top + H * 0.130, cx + W * 0.032,
-               top + H * 0.190], fill=rgba(GILT, 242))
-    d.line([(cx, top + H * 0.132), (cx, top + H * 0.188)],
-           fill=(22, 17, 8, 255), width=int(1.6 * s))
-    for sgn in (-1, 1):
-        ex = cx + sgn * W * 0.064
-        d.ellipse([ex - W * 0.027, top - H * 0.017, ex + W * 0.027,
-                   top + H * 0.007], fill=rgba(GILT_HOT, 242))
-        d.ellipse([ex - W * 0.009, top - H * 0.010, ex + W * 0.009,
-                   top + H * 0.002], fill=(20, 14, 6, 255))
-        d.line([(ex - W * 0.042, top - H * 0.021),
-                (ex + W * 0.042, top - H * 0.023)],
-               fill=rgba(GILT, 225), width=int(2.0 * s))
+        u0 = 0.830 + i * 0.030
+        dr.line([pt((u0, 0.874)), pt((u0 + 0.004, 0.898))], fill=84,
+                width=int(1.5 * s))
+    # the top of the base slab
+    ridge([(0.058, 0.920), (0.500, 0.926), (0.938, 0.920)], 188, 2.0)
+    # the far foreleg, and the groove between the shoulder and the near one
+    dr.polygon([pt(p) for p in spline(
+        [(0.690, 0.560), (0.706, 0.680), (0.708, 0.796), (0.726, 0.860),
+         (0.768, 0.880), (0.754, 0.832), (0.746, 0.680), (0.734, 0.560)])],
+        fill=96)
+    ridge([(0.742, 0.500), (0.752, 0.580), (0.754, 0.700)], 88, 2.6)
+    ridge(spline([(0.190, 0.740), (0.330, 0.786), (0.474, 0.820),
+                  (0.580, 0.840), (0.642, 0.866), (0.690, 0.880)],
+                 closed=False), 92, 2.4)
 
-    img = cut(im, mk, w, h)
+    rel = rel.filter(ImageFilter.GaussianBlur(1.3 * s))
+    hgt = hgt + (np.asarray(rel, np.float32) - 128.0) / 128.0 * 0.052
+    gold = np.asarray(gold.filter(ImageFilter.GaussianBlur(0.6 * s)),
+                      np.float32) / 255.0
+
+    # --- light it --------------------------------------------------------
+    # **The height is in units of the figure's own width**, so the normal is
+    # the same shape whatever the canvas is.
+    gy, gx = np.gradient(hgt * fw * 0.176)
+    nx, ny, nz = -gx, -gy, np.ones_like(hgt)
+    ln = np.sqrt(nx * nx + ny * ny + nz * nz)
+    nx, ny, nz = nx / ln, ny / ln, nz / ln
+
+    lv = np.array(BASTET_LIGHT, np.float64)
+    lv /= np.linalg.norm(lv)
+    hv = lv + np.array([0.0, 0.0, 1.0])
+    hv /= np.linalg.norm(hv)
+
+    lam = np.clip(nx * lv[0] + ny * lv[1] + nz * lv[2], 0, 1)
+    spec = np.clip(nx * hv[0] + ny * hv[1] + nz * hv[2], 0, 1)
+
+    def material(dark, lit, sp, gamma, shine, power):
+        d0 = np.array(dark, np.float32)[None, None, :]
+        d1 = np.array(lit, np.float32)[None, None, :]
+        d2 = np.array(sp, np.float32)[None, None, :]
+        return (d0 + (d1 - d0) * (lam ** gamma)[..., None]
+                + d2 * ((spec ** power) * shine)[..., None])
+
+    stone = material(CAT_DARK, CAT_LIT, CAT_SPEC, 1.70, 0.46, 26)
+    metal = material(AU_DARK, AU_LIT, AU_SPEC, 1.05, 0.70, 15)
+    rgb = stone + (metal - stone) * gold[..., None]
+
+    rgb += np.random.default_rng(7).normal(0, 2.6, (H, W, 1))
+
+    img = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8),
+                          "RGB").convert("RGBA")
+    img.putalpha(sil)
+    img = down(img, w, h)
+    box = img.split()[3].getbbox()
+    if box is not None:
+        m = 3
+        img = img.crop((max(0, box[0] - m), max(0, box[1] - m),
+                        min(img.width, box[2] + m),
+                        min(img.height, box[3] + m)))
     rim = A.rim_light(img.split()[3], ORB, drop=3, blur=2.0, strength=1.0)
     return img, rim
 
@@ -1893,6 +2139,137 @@ def orb(n=192):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# The statue's third dimension
+#
+# **A card is a card from above, whatever is painted on it.** The Bastet was
+# one quad in the plane `z = const`, which is right looking down the hall and
+# wrong everywhere else: phase A looks at the floor from nine hundred units
+# up, and from there an upright card is a sheet of paper leaning back over a
+# plinth that is plainly a solid box. It was reported exactly that way.
+# Nothing about the drawing fixes it, because the defect is that there is no
+# depth to have.
+#
+# So `bg_sanctum` sweeps her into a solid, and what it sweeps is **measured
+# off the shipped PNG rather than restated in GML**. The card's silhouette
+# and the solid's cross-section have to be the same shape or the figure has
+# two outlines; reading the alpha channel of the very image that gets drawn
+# is the one construction where they cannot drift. That is `grove_table`'s
+# argument -- a number describing a picture, kept in the same language as the
+# picture -- and `bullet_table`'s before it.
+#
+# The one thing a profile cannot supply is how *wide* she is, so that is
+# authored: a half-depth per height, as a fraction of the card's own width,
+# so it follows the figure at any size. A seated cat is narrow at the ears,
+# widest across the haunch, and stands on a base oval wider than she is.
+BASTET_DEPTH = [
+    (0.000, 0.052), (0.090, 0.086), (0.170, 0.106), (0.262, 0.088),
+    (0.360, 0.126), (0.500, 0.150), (0.660, 0.176), (0.840, 0.170),
+    (0.906, 0.150), (0.926, 0.224), (1.000, 0.228),
+]
+BASTET_SLICES = 34
+
+BASTET_TABLE_GML = '''/// @desc The Gilded Sanctum's measured numbers -- GENERATED by
+///       tools/make_sanctum.py. **Do not edit.**
+///
+/// **How wide the Bastet is at each height, so that she can be a solid.**
+/// She is drawn once, in profile, by a Python script and swept into three
+/// dimensions by GML -- and the two have to agree about her outline, or the
+/// figure has two of them. So the outline is read off the alpha channel of
+/// the sprite that actually ships, row by row, and written out here: the
+/// same argument `grove_table` makes about where a branch is, and
+/// `bullet_table` about how big a bullet is.
+///
+/// Each row is `[v, u0, u1, d]` in the sprite's own box, 0..1 from its
+/// top-left: the height, the back and the front of her at that height, and
+/// her half-depth across. That last one is authored rather than measured,
+/// because a profile cannot say how wide a thing is; it is a fraction of the
+/// card's *width*, so it follows the figure however large it is drawn.
+
+function sanctum_table_init() {
+    global.bastet_slice = [
+%s
+    ];
+}
+
+/// @desc Her cross-section at height `_v`, as `[centre, half-length,
+///       half-depth]` in the sprite's own box.
+///
+///       Interpolated, because the sweep asks for heights between two
+///       measured rows -- its normals come off finite differences, which
+///       means every vertex is sampled three times at three slightly
+///       different places.
+function bastet_at(_v) {
+    var _t = global.bastet_slice;
+    var _n = array_length(_t);
+    var _i = 0;
+    while (_i < _n - 2 && _t[_i + 1][0] < _v) _i++;
+    var _a = _t[_i];
+    var _b = _t[_i + 1];
+    var _s = clamp((_v - _a[0]) / max(0.000001, _b[0] - _a[0]), 0, 1);
+    var _u0 = lerp(_a[1], _b[1], _s);
+    var _u1 = lerp(_a[2], _b[2], _s);
+    return [(_u0 + _u1) * 0.5, (_u1 - _u0) * 0.5, lerp(_a[3], _b[3], _s)];
+}
+'''
+
+
+def _bastet_depth_at(v):
+    """The authored half-depth, interpolated."""
+    pts = BASTET_DEPTH
+    if v <= pts[0][0]:
+        return pts[0][1]
+    for i in range(len(pts) - 1):
+        a, b = pts[i], pts[i + 1]
+        if v <= b[0]:
+            t = (v - a[0]) / (b[0] - a[0])
+            return a[1] + (b[1] - a[1]) * t
+    return pts[-1][1]
+
+
+def bastet_slices(img, n=BASTET_SLICES):
+    """Read her outline off the shipped alpha, one row per slice.
+
+    **A row with no ink in it is answered by the nearest row that has some**,
+    rather than by a slice of zero length. The crop leaves a few pixels of
+    margin at each end and the ear tips taper away to nothing, so the first
+    and last rows genuinely are empty -- and pinching the sweep to a point up
+    there and down there is a spike over her head and a funnel under her base
+    rather than a statue.
+    """
+    a = np.asarray(img.split()[3])
+    h, w = a.shape
+    rows = []
+    for y in range(h):
+        xs = np.nonzero(a[y] > 40)[0]
+        rows.append(None if len(xs) == 0 else
+                    (float(xs[0]) / w, float(xs[-1] + 1) / w))
+    have = [y for y, r in enumerate(rows) if r is not None]
+    if not have:
+        raise SystemExit("bastet: the sprite has no ink in it")
+    out = []
+    for i in range(n):
+        v = i / (n - 1.0)
+        y = min(h - 1, max(0, int(round(v * (h - 1)))))
+        if rows[y] is None:
+            y = min(have, key=lambda q: abs(q - y))
+        u0, u1 = rows[y]
+        out.append((v, u0, u1, _bastet_depth_at(v)))
+    return out
+
+
+def write_bastet_table(slices):
+    rows = "\n".join("        [%.4f, %.4f, %.4f, %.4f]," % r for r in slices)
+    path = os.path.join(A.ROOT, "scripts", "sanctum_table",
+                        "sanctum_table.gml")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    gm_new.write(path, BASTET_TABLE_GML % rows)
+    gm_new.script("sanctum_table")
+    print("sanctum_table.gml: %d bastet slices, %.3f..%.3f long"
+          % (len(slices), min(r[2] - r[1] for r in slices),
+             max(r[2] - r[1] for r in slices)))
+
+
 def main():
     gm_new.folder("Sprites/sanctum")
     f = "Sprites/sanctum"
@@ -1938,6 +2315,7 @@ def main():
     cat, cat_rim = bastet()
     gm_new.sprite("spr_hall_bastet", [cat], origin="topleft", folder=f)
     gm_new.sprite("spr_hall_bastet_rim", [cat_rim], origin="topleft", folder=f)
+    write_bastet_table(bastet_slices(cat))
 
     b0, r0 = banner(0)
     b1, r1 = banner(1)
