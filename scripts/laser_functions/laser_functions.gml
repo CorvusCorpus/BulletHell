@@ -34,7 +34,23 @@ function laser_blank() {
         col: BCOL_BONE,
         warn: 60, hot: 120, fade: 20,
         src: undefined,          // a struct with x/y the origin follows
-        aim_src: false,          // ...and whether `dir` follows it too
+        // **A world point the beam stays trained on**, or `undefined` for one
+        // that keeps the heading it was cast with.
+        //
+        // The field beside this used to be `aim_src`, a flag documented as
+        // "whether `dir` follows it too" -- declared, blanked, commented, and
+        // read by nothing anywhere in the project. Which is the `GAME_ERROR`
+        // shape exactly: what it describes is a real and wanted behaviour, and
+        // the description was the whole of it.
+        //
+        // **Following and aiming are different questions and a beam mounted on
+        // something that moves needs both answered.** `src` alone translates
+        // the line, so a beam aimed at a spot slides off that spot as its
+        // caster travels -- which is right for a swept wall and wrong for
+        // anything that was aimed. Trained, the line pivots about the point
+        // instead: the root stays on the caster, the spot stays covered, and
+        // what sweeps is everywhere else.
+        look: undefined,
         nx: [], ny: [], node_n: 0,
         // **A laser is grazed on a cooldown where a bullet is grazed once.**
         // A bullet passes and is gone, so a flag is the whole truth about it;
@@ -60,7 +76,7 @@ function laser_alloc() {
     _l.spd = 0;
     _l.turn = 0;
     _l.src = undefined;
-    _l.aim_src = false;
+    _l.look = undefined;
     _l.node_n = 0;
     _l.graze_t = 0;
     _l.graze_cd = LASER_GRAZE_CD;
@@ -171,7 +187,15 @@ function laser_step() {
 }
 
 function laser_step_beam(_l) {
-    _l.dir += _l.turn;
+    // **A trained beam re-aims and does not turn**, which is the one place the
+    // two could fight: a rate and a target are two ways of saying where the
+    // line points, and a beam carrying both would drift off its point by
+    // exactly `turn` a frame with nothing to say why.
+    if (_l.look != undefined) {
+        _l.dir = point_direction(_l.x, _l.y, _l.look.x, _l.look.y);
+    } else {
+        _l.dir += _l.turn;
+    }
     if (_l.phase == LaserPhase.Warn && _l.t >= _l.warn) {
         _l.phase = LaserPhase.Fire;
         _l.t = 0;
@@ -427,9 +451,99 @@ function laser_draw() {
                 _y0 = _l.y - lengthdir_y(_len, _l.dir);
             }
             laser_draw_bar(_x0, _y0, _l.dir, _len, _v.wid, _col, _v.alpha);
+
+            // ...and the light it is coming out of. Beams only: a ray and a
+            // curve are drawn from a travelling head that already carries one,
+            // and neither keeps the point it was fired from. See
+            // `laser_draw_muzzle`.
+            if (_l.kind == LaserKind.Beam) laser_draw_muzzle(_l, _col);
         }
     }
     gpu_set_blendmode(bm_normal);
+}
+
+/// @desc How big and how bright the light at a beam's root is this frame.
+///
+///       **Split out for `laser_visual`'s reason**: the shape of a muzzle's
+///       life is the part a suite can check, and it has to be checkable
+///       beside the bar's, because the one thing a muzzle may not do is
+///       outlive the beam it belongs to.
+///
+///       **Everything is a multiple of the beam's own width**, so a hairline
+///       gets a spark and a wall gets a furnace, and nobody has to remember to
+///       pick a size. It is the property the ring's band and the meters' glass
+///       are built on: the picture is derived from the thing rather than
+///       tuned to agree with it.
+function laser_muzzle(_l) {
+    switch (_l.phase) {
+        case LaserPhase.Warn:
+            // **A gather, and it is the half of the telegraph the bar cannot
+            // give.** A warning line says where the beam will lie; it does not
+            // say which end of it is the muzzle, and on an aimed beam that is
+            // the thing the player wants -- a line through you from a ring
+            // above is answered differently than the same line from beside
+            // you. It swells toward the shot rather than holding, on the
+            // warning's own curve.
+            var _p = _l.t / max(1, _l.warn);
+            return { r: _l.wid * (0.85 + 1.70 * _p * _p),
+                     alpha: 0.28 + 0.46 * _p * _p };
+
+        case LaserPhase.Fire:
+            // Full, with a flicker on it -- a light source that holds
+            // perfectly still reads as a decal stuck to the scenery.
+            return { r: _l.wid * (2.55 + 0.22 * dsin(_l.t * 23)),
+                     alpha: 0.95 };
+
+        case LaserPhase.Fade:
+            // Blooms out as it dies, exactly as the bar does, so the two go
+            // together rather than one outlasting the other.
+            var _f = 1 - _l.t / max(1, _l.fade);
+            return { r: _l.wid * (2.55 + (1 - _f) * 2.0), alpha: _f * 0.7 };
+    }
+    return { r: 0, alpha: 0 };
+}
+
+/// @desc The light at a beam's root.
+///
+///       **A beam was the one kind of laser with a bare end.** A ray is drawn
+///       from its tail forward so the sprite's own bright head lands on the
+///       head, and a curve caps its head with `spr_laser_node`; both of those
+///       are the *live* end of a thing that travels. A beam does not travel,
+///       so its root sits still in one place for its whole life -- and with
+///       nothing drawn there it is a line that begins in mid-air. Reported
+///       against Mika's bolts, where the root sits inside a ring and plainly
+///       ought to be burning.
+///
+///       Three layers, and the first two are the bullets' own rule: a soft
+///       bloom carrying the hue and a smaller white one inside it, because
+///       white-inside-colour is what makes light read as light at any size.
+///       The third is the house's four-pointed spark, and **two of its points
+///       run down the beam's own axis** -- which is what a flare on a real
+///       source does, and what keeps the muzzle attached to the barrel rather
+///       than being a glow that happens to be nearby.
+///
+///       Additive, like everything else in this pass, so it cannot hide a
+///       bullet at any size or any alpha.
+function laser_draw_muzzle(_l, _col) {
+    var _m = laser_muzzle(_l);
+    if (_m.alpha <= 0.01 || _m.r <= 0.5) return;
+
+    var _bw = sprite_get_width(spr_fx_bloom);
+    var _bh = sprite_get_height(spr_fx_bloom);
+    draw_sprite_ext(spr_fx_bloom, 0, _l.x, _l.y, _m.r / _bw, _m.r / _bh, 0,
+                    _col, _m.alpha * 0.70);
+    var _hot = _m.r * 0.40;
+    draw_sprite_ext(spr_fx_bloom, 0, _l.x, _l.y, _hot / _bw, _hot / _bh, 0,
+                    c_white, _m.alpha * 0.85);
+
+    var _sw = sprite_get_width(spr_fx_spark);
+    var _sh = sprite_get_height(spr_fx_spark);
+    var _arm = _m.r * 1.35;
+    var _thk = max(1, _m.r * 0.11);
+    for (var _k = 0; _k < 4; _k++) {
+        draw_sprite_ext(spr_fx_spark, 0, _l.x, _l.y, _arm / _sw, _thk / _sh,
+                        _l.dir + _k * 90, _col, _m.alpha * 0.5);
+    }
 }
 
 /// @desc One straight bar of light, from (`_x`, `_y`) along `_dir`.

@@ -735,6 +735,58 @@ function test_laser() {
     ok("its trail is dangerous", laser_hits(_c, _c.nx[4], _c.ny[4], 4));
     for (var _i = 0; _i < 100; _i++) laser_step();
     ok("and the trail is capped", _c.node_n <= CURVE_NODES);
+
+    // ---- the muzzle -------------------------------------------------------
+    //
+    // **A beam used to begin in mid-air**, which is the one kind of laser with
+    // an end that neither travels nor is capped. The light at its root is
+    // derived from the beam rather than tuned beside it, so what is asserted
+    // is the derivation and the fact that the two die together.
+    st_reset();
+    var _b2 = laser_beam(400, 300, 0, 900, 40, BCOL_CYAN, 30, 24, 12);
+
+    // Lit for every frame the beam is, and dark on none of them -- a muzzle
+    // that blinked out mid-beam would read as the source having been put out
+    // while its own light carried on.
+    var _lit = true;
+    var _grew = true;
+    var _was = -1;
+    for (var _i = 0; _i < 30 + 24 + 12; _i++) {
+        var _m = laser_muzzle(_b2);
+        if (_m.alpha <= 0.01 || _m.r <= 0) _lit = false;
+        // ...and it swells through the warning, which is the half of the
+        // telegraph the bar cannot give: which end of the line is the muzzle.
+        if (_b2.phase == LaserPhase.Warn) {
+            if (_was >= 0 && _m.r < _was - 0.0001) _grew = false;
+            _was = _m.r;
+        }
+        laser_step();
+    }
+    ok("a beam's muzzle is lit for every frame the beam is", _lit);
+    ok("...and swells through the warning rather than holding", _grew);
+
+    // ...and it is spent when the beam is. `laser_step` has already taken the
+    // beam off the pool by here, so this asks the shape rather than the pool.
+    _b2.phase = LaserPhase.Done;
+    var _done = laser_muzzle(_b2);
+    ok("...and goes out with it", _done.alpha <= 0.01 && _done.r <= 0);
+
+    // **Everything about it is a multiple of the beam's own width**, so a
+    // hairline gets a spark and a wall gets a furnace and nobody picks a size.
+    // Measured rather than read: two beams alike but for their width, at the
+    // same frame of the same phase.
+    st_reset();
+    var _thin = laser_beam(400, 300, 0, 900, 20, BCOL_CYAN, 30, 24, 12);
+    var _fat = laser_beam(400, 300, 0, 900, 60, BCOL_CYAN, 30, 24, 12);
+    for (var _i = 0; _i < 40; _i++) laser_step();
+    var _mt = laser_muzzle(_thin);
+    var _mf = laser_muzzle(_fat);
+    ok("a muzzle is sized off its own beam's width RATIO="
+       + string(_mf.r / max(0.0001, _mt.r)),
+       abs(_mf.r / max(0.0001, _mt.r) - 3) < 0.001);
+    ok("...and the two are as bright as each other",
+       abs(_mf.alpha - _mt.alpha) < 0.0001);
+
     st_reset();
 }
 
@@ -4312,10 +4364,23 @@ function test_mika_sand() {
     }
     ok("...and every cycle is MIKA_SAND_GRADES steps long", _even);
 
-    // ...and there is one cycle per ring the mill puts down, or a ring wraps
+    // ...and there is one cycle per ring the pair puts down, or a ring wraps
     // onto another ring's sand and the two storms stop being two.
     ok("...and one cycle per ring of the mill",
        array_length(_all) >= MIKA_MILL_RINGS);
+
+    // **A bigger mill wraps onto the table, and it has to wrap cleanly.**
+    // `mika_sand_grade` takes the cycle modulo the table, so the quad's four
+    // rings borrow two cycles -- which is the design, because rings that
+    // share a look are half a turn apart and the figure reads as two
+    // two-fold storms crossing. A count that is *not* a whole number of
+    // cycles puts two neighbouring rings on the same sand and leaves the
+    // ring opposite each of them on different sand, which is a figure with no
+    // symmetry in it at all.
+    ok("...and a mill of any size wraps onto it a whole number of times",
+       (mika_mill_quad().rings mod array_length(_all)) == 0
+       && (mika_mill_crown().rings mod array_length(_all)) == 0
+       && (mika_mill_rush().rings mod array_length(_all)) == 0);
 
     // ...and no two steps anywhere in the table draw the same grain, so the
     // two rings are telling apart and neither repeats inside itself.
@@ -4413,14 +4478,14 @@ function test_mika_sand() {
     ok("...and he put two of them down", ring_count() == MIKA_MILL_RINGS);
 
     // With the rings stepping, the storm arrives.
-    var _seen = mika_st_mill(600);
+    var _seen = mika_st_mill(mika_n1_sandmill, 600);
     ok("and once they turn, the sand does", _seen.n > 0);
     ok("...off the metal of a ring, every comet of it", _seen.off_rim);
 
     // **The same storm every attempt.** Nothing in it is random, and that is
     // the difference between a pattern that can be learnt and noise that can
     // only be survived.
-    var _again = mika_st_mill(600);
+    var _again = mika_st_mill(mika_n1_sandmill, 600);
     ok("the storm is deterministic: the same attempt draws the same field",
        _again.n == _seen.n && abs(_again.sum - _seen.sum) < 0.001);
 
@@ -4428,24 +4493,513 @@ function test_mika_sand() {
     // rather than leaving, so the expiry is the only thing between this
     // attack and a full pool -- which is a boss whose later attacks quietly
     // stop firing.
-    var _long = mika_st_mill(24 * FPS);
+    var _long = mika_st_mill(mika_n1_sandmill, 24 * FPS);
     ok("a whole attack of it does not fill the pool STORMSIZE="
        + string(_long.n) + " MIDSIZE=" + string(_seen.n),
        _long.n < BULLET_MAX * 0.5);
 
+    // ---- the quad ---------------------------------------------------------
+    //
+    // **N3 and N4 are the same mill with four rings**, so what is asked of
+    // them is what was asked of N1: that he throws nothing himself, that the
+    // rings go down, that the sand leaves the metal, that the storm is the
+    // same one twice, and that a whole attack of it does not fill the pool.
+    // **Nothing here holds a tuned number down** -- the distance, the wake
+    // and the beat are a draft, and every assertion below is derived from
+    // whatever they happen to be.
+    var _quad = mika_mill_quad();
+
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f < 240; _f++) {
+        mika_n3_sandquad(_boss, _g, _f);
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("Mika fires nothing in N3 either", bullet_count() == 0);
+    ok("...and he put four rings down", ring_count() == _quad.rings);
+
+    // **Evenly round him, derived from the count rather than written out.**
+    // The claim `mika_mill_spawn` makes is that a mill of any size is the
+    // same gesture, so what is measured is the gap between neighbours against
+    // the gap the count asks for -- which is true of two rings and of four
+    // without either being named.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f <= MIKA_MILL_WIND; _f++) {
+        mika_n3_sandquad(_boss, _g, _f);
+        ring_step(_g);
+    }
+    var _want = 360 / _quad.rings;
+    var _spaced = (ring_count() == _quad.rings);
+    var _out = true;
+    for (var _i = 0; _i < ring_count(); _i++) {
+        var _r = ring_get(_i);
+        if (abs(point_distance(_boss.x, _boss.y, _r.x, _r.y) - _quad.dist)
+            > 1) {
+            _out = false;
+        }
+        var _next = ring_get((_i + 1) mod max(1, ring_count()));
+        var _da = angle_difference(
+            point_direction(_boss.x, _boss.y, _next.x, _next.y),
+            point_direction(_boss.x, _boss.y, _r.x, _r.y));
+        if (abs(abs(_da) - _want) > 0.5) _spaced = false;
+    }
+    ok("the quad's rings ride at the distance it asks for", _out);
+    ok("...and sit an even share of the turn apart", _spaced);
+
+    var _q = mika_st_mill(mika_n3_sandquad, 600);
+    ok("the quad's sand arrives", _q.n > 0);
+    ok("...off the metal of a ring, every comet of it", _q.off_rim);
+
+    var _q2 = mika_st_mill(mika_n3_sandquad, 600);
+    ok("...and the same storm twice",
+       _q2.n == _q.n && abs(_q2.sum - _q.sum) < 0.001);
+
+    var _q_long = mika_st_mill(mika_n3_sandquad, 24 * FPS);
+    ok("a whole attack of the quad does not fill the pool QUADSIZE="
+       + string(_q_long.n) + " PAIRSIZE=" + string(_long.n),
+       _q_long.n < BULLET_MAX * 0.5);
+
+    // **N4 is N3 turned over and nothing else**, which is the same
+    // relationship N2 has to N1: the same count of rings, the same sand, and
+    // a figure that is the mirror of it.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f < 240; _f++) {
+        mika_n4_sandquad(_boss, _g, _f);
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("N4 is the quad too: nothing fired, four rings down",
+       bullet_count() == 0 && ring_count() == _quad.rings);
+
+    var _q4 = mika_st_mill(mika_n4_sandquad, 600);
+    ok("...and it throws as much sand as N3 does",
+       _q4.n > 0 && abs(_q4.n - _q.n) <= _quad.rings);
+    ok("...along a different set of paths", abs(_q4.sum - _q.sum) > 0.001);
+
+    // ---- the crown --------------------------------------------------------
+    //
+    // **N5 and N6 are the same mill again with all six of his rings**, and the
+    // two things a bigger mill can get wrong are the two the orbit answers
+    // for. Both are held against the *pair* rather than against a number, so
+    // either mill can be retuned and what survives is the relationship.
+    var _crown = mika_mill_crown();
+
+    // **A bead gap is pixels and not degrees**, which is the finding this slot
+    // turned up: at one radius the two were the same sentence, and a mill half
+    // again as far out covers half again as much ground in the same angle. A
+    // ribbon whose beads are twice as far apart as the pair's is burst fire
+    // rather than a spray, which is the beat's own stated failure.
+    var _gap_pair = mika_mill_bead_gap(mika_mill_pair());
+    var _gap_quad = mika_mill_bead_gap(_quad);
+    var _gap_crown = mika_mill_bead_gap(_crown);
+    ok("every mill lays its beads about as far apart GAPS="
+       + string(_gap_pair) + "/" + string(_gap_quad) + "/"
+       + string(_gap_crown),
+       _gap_quad < _gap_pair * 1.5 && _gap_crown < _gap_pair * 1.5);
+
+    // **And the metal has to outrun its own sand**, or there is no wake for
+    // the figure to be left in -- a race in pixels a frame against the floor a
+    // grain settles to, which is why the orbit could not simply be kept.
+    ok("...and every mill's metal outruns the sand it leaves RIMSPD="
+       + string(mika_mill_rim_spd(_crown)) + " FLOOR="
+       + string(MIKA_SAND_FLOOR),
+       mika_mill_rim_spd(_crown) > MIKA_SAND_FLOOR * 2
+       && mika_mill_rim_spd(_quad) > MIKA_SAND_FLOOR * 2);
+
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f < 240; _f++) {
+        mika_n5_sandcrown(_boss, _g, _f);
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("Mika fires nothing in N5 either", bullet_count() == 0);
+    ok("...and he put all six rings down", ring_count() == _crown.rings);
+
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f <= MIKA_MILL_WIND; _f++) {
+        mika_n5_sandcrown(_boss, _g, _f);
+        ring_step(_g);
+    }
+    var _cwant = 360 / _crown.rings;
+    var _cspaced = (ring_count() == _crown.rings);
+    var _cout = true;
+    for (var _i = 0; _i < ring_count(); _i++) {
+        var _r = ring_get(_i);
+        if (abs(point_distance(_boss.x, _boss.y, _r.x, _r.y) - _crown.dist)
+            > 1) {
+            _cout = false;
+        }
+        var _next = ring_get((_i + 1) mod max(1, ring_count()));
+        var _da = angle_difference(
+            point_direction(_boss.x, _boss.y, _next.x, _next.y),
+            point_direction(_boss.x, _boss.y, _r.x, _r.y));
+        if (abs(abs(_da) - _cwant) > 0.5) _cspaced = false;
+    }
+    ok("the crown's rings ride at the distance it asks for", _cout);
+    ok("...and sit an even share of the turn apart", _cspaced);
+
+    // ...and six rims out there still leave gaps to fly and shoot through,
+    // which is the aperture's own design and why the count stops at six.
+    var _rim_gap = (2 * pi * _crown.dist - _crown.rings * 2 * RING_R)
+                   / _crown.rings;
+    ok("...with a gap between neighbours to shoot him through RIMGAP="
+       + string(_rim_gap), _rim_gap > RING_R);
+
+    var _c = mika_st_mill(mika_n5_sandcrown, 600);
+    ok("the crown's sand arrives", _c.n > 0);
+    ok("...off the metal of a ring, every comet of it", _c.off_rim);
+
+    var _c2 = mika_st_mill(mika_n5_sandcrown, 600);
+    ok("...and the same storm twice",
+       _c2.n == _c.n && abs(_c2.sum - _c.sum) < 0.001);
+
+    var _c_long = mika_st_mill(mika_n5_sandcrown, 24 * FPS);
+    ok("a whole attack of the crown does not fill the pool CROWNSIZE="
+       + string(_c_long.n) + " QUADSIZE=" + string(_q_long.n),
+       _c_long.n < BULLET_MAX * 0.5);
+
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f < 240; _f++) {
+        mika_n6_sandcrown(_boss, _g, _f);
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("N6 is the crown too: nothing fired, six rings down",
+       bullet_count() == 0 && ring_count() == _crown.rings);
+
+    var _c6 = mika_st_mill(mika_n6_sandcrown, 600);
+    ok("...and it throws as much sand as N5 does",
+       _c6.n > 0 && abs(_c6.n - _c.n) <= _crown.rings);
+    ok("...along a different set of paths", abs(_c6.sum - _c.sum) > 0.001);
+
+    // ---- the rush ---------------------------------------------------------
+    //
+    // **N7 is the fourth mill and the first that reverses**, so on top of what
+    // is asked of the others there are the three claims the swing makes.
+    var _rush = mika_mill_rush();
+
+    // **The reversal is timed to his hops, and that is the whole claim.**
+    // Measured the way it matters: over a full rock, every frame the swing is
+    // not flat out has to be a frame he is hopping -- which is a frame
+    // `mika_mill_rim` throws nothing on. Asserted against `boss_holding`'s own
+    // arithmetic rather than against the two constants, so moving the hop
+    // moves the reversal with it.
+    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
+    var _flip0 = mika_mill_flip_at(undefined);
+    var _hi = -2;
+    var _lo = 2;
+    var _turning = 0;
+    for (var _f = _flip0; _f < _flip0 + 2 * _cyc; _f++) {
+        var _v = mika_mill_swing(_f, _rush, _flip0);
+        _hi = max(_hi, _v);
+        _lo = min(_lo, _v);
+        if (abs(_v) > 0.999) _turning++;
+    }
+    ok("the rush runs flat out both ways HI=" + string(_hi) + " LO="
+       + string(_lo), _hi > 0.99 && _lo < -0.99);
+    ok("...and is flat out on all but the hops FLATOUT=" + string(_turning)
+       + "/" + string(2 * _cyc), _turning >= 2 * BOSS_STEP_HOLD);
+
+    // **The wind-up has to turn the way the first sand does.** Reported: the
+    // spin-up went one way and the attack's first wave came out of rings going
+    // the other. The rings reach speed on their own clock and his hops are on
+    // his, and a schedule read straight off his cycle put the first reversal
+    // inside the spin-up about two attempts in five. Walked across every
+    // offset he can start an attack at, because which ones were wrong was a
+    // property of where in his cycle it began.
+    var _wrong = false;
+    var _late = true;
+    var _aligned = true;
+    for (var _hop = 0; _hop < _cyc; _hop += 7) {
+        var _fake = { boss: { drift_t: _hop } };
+        var _flip = mika_mill_flip_at(_fake);
+        if (_flip < MIKA_MILL_WIND) _late = false;
+
+        // Every reversal still lands on a hop of his -- that is what the
+        // timing buys and it must survive being pushed past the wind-up.
+        if (((_flip + _hop) mod _cyc) != BOSS_STEP_HOLD) _aligned = false;
+
+        // Nothing but full speed, one way, until the spin-up is over.
+        for (var _f = 0; _f <= MIKA_MILL_WIND; _f++) {
+            if (mika_mill_swing(_f, _rush, _flip) != 1) _wrong = true;
+        }
+        // ...and after it, it only ever leaves full speed while he is hopping.
+        for (var _f = _flip; _f < _flip + 2 * _cyc; _f++) {
+            var _v2 = mika_mill_swing(_f, _rush, _flip);
+            if (abs(_v2) <= 0.999
+                && ((_f + _hop) mod _cyc) < BOSS_STEP_HOLD) {
+                _aligned = false;
+            }
+        }
+    }
+    ok("the rush winds up in the direction it then opens in", !_wrong);
+    ok("...whenever in his cycle the attack happened to begin", _late);
+    ok("...and still turns over on a hop of his, every time", _aligned);
+
+    // ...and the three that do not rock answer 1 for ever, so nothing about
+    // them moved when the swing was added.
+    var _steady = true;
+    for (var _f = MIKA_MILL_WIND; _f < MIKA_MILL_WIND + 400; _f++) {
+        if (mika_mill_swing(_f, _crown, _flip0) != 1) _steady = false;
+        if (mika_mill_swing(_f, _quad, _flip0) != 1) _steady = false;
+    }
+    ok("...and a mill that does not rock never leaves full speed", _steady);
+
+    // **It rocks rather than circling**, which is a claim about the position
+    // and not about the rate: the angle a ring has turned through has to come
+    // back to where it started once a full rock, and never run away.
+    var _t0 = mika_mill_turned(_flip0, _rush, _flip0);
+    var _swept = 0;
+    var _returns = true;
+    for (var _f = _flip0; _f < _flip0 + 8 * _cyc; _f++) {
+        _swept = max(_swept, abs(mika_mill_turned(_f, _rush, _flip0) - _t0));
+    }
+    for (var _k = 1; _k <= 4; _k++) {
+        var _at = _flip0 + _k * 2 * _cyc;
+        if (abs(mika_mill_turned(_at, _rush, _flip0) - _t0) > 0.01) {
+            _returns = false;
+        }
+    }
+    ok("the rush rocks and does not circle SWEPT=" + string(_swept)
+       + "deg", _returns && _swept > 90 && _swept < 720);
+
+    // ...and each direction lasts several seconds, which is the complaint the
+    // hop timing answers -- a reversal every 1.4s was reported as a twitch.
+    ok("...holding each way for seconds at a time HOLD="
+       + string(BOSS_STEP_HOLD / FPS) + "s",
+       BOSS_STEP_HOLD / FPS >= 3);
+
+    // ...and the crown, which does not rock, does circle -- the same function
+    // answering the opposite way, so this is a property of the field and not
+    // of the formula.
+    ok("...where the crown keeps going round",
+       mika_mill_turned(MIKA_MILL_WIND + 8 * _cyc, _crown, _flip0)
+       > mika_mill_turned(MIKA_MILL_WIND, _crown, _flip0) + 180);
+
+    // **A raised floor has to survive the pellet's launch.** `BQ.Accel` takes
+    // `min(spd, floor)` so a brake can never accelerate, which means a floor
+    // above the launch speed is silently the launch speed -- and a mill whose
+    // whole variation is faster sand would quietly have got the old sand back.
+    ok("a mill's pellets launch above the floor they settle to LAUNCH="
+       + string(mika_mill_mote_spd(_rush)) + " FLOOR=" + string(_rush.flr),
+       mika_mill_mote_spd(_rush) > _rush.flr);
+    ok("...and a mill at the default floor launches them as it always did",
+       mika_mill_mote_spd(_crown) == MIKA_MILL_MOTE_SPD);
+
+    // The gap and the race, on the same terms as the crown's.
+    var _gap_rush = mika_mill_bead_gap(_rush);
+    ok("...and the rush lays its beads about as far apart GAP="
+       + string(_gap_rush), _gap_rush < _gap_pair * 1.5);
+    ok("...and its metal still outruns its own faster sand RIMSPD="
+       + string(mika_mill_rim_spd(_rush)) + " FLOOR=" + string(_rush.flr),
+       mika_mill_rim_spd(_rush) > _rush.flr * 2);
+
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f < 240; _f++) {
+        mika_n7_sandrush(_boss, _g, _f);
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("Mika fires nothing in N7 either", bullet_count() == 0);
+    ok("...and he put all six rings down", ring_count() == _rush.rings);
+
+    var _r = mika_st_mill(mika_n7_sandrush, 600);
+    ok("the rush's sand arrives", _r.n > 0);
+    ok("...off the metal of a ring, every comet of it", _r.off_rim);
+
+    var _r2 = mika_st_mill(mika_n7_sandrush, 600);
+    ok("...and the same storm twice, reversals and all",
+       _r2.n == _r.n && abs(_r2.sum - _r.sum) < 0.001);
+
+    // **Sparser than the crown**, which is the half of the brief a screenshot
+    // cannot check: the field has to hold fewer grains than N5's does, off a
+    // mill that is throwing beads *more* often.
+    var _r_long = mika_st_mill(mika_n7_sandrush, 24 * FPS);
+    ok("a whole attack of the rush is thinner than the crown RUSHSIZE="
+       + string(_r_long.n) + " CROWNSIZE=" + string(_c_long.n),
+       _r_long.n < _c_long.n);
+
+    // ---- the bolt ---------------------------------------------------------
+    //
+    // **The thinning is what made the attack easy, and the bolt is what is
+    // spent against it.** It is thrown *into* the hop -- the one window a mill
+    // throws nothing through -- so what is asserted is that it lands there,
+    // that it is aimed where the player actually is, and that it cannot hurt
+    // anybody on the frame it is cast.
+    ok("only a rocking mill can throw one",
+       !mika_mill_pair().bolt && !_quad.bolt && !_crown.bolt && _rush.bolt);
+
+    // A mill without the flag throws none at all, walked over a whole rock so
+    // that every reversal frame the rush would use has been passed.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f < _flip0 + 2 * _cyc; _f++) {
+        mika_n5_sandcrown(_boss, _g, _f);
+        ring_step(_g);
+        laser_step();
+    }
+    ok("...and the crown throws none over a whole rock's worth of frames",
+       laser_count() == 0);
+
+    // **The rush throws one per ring, on the reversal and nowhere else.**
+    st_reset();
+    _g = st_game_at(FIELD_CX + 220, FIELD_Y1 - 240);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    var _cast = 0;
+    var _off_flip = false;
+    var _aimed = true;
+    var _cold = true;
+    for (var _f = 0; _f < _flip0 + 2 * _cyc; _f++) {
+        var _was = laser_count();
+        mika_n7_sandrush(_boss, _g, _f);
+        ring_step(_g);
+        var _new = laser_count() - _was;
+        if (_new > 0) {
+            _cast += _new;
+            // Cast only on a reversal -- which is a frame he is hopping on,
+            // and therefore a frame the mill itself throws nothing on.
+            if (_f < _flip0 || (((_f - _flip0) mod _cyc) != 0)) {
+                _off_flip = true;
+            }
+            for (var _i = laser_count() - _new; _i < laser_count(); _i++) {
+                var _l = global.lasers[_i];
+                // **Aimed squarely**, from the ring's own middle at where the
+                // player is standing: the line the warning draws is the line
+                // the player has to step off, so it has to point at them on
+                // the frame it is drawn.
+                if (abs(angle_difference(
+                        _l.dir, point_direction(_l.x, _l.y, _g.player.x,
+                                                _g.player.y))) > 0.01) {
+                    _aimed = false;
+                }
+                // **And a warning may never kill**, which is the genre's rule
+                // and the whole of what makes an aimed beam fair.
+                if (laser_is_hot(_l)) _cold = false;
+            }
+        }
+        laser_step();
+    }
+    ok("the rush throws one bolt a ring at every reversal CAST="
+       + string(_cast), _cast == _rush.rings * 2);
+    ok("...and on no other frame", !_off_flip);
+    ok("...each aimed from its own ring at the player", _aimed);
+    ok("...and none of them is dangerous on the frame it is cast", _cold);
+
+    // **It goes hot after the warning and not before**, measured by stepping
+    // one bolt through its own life rather than by reading the constants.
+    st_reset();
+    _g = st_game_at(FIELD_CX + 160, FIELD_Y1 - 240);
+    var _ring1 = ring_new(FIELD_CX, FIELD_CY, MIKA_RING_COL, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(_g);
+    var _bolt = mika_mill_bolt(_ring1, _g, _flip0, _rush, _flip0);
+    ok("a bolt reaches the field", _bolt != undefined);
+    var _hot_at = -1;
+    for (var _f = 0; _f < MIKA_RUSH_BOLT_WARN + MIKA_RUSH_BOLT_HOT + 40; _f++) {
+        if (_hot_at < 0 && laser_is_hot(_bolt)) _hot_at = _f;
+        laser_step();
+    }
+    ok("...and goes hot only once its warning is spent HOTAT="
+       + string(_hot_at), _hot_at >= MIKA_RUSH_BOLT_WARN);
+
+    // **A bolt is mounted on its ring and trained on its spot**, which is two
+    // claims and the first version of it held neither for long: cast at the
+    // rim and left there, the beam came adrift from a ring that then orbited
+    // away, and it was reported as six beams hanging nowhere near the metal.
+    // Both halves are walked over a bolt's whole life against a mill that is
+    // actually turning, because at rest either construction looks correct.
+    st_reset();
+    _g = st_game_at(FIELD_CX + 240, FIELD_Y1 - 260);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    var _tx = _g.player.x;
+    var _ty = _g.player.y;
+    var _rooted = true;
+    var _trained = true;
+    var _worst_root = 0;
+    var _worst_aim = 0;
+    var _seen_bolt = false;
+    for (var _f = 0; _f < _flip0 + MIKA_RUSH_BOLT_WARN
+                          + MIKA_RUSH_BOLT_HOT; _f++) {
+        mika_n7_sandrush(_boss, _g, _f);
+        ring_step(_g);
+        laser_step();
+        for (var _i = 0; _i < laser_count(); _i++) {
+            var _l = global.lasers[_i];
+            _seen_bolt = true;
+
+            // Its root sits on a ring -- some ring, since which one threw it
+            // is not something the pool records.
+            var _near = 9999;
+            for (var _k = 0; _k < ring_count(); _k++) {
+                var _r2 = ring_get(_k);
+                _near = min(_near, point_distance(_r2.x, _r2.y, _l.x, _l.y));
+            }
+            _worst_root = max(_worst_root, _near);
+            if (_near > 1) _rooted = false;
+
+            // ...and the spot it was aimed at is still on the line, however
+            // far the ring has carried the root since.
+            var _off = laser_spine_dist(_l, _tx, _ty);
+            _worst_aim = max(_worst_aim, _off);
+            if (_off > 1) _trained = false;
+        }
+    }
+    ok("a bolt is thrown at all in that stretch", _seen_bolt);
+    ok("...and its root stays on the ring that threw it ROOTOFF="
+       + string(_worst_root), _rooted);
+    ok("...and it stays trained on the spot it was aimed at AIMOFF="
+       + string(_worst_aim), _trained);
+
+    // ...and the ring has genuinely moved underneath it, or neither of the two
+    // above is a question. This is the measurement that makes them real.
+    var _travel = 0;
+    st_reset();
+    _g = st_game_at(FIELD_CX + 240, FIELD_Y1 - 260);
+    _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    var _rx = 0;
+    var _ry = 0;
+    for (var _f = 0; _f < _flip0 + MIKA_RUSH_BOLT_WARN
+                          + MIKA_RUSH_BOLT_HOT; _f++) {
+        mika_n7_sandrush(_boss, _g, _f);
+        ring_step(_g);
+        if (_f == _flip0) { _rx = ring_get(0).x; _ry = ring_get(0).y; }
+        if (_f > _flip0) {
+            _travel = max(_travel,
+                          point_distance(_rx, _ry, ring_get(0).x,
+                                         ring_get(0).y));
+        }
+    }
+    ok("...over a ring that moved a long way while it was lit TRAVEL="
+       + string(_travel), _travel > RING_R);
+
     st_reset();
 }
 
-/// @desc Play N1 headlessly for `_frames` and describe the field it left.
+
+/// @desc Play the mill attack `_fn` headlessly for `_frames` and describe the
+///       field it left.
 ///
 ///       `sum` is a checksum of where every grain is, which is what makes
 ///       "the same storm twice" one comparison rather than a walk.
-function mika_st_mill(_frames) {
+///
+///       **It takes the attack rather than naming one**, because every
+///       non-spell of his is a mill and each one written wants exactly these
+///       questions asked of it -- see `mika_mill_shape`.
+function mika_st_mill(_fn, _frames) {
     st_reset();
     var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
     var _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
     for (var _f = 0; _f < _frames; _f++) {
-        mika_n1_sandmill(_boss, _g, _f);
+        _fn(_boss, _g, _f);
         ring_step(_g);
         bullet_step(_g.player.x, _g.player.y);
     }

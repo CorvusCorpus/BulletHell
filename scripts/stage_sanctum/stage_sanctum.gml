@@ -464,10 +464,17 @@ function mika_def() {
 ///           N1  WRITTEN, the mill    S1  old placeholder, Gilded Aperture
 ///           N2  WRITTEN, the mill     S2  old placeholder, Ashiah's Circuit
 ///               turned over
-///           N3  old placeholder      S3  old placeholder, Three Open Gates
-///           N4  unwritten            S4  unwritten
-///           N5  unwritten            S5  unwritten
-///           N6  unwritten            S6  unwritten
+///           N3  DRAFT, the quad --   S3  old placeholder, Three Open Gates
+///               the mill with four
+///               rings
+///           N4  DRAFT, the quad      S4  unwritten
+///               turned over
+///           N5  DRAFT, the crown --  S5  unwritten
+///               all six rings
+///           N6  DRAFT, the crown     S6  unwritten
+///               turned over
+///           N7  DRAFT, the rush --   S7  unwritten
+///               six rings reversing
 ///           N7  unwritten            S7  unwritten
 ///                                    S8  old placeholder, Grand Orrery
 ///
@@ -510,23 +517,83 @@ function mika_slots() {
         { name: "Ashiah's Circuit", col: BCOL_CYAN, hp: 476,
           time: 42 * FPS, move: BossMove.Fixed, attack: mika_ashiah_circuit },
 
-        // N3
-        { name: "", col: BCOL_BONE, hp: 336, time: 26 * FPS,
-          move: BossMove.Track, attack: mika_close_reading },
+        // N3 -- the mill with four rings instead of two: the same grain,
+        // the same bead and the same rate, arranged four-fold instead of as
+        // two pairs. **A draft**: see the head of `mika_nonspells`' quad
+        // section for which of its numbers are guesses and why.
+        //
+        // **Priced off what actually reaches him, which was measured rather
+        // than guessed.** Four rings eat the player's fire far harder than
+        // two: fired headlessly from nine columns either side of his own over
+        // a twenty-second clock, **24% of the player's shots land through the
+        // pair and 16% through the quad** -- 0.69 of the uptime. Reported
+        // from play as the attack having stopped being breakable inside its
+        // clock, which is what a third of the damage does, and which costs
+        // the mark as well as the kill: the top rung is bought with score,
+        // and an attack that can only end on its timer pays no speed award.
+        //
+        // So his share is N1's scaled by that measurement -- 260 times 0.69
+        // -- and not a round number chosen to look considered. It buys back
+        // the same time to break, which is the thing that was wrong.
+        { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
+          move: BossMove.Step, attack: mika_n3_sandquad },
         // S3
         { name: "Three Open Gates", col: BCOL_AMBER, hp: 448,
           time: 44 * FPS, attack: mika_three_gates },
 
-        mika_unwritten_row(false, 4),    // N4
+        // N4 -- the quad turned over, on the terms N2 turns N1 over: the
+        // rings run the other way round him and the two storms trade hues.
+        // Same machinery and same numbers as N3, so it is priced the same.
+        { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
+          move: BossMove.Step, attack: mika_n4_sandquad },
         mika_unwritten_row(true, 4),     // S4
 
-        mika_unwritten_row(false, 5),    // N5
+        // N5 -- the crown: all six of his rings, out at `MIKA_ORBIT` where
+        // his formations live, turning more slowly than the mill. **A
+        // draft**: see the head of `mika_nonspells`' crown section.
+        //
+        // **Health measured, not argued**, on the quad's terms -- the same
+        // headless probe that priced N3, fired from nine columns either side
+        // of his own over a twenty-second clock. 24% of the player's shots
+        // land through the pair, 16% through the quad and **14% through the
+        // crown**: 0.60 of the uptime. Six rings out at three hundred block
+        // only a little harder than four at two hundred and thirty-five,
+        // because a ring further out casts a narrower shadow on the column
+        // under him and the two effects very nearly cancel.
+        //
+        // So the share is N1's scaled by the measurement, 260 times 0.60, and
+        // the time to break comes out at N1's.
+        { name: "", col: BCOL_AMBER, hp: 156, time: 35 * FPS,
+          move: BossMove.Step, attack: mika_n5_sandcrown },
         mika_unwritten_row(true, 5),     // S5
 
-        mika_unwritten_row(false, 6),    // N6
+        // N6 -- the crown turned over, on the terms N2 turns N1 and N4 turns
+        // N3. Same machinery and same numbers as N5, so it is priced the same.
+        { name: "", col: BCOL_AMBER, hp: 156, time: 35 * FPS,
+          move: BossMove.Step, attack: mika_n6_sandcrown },
         mika_unwritten_row(true, 6),     // S6
 
-        mika_unwritten_row(false, 7),    // N7
+        // N7 -- the rush: the crown's six rings, rocking between full speed
+        // one way and full speed the other, throwing fewer and faster grains.
+        // **The last breather and the one with no mirror** -- seven is odd, so
+        // instead of a partner it contains its own reverse. See the head of
+        // `mika_nonspells`' rush section.
+        //
+        // **A shorter clock than the other six.** Thirty seconds of something
+        // unsettled reads as urgency where thirty-five of it reads as a wait.
+        // That is a pacing call rather than anything the pattern required and
+        // it is one number to put back.
+        //
+        // **Health measured like the crown's, and scaled for the clock as
+        // well.** The same headless probe: 24% of the player's shots land
+        // through the pair and **14% through the rush** -- 0.60 of the uptime,
+        // which is the crown's number exactly, because a mill that rocks
+        // through most of a turn each way covers the same ground a mill that
+        // circles does. 260 times 0.60 times thirty over thirty-five is what
+        // is here, so it takes the same *share of its clock* to break as N1
+        // does of its own.
+        { name: "", col: BCOL_AMBER, hp: 134, time: 30 * FPS,
+          move: BossMove.Step, attack: mika_n7_sandrush },
         mika_unwritten_row(true, 7),     // S7
 
         // S8
@@ -643,7 +710,7 @@ function mika_unwritten_spell(_e, _g, _t) {
 }
 
 // ---------------------------------------------------------------------------
-// The old placeholders, still standing in N2, N3, S1-S3 and S8
+// The old placeholders, still standing in S1-S3 and S8
 //
 // The seven attacks this stage had before the rebuild. **Each is deleted when
 // its slot is written**, along with anything below that only it uses; the
@@ -739,81 +806,6 @@ function mika_ashiah_circuit(_e, _g, _t) {
 function mika_circuit_rim(_ring, _g, _t) {
     if ((_t mod 74) != 30) return;
     ring_fire_rim(_ring, 5, 3.2, _t * 4.1, BSHAPE_ORB, BCOL_CYAN, 18);
-}
-
-/// @desc Six rings set round wherever the player is, which then charge and
-///       close in.
-///
-///       **The one attack answered by leaving rather than by dodging**, and
-///       the reason he tracks during it: the ring of rings is drawn round the
-///       player, so the player is inside it, so a boss that wandered off would
-///       be a boss they could not shoot for the whole attack. Same finding as
-///       `Demon Sealing Hex` and the same fix -- see `BossMove`.
-///
-///       The order of the three things it does is the whole of what makes it
-///       fair. The rings arrive harmless and wide apart, *then* the metal
-///       warns, and only then do they move inward. A player who reads it and
-///       walks out through a gap is never touched; a player who stands in the
-///       middle admiring it is closed in on by a wall they watched being
-///       built.
-///
-///       **Closing in is movement and not growth**, which is what a fixed ring
-///       size buys: six objects converging is legible in a way one object
-///       silently changing scale never was.
-function mika_close_reading(_e, _g, _t) {
-    static reading = { ring: [], gen: [] };
-
-    var _cycle = _t mod 230;
-
-    if (_cycle == 0) {
-        var _cx = clamp(_g.player.x, FIELD_X0 + 300, FIELD_X1 - 300);
-        var _cy = clamp(_g.player.y, FIELD_Y0 + 340, FIELD_Y1 - 300);
-        reading = { ring: [], gen: [] };
-        for (var _i = 0; _i < MIKA_RING_N; _i++) {
-            var _a = _i * (360 / MIKA_RING_N) + _t;
-            var _r = mika_place_ring(_cx + lengthdir_x(300, _a),
-                                     _cy + lengthdir_y(300, _a),
-                                     BCOL_BONE, mika_reading_rim, 210);
-            reading.ring[_i] = _r;
-            reading.gen[_i] = (_r == undefined) ? -1 : _r.gen;
-            if (_r != undefined) _r.spin = 0.9;
-        }
-        fx_ring(_cx, _cy, 40, 300, 24, global.bullet_colour[BCOL_BONE], 0.7);
-    }
-
-    // Charge, then close. Read back through the serial rather than trusted:
-    // the pool hands slots out again, and a phase change or a full pool is
-    // enough for these to be somebody else's rings by now.
-    if (_cycle == 120) {
-        for (var _i = 0; _i < array_length(reading.ring); _i++) {
-            if (ring_valid(reading.ring[_i], reading.gen[_i])) {
-                ring_charge(reading.ring[_i], RING_WARN, 80);
-            }
-        }
-    }
-    if (_cycle == 120 + RING_WARN) {
-        for (var _i = 0; _i < array_length(reading.ring); _i++) {
-            var _r = reading.ring[_i];
-            if (!ring_valid(_r, reading.gen[_i])) continue;
-            var _in = point_direction(_r.x, _r.y, _g.player.x, _g.player.y);
-            _r.vx = lengthdir_x(1.7, _in);
-            _r.vy = lengthdir_y(1.7, _in);
-        }
-    }
-
-    if ((_t mod 88) == 40) {
-        fire_fan(_e.x, _e.y, 9, 5.0,
-                 aim_at(_e.x, _e.y, _g.player.x, _g.player.y), 70,
-                 BSHAPE_RICE, BCOL_GOLD, 20);
-    }
-}
-
-function mika_reading_rim(_ring, _g, _t) {
-    if ((_t mod 50) != 24) return;
-    // Outward, which keeps the middle of the figure the safe place right up
-    // until the rings themselves arrive in it. Firing inward would answer the
-    // attack's own question before it has been asked.
-    ring_fire_rim(_ring, 7, 2.8, _t * 2.1, BSHAPE_MOTE, BCOL_BONE, 18);
 }
 
 /// @desc **Three Open Gates.** Three rings standing across the field, each

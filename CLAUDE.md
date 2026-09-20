@@ -1089,6 +1089,47 @@ being hit into a chance to claw points back.
   a wire — and because collision reads the same node list, the part that has
   drained is also the part that has stopped being dangerous.
 
+**A beam has a light at its root, and it used to begin in mid-air.** A ray is
+drawn from its tail forward so the sprite's own bright head lands on the head,
+and a curve caps its head with `spr_laser_node` -- both of those are the *live*
+end of a thing that travels. A beam does not travel, so its root sits still in
+one place for its whole life, and with nothing drawn there it is a line that
+starts from nothing. Reported against Mika's bolts, where the root sits inside
+a ring and plainly ought to be burning, and it was true of every beam in the
+game.
+
+`laser_draw_muzzle` is three layers: a soft bloom carrying the hue, a smaller
+white one inside it -- the bullets' own white-inside-colour rule, which is what
+makes light read as light at any size -- and the house's four-pointed spark,
+with **two of its points running down the beam's own axis**, which is what a
+flare on a real source does and what keeps the muzzle attached to the barrel
+rather than being a glow that happens to be nearby.
+
+**Everything about it is a multiple of the beam's own width**, so a hairline
+gets a spark and a wall gets a furnace and no call site picks a size; it is the
+property the ring's band and the meters' glass are built on. And `laser_muzzle`
+is split out for `laser_visual`'s reason: the shape of a muzzle's life is the
+part a suite can check, and what it has to be checked for is that it never
+outlives the beam. **The gather through the warning is not decoration** -- it is
+the half of the telegraph the bar cannot give. A warning line says where the
+beam will lie; it does not say which end of it is the muzzle, and on an aimed
+beam that is exactly what the player wants, because a line through you from a
+ring overhead is answered differently from the same line arriving beside you.
+
+**A beam may be mounted on something and trained on somewhere, and those are
+two questions.** `src` pulls the origin along with a caster, which is what
+makes a drifting boss drag its wall about; `look` re-aims the line at a world
+point every frame, so the beam pivots about that point like a searchlight on a
+moving mount. A beam carrying `look` does not apply `turn`, because a rate and
+a target are two ways of saying where the line points and a beam with both
+would drift off its point by exactly `turn` a frame with nothing to say why.
+
+**`look` replaced a field that was declared and never read.** `aim_src` sat
+beside `src` as a flag documented as "whether `dir` follows it too", blanked on
+every alloc, and matched against nothing anywhere in the project -- the
+`GAME_ERROR` shape exactly, where what the comment describes is real and wanted
+and the comment is the whole of it. It was found by needing the behaviour.
+
 A laser is dangerous **only while firing**. A warning that could kill would make
 the telegraph a lie; a fading one that could kill would punish the player for
 believing it was over. And the width it kills at is a third of the width it is
@@ -3142,16 +3183,18 @@ stands:
 |---|---|---|---|---|
 | N1 | **written** -- the mill | | S1 | old placeholder, `Gilded Aperture` |
 | N2 | **written** -- the mill mirrored | | S2 | old placeholder, `Ashiah's Circuit` |
-| N3 | old placeholder | | S3 | old placeholder, `Three Open Gates` |
-| N4 | unwritten | | S4 | unwritten |
-| N5 | unwritten | | S5 | unwritten |
-| N6 | unwritten | | S6 | unwritten |
-| N7 | unwritten | | S7 | unwritten |
+| N3 | **draft** -- the quad | | S3 | old placeholder, `Three Open Gates` |
+| N4 | **draft** -- the quad mirrored | | S4 | unwritten |
+| N5 | **draft** -- the crown | | S5 | unwritten |
+| N6 | **draft** -- the crown mirrored | | S6 | unwritten |
+| N7 | **draft** -- the rush | | S7 | unwritten |
 | | | | S8 | old placeholder, `Grand Orrery` |
 
-The old placeholders are the six attacks the stage had before that are still
+The old placeholders are the four attacks the stage had before that are still
 standing, put in the slots nearest their old places with the health and clocks
-they had. An
+they had. A **draft** is a slot that has been written and not yet played: the
+attack is real and everything downstream of it is the game's, and every number
+in it is a first guess waiting on somebody holding the keyboard. An
 unwritten slot is a stub -- a ring or two turning round him and one slow
 pattern, the spells named `Unwritten Spell 4` and so on -- because the fight
 runs straight through every slot and the attack list offers every one. **Keep
@@ -3299,6 +3342,318 @@ and the way the drift bends over together, because a mill with any two of those
 disagreeing throws sand into its own wake.
 
 Every number in both is unplayed.
+
+### N3 and N4, the quad
+
+**The mill with four rings instead of two, and that is the whole of the
+variation.** Asked for in those words: the same general pattern, four rings
+orbiting him rather than two, with the parameters adjusted accordingly. So the
+grain is N1's grain, the bead is N1's bead, the wind-up is N1's wind-up and the
+streams are laid down at N1's rate -- a player who has learnt the mill reads
+every ribbon in this the same way, and what changed is the figure they are
+arranged into.
+
+**It is a draft.** Every number in it is a first guess written to be played
+against N1, and the three most likely to move are the distance the rings ride
+at, whether each throws one stream or two, and the beat that would have to come
+down with it.
+
+**Two rings make two pairs of arms and four make four single ones**, which is
+the reading the count buys. N1's four ribbons are two tight pairs half a turn
+apart, so the corridors between them alternate narrow and wide and a player who
+finds the wide one can sit in it. Four rings a quarter turn apart with one
+ribbon each put the same four arms at ninety degrees, so every corridor is the
+same width and none of them is a place to live. That is the micrododge the
+four-ring arrangement is for.
+
+**The density does not move, and that is deliberate rather than incidental.**
+Four rings throwing what two threw is twice the sand, which is not a variation
+of a breather, it is a spell. Cutting each ring to one stream puts the
+arithmetic back where it was -- rings times streams over beat is four beads
+every three frames either way -- and measured headlessly over a whole clock the
+two storms carry 1605 grains against 1599. The beat is untouched for the same
+reason: what sets it is how far the muzzle swings between beads, which is the
+orbit times the beat and about six degrees, and stretching the beat to afford
+two streams a ring would turn a spray into burst fire.
+
+**They ride further out, because four of them do not fit where two did.** At
+`MIKA_MILL_DIST` the four rims would leave gaps of about a hundred and eighty
+pixels; thirty more of radius opens them to two hundred and twenty-five, which
+is a door rather than a slot. It also takes a little off how much of him they
+hide, which matters more than it sounds -- and see the crown below for how
+little that effect grows once a mill goes further out still.
+
+**Four rings eat the player's fire much harder than two, and the health is
+priced off the measurement rather than off the argument.** Fired headlessly
+from nine columns either side of his own over a twenty-second clock, 24% of the
+player's shots land through the pair and 16% through the quad -- 0.69 of the
+uptime. Reported from play as the attack having stopped being breakable inside
+its clock, which is exactly what a third of the damage does, and which costs
+the *mark* as well as the kill: the top rung is bought with score, and an
+attack that can only ever end on its timer pays no speed award. So the slot's
+share is N1's scaled by that number, 260 times 0.69, and the time to break
+comes back to N1's.
+
+**Opposite rings share a look and adjacent ones do not.** `mika_sand_grade`
+wraps, so the quad's ring 2 borrows ring 0's cycle and ring 3 borrows ring 1's,
+and the hues are handed out to match: glints, grains, glints, grains round him,
+so the four-fold figure reads as the two storms N1 has, interleaved. Four
+different looks would be four things to tell apart at the moment the player is
+telling arms apart. **N4 is N3 turned over** on exactly the terms N2 turns N1
+over.
+
+**What made both possible is that the mill's shape is the slot's now.** How
+many rings there are, how far out they ride, how many streams each throws and
+how often were macros the whole file shared; they are a struct bound into a
+ring's `act` at spawn. What stays a macro is everything a variation does not
+touch -- the grain, the wind-up, the lean, the lead and the bead's whole life
+-- because a mill that changed those would not be a variation of this pattern,
+it would be a different one.
+
+### N5 and N6, the crown
+
+**All six of his rings, which is where the count stops.** `MIKA_RING_N` is six
+because six on one orbit leave gaps about as wide as a ring and seven closes
+them, so the top of the non-spell ladder is the whole set turning round him at
+once -- at `MIKA_ORBIT`, which is where every six-ring formation of his sits.
+That is the useful part rather than a saving: the breather teaches the
+arrangement and `Gilded Aperture` two slots later tests it, and one radius for
+his furniture is what lets a player learn where it lives. The gaps between six
+rims out there are 170 pixels, a ring's own width.
+
+**And the orbit had to come down, which is the finding this slot turned up.**
+The mill's note says the beat is set by how far the muzzle swings between beads
+and that much more than a few degrees reads as a gap rather than as a spray.
+That was true and it is half the statement, because it was written when every
+mill rode at `MIKA_MILL_DIST` and degrees and pixels were the same sentence. A
+ring half again as far out covers half again as much ground in the same angle,
+and what the eye reads is the distance from one bead to the next. Six rings
+need a slower beat to keep the sand affordable, and N1's orbit at N1's beat out
+at three hundred would lay beads 44 pixels apart against N1's 22 -- a ribbon of
+separate shots, which is precisely the failure the beat's own note names.
+
+So the orbit is the mill's now rather than the file's, and two things are
+measured against the pair instead of being written down:
+`mika_mill_bead_gap`, which is what a beat is really set by, and
+`mika_mill_rim_spd`, which is the race the metal has to win against
+`MIKA_SAND_FLOOR` for a wake to read at all. Both are linear, which is why
+neither survived the radius changing as an angle.
+
+| | pair | quad | crown |
+|---|---|---|---|
+| rings | 2 | 4 | 6 |
+| distance | 205 | 235 | 300 |
+| orbit, °/frame | 2.1 | 2.1 | 1.30 |
+| bead gap, px | 22.5 | 25.8 | 27.2 |
+| rim speed, px/frame | 7.5 | 8.6 | 6.8 |
+| grains on the field | 1599 | 1605 | 1590 |
+
+**The density still does not move, and the last column is the surprise.** Six
+rings over a beat of four is three beads every two frames against the pair's
+four every three -- an eighth more sand, because six into four-beads-a-frame
+does not go and the last breather before his spells is the right place for the
+rounding to land heavy. Measured, the field holds the same number anyway: sand
+thrown from three hundred out starts further from the middle and leaves sooner,
+and the two effects cancel. What that buys is a statelier figure -- a lap takes
+four and a half seconds against N1's three, so the crown wheels where the mill
+whips.
+
+**Alternate rings share a look**, which is what the table wrapping gives once
+there are more rings than cycles: glint, grain, glint, grain round him, so each
+shape draws a three-fold figure and the two cross. The quad's opposite rings
+pair the same way for the same reason -- what the wrap guarantees is that a
+ring's look is its index's parity, and a figure of `rings / 2` fold in each
+shape falls out of it. **N6 is N5 turned over**, on N2's and N4's terms.
+
+**Its health is measured, like the quad's**: 14% of the player's shots land
+through the crown against 24% through the pair, 0.60 of the uptime, so the
+slot's share is 260 times that. Six rings out at three hundred block only a
+little harder than four at two hundred and thirty-five, because a ring further
+out casts a narrower shadow on the column under him and the two effects very
+nearly cancel.
+
+### N7, the rush
+
+**The last breather, and the one with no mirror.** Six of the seven go out in
+pairs -- a mill and the same mill turned over -- and seven is odd, so the last
+one has no partner to be the reverse of. So it is its own: the orbit does not
+pick a direction, it **swings between both**, and what would have been N8 is
+folded into N7 as the other half of its own cycle. That is the structure's
+argument for the shape rather than a decoration on it.
+
+**And it is where he runs out.** It is the last thing between the player and
+his final spells, so it is the one breather allowed to stop being restful:
+rapid, thin and unsettled where the crown is broad and stately. **A draft**,
+like the quad and the crown.
+
+Four fields of the mill carry it:
+
+- **The swing, and it is timed to his hops.** The rings hold flat out one way
+  for the whole of `BOSS_STEP_HOLD` -- three and a quarter seconds -- and turn
+  over during `BOSS_STEP_MOVE`, the three quarters of a second he spends
+  hopping. There is no period beside it: the period *is* the hop, so `rock` on
+  a mill is a flag rather than a number. Measured, a ring sweeps a full
+  revolution one way and a full revolution back, and comes back to where it
+  started exactly, four rocks running.
+- **The sand is faster.** A higher settle floor is the one lever that is both
+  halves of "rapid but sparse": a grain that settles quicker crosses the field
+  quicker, so it is harder to stand next to *and* it is gone sooner, which
+  thins the field without firing less.
+- **A bead breaks into two, not three.** The other third of the thinning, and
+  with an even count the two go fore and aft rather than one carrying on down
+  the stream -- a bead shearing in half rather than blooming.
+- **The beat is the mill's own three again**, which is more beads a second
+  than the crown throws. That is the "rapid" the ring count cannot supply once
+  it has run out at six.
+- **And a bolt at every reversal**, aimed at wherever the player is standing.
+  That is the fifth thing and it was added last, because the first four made
+  the attack *thin* and thin turned out to read as easy. See below.
+
+| | pair | quad | crown | rush |
+|---|---|---|---|---|
+| rings | 2 | 4 | 6 | 6 |
+| distance | 205 | 235 | 300 | 300 |
+| orbit °/frame | 2.1 | 2.1 | 1.30 | ±1.72, reversing |
+| beat | 3 | 3 | 4 | 3 |
+| motes a bead | 3 | 3 | 3 | 2 |
+| settle floor | 2.0 | 2.0 | 2.0 | 3.6 |
+| bead gap px | 22.5 | 25.8 | 27.2 | 27.0 |
+| grains on the field | 1599 | 1605 | 1590 | **924** |
+
+**The first version reversed on a free-running cosine and was wrong twice
+over.** It was reported as far too rapid, and it was: 1.4 seconds a reversal is
+a twitch rather than a change of mind. It also passed through zero wherever it
+liked, so twice a cycle the metal was stationary *while throwing* -- and a
+stationary ring has no trailing edge to leave a wake off. That was written down
+here as a cost worth paying, and it was not a cost that had to be paid at all.
+
+**The mill is already silent through a hop.** `mika_mill_rim` throws nothing
+while `boss_holding` is false, because sand laid down while the origin slides
+smears the figure -- which has been true since N1. So the one window in which a
+mill cannot fire is also the one window in which a reversal costs nothing, and
+putting the two together means the rings spend **every frame they throw on**
+flat out and turn over in the gap. The defect disappears rather than being
+accepted, and the attack gets his own beat: three and a quarter seconds of
+steady rotation, a hop, three and a quarter the other way. `test_mika_sand`
+asserts it against `boss_holding`'s own arithmetic rather than against the two
+constants, so moving the hop moves the reversal with it.
+
+**And the wind-up turns the way the first sand does, which took a second
+pass.** The rings reach speed on their own clock and his hops are on his, so a
+schedule read straight off his cycle put the first reversal *inside* the
+spin-up about two attempts in five -- rings winding up one way and opening the
+attack going the other. Reported in exactly those words, and it is the kind of
+fault that only shows on some attempts, because which ones were wrong was a
+property of where in his cycle the attack happened to begin. `mika_mill_flip_at`
+is the fix: the schedule starts at the first hop the wind-up has finished
+before, rather than running free, so the spin-up is one unbroken turn and every
+reversal after it is still on a hop. The suite walks every offset he can start
+an attack at and asserts both halves.
+
+**One number carries the whole of the direction.** `mika_mill_swing` answers
+where in the rock a mill is, from 1 flat out one way to -1 flat out the other,
+and the rim the sand leaves from, the lean on the throw and the way the grain
+bends are all multiplied by it. At full speed a rocking mill is the crown
+exactly; a mill that does not rock answers 1 for ever, so nothing about the
+other three moved. `mika_mill_rock` is the closed-form integral of it -- four
+pieces, a hop, a hold, the hop back and the hold home, summing to exactly zero
+over a full rock, which is what makes the rings come back rather than creep
+round and what keeps a reversing orbit a pure function of the frame.
+
+**The alignment is read once and carried.** `drift_t` is free-running -- it is
+not reset per attack, because a hop is derived from it and one must not be left
+half-finished by a phase change -- so what a mill needs is one frame number,
+and it is a constant for the life of the attack.
+
+**The curl is quantised and the muzzle is not.** Where a bead leaves from is
+computed per bead and costs nothing; what it breaks into is a bound method held
+in a cache, and a continuous key would mint one per frame for ever. Quarters
+are finer than the eye reads on a bend of `MIKA_SAND_BEND` degrees, and a mill
+that does not rock lands on 1 or -1 exactly, so its cache is the single entry
+it always was.
+
+**A raised floor has to survive the pellet's launch, and that is a trap the
+engine sets.** `BQ.Accel` takes `min(spd, floor)` so that a brake can never
+become an accelerator -- which is right, and which means a floor set above the
+speed the pellet is launched at is *silently* the launch speed. A mill whose
+whole variation is faster sand would have quietly got the old sand back with
+nothing in the build, the checks or the picture to say so. So
+`mika_mill_mote_spd` derives the launch from the floor rather than setting it
+beside it, and the suite asserts both that the rush clears its own floor and
+that a mill at the default launches exactly as it always did.
+
+### The bolt, and where the slack was
+
+**A mill is at its thinnest where it turns over, and that is exactly where this
+one was letting the player stand still.** Nothing is thrown through a hop --
+which is the reversal's whole affordance, and the thing that made the timing
+free -- so a rocking mill hands out a three-quarter-second rest every four
+seconds, in the one attack of the seven whose field is already half the density
+of the others. Reported as a notch easier than the rest of them, and that is
+where the slack was: not in the sand, in the gap the sand leaves.
+
+So **each ring throws one beam at each reversal, aimed at where the player is
+standing when it is cast**. The warning runs through the hop and the beam fires
+as the sand comes back, so the quiet second is spent reading a line and leaving
+it rather than resting on it. Six rays cross at one point and radiate out of
+it, so the answer is to be out of the point and in one of the six gaps, which
+widen with distance -- a positional question with an answer everywhere, which
+is the shape `Gilded Aperture` is built on.
+
+**It is cyan, which is the one family his sand never reaches.** He fires gold,
+amber and bone; the current between two rings is already cyan, so a bolt out of
+the metal reads as the same substance and as nothing that could be mistaken for
+a grain.
+
+**It is mounted on its ring and trained on the spot, and getting there took
+one wrong answer first.** The two obvious constructions are each half right: a
+beam that *follows* its ring keeps its root on the metal and slides off the
+spot it was aimed at, and a beam that stays where it was cast keeps the spot
+and comes adrift from the ring that threw it. The first version shipped the
+second, on the reasoning that a warned line the player cannot step off is worse
+than a detached root -- and what that reached a person as was six beams
+visibly hanging in the air nowhere near the rings. Measured afterwards, a ring
+travels **470 pixels** while a bolt is lit, so the root was never going to be
+anywhere near it.
+
+**`look` is the third answer and it is the verb the engine was missing** -- see
+the note under lasers. `src` pulls the root along with the ring and `look`
+re-aims the line at the world point it was cast at, so the bolt pivots about
+that point: the root stays on the metal, the spot stays covered for the whole
+life of the beam, and what sweeps is everywhere else. A player who stands still
+is hit; a player who leaves gets a line turning past them, which is more
+pressure than the fixed version ever had and is why the warning and the beam
+can both afford to be long. `test_mika_sand` walks a bolt's whole life against
+a mill that is actually turning and holds the root to its ring and the line to
+its spot, because at rest either construction looks correct.
+
+**The spot is a copy of the player's position, not the player.** Handed the
+player's own struct, `look` would track them for the beam's whole life, which
+is a beam nobody can dodge.
+
+**It is gated on the reversal rather than on `boss_holding`**, which the two
+make equivalent by construction -- `mika_mill_swing` only leaves full speed
+during a hop -- and keying it to the reversal is what keeps the bolt and the
+turn one event rather than two that happen to agree.
+
+The warning is longer than `RING_WARN` because it asks for more than a
+sidestep -- six lines cross at one point and the answer is which of the six
+gaps to be in -- and the beam stays lit for most of a second, which a fixed
+line could not have afforded: trained on its point, a long beam is a long
+*pivot* rather than a wall standing where nobody is any more. **Whether six
+aimed at one point is one decision or six is the thing to watch**: if it reads
+as one, the knob is a spread on the aim and it is a single line.
+
+**Its health is measured like the crown's and scaled for its clock as well**:
+14% of the player's shots land through the rush against 24% through the pair,
+which is the crown's number exactly -- a mill that rocks through most of a turn
+each way covers the same ground a mill that circles does. The clock is thirty
+seconds rather than thirty-five, which is a pacing call rather than anything
+the pattern required and is one number to put back.
+
+**The seven are done.** What is left in his table is one old placeholder
+non-spell -- there is none; the seven are all written -- and the spells, of
+which four are old placeholders and four are stubs.
 
 **Practice starts him in the open hall.** A practice run skips the stage, and
 the stage is what turns the hall from the approach -- camera nine hundred units
@@ -5108,16 +5463,44 @@ Not done, in rough order of how much it is missed:
   larger of the two remaining gaps and is not this file's shape at all: a cue
   is at most a second and a half and streams nothing, where a track loops for
   five minutes and wants `compression` and `preload` pointed the other way.
-- **Mika is being rebuilt, and two of his fifteen are written.** N1 is the
+- **Mika is being rebuilt: all seven non-spells are written and none of the
+  eight spells is.** N1 is the
   mill -- two rings milling sand, and nothing fired by him -- and the grain it
-  throws is the vocabulary the other five non-spells will be variations of. N2
-  is the first of those: the same mill with the rings running the other way
-  round him and the two storms' hues traded, which is two arguments to
-  `mika_mill_spawn`. See "Mika's fifteen" and "The sand". The other thirteen
-  slots hold five old placeholders and eight stubs. **Every number in the sand is unplayed**, which
+  throws is the vocabulary the other non-spells are variations of. N2 is the
+  first of those: the same mill with the rings running the other way round him
+  and the two storms' hues traded, which is two arguments to
+  `mika_mill_spawn`. **N3 and N4 are the quad** -- four rings a quarter turn
+  apart and one stream each, so the arms go from two tight pairs to four
+  evenly spread. **N5 and N6 are the crown** -- all six of his rings, out at
+  `MIKA_ORBIT` where his formations live, turning more slowly because a bead
+  gap is pixels rather than degrees. The density is the same in all three,
+  measured. **N7 is the rush**: the ring count had run out at six, so the last
+  breather varies the things a count cannot -- its orbit reverses every 1.4
+  seconds on his hops, its sand settles faster and a bead breaks into two,
+  which takes a third off the field while throwing beads more often -- and at
+  every reversal each ring throws an aimed beam, because thin read as easy and
+  the hop is a window nothing else is thrown through. It is also the one with no
+  mirror, seven being odd, which is why it contains its own reverse. See
+  "Mika's fifteen", "The sand" and the three sections after it. **The eight
+  spells are what is left**: four old placeholders and four stubs. **Every number in the sand is unplayed**, which
   for this one matters more than usual: how dense a storm of settled grains can
   be before a breather stops being a breather is exactly what a screenshot
-  cannot say. **The hall is the finished half** of stage three — a real room
+  cannot say, and the quad and the crown are drafts written to be played
+  against N1 rather than tuned attacks -- whether four even corridors are a
+  better breather than two wide ones and two narrow, and whether six rings
+  wheeling slowly reads as the top of the ladder or merely as a slower version
+  of the same thing, are the questions they are asking. The rush asks a
+  third: whether a reversal every three and a quarter seconds is a rhythm or
+  a stutter. Its first version rocked every 1.4 and was reported as far too
+  rapid, which is the only evidence anyone has about the rate.
+
+  **The ring count is a shape knob and not a difficulty one**, which is the
+  finding N3 produced and N5 confirmed: throughput is what sets the
+  micrododge, and holding it constant across two, four and six rings changes
+  where the gaps are without changing the pressure. Difficulty lives in the
+  beat, the wake count, the settle floor and the motes a bead breaks into --
+  which is exactly the set N7 reaches for, and it is the only one of the four
+  that measures out as a different weight of attack. **The hall is the finished half** of stage three — a real room
   under an open sky with the orrery at the end of it — and the fight standing
   in it is not; the waves and the Proctor are placeholders and are not part of
   the rebuild.

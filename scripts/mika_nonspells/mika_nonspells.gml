@@ -467,6 +467,113 @@ function mika_sand_burst(_ring, _at, _dir, _look, _hold, _brake, _floor,
 // the bearing and the throw, which is the half of it that shows.
 #macro MIKA_MILL_LEAD MIKA_SAND_DELAY
 
+// ---- the shape of a mill --------------------------------------------------
+//
+// **How many rings there are, how far out they ride and how much each throws
+// is the slot's, not the file's.** The seven non-spells are variations of each
+// other, and the first axis anybody reaches for is the number of rings -- so
+// the count cannot be a macro that every mill shares. What stays a macro is
+// everything a variation does *not* touch: the grain, the wind-up, the lean,
+// the lead, and the bead's whole life. A mill that changed those would not be
+// a variation of this pattern, it would be a different one.
+//
+// The four numbers that do vary are one struct, bound into a ring's `act` at
+// spawn, so nothing is allocated per frame and no ring can be reading a
+// different mill's numbers from the ring beside it.
+
+/// @desc The shape of one mill, filled in from `_spec`.
+///
+///       **A struct rather than a row of arguments, and that is this project's
+///       own scar.** Four `wave_cross` calls once passed eight arguments to a
+///       function taking nine and GameMaker compiled every one of them, which
+///       is what `check_call_arity` exists for. A mill is up to nine numbers
+///       now and most mills want the default for most of them, so what a
+///       fourth mill writes down is the handful it actually differs in.
+///
+///       - `rings`, `dist`, `orbit`, `beat` -- required, and the four a
+///         variation has always been about.
+///       - `wake`, `arc` -- streams per ring and the rim they are spread over.
+///       - `motes`, `flr` -- how many pellets a bead breaks into and how fast
+///         they settle. The grain's own character otherwise stays shared.
+///       - `rock` -- true for an orbit that reverses on his hops. False, and
+///         the mill turns one way for ever, which is what three of the four
+///         do. There is no period beside it: the period *is* the hop.
+///       - `bolt` -- true if every ring throws an aimed beam at each reversal.
+///         Only a rocking mill has reversals, so only a rocking mill can.
+///
+///       **`flr` and not `floor`**, on the trap `mika_sand_burst` records: a
+///       built-in name wins over a struct member read bare, and there is no
+///       reason to leave a live mine in a field name.
+///
+///       **The orbit is in here and the wind-up is not**, which is the split
+///       that matters once a mill's radius can change. How the rings get up to
+///       speed is the gesture and is shared; how fast they end up going has to
+///       move with the radius, because both of the things the orbit is
+///       answerable for are *linear* rather than angular -- see
+///       `mika_mill_bead_gap`.
+function mika_mill_shape(_spec) {
+    return {
+        rings: _spec.rings,
+        dist: _spec.dist,
+        orbit: _spec.orbit,
+        beat: _spec.beat,
+        wake: _spec[$ "wake"] ?? 1,
+        arc: _spec[$ "arc"] ?? MIKA_MILL_WAKE_ARC,
+        motes: _spec[$ "motes"] ?? MIKA_MILL_MOTES,
+        flr: _spec[$ "flr"] ?? MIKA_SAND_FLOOR,
+        rock: _spec[$ "rock"] ?? false,
+        bolt: _spec[$ "bolt"] ?? false,
+    };
+}
+
+/// @desc How fast a mill throws the pellets a bead breaks into.
+///
+///       **Derived from the floor rather than set beside it**, because a floor
+///       above the speed the pellet is launched at is *silently ignored*:
+///       `BQ.Accel` takes `min(spd, floor)` so that a bullet can never be
+///       accelerated by a brake, which is right and which means a mill that
+///       raised its floor past `MIKA_MILL_MOTE_SPD` would quietly get the old
+///       floor back with nothing to say so. One rule removes the coupling
+///       instead of a second number that has to be remembered.
+function mika_mill_mote_spd(_mill) {
+    return max(MIKA_MILL_MOTE_SPD, _mill.flr * MIKA_MILL_MOTE_LEAD);
+}
+
+/// @desc How far apart along its own track a mill lays consecutive beads of
+///       one stream, in pixels.
+///
+///       **This is the number the beat is really set by, and at one radius it
+///       was indistinguishable from the one that is written down.** The mill's
+///       own note says the beat is set by how far the muzzle has swung between
+///       beads and that much more than a few degrees reads as a gap rather
+///       than as a spray -- which was true and is only half the statement,
+///       because it was written when every mill rode at `MIKA_MILL_DIST` and
+///       degrees and pixels were the same sentence. They are not: a ring half
+///       again as far out covers half again as much ground in the same six
+///       degrees, and what the eye reads is the distance between one bead and
+///       the next, not the angle between them.
+///
+///       So a bigger mill has to slow its orbit rather than keep it, and this
+///       is what any two mills are held level against.
+function mika_mill_bead_gap(_mill) {
+    return _mill.dist * _mill.orbit * _mill.beat * pi / 180;
+}
+
+/// @desc How fast a mill's metal travels along its own track, in pixels a
+///       frame. The other thing the orbit answers for: a wake only reads if
+///       the metal outruns the sand it is leaving, which is a race in pixels
+///       against `MIKA_SAND_FLOOR` and not in degrees against anything.
+function mika_mill_rim_spd(_mill) {
+    return _mill.dist * _mill.orbit * pi / 180;
+}
+
+/// @desc N1 and N2's mill: two rings, half a turn apart, two streams each.
+function mika_mill_pair() {
+    return mika_mill_shape({ rings: MIKA_MILL_RINGS, dist: MIKA_MILL_DIST,
+                             orbit: MIKA_MILL_ORBIT, beat: MIKA_MILL_BEAT,
+                             wake: MIKA_MILL_WAKE, arc: MIKA_MILL_WAKE_ARC });
+}
+
 // ---- the bead -------------------------------------------------------------
 
 // **Medium-small.** It only has to be bigger than the sand it breaks into --
@@ -514,6 +621,12 @@ function mika_sand_burst(_ring, _at, _dir, _look, _hold, _brake, _floor,
 #macro MIKA_MILL_MOTES 3
 #macro MIKA_MILL_MOTE_SPD 3.2
 #macro MIKA_MILL_MOTE_OFF 0          // one carries on down the stream
+
+// How far above a mill's own settle floor a pellet is launched, when that
+// floor is high enough to matter. See `mika_mill_mote_spd`: a brake may never
+// become an accelerator, so a pellet born slower than the floor it asks for
+// keeps the speed it was born with instead.
+#macro MIKA_MILL_MOTE_LEAD 1.3
 #macro MIKA_MILL_MOTE_HOLD 6
 
 /// @desc The wind-up factor at frame `_t`: 0 at rest, 1 at working speed, and
@@ -524,25 +637,263 @@ function mika_mill_wind(_t) {
 }
 
 /// @desc How far round him a ring has walked by frame `_t`, in degrees -- the
-///       integral of `MIKA_MILL_ORBIT * mika_mill_wind`.
+///       integral of the mill's rate.
 ///
 ///       Closed form, so a ring's position is a function of the frame and
 ///       nothing has to be carried between frames or reset between attempts.
-function mika_mill_turned(_t) {
-    var _ramp = MIKA_MILL_ORBIT * MIKA_MILL_WIND / (MIKA_MILL_WIND_POW + 1);
+///       **That is what lets the orbit reverse at all**: a swinging mill is
+///       still a function of `_t`, so it is the same swing on the tenth
+///       attempt as on the first and no state survives a phase change.
+///
+///       A rocking mill winds up exactly as the others do and then reverses
+///       on every hop: `mika_mill_rock` is the closed-form integral of the
+///       swing, and it comes back to where it started once a full rock, so the
+///       rings genuinely rock rather than drifting round.
+function mika_mill_turned(_t, _mill, _flip) {
+    var _ramp = _mill.orbit * MIKA_MILL_WIND / (MIKA_MILL_WIND_POW + 1);
     if (_t < MIKA_MILL_WIND) {
         return _ramp * power(_t / MIKA_MILL_WIND, MIKA_MILL_WIND_POW + 1);
     }
-    return _ramp + MIKA_MILL_ORBIT * (_t - MIKA_MILL_WIND);
+    var _u = _t - MIKA_MILL_WIND;
+    if (!_mill.rock || _t < _flip) return _ramp + _mill.orbit * _u;
+    return _ramp + _mill.orbit * ((_flip - MIKA_MILL_WIND)
+                                  + mika_mill_rock(_t - _flip));
+}
+
+/// @desc How fast a mill's rings are going round him at frame `_t`, as a
+///       fraction of their working rate: 1 flat out one way, -1 flat out the
+///       other, and passing through zero only while he is hopping.
+///
+///       **The reversal is the hop, and that is the whole of the timing.**
+///       `boss_holding` is false for `BOSS_STEP_MOVE` frames in every
+///       `BOSS_STEP_HOLD + BOSS_STEP_MOVE`, and `mika_mill_rim` already throws
+///       nothing through it -- because sand laid down while the origin slides
+///       smears the figure. So the one window in which a mill is silent is
+///       also the one window in which a reversal costs nothing, and putting
+///       the two together means the rings spend every firing frame flat out
+///       and turn over in the gap.
+///
+///       That removes the defect the first version of this shipped with: a
+///       free-running cosine passed through zero wherever it liked, so twice a
+///       cycle the metal was stationary *while throwing*, and a stationary
+///       ring has no trailing edge to leave a wake off. It also makes the beat
+///       of the thing his: 3.25 seconds of steady rotation, a hop, 3.25 the
+///       other way.
+///
+///       **And the first reversal is the first hop the wind-up has finished
+///       before, which is the other half of the timing.** The rings reach
+///       speed on their own clock and his hops are on his, so a mill measured
+///       straight off his cycle could have its first reversal land *inside*
+///       its own spin-up -- and what that reaches a player as is rings that
+///       wind up one way and throw the first wave of sand going the other. It
+///       was reported in exactly those words. `mika_mill_flip_at` is the fix:
+///       the schedule starts at a frame rather than running free, so the
+///       wind-up is always one unbroken turn in the direction the attack then
+///       opens in, and every reversal after it is still on a hop.
+///
+///       **One number carries the whole of the direction**, which is what
+///       makes a reversing mill possible without a second code path. The rim
+///       the sand leaves from, the lean on the throw and the way the grain
+///       bends are all multiplied by it, so at full speed a rocking mill is
+///       the crown exactly.
+///
+///       A mill that does not rock answers 1 for ever, so nothing about the
+///       other three changed.
+function mika_mill_swing(_t, _mill, _flip) {
+    if (!_mill.rock) return 1;
+    // One unbroken turn out of the wind-up and up to the first hop past it.
+    if (_t < _flip) return 1;
+
+    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
+    var _per = 2 * _cyc;
+    var _v = (_t - _flip) mod _per;
+
+    // Through the hop, as a half cosine: it leaves at full speed and arrives
+    // at full speed the other way, with no corner at either end.
+    if (_v < BOSS_STEP_MOVE) return dcos(180 * _v / BOSS_STEP_MOVE);
+    if (_v < BOSS_STEP_MOVE + BOSS_STEP_HOLD) return -1;
+    if (_v < 2 * BOSS_STEP_MOVE + BOSS_STEP_HOLD) {
+        return -dcos(180 * (_v - BOSS_STEP_MOVE - BOSS_STEP_HOLD)
+                     / BOSS_STEP_MOVE);
+    }
+    return 1;
+}
+
+/// @desc The integral of `mika_mill_swing` from zero to `_s`, in frames --
+///       which is how far round a rocking mill has turned, in units of its own
+///       working rate.
+///
+///       **Closed form and periodic**, which is what lets a reversing orbit
+///       stay a pure function of the frame: a full rock integrates to exactly
+///       zero, so the rings come back rather than creeping round, and no state
+///       has to survive a phase change or be reset between attempts.
+///
+///       `_u` is counted from a reversal, so the four pieces are a hop, a
+///       hold, the hop back and the hold home. A hold contributes its own
+///       length; a hop contributes nothing at all over its whole width,
+///       because half a cosine is as much one way as the other -- though it
+///       does carry the swing out past the hold's own reach and back on the
+///       way through, which is where the odd `BOSS_STEP_MOVE / pi` comes from.
+function mika_mill_rock(_u) {
+    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
+    var _k = BOSS_STEP_MOVE / pi;
+    // Through a local, because `mod (` reads as a call to a function named
+    // `mod` to `check_unknown_functions` -- which is the one check standing
+    // between a typo here and a modal error box under the harness. Same note
+    // `boss_holding` carries.
+    var _per = 2 * _cyc;
+    var _v = _u mod _per;
+    if (_v < BOSS_STEP_MOVE) return _k * dsin(180 * _v / BOSS_STEP_MOVE);
+    if (_v < BOSS_STEP_MOVE + BOSS_STEP_HOLD) return -(_v - BOSS_STEP_MOVE);
+    if (_v < 2 * BOSS_STEP_MOVE + BOSS_STEP_HOLD) {
+        return -BOSS_STEP_HOLD
+               - _k * dsin(180 * (_v - BOSS_STEP_MOVE - BOSS_STEP_HOLD)
+                           / BOSS_STEP_MOVE);
+    }
+    return -BOSS_STEP_HOLD + (_v - 2 * BOSS_STEP_MOVE - BOSS_STEP_HOLD);
+}
+
+// ---------------------------------------------------------------------------
+// The bolt: an aimed beam at the inflection
+//
+// **A mill is at its thinnest where it turns over, and that is exactly where
+// it was letting the player stand still.** Nothing is thrown through a hop --
+// which is the reversal's whole affordance -- so a rocking mill hands out a
+// three-quarter-second rest every four seconds, in the one attack of the seven
+// whose field is already half the density of the others. Reported as a notch
+// easier than the rest of them, and this is where the slack was.
+//
+// So each ring throws one beam at each reversal, aimed at where the player is
+// standing when it is cast. The warning runs through the hop and the beam
+// fires as the sand comes back, so the quiet second is spent *reading a line
+// and leaving it* rather than resting on it.
+//
+// **The beam is mounted on its ring and trained on the spot**, and getting
+// there took one wrong answer first. The two obvious constructions are each
+// half right: a beam that *follows* its ring keeps its root on the metal and
+// slides off the spot it was aimed at, and a beam that stays where it was cast
+// keeps the spot and comes adrift from the ring that threw it. The first
+// version shipped the second, on the reasoning that a warned line the player
+// cannot step off is worse than a detached root -- and what that reached a
+// person as was six beams visibly hanging in the air nowhere near the rings.
+//
+// **`look` is the third answer and it is the one the engine was missing.**
+// `src` pulls the root along with the ring and `look` re-aims the line at the
+// world point it was cast at, so the beam pivots about that point like a
+// searchlight on a moving mount: the root is on the metal, the spot stays
+// covered for the whole life of the bolt, and what sweeps is everywhere else.
+// A player who stands still is hit; a player who leaves gets a line that turns
+// past them, which is more pressure than the fixed version ever had and is why
+// the warning and the beam can both afford to be long.
+//
+// **Every ring aims true rather than spreading**, so six rays cross at one
+// point and radiate out of it. The answer is to leave the point and be in one
+// of the six gaps, which widen with distance -- a positional question with an
+// answer everywhere, which is the same shape `Gilded Aperture` is built on. If
+// it reads as one decision rather than six, the knob is a spread on the aim
+// and it is one line.
+//
+// **It is gated on the reversal and not on `boss_holding`.** The two coincide
+// by construction -- `mika_mill_swing` only leaves full speed during a hop --
+// and keying it to the reversal is what keeps the bolt and the turn one event
+// rather than two that happen to agree.
+// ---------------------------------------------------------------------------
+
+// Long enough to cross the field from a ring at his station, on the rule a
+// laser's length is measured against the room rather than against itself.
+#macro MIKA_RUSH_BOLT_LEN 2400
+#macro MIKA_RUSH_BOLT_WID 34
+
+// **Cyan, which is the one family his sand never reaches.** He fires gold,
+// amber and bone; the current between two rings is already cyan, so a bolt out
+// of the metal reads as the same substance and as nothing that can be confused
+// with a grain.
+#macro MIKA_RUSH_BOLT_COL BCOL_CYAN
+
+// The warning covers the hop and runs into the hold, so the beam fires with
+// the sand already back: the move has to be made before the storm returns,
+// which is the whole point of putting the bolt here. Longer than `RING_WARN`
+// because it is asking for more than a sidestep -- six lines cross at one
+// point and the answer is which of the six gaps to be in.
+#macro MIKA_RUSH_BOLT_WARN 66
+
+// And it stays lit for most of a second, which a fixed line could not have
+// afforded: trained on its point, a long beam is a long *pivot*, so the extra
+// frames buy a sweep rather than a wall standing where nobody is any more.
+#macro MIKA_RUSH_BOLT_HOT 42
+
+/// @desc One ring's bolt, cast on the frame its mill turns over.
+///
+///       Answers the laser, or `undefined` on a mill that has none and when
+///       the pool is full -- `laser_beam` refuses like everything else.
+function mika_mill_bolt(_ring, _g, _t, _mill, _flip) {
+    if (!_mill.bolt) return undefined;
+    if (_t < _flip) return undefined;
+    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
+    if (((_t - _flip) mod _cyc) != 0) return undefined;
+
+    // From the ring's own middle, because the hole is what a ring fires
+    // through, and `ring_beam` for the `src` that keeps the root there.
+    var _l = ring_beam(_ring, aim_at(_ring.x, _ring.y, _g.player.x,
+                                     _g.player.y),
+                       MIKA_RUSH_BOLT_LEN, MIKA_RUSH_BOLT_WID,
+                       MIKA_RUSH_BOLT_COL, MIKA_RUSH_BOLT_WARN,
+                       MIKA_RUSH_BOLT_HOT);
+
+    // **The spot is a copy, not the player.** Handed the player's own struct
+    // the bolt would track them for its whole life, which is a beam nobody can
+    // dodge; what is wanted is where they were standing when it was cast.
+    if (_l != undefined) _l.look = { x: _g.player.x, y: _g.player.y };
+    return _l;
+}
+
+/// @desc The frame of an attack at which a rocking mill first turns over: the
+///       first hop of his that begins at or after the wind-up has finished.
+///
+///       **Read once and carried, rather than read every frame.** It is what
+///       lines a rocking mill's reversals up with his hops, and `drift_t` is
+///       free-running -- it is not reset per attack, because a hop is derived
+///       from it and one must not be left half-finished by a phase change. So
+///       what a mill needs is one frame number, and it is a constant for the
+///       life of the attack.
+///
+///       **At or after the wind-up, which is the part that was missing.** A
+///       schedule read straight off his cycle could put a reversal inside the
+///       spin-up, and the rings would then wind up one way and open the attack
+///       going the other -- reported exactly so. Starting the schedule at a
+///       frame instead of letting it run free costs nothing and cannot do
+///       that: every reversal is still on a hop, because the frame chosen is
+///       one.
+///
+///       Answers `MIKA_MILL_WIND`'s own first hop where there is no boss to
+///       ask, which is how the suites pose a mill at a bare position.
+function mika_mill_flip_at(_e) {
+    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
+    var _hop = 0;
+    if (_e != undefined) {
+        var _b = _e[$ "boss"];
+        if (_b != undefined) _hop = _b.drift_t mod _cyc;
+    }
+    // Where his next hop starts, in this attack's own frames.
+    var _at = (BOSS_STEP_HOLD - _hop) mod _cyc;
+    if (_at < 0) _at += _cyc;
+    while (_at < MIKA_MILL_WIND) _at += _cyc;
+    return _at;
 }
 
 /// @desc How far out from him a ring is riding at frame `_t`: nothing at all
-///       on the frame it forms, its full distance by the time the spin-up is
-///       over. Eased at both ends -- a ring that shot out and stopped dead
-///       would read as having hit something.
-function mika_mill_reach(_t) {
+///       on the frame it forms, `_dist` by the time the spin-up is over. Eased
+///       at both ends -- a ring that shot out and stopped dead would read as
+///       having hit something.
+///
+///       **The wind-up is the mill's and the reach is the slot's**, which is
+///       why only the distance is an argument: a four-ring mill wants its
+///       rings further out to keep the gaps between them open, and it does not
+///       want a different spin-up, because the spin-up is the gesture the
+///       player has already learnt.
+function mika_mill_reach(_t, _dist) {
     var _u = clamp(_t / MIKA_MILL_WIND, 0, 1);
-    return MIKA_MILL_DIST * _u * _u * (3 - 2 * _u);
+    return _dist * _u * _u * (3 - 2 * _u);
 }
 
 /// @desc What a bead of ring `_cycle`'s stream looks like -- the shape, hue and
@@ -563,16 +914,17 @@ function mika_mill_look(_cycle, _hue) {
 ///       (ring, hue, direction) and kept -- there are only a handful and a
 ///       bead is thrown every few frames, so a fresh method per bead is churn
 ///       for nothing.
-function mika_mill_dress(_cycle, _hue, _way) {
+function mika_mill_dress(_cycle, _hue, _sw, _mill) {
     static _cache = {};
-    var _key = string(_cycle) + ":" + string(_hue) + ":" + string(_way);
+    var _key = string(_cycle) + ":" + string(_hue) + ":" + string(_sw)
+               + ":" + string(_mill.flr);
     if (!variable_struct_exists(_cache, _key)) {
         _cache[$ _key] = method({ look: mika_mill_look(_cycle, _hue),
-                                  curl: MIKA_SAND_CURL * _way },
+                                  curl: MIKA_SAND_CURL * _sw,
+                                  flr: _mill.flr },
                                 function(_c, _k) {
             mika_sand_dress(_c, look, MIKA_MILL_MOTE_HOLD, MIKA_SAND_BRAKE,
-                            MIKA_SAND_FLOOR, curl,
-                            MIKA_SAND_BEND, MIKA_SAND_LIFE);
+                            flr, curl, MIKA_SAND_BEND, MIKA_SAND_LIFE);
         });
     }
     return _cache[$ _key];
@@ -588,7 +940,7 @@ function mika_mill_dress(_cycle, _hue, _way) {
 ///
 ///       The gentle turn is set outright rather than scheduled because it is
 ///       on from the first frame, which costs no queue entry.
-function mika_bead(_ring, _at, _dir, _look, _dress, _curl) {
+function mika_bead(_ring, _at, _dir, _look, _dress, _curl, _mill) {
     var _u = fire(ring_rim_at_x(_ring, _at, MIKA_SAND_DELAY),
                   ring_rim_at_y(_ring, _at, MIKA_SAND_DELAY),
                   MIKA_MILL_HEAD_SPD, _dir, MIKA_MILL_HEAD_SHAPE, _look.col,
@@ -605,7 +957,7 @@ function mika_bead(_ring, _at, _dir, _look, _dress, _curl) {
                  + mika_sand_settle(MIKA_MILL_HEAD_SPD, MIKA_MILL_HEAD_BRAKE,
                                     MIKA_MILL_HEAD_FLOOR)
                  + MIKA_MILL_HANG;
-    bullet_split_at(_u, _break, MIKA_MILL_MOTES, MIKA_MILL_MOTE_SPD,
+    bullet_split_at(_u, _break, _mill.motes, mika_mill_mote_spd(_mill),
                     MIKA_MILL_MOTE_OFF, _dress);
     return _u;
 }
@@ -622,11 +974,12 @@ function mika_bead(_ring, _at, _dir, _look, _dress, _curl) {
 ///       The cycle is bound into the method rather than written onto the ring
 ///       for the pool's reason: a ring is a reused struct, so a field bolted
 ///       onto one is a field the next user of that slot inherits.
-function mika_mill_ring_for(_cycle, _a0, _way, _hue) {
-    return method({ cyc: _cycle, a0: _a0, way: _way, hue: _hue },
+function mika_mill_ring_for(_cycle, _a0, _way, _hue, _mill, _flip) {
+    return method({ cyc: _cycle, a0: _a0, way: _way, hue: _hue, mill: _mill,
+                    flip: _flip },
                   function(_ring, _g, _t) {
-        var _rad = mika_mill_reach(_t);
-        var _orb = a0 + way * mika_mill_turned(_t);
+        var _rad = mika_mill_reach(_t, mill.dist);
+        var _orb = a0 + way * mika_mill_turned(_t, mill, flip);
         _ring.ox = lengthdir_x(_rad, _orb);
         _ring.oy = lengthdir_y(_rad, _orb);
         // Rigid with the orbit rather than turning on its own: set outright,
@@ -638,24 +991,43 @@ function mika_mill_ring_for(_cycle, _a0, _way, _hue) {
 
         // The wake is aimed at where the metal will be when the bead goes
         // live, not where it is now. See `MIKA_MILL_LEAD`.
-        mika_mill_rim(_ring, _g, _t, cyc, hue, way,
-                      a0 + way * mika_mill_turned(_t + MIKA_MILL_LEAD));
+        // **The swing is read at the lead frame too.** It multiplies the
+        // direction, so reading it now and the orbit later would have a
+        // reversing mill disagree with itself about which way it is going for
+        // the six frames a bead spends as a mark.
+        mika_mill_rim(_ring, _g, _t, cyc, hue,
+                      way * mika_mill_swing(_t + MIKA_MILL_LEAD, mill, flip),
+                      a0 + way * mika_mill_turned(_t + MIKA_MILL_LEAD, mill,
+                                                  flip),
+                      mill);
+
+        // ...and the bolt, which is outside the rim's guards on purpose: the
+        // rim throws nothing through a hop and the bolt is thrown *into* one.
+        mika_mill_bolt(_ring, _g, _t, mill, flip);
     });
 }
 
-/// @desc Put a mill down: two rings out of him, half a turn apart, running
-///       `_way` round him, ring `i` throwing step `_hues[i]` of its own cycle.
+/// @desc Put a mill down: `_mill.rings` rings out of him, evenly round him,
+///       running `_way`, ring `i` throwing step `_hues[i]` of its own cycle.
 ///
 ///       **`_hues` is per ring rather than per slot** so that two slots can
 ///       run the same two shapes in swapped colours, which is all N2 is.
-function mika_mill_spawn(_e, _way, _hues) {
-    for (var _i = 0; _i < MIKA_MILL_RINGS; _i++) {
+///
+///       **Evenly spaced, derived from the count**, so a mill of any size is
+///       the same gesture: two rings come out half a turn apart and four come
+///       out a quarter apart, and neither had to be told.
+function mika_mill_spawn(_e, _way, _hues, _mill) {
+    // The frame a rocking mill first turns over on: his next hop after the
+    // wind-up. Read once, here, and carried -- see `mika_mill_flip_at`.
+    var _flip = mika_mill_flip_at(_e);
+    for (var _i = 0; _i < _mill.rings; _i++) {
         // On top of him, at no radius: `mika_mill_reach` takes them out.
         var _r = ring_new(_e.x, _e.y, MIKA_RING_COL, 0);
         if (_r == undefined) break;
         ring_attach(_r, _e, 0, 0);
-        _r.act = mika_mill_ring_for(_i, _i * (360 / MIKA_MILL_RINGS), _way,
-                                    _hues[_i mod array_length(_hues)]);
+        _r.act = mika_mill_ring_for(_i, _i * (360 / _mill.rings), _way,
+                                    _hues[_i mod array_length(_hues)], _mill,
+                                    _flip);
     }
 }
 
@@ -663,7 +1035,7 @@ function mika_mill_spawn(_e, _way, _hues) {
 ///       glints and ring 1 amber grains.
 function mika_n1_sandmill(_e, _g, _t) {
     if (_t != 0) return;
-    mika_mill_spawn(_e, 1, [0, 1]);
+    mika_mill_spawn(_e, 1, [0, 1], mika_mill_pair());
 }
 
 /// @desc **N2.** The same mill turned over: the rings run the other way round
@@ -678,7 +1050,7 @@ function mika_n1_sandmill(_e, _g, _t) {
 ///       shape.
 function mika_n2_sandmill(_e, _g, _t) {
     if (_t != 0) return;
-    mika_mill_spawn(_e, -1, [1, 0]);
+    mika_mill_spawn(_e, -1, [1, 0], mika_mill_pair());
 }
 
 /// @desc The wake of one ring, at the orbit angle it will be at when the bead
@@ -686,7 +1058,7 @@ function mika_n2_sandmill(_e, _g, _t) {
 ///
 ///       Nothing is thrown until the spin-up is over, and the beat is counted
 ///       from there so the first bead lands on the frame the mill starts.
-function mika_mill_rim(_ring, _g, _t, _cycle, _hue, _way, _orb) {
+function mika_mill_rim(_ring, _g, _t, _cycle, _hue, _sw, _orb, _mill) {
     if (_t < MIKA_MILL_WIND) return;
 
     // **Nothing is thrown while he is moving between stations.** The streams
@@ -697,22 +1069,323 @@ function mika_mill_rim(_ring, _g, _t, _cycle, _hue, _way, _orb) {
     // off `_t`, so the streams pick up in phase rather than restarting.
     if (!boss_holding(_ring.src)) return;
 
-    if (((_t - MIKA_MILL_WIND) mod MIKA_MILL_BEAT) != 0) return;
+    if (((_t - MIKA_MILL_WIND) mod _mill.beat) != 0) return;
 
     // The ring travels along the tangent, so the rim it has just come past is
     // a quarter turn back from where it is heading. That is where the sand
     // leaves from, and it leaves straight out from *that point of the ring* --
     // which, on the trailing rim, is backward along the orbit.
-    var _back = _orb - 90 * _way;
+    // **A quarter turn back from where it is heading, scaled by how fast it
+    // is going.** At full speed that is the trailing rim exactly, which is
+    // every mill but the rush; at a reversal it is the outer rim, straight out
+    // from him, because a stationary ring has no trailing edge.
+    var _back = _orb - 90 * _sw;
 
-    var _mid = (MIKA_MILL_WAKE - 1) * 0.5;
-    var _gap = (MIKA_MILL_WAKE > 1) ? MIKA_MILL_WAKE_ARC / (MIKA_MILL_WAKE - 1) : 0;
+    // **The curl is quantised and the muzzle is not.** Where a bead leaves
+    // from is computed per bead and costs nothing; what it breaks into is a
+    // bound method held in a cache, and a continuous key would mint one per
+    // frame for ever. Quarters are finer than the eye reads on a bend of
+    // `MIKA_SAND_BEND` degrees, and a mill that does not sway lands on 1 or -1
+    // exactly, so its cache is the single entry it always was.
+    var _q = round(_sw * 4) / 4;
+
+    var _mid = (_mill.wake - 1) * 0.5;
+    var _gap = (_mill.wake > 1) ? _mill.arc / (_mill.wake - 1) : 0;
     var _look = mika_mill_look(_cycle, _hue);
-    var _dress = mika_mill_dress(_cycle, _hue, _way);
+    var _dress = mika_mill_dress(_cycle, _hue, _q, _mill);
 
-    for (var _j = 0; _j < MIKA_MILL_WAKE; _j++) {
+    for (var _j = 0; _j < _mill.wake; _j++) {
         var _at = _back + (_j - _mid) * _gap;
-        mika_bead(_ring, _at, _at + MIKA_MILL_LEAN * _way, _look, _dress,
-                  MIKA_SAND_CURL * _way);
+        mika_bead(_ring, _at, _at + MIKA_MILL_LEAN * _sw, _look, _dress,
+                  MIKA_SAND_CURL * _q, _mill);
     }
+}
+
+// ---------------------------------------------------------------------------
+// N3 and N4 -- the quad
+//
+// **The same mill with four rings instead of two, and that is the whole of
+// the variation.** The grain is N1's grain, the bead is N1's bead, the
+// wind-up is N1's wind-up and the streams are laid down at N1's rate: a
+// player who has learnt the mill reads every ribbon in this the same way. The
+// figure they are arranged into is what changed, and it changed by one
+// number.
+//
+// **A DRAFT.** Every number below is a first guess written to be played
+// against N1, not a tuned attack -- see the note at the top of `mika_slots`.
+// The three knobs most likely to want moving are the distance, whether each
+// ring throws one stream or two, and the beat that has to come down with it.
+//
+// **Two rings make two pairs of arms and four rings make four single ones**,
+// which is the reading the count buys. N1's four ribbons are two tight pairs
+// half a turn apart, so the corridors between them alternate narrow and wide
+// and a player who finds the wide one can sit in it. Four rings a quarter
+// turn apart with one ribbon each put the same four arms at ninety degrees,
+// so every corridor is the same width and none of them is a place to live.
+// That is the micrododge the four-ring arrangement is for.
+//
+// **The density does not move, and that is deliberate rather than
+// incidental.** Four rings throwing what two threw is twice the sand, which
+// is not a variation of a breather, it is a spell. Cutting each ring to one
+// stream puts the arithmetic back exactly where it was: `MIKA_MILL_RINGS`
+// times `MIKA_MILL_WAKE` over `MIKA_MILL_BEAT` is four beads every three
+// frames, and so is `MIKA_QUAD_RINGS` times `MIKA_QUAD_WAKE` over
+// `MIKA_QUAD_BEAT`. The beat is untouched for the same reason: what sets it
+// is how far the muzzle swings between beads -- the orbit times the beat,
+// which is about six degrees -- and stretching the beat to afford two streams
+// a ring would turn a spray into burst fire, which is the failure the beat's
+// own note records.
+//
+// **They ride further out, because four of them do not fit where two did.**
+// At `MIKA_MILL_DIST` the four rims would leave gaps of about a hundred and
+// eighty pixels; the extra thirty of radius opens them to two hundred and
+// twenty-five, which is a door rather than a slot. It also takes a little off
+// how much of him they hide: a ring blocks the player's fire across its own
+// width, so four of them close in are a collar he can be shot through about
+// half the time, and the further out they ride the narrower each one's shadow
+// on the column under him.
+// ---------------------------------------------------------------------------
+
+#macro MIKA_QUAD_RINGS 4
+#macro MIKA_QUAD_DIST 235
+
+// **One stream a ring, which is the count's other half.** See above: four
+// rings throwing two streams each is twice N1's sand, and twice a breather's
+// sand is not a breather.
+#macro MIKA_QUAD_WAKE 1
+
+// Unused while the wake is one, and here so that the first thing a playtest
+// reaches for has a number to move rather than a hole. Pointed at the pair's
+// so the two mills stay one family until somebody decides otherwise.
+#macro MIKA_QUAD_WAKE_ARC MIKA_MILL_WAKE_ARC
+
+// N1's beat and N1's orbit, untouched. Thirty more pixels of radius is a
+// bead gap of twenty-six against N1's twenty-two, which is close enough to the
+// same ribbon that nothing had to move for it -- see `mika_mill_bead_gap`.
+#macro MIKA_QUAD_BEAT MIKA_MILL_BEAT
+#macro MIKA_QUAD_ORBIT MIKA_MILL_ORBIT
+
+/// @desc N3 and N4's mill: four rings, a quarter turn apart, one stream each.
+function mika_mill_quad() {
+    return mika_mill_shape({ rings: MIKA_QUAD_RINGS, dist: MIKA_QUAD_DIST,
+                             orbit: MIKA_QUAD_ORBIT, beat: MIKA_QUAD_BEAT,
+                             wake: MIKA_QUAD_WAKE,
+                             arc: MIKA_QUAD_WAKE_ARC });
+}
+
+/// @desc **N3.** The quad, running the same way round him N1 does.
+///
+///       **Opposite rings share a look and adjacent ones do not**, which is
+///       what `[0, 1, 0, 1]` says: `mika_sand_grade` wraps, so ring 2 borrows
+///       ring 0's cycle and ring 3 borrows ring 1's, and the hues are handed
+///       out to match. What that draws is glints, grains, glints, grains
+///       round him -- the two storms N1 has, interleaved, so the four-fold
+///       figure is read as two two-fold ones crossing. Four different looks
+///       would be four things to tell apart at the moment the player is
+///       telling arms apart, which is one job too many for the channel.
+function mika_n3_sandquad(_e, _g, _t) {
+    if (_t != 0) return;
+    mika_mill_spawn(_e, 1, [0, 1, 0, 1], mika_mill_quad());
+}
+
+/// @desc **N4.** The quad turned over, on N2's terms exactly: the rings run
+///       the other way round him and the two storms trade hues. The same two
+///       arguments carry the whole of the difference, because the direction
+///       turns the orbit, the rim the sand leaves from, the lean on the throw
+///       and the way the drift bends over together.
+function mika_n4_sandquad(_e, _g, _t) {
+    if (_t != 0) return;
+    mika_mill_spawn(_e, -1, [1, 0, 1, 0], mika_mill_quad());
+}
+
+// ---------------------------------------------------------------------------
+// N5 and N6 -- the crown
+//
+// **All six of his rings, which is where the count stops.** `MIKA_RING_N` is
+// six because six of them on one orbit leave gaps about as wide as a ring and
+// seven closes them, so the top of the non-spell ladder is the whole set
+// turning round him at once -- and it is the same arrangement `Gilded
+// Aperture` is built on, at the same radius, which is the useful part: the
+// breather teaches the formation and the spell two slots later tests it.
+//
+// **A DRAFT**, on the quad's terms exactly. Every number below is a first
+// guess written to be played against N3.
+//
+// **They ride at `MIKA_ORBIT`, which is where all his six-ring formations
+// sit.** Not a number picked for this attack: one radius for his furniture is
+// what lets the player learn where it lives, and the gaps between six rims out
+// there are about a hundred and seventy pixels -- a ring's own width, which is
+// the aperture's whole design.
+//
+// **And the orbit had to come down, which is the finding this slot turned
+// up.** The mill's note says the beat is set by how far the muzzle swings
+// between beads and that much more than a few degrees reads as a gap; that was
+// written when every mill rode at `MIKA_MILL_DIST`, where degrees and pixels
+// were the same sentence. At three hundred they are not. Six rings need a
+// slower beat to keep the sand affordable, and N1's orbit at N1's beat out
+// here would lay beads forty-four pixels apart against N1's twenty-two -- a
+// ribbon of separate shots rather than a spray, which is the exact failure the
+// beat's own note names. `mika_mill_bead_gap` is the invariant that survives a
+// change of radius and `mika_mill_rim_spd` is the other half of what the orbit
+// answers for; both are checked against the pair rather than against a number.
+//
+// What that buys is a statelier figure: a lap takes four and a half seconds
+// against N1's three, so the crown wheels where the mill whips. Which is the
+// right reading for the last of the breathers.
+// ---------------------------------------------------------------------------
+
+#macro MIKA_CROWN_RINGS MIKA_RING_N
+#macro MIKA_CROWN_DIST MIKA_ORBIT
+
+// **One stream a ring still.** Six times two is three times N1's sand, which
+// is not a breather by any reading.
+#macro MIKA_CROWN_WAKE 1
+#macro MIKA_CROWN_WAKE_ARC MIKA_MILL_WAKE_ARC
+
+// **The beat is the one place the density moves, and it moves up rather than
+// exactly.** Six rings over a beat of four is three beads every two frames
+// against the pair's four every three -- an eighth more sand, because six
+// into four beads a frame does not go and the last breather before his spells
+// is the right place for the rounding to land heavy rather than light.
+#macro MIKA_CROWN_BEAT 4
+
+// Set so the bead gap out at `MIKA_ORBIT` lands beside the pair's and the
+// metal still comfortably outruns `MIKA_SAND_FLOOR`. See above; both are
+// asserted rather than trusted.
+#macro MIKA_CROWN_ORBIT 1.30
+
+/// @desc N5 and N6's mill: six rings, a sixth of a turn apart, one stream
+///       each, out where his formations live.
+function mika_mill_crown() {
+    return mika_mill_shape({ rings: MIKA_CROWN_RINGS, dist: MIKA_CROWN_DIST,
+                             orbit: MIKA_CROWN_ORBIT, beat: MIKA_CROWN_BEAT,
+                             wake: MIKA_CROWN_WAKE,
+                             arc: MIKA_CROWN_WAKE_ARC });
+}
+
+/// @desc **N5.** The crown, running the way round him N1 and N3 do.
+///
+///       **Alternate rings share a look**, which is what the table wrapping
+///       gives once there are more rings than cycles: glint, grain, glint,
+///       grain round him, so each shape draws a three-fold figure and the two
+///       cross. The quad's opposite rings paired the same way for the same
+///       reason -- what the wrap guarantees is that a ring's look is its
+///       index's parity, and what falls out of that is a figure of
+///       `rings / 2` fold in each shape.
+function mika_n5_sandcrown(_e, _g, _t) {
+    if (_t != 0) return;
+    mika_mill_spawn(_e, 1, [0, 1, 0, 1, 0, 1], mika_mill_crown());
+}
+
+/// @desc **N6.** The crown turned over, on N2's and N4's terms: the rings run
+///       the other way round him and the two storms trade hues.
+function mika_n6_sandcrown(_e, _g, _t) {
+    if (_t != 0) return;
+    mika_mill_spawn(_e, -1, [1, 0, 1, 0, 1, 0], mika_mill_crown());
+}
+
+
+// ---------------------------------------------------------------------------
+// N7 -- the rush
+//
+// **The last breather, and the one with no mirror.** Six of them go out in
+// pairs -- a mill and the same mill turned over -- and seven is odd, so the
+// last one has no partner to be the reverse of. So it is its own: the orbit
+// does not pick a direction, it **swings between both**, and what would have
+// been N8 is folded into N7 as the other half of its own cycle. That is the
+// structure's own argument for the shape rather than a decoration on it.
+//
+// **And it is where he runs out.** It is the last thing between the player and
+// his final spell, so it is the one breather allowed to stop being restful:
+// rapid, thin and unsettled where the crown is broad and stately. Asked for in
+// those terms -- more desperate as the fight approaches the climax.
+//
+// **A DRAFT**, on the quad's and the crown's terms. Every number is a first
+// guess written to be played against N5.
+//
+// Four things carry it and each is one field of the mill:
+//
+// - **The swing, and it is timed to his hops.** The rings hold flat out one
+//   way for the whole of `BOSS_STEP_HOLD` -- three and a quarter seconds --
+//   and turn over during `BOSS_STEP_MOVE`, which is the three quarters of a
+//   second he spends hopping. There is no period of its own: the period is
+//   the hop.
+//
+//   **That is the fix for the first version and it fixes two things at
+//   once.** A free-running cosine was reported as far too rapid, and it was:
+//   1.4 seconds a reversal is a twitch rather than a change of mind. It also
+//   passed through zero wherever it liked, so twice a cycle the metal was
+//   stationary *while throwing* -- and a stationary ring has no trailing edge
+//   to leave a wake off, which was written down here as a cost worth paying.
+//   It was not: the mill is already silent through a hop, because sand laid
+//   down while the origin slides smears the figure. Putting the reversal
+//   inside that silence means the rings spend every firing frame flat out and
+//   turn over in the gap, and the cost disappears rather than being accepted.
+// - **The sand is faster.** A higher settle floor is the one lever that is
+//   both halves of "rapid but sparse": a grain that settles quicker crosses
+//   the field quicker, so it is harder to stand next to *and* it is gone
+//   sooner, which thins the field without firing less.
+// - **A bead breaks into two, not three.** The other third of the thinning,
+//   and with an even count the two go fore and aft rather than one carrying on
+//   down the stream -- a bead shearing in half rather than blooming, which is
+//   the right picture for this one.
+// - **The beat is the mill's own three again.** More beads a second than the
+//   crown throws, which is the "rapid" the count cannot supply once the rings
+//   have run out at six.
+//
+// - **And a bolt at every reversal**, aimed at wherever the player is
+//   standing. That is the fifth thing and it was added last: everything above
+//   made the attack *thin*, and thin turned out to read as easy, because the
+//   hop is a window in which nothing is thrown at all. See the bolt's own
+//   section for why it does not follow its ring.
+//
+// **And the wake is never thrown away**, which the first version of this
+// accepted and did not need to. See `mika_mill_swing`: the reversal lives
+// entirely inside the hop, and the mill does not throw through a hop.
+//
+// **And the wind-up turns the way the first sand does.** The rings reach speed
+// on their own clock and his hops are on his, so a schedule read straight off
+// his cycle could put the first reversal inside the spin-up -- rings winding up
+// one way and opening the attack going the other, which is how it was
+// reported. The schedule starts at the first hop the wind-up has finished
+// before, so the spin-up is one unbroken turn and every reversal after it is
+// still a hop. See `mika_mill_flip_at`.
+// ---------------------------------------------------------------------------
+
+#macro MIKA_RUSH_RINGS MIKA_RING_N
+#macro MIKA_RUSH_DIST MIKA_ORBIT
+#macro MIKA_RUSH_WAKE 1
+
+// Rate, held flat out between reversals. Set so the bead gap out at
+// `MIKA_ORBIT` on a beat of three lands beside the crown's -- see
+// `mika_mill_bead_gap`, which is what any two mills are held level against.
+//
+// Over one hold that is about a full turn, so a ring goes all the way round
+// one way and all the way back: a wind and an unwind rather than a wobble.
+#macro MIKA_RUSH_ORBIT 1.72
+#macro MIKA_RUSH_BEAT 3
+
+// Thinner and quicker. See above; both are measured rather than argued.
+#macro MIKA_RUSH_MOTES 2
+#macro MIKA_RUSH_FLOOR 3.6
+
+/// @desc N7's mill: six rings out where his formations live, rocking between
+///       full speed one way and full speed the other.
+function mika_mill_rush() {
+    return mika_mill_shape({ rings: MIKA_RUSH_RINGS, dist: MIKA_RUSH_DIST,
+                             orbit: MIKA_RUSH_ORBIT, beat: MIKA_RUSH_BEAT,
+                             wake: MIKA_RUSH_WAKE, motes: MIKA_RUSH_MOTES,
+                             flr: MIKA_RUSH_FLOOR, rock: true, bolt: true });
+}
+
+/// @desc **N7.** The rush: the crown's six rings, reversing.
+///
+///       **The hues are N5's**, deliberately. This slot already varies the
+///       movement, the settle and the break, and a fourth channel saying "this
+///       is the last one" would be the one that competes with reading the
+///       arms. What says it is the last one is that the figure will not hold
+///       still.
+function mika_n7_sandrush(_e, _g, _t) {
+    if (_t != 0) return;
+    mika_mill_spawn(_e, 1, [0, 1, 0, 1, 0, 1], mika_mill_rush());
 }
