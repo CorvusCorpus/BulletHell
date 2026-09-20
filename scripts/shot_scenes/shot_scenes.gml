@@ -14,19 +14,54 @@
 /// nowhere else. A pattern that is correct and illegible is still a bug.
 
 /// @desc Every scene, in the order they are worth looking at.
+///
+///       **Mika's fifteen are generated rather than listed**, one per slot of
+///       his table in fight order -- `mika_n1`, `mika_s1`, ... `mika_s8` --
+///       so the list cannot disagree with the table about how many there are.
+///       `tools/shot.py` generates the same names the same way.
 function shot_scene_list() {
-    return ["title", "practice", "stage", "focus", "bomb", "hit", "peril",
-            "midboss",
-            "declare", "spell", "boss", "laser", "rays", "clear", "pause",
-            "result", "practice_ready", "practice_result", "bullets",
-            "motion", "drafts", "draft_attacks", "draft_spell",
-            "hex_draw", "hex_seal", "hex_scatter", "hex_gaps",
-            "hex_burst",
-            "grove", "grove_arrive", "grove_turn", "grove_blood",
-            "grove_boss", "grove_spell",
-            "sanctum", "mika", "aperture", "circuit",
-            "hall_a", "hall_b", "hall_turn", "hall_arrive"];
+    var _l = ["title", "practice", "stage", "focus", "bomb", "hit", "peril",
+              "midboss",
+              "declare", "spell", "boss", "laser", "rays", "clear", "pause",
+              "result", "rank", "practice_ready", "practice_result",
+              "bullets",
+              "motion", "drafts", "draft_attacks", "draft_spell",
+              "hex_draw", "hex_seal", "hex_scatter", "hex_gaps",
+              "hex_burst",
+              "grove", "grove_arrive", "grove_turn", "grove_blood",
+              "grove_boss", "grove_spell",
+              "sanctum", "mika_attacks",
+              "hall_a", "hall_b", "hall_turn", "hall_arrive"];
+    var _n = array_length(mika_slots());
+    for (var _i = 0; _i < _n; _i++) {
+        array_push(_l, shot_mika_scene(_i));
+    }
+    return _l;
 }
+
+/// @desc The scene that photographs slot `_i` of Mika's table: `mika_n1` for
+///       his first non-spell, `mika_s8` for his last spell. See
+///       `mika_slot_name`.
+function shot_mika_scene(_i) {
+    return "mika_" + string_lower(mika_slot_name(_i));
+}
+
+/// @desc Which of Mika's slots a scene asks for, or -1 if it is not one of
+///       his.
+function shot_mika_slot(_name) {
+    var _n = array_length(mika_slots());
+    for (var _i = 0; _i < _n; _i++) {
+        if (_name == shot_mika_scene(_i)) return _i;
+    }
+    return -1;
+}
+
+// How far into one of Mika's attacks its picture is taken: long enough for
+// a pattern to have filled the field, short enough that a slot worth three
+// hundred health has not been broken by the posed player's own fire. Pass
+// `--burst` to `tools/shot.py` for anything else -- the offsets are relative
+// to this.
+#macro SHOT_MIKA_AT (4 * FPS)
 
 /// @desc Read `-burst`'s comma-separated frame offsets into an array.
 ///
@@ -63,7 +98,8 @@ function shot_scene_room(_name) {
         case "title":
         case "drafts":      return room_title;
         case "practice":
-        case "draft_attacks":  return room_practice;
+        case "draft_attacks":
+        case "mika_attacks":   return room_practice;
         case "bullets":     return room_shot;  // a chart, not a game state
     }
     return room_game;
@@ -80,6 +116,17 @@ function shot_scene_room(_name) {
 ///       here for the same reason the rack writes it before a room change: a
 ///       room transition carries nothing with it.
 function shot_scene_prepare(_name) {
+    // **One of Mika's slots, practised.** Practice is where a slot is worked
+    // on, so it is what gets photographed: the boss arrives on the attack in
+    // the open hall -- see `bg_skip_to_boss` -- with the health bar spanning
+    // that attack alone.
+    var _slot = shot_mika_slot(_name);
+    if (_slot >= 0) {
+        global.stage_def = stage_sanctum_def();
+        global.practice = practice_new(stage_sanctum_def(), 1, _slot);
+        return;
+    }
+
     switch (_name) {
         case "practice_ready":
         case "practice_result":
@@ -113,22 +160,23 @@ function shot_scene_prepare(_name) {
             global.practice = practice_new(draft_stage_def(), 0, 1);
             break;
 
+        case "mika_attacks":
+            // **The attack list, scrolled.** Stage three's is the one list
+            // longer than its plate, and the cursor is put on a spell half way
+            // down Mika's table so the picture has list both above and below
+            // the window -- which is the only state that shows the scroll
+            // doing anything.
+            global.stage_def = stage_sanctum_def();
+            global.practice = practice_new(stage_sanctum_def(), 1, 9);
+            break;
+
         case "sanctum":
-        case "mika":
-        case "aperture":
-        case "circuit":
         case "hall_a":
         case "hall_b":
         case "hall_arrive":
-            // **Stage three gets four, and three of them are one mechanic.**
-            // A ring is the first object in this game that is neither a bullet
-            // nor an enemy, and the three things it does that no assertion can
-            // judge are all *pictures*: whether a ring reads as solid enough
-            // that a player believes it will stop a shot, whether a charged
-            // band is told apart from a cold one at a glance, and whether the
-            // current between two of them reads as a wall rather than as an
-            // effect. `test_rings` proves all three work and none of them
-            // read.
+            // The stage itself, for the gateposts and the hall. Mika's own
+            // pictures are the slot scenes above, one per attack, taken
+            // through practice.
             global.stage_def = stage_sanctum_def();
             break;
 
@@ -234,8 +282,8 @@ function shot_boss(_g, _phase, _maker) {
                   _spell ? _p.name
                          : (_b.boss.def.name + " " + string(_i + 1)),
                   (_i mod 3 == 0) ? Mark.Gold
-                                  : ((_i mod 3 == 1) ? Mark.Adamant
-                                                     : Mark.Silver),
+                                  : ((_i mod 3 == 1) ? Mark.Amethyst
+                                                     : Mark.Bronze),
                   _spell);
     }
     boss_enter_phase(_b, _g, _phase);
@@ -259,6 +307,22 @@ function shot_pose(_scene, _g) {
     // zero, every boss shot was photographed with THE BRIMSTONE REACH written
     // across the middle of it.
     _g.t = 400;
+
+    // **One of Mika's slots.** Posed low and right of centre, where a danmaku
+    // player lives, and untouchable for the reason the `peril` scene records:
+    // a posed player standing in a live pattern is hit before the shutter,
+    // and a hit sweeps a 190-pixel circle out of the thing being photographed.
+    // The shutter is `SHOT_MIKA_AT` into the attack itself, past the practice
+    // beat and -- for a spell -- past its declaration.
+    var _slot = shot_mika_slot(_scene);
+    if (_slot >= 0) {
+        _g.player.x = FIELD_CX + 120;
+        _g.player.y = FIELD_Y1 - 260;
+        _g.player.untouchable = true;
+        var _spell = (mika_phases()[_slot].kind == AttackKind.Spell);
+        return PRACTICE_READY + (_spell ? BOSS_SPELL_LEAD : 0)
+               + SHOT_MIKA_AT;
+    }
 
     switch (_scene) {
         case "motion":
@@ -392,6 +456,23 @@ function shot_pose(_scene, _g) {
             _g.player.x = FIELD_CX;
             _g.player.y = FIELD_Y1 - 260;
             return 230 + BOSS_SPELL_LEAD;   // the clear is fired in shot_tick
+
+        case "rank":
+            // **The rank card, posed two frames after the attack ends.** It
+            // is a second and a third long and it moves for all of it, so
+            // the frame this returns is the *beginning* of it and the scene
+            // is meant to be taken with `--burst`: the strike, the glint,
+            // the read and the flight home are four different pictures and
+            // only the last one can be judged against the console.
+            //
+            // The attack ends with the player untouched and the field still
+            // busy, which is the case that matters -- a medal photographed
+            // over an empty screen proves nothing about whether an additive
+            // one can be read over danmaku.
+            shot_boss(_g, 2, ziggy_spawn);
+            _g.player.x = FIELD_CX - 150;
+            _g.player.y = FIELD_Y1 - 260;
+            return 202;
 
         case "pause":
             shot_boss(_g, 2, ziggy_spawn);
@@ -567,44 +648,6 @@ function shot_pose(_scene, _g) {
             _g.bg.intro = 1;
             return 300;
 
-        case "mika":
-            // His opening non-spell: one ring on a long lead, orbiting, with
-            // the boss firing past it. The plainest possible statement of the
-            // mechanic, which is exactly what a first picture of it should be.
-            shot_boss(_g, 0, mika_spawn);
-            _g.player.x = FIELD_CX + 120;
-            _g.player.y = FIELD_Y1 - 260;
-            _g.bg.intro = 1;
-            return 200;
-
-        case "aperture":
-            // **Gilded Aperture, and the player posed inside the middle
-            // ring.** The whole claim of the attack is that getting closer is
-            // fewer bands in the way, and a shot of it from the bottom of the
-            // field would photograph the state the player is trying to leave.
-            // He is untouchable, for the reason the `peril` scene records: a
-            // posed player standing in a live pattern is dead before the
-            // shutter, and a hit sweeps a 190-pixel circle out of the thing
-            // being photographed.
-            shot_boss(_g, 1, mika_spawn);
-            _g.player.x = FIELD_CX + 60;
-            _g.player.y = FIELD_Y0 + 420;
-            _g.player.untouchable = true;
-            _g.bg.intro = 1;
-            return 190 + BOSS_SPELL_LEAD;
-
-        case "circuit":
-            // Ashiah's Circuit, caught with the current across the field
-            // rather than up and down it -- the sweep is the attack, and the
-            // one frame worth having is the one where the bar is longest on
-            // screen.
-            shot_boss(_g, 3, mika_spawn);
-            _g.player.x = FIELD_CX - 200;
-            _g.player.y = FIELD_Y1 - 280;
-            _g.player.untouchable = true;
-            _g.bg.intro = 1;
-            return 150 + BOSS_SPELL_LEAD;
-
         case "grove_boss":
             // Velka's opening non-spell over the turned wood, which is what
             // the stage actually looks like when it is being played. The moon
@@ -779,6 +822,13 @@ function shot_tick(_scene, _g, _t) {
 
         case "clear":
             if (_t == 216 + BOSS_SPELL_LEAD) {
+                var _b = enemy_find_boss();
+                if (_b != undefined) boss_end_phase(_b, _g, true);
+            }
+            break;
+
+        case "rank":
+            if (_t == 200) {
                 var _b = enemy_find_boss();
                 if (_b != undefined) boss_end_phase(_b, _g, true);
             }

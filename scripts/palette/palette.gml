@@ -26,6 +26,9 @@
 #macro COL_RUNE        $FFE06E    // the arcane accent
 #macro COL_SIGIL       $FF5496    // Szuix's own magic: the bomb's circle
 #macro COL_FLAME       $FFA83C    // Szuix's fire: the body of his shot
+#macro COL_STONE       $847676    // the mark ladder: see rank_functions
+#macro COL_BRONZE      $3E70B0
+#macro COL_AMETHYST    $FF84BA
 
 /// @desc The bullet hues, indexed by BCOL_*. Filled once, from obj_boot.
 function palette_init() {

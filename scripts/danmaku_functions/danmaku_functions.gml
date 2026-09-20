@@ -430,12 +430,14 @@ function fire_spray(_x, _y, _n, _spd0, _spd1, _dir, _arc, _shape, _col,
 ///       Takes `undefined` and answers `undefined`, because `fire` does -- a
 ///       pattern that fires into a full pool should not have to test before
 ///       every line that decorates what it fired.
-function bullet_schedule(_u, _at, _kind, _a = 0, _b = 0, _c = 0, _d = 0) {
+function bullet_schedule(_u, _at, _kind, _a = 0, _b = 0, _c = 0, _d = 0,
+                         _e5 = 0) {
     if (_u == undefined) return undefined;
     if (_u.q_n >= BULLET_QUEUE_MAX) return _u;
 
     if (_u.q_n >= array_length(_u.q)) {
-        array_push(_u.q, { at: 0, kind: BQ.Aim, a: 0, b: 0, c: 0, d: 0 });
+        array_push(_u.q,
+                   { at: 0, kind: BQ.Aim, a: 0, b: 0, c: 0, d: 0, e: 0 });
     }
     var _e = _u.q[_u.q_n];
     _e.at = _at;
@@ -444,6 +446,7 @@ function bullet_schedule(_u, _at, _kind, _a = 0, _b = 0, _c = 0, _d = 0) {
     _e.b = _b;
     _e.c = _c;
     _e.d = _d;
+    _e.e = _e5;
     _u.q_n++;
 
     // Walk it down to where its frame belongs. The array's *references* move
@@ -492,8 +495,8 @@ function bullet_force_at(_u, _at, _ax, _ay, _vx_cap = BQ_KEEP,
 }
 
 /// @desc Burst into `_n` children at `_at` **and die**. The old `BMod.Split`.
-function bullet_split_at(_u, _at, _n, _spd, _off = 0) {
-    return bullet_schedule(_u, _at, BQ.Split, _spd, _off, _n);
+function bullet_split_at(_u, _at, _n, _spd, _off = 0, _dress = undefined) {
+    return bullet_schedule(_u, _at, BQ.Split, _spd, _off, _n, _dress);
 }
 
 /// @desc Shed `_n` children at `_at`, `_dist` pixels out, **and keep going**.
@@ -501,8 +504,9 @@ function bullet_split_at(_u, _at, _n, _spd, _off = 0) {
 ///       the whole of why it is a separate kind: a bullet that drops a wake
 ///       behind it is a different pattern from one that bursts, and the old
 ///       modifier could only express the second.
-function bullet_shed_at(_u, _at, _n, _spd, _off = 0, _dist = 0) {
-    return bullet_schedule(_u, _at, BQ.Shed, _spd, _off, _n, _dist);
+function bullet_shed_at(_u, _at, _n, _spd, _off = 0, _dist = 0,
+                        _dress = undefined) {
+    return bullet_schedule(_u, _at, BQ.Shed, _spd, _off, _n, _dist, _dress);
 }
 
 /// @desc A wake: shed `_times` times, every `_period` frames from `_from`.
@@ -513,9 +517,10 @@ function bullet_shed_at(_u, _at, _n, _spd, _off = 0, _dist = 0) {
 ///       every bullet. `BULLET_QUEUE_MAX` is the ceiling on how long a wake
 ///       can be, which is a real limit and a deliberate one.
 function bullet_shed_every(_u, _from, _period, _times, _n, _spd, _off = 0,
-                           _dist = 0) {
+                           _dist = 0, _dress = undefined) {
     for (var _k = 0; _k < _times; _k++) {
-        bullet_shed_at(_u, _from + _k * _period, _n, _spd, _off, _dist);
+        bullet_shed_at(_u, _from + _k * _period, _n, _spd, _off, _dist,
+                       _dress);
     }
     return _u;
 }
@@ -550,14 +555,41 @@ function bullet_expire_at(_u, _at, _frames = BULLET_FADE_DEFAULT) {
 ///       bullet vanishing and some unrelated ones appearing. They are born
 ///       intangible like everything else -- a burst on top of the player is
 ///       exactly the case the delay marks exist for.
-function bullet_spawn_children(_u, _n, _spd, _off, _dist) {
+///
+///       **`_dress` is what makes this ph3's `AddShot` rather than an
+///       imitation of its effect.** In ph3 you build a shot object, give it
+///       its graphic and its whole `AddPattern` chain, and *then* hand it to
+///       `ObjShot_AddShotA1` -- so a child is as configurable as any other
+///       shot. This took a count and a speed and threw `fire`'s answer away,
+///       which meant a child could do exactly one thing: fly straight, in its
+///       parent's colours, for ever. That is not a simplification of the
+///       interface, it is a different interface, and it ruled out the whole
+///       family of patterns where something large breaks into something that
+///       then behaves.
+///
+///       The method cannot be handed a *pre-built* child here, because a
+///       bullet is a struct out of a pool and one built at scheduling time
+///       would have to be parked somewhere for the frames in between. So it is
+///       handed the child at the moment of birth instead: `_dress(child, k)`,
+///       once per child, with `k` its index round the burst so a pattern can
+///       vary them. Everything ph3 does to a shot object before registering
+///       it, this does to the child after firing it, and the result is the
+///       same shot.
+///
+///       **It has to tolerate `undefined`**, because `fire` refuses past
+///       `BULLET_MAX` rather than resizing -- so a burst into a full pool
+///       hands the method nothing, exactly as `bullet_schedule` takes
+///       `undefined` and answers it.
+function bullet_spawn_children(_u, _n, _spd, _off, _dist, _dress = undefined) {
     var _count = max(1, _n);
     var _step = 360 / _count;
+    var _has = is_method(_dress);
     for (var _k = 0; _k < _count; _k++) {
         var _dir = _u.dir + _off + _k * _step;
-        fire(_u.x + lengthdir_x(_dist, _dir),
-             _u.y + lengthdir_y(_dist, _dir),
-             _spd, _dir, _u.shape, _u.col, BULLET_SPLIT_DELAY);
+        var _c = fire(_u.x + lengthdir_x(_dist, _dir),
+                      _u.y + lengthdir_y(_dist, _dir),
+                      _spd, _dir, _u.shape, _u.col, BULLET_SPLIT_DELAY);
+        if (_has) _dress(_c, _k);
     }
 }
 
@@ -603,17 +635,25 @@ function bullet_run_queue(_u, _tx, _ty) {
                 break;
 
             case BQ.Split:
-                bullet_spawn_children(_u, _e.c, _e.a, _e.b, 0);
+                bullet_spawn_children(_u, _e.c, _e.a, _e.b, 0, _e.d);
                 return true;
 
             case BQ.Shed:
-                bullet_spawn_children(_u, _e.c, _e.a, _e.b, _e.d);
+                bullet_spawn_children(_u, _e.c, _e.a, _e.b, _e.d, _e.e);
                 break;
 
             case BQ.Graphic:
                 _u.shape = _e.a;
                 _u.col = _e.b;
-                _u.r = global.bshape_radius[_e.a];
+                // **Times the bullet's own scale**, which it was not. A shape
+                // change read the table's raw radius, so a bullet drawn at
+                // two thirds size that changed graphic mid-flight started
+                // killing at full size while still being drawn small -- the
+                // exact lie this file exists to prevent, arriving through the
+                // one function whose docstring promises the opposite. Nothing
+                // had hit it because nothing scaled *and* changed graphic
+                // until the sand did both.
+                _u.r = global.bshape_radius[_e.a] * _u.scale;
                 // The new shape's default spin, for the same reason `fire`
                 // takes it: a pellet that becomes a star mid-flight should
                 // turn like every other star on the field.

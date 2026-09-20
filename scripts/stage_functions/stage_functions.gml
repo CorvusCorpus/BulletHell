@@ -21,15 +21,70 @@
 
 /// @desc Build a run of a stage from its definition.
 function stage_new(_def) {
+    var _events = _def.build();
     return {
         def: _def,
-        events: _def.build(),
+        events: _events,
         cursor: 0,
         t: 0,
         gated: false,
         gate_grace: 0,     // frames a gate waits before it starts believing
         done: false,
+        // **How many graded encounters this stage holds**, counted from the
+        // timeline it just built rather than written down beside it. See
+        // `stage_count_encounters`.
+        encounters: _def[$ "encounters"] ?? stage_count_encounters(_def, _events),
+        // The open encounter, or `undefined` between them. See
+        // `stage_encounter_step`.
+        enc: undefined,
+        enc_n: 0,
     };
+}
+
+/// @desc How many encounters a stage contains, before any of them happen.
+///
+///       **The console draws a socket per encounter**, so it needs the total
+///       before the first one has been fought -- that is what says how long
+///       this is going to be and how much of it is left, and it is most of
+///       why the marks block never reads as empty.
+///
+///       This used to be a hand-written `encounters` field on every stage
+///       definition, standing in for a count nothing could take. It was wrong
+///       on stage one from the day it was typed -- fourteen against a true
+///       thirteen -- which is what a number maintained by hand in a different
+///       file from the thing it counts always eventually is.
+///
+///       Both halves are countable now:
+///
+///       - **A group of waves is a gate.** A gate holds the clock until the
+///         field is clear, which is exactly the end of an encounter, and the
+///         next spawn after it is the beginning of the next one. Every stage
+///         also gates immediately after a *boss*, and that gate closes nothing
+///         -- so the boss-gates are subtracted, and the number of them is the
+///         number of bosses that are not the last one, because the last boss
+///         ends the stage rather than handing back to it.
+///       - **A boss's encounters are its attacks**, which is what
+///         `stage_def.bosses` already lists for attack practice.
+///
+///       A definition may still carry its own `encounters` and override the
+///       lot, which is what the practice, draft and preview cards do: their
+///       timelines are empty or synthetic and there is nothing to count.
+function stage_count_encounters(_def, _events) {
+    var _gates = 0;
+    for (var _i = 0; _i < array_length(_events); _i++) {
+        if (_events[_i].gate) _gates++;
+    }
+
+    var _bosses = _def[$ "bosses"] ?? [];
+    var _nb = array_length(_bosses);
+    var _total = max(0, _gates - max(0, _nb - 1));
+
+    for (var _i = 0; _i < _nb; _i++) {
+        var _mk = _bosses[_i][$ "phases"];
+        if (_mk == undefined) continue;
+        _total += array_length(_mk());
+    }
+    return _total;
 }
 
 /// @desc One timed event.
@@ -42,8 +97,88 @@ function ev_gate(_at) {
     return { at: _at, fn: undefined, gate: true };
 }
 
+/// @desc Watch for a group of waves beginning and ending, and grade it.
+///
+/// **A wave had no beginning, no end and no outcome, and that is the whole of
+/// why the marks block was half a readout.** Giving it those turned out not to
+/// need a new kind of timeline entry: a group of waves is exactly the stretch
+/// during which there is fodder on the field, which is the same predicate a
+/// gate already tests. So an encounter opens on the frame fodder appears and
+/// closes on the frame the last of it is gone.
+///
+/// **Detected rather than declared**, deliberately. The alternative was a call
+/// inside `wave_line` and `wave_cross` announcing themselves, and a wave shape
+/// written next year would have had to remember to make it -- where a shape
+/// that forgets this one is simply not counted, silently, which is the class
+/// of bug `test_corridor` walks the background struct to avoid rather than
+/// naming the rings it knows about.
+///
+/// Everything it needs is a difference between two snapshots, which is why
+/// nothing anywhere had to start keeping books: the score, the hits, the bombs
+/// and what the enemies were worth are all running totals already.
+function stage_encounter_step(_s, _g) {
+    var _live = (_g[$ "boss_ref"] == undefined) && enemy_count_fodder() > 0;
+
+    if (_s.enc == undefined) {
+        // **Not during a boss.** A boss that summons fodder is still a boss
+        // encounter, graded by its own phase table, and an attack that opened
+        // a second mark underneath itself would file two marks for one thing.
+        if (!_live) return;
+        _s.enc_n++;
+        _s.enc = {
+            // **Frames the encounter was open, not stage time.** `_s.t` is
+            // frozen for the whole of a gate, and a gate is where most of a
+            // wave group is actually fought -- so stage time would measure
+            // the stretch from the spawn to the gate's own `at` and call a
+            // forty-second fight four seconds long. The target is a rate over
+            // a duration, so that duration has to be the real one.
+            frames: 0,
+            tally0: _g.tally,
+            hits0: _g.player.hit_n,
+            bombs0: _g.player.bomb_n,
+            worth0: global.enemy_worth,
+            n: _s.enc_n,
+        };
+        return;
+    }
+
+    if (_live) {
+        _s.enc.frames++;
+        return;
+    }
+    stage_encounter_close(_s, _g);
+}
+
+/// @desc File the mark for the group that has just finished.
+function stage_encounter_close(_s, _g) {
+    var _e = _s.enc;
+    if (_e == undefined) return;
+    _s.enc = undefined;
+
+    var _earned = _g.tally - _e.tally0;
+    var _hits = _g.player.hit_n - _e.hits0;
+    var _bombs = _g.player.bomb_n - _e.bombs0;
+    var _worth = global.enemy_worth - _e.worth0;
+    var _target = rank_wave_target(_worth, _e.frames);
+
+    // **"WAVE 3" rather than the stage's name.** A non-spell borrows its
+    // caster's name and numbers the pass for the same reason -- a list of
+    // identical rows reads as the list having repeated itself rather than as
+    // several encounters against the same kind of thing.
+    rank_note(_g[$ "marks"], "WAVE " + string(_e.n),
+              rank_for_encounter(_hits, _bombs, _earned >= _target), false,
+              _earned, _target, _hits, _bombs);
+}
+
 /// @desc Advance the stage one frame.
 function stage_step(_s, _g) {
+    // **Before every early return below it**, which there are three of: a
+    // gate holds the clock and returns, and so does a stage that has run out
+    // of events -- and a group of waves can perfectly well still be on the
+    // field through either. It is the same reason `sfx_step` is called from
+    // the top of a controller's Step rather than wherever it reads best.
+    stage_encounter_step(_s, _g);
+
     if (_s.done) return;
 
     if (_s.gated) {

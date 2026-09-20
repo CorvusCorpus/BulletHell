@@ -69,8 +69,14 @@ function stage_is_draft(_def) {
 ///       waves, no boss, no clear and no line in the save. It sits before the
 ///       drafting table because the table is the one that reads as the end of
 ///       the rack, and both of them are one line to delete.
+///
+///       **The old draft of stage three goes first of the three**, on the same
+///       terms: a stage to the run and not to the roster, kept while Mika's
+///       fight is rebuilt and one line to delete afterwards. See
+///       `stage_sanctum_old`.
 function rack_list() {
     var _l = stage_list();
+    array_push(_l, old_stage_sanctum_def());
     array_push(_l, preview_stage_def());
     if (array_length(draft_list()) > 0) array_push(_l, draft_stage_def());
     return _l;
@@ -200,6 +206,16 @@ function draft_list() {
 
         { name: "Second Sight", col: BCOL_MAGENTA, time: 42 * FPS,
           attack: draft_second_sight },
+
+        // **The burster, which is a mechanic on the table rather than an
+        // idea on it.** Every other row here is a pattern nobody has claimed;
+        // this one is Mika's vocabulary, parked where it can be played before
+        // any of his fifteen slots commits to it. `Close`, because he carries
+        // the rings and a boss crossing the field drags the whole figure with
+        // him. Moving it to a slot is moving the function; deleting this row
+        // is all it takes to withdraw it.
+        { name: "Sand Burst",   col: BCOL_GOLD,    time: 40 * FPS,
+          move: BossMove.Close, attack: draft_sand_burst },
     ];
 }
 
@@ -394,5 +410,83 @@ function draft_second_sight(_e, _g, _t) {
             }
             bullet_expire_at(_h, 300);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sand Burst -- the two-stage throw
+//
+// **What this is on the table for**: the mill's storm is uniform by
+// construction and there is nothing in it for the eye to follow, which is the
+// complaint it was built under. A carrier is sparse and slow enough to be
+// tracked individually, and what it leaves when it breaks is the same sand.
+// Two layers, two jobs: the carriers are the figure and the sand is the
+// micrododge.
+//
+// **The sand itself is `mika_nonspells`' and nothing here reimplements it** --
+// this file supplies the rings, the beat and the arms, and `mika_sand_burst`
+// supplies the throw. What is deliberately *not* borrowed is the mill's own
+// numbers: the beat is five times longer and there are two arms rather than
+// six, because a carrier is meant to be counted and a grain is not.
+// ---------------------------------------------------------------------------
+
+#macro DRAFT_BURST_RINGS 2
+#macro DRAFT_BURST_DIST 205
+#macro DRAFT_BURST_ORBIT 1.5
+#macro DRAFT_BURST_SPIN (DRAFT_BURST_ORBIT * 1.5)
+#macro DRAFT_BURST_ARMS 2
+#macro DRAFT_BURST_BEAT 34
+#macro DRAFT_BURST_LEAN 12
+
+/// @desc The mill's rim routine one layer up: which cycle of sand this ring's
+///       carriers break into. Bound rather than written onto the ring, for
+///       `mika_n1_ring_for`'s reason -- a ring is a pooled struct and a field
+///       bolted onto one is a field its next occupant inherits.
+function draft_burst_rim_for(_cycle) {
+    return method({ cycle: _cycle }, function(_ring, _g, _t) {
+        draft_burst_rim(_ring, _g, _t, cycle);
+    });
+}
+
+/// @desc What one ring does: two carriers off opposite sides of its metal,
+///       every `DRAFT_BURST_BEAT` frames.
+function draft_burst_rim(_ring, _g, _t, _cycle) {
+    if ((_t mod DRAFT_BURST_BEAT) != 0) return;
+
+    var _sign = (_ring.spin >= 0) ? 1 : -1;
+    var _volley = _t div DRAFT_BURST_BEAT;
+
+    for (var _i = 0; _i < DRAFT_BURST_ARMS; _i++) {
+        // The metal as it will stand when the mark goes live, and a lean
+        // with the spin -- both on `ring_rim_at_x`'s reasoning. The lean is
+        // half the mill's, because a carrier is a lob rather than a fling and
+        // a strongly slanted one reads as having been thrown past the player
+        // rather than at them.
+        var _at = _ring.ang + _ring.spin * MIKA_SAND_DELAY
+                  + _i * (360 / DRAFT_BURST_ARMS);
+        var _dir = _at + DRAFT_BURST_LEAN * _sign;
+
+        // Per arm: a spray is a colour, as the mill's wake points are.
+        mika_sand_burst(_ring, _at, _dir, mika_sand_grade(_cycle, _i),
+                        MIKA_CARRY_HOLD,
+                        MIKA_SAND_BRAKE, MIKA_SAND_FLOOR,
+                        MIKA_SAND_CURL * _sign, MIKA_SAND_BEND,
+                        MIKA_SAND_LIFE);
+    }
+}
+
+/// @desc **Sand Burst.** Two rings riding him, throwing carriers that break
+///       into sand. He fires nothing himself, on the mill's reasoning: the
+///       rings are the thing to watch.
+function draft_sand_burst(_e, _g, _t) {
+    if (_t != 0) return;
+
+    for (var _i = 0; _i < DRAFT_BURST_RINGS; _i++) {
+        var _r = mika_orbit_ring(_e, DRAFT_BURST_DIST,
+                                 _i * (360 / DRAFT_BURST_RINGS),
+                                 DRAFT_BURST_ORBIT, MIKA_RING_COL,
+                                 draft_burst_rim_for(_i));
+        if (_r == undefined) break;
+        _r.spin = DRAFT_BURST_SPIN;
     }
 }

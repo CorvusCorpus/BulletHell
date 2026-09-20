@@ -7,10 +7,10 @@
 /// lists what it finds. See `practice_functions`.
 ///
 /// **One flat list with headings, not a boss picker and an attack picker.**
-/// Two cursors is two things to learn and a mode to be in the wrong one of,
-/// and the whole list is eleven lines: a stage has a midboss and a boss, and
-/// between them nine attacks. When a stage has thirty, the list scrolls -- and
-/// that is still one cursor.
+/// Two cursors is two things to learn and a mode to be in the wrong one of.
+/// A stage has a midboss and a boss, and stage three has seventeen attacks
+/// between them -- more than one plate holds -- so the list scrolls, and that
+/// is still one cursor.
 
 stage = global.stage_def ?? stage_ziggy_def();
 bosses = practice_bosses(stage);
@@ -65,6 +65,43 @@ if (_was != undefined) {
 cursor = pick;
 t = 0;
 enter_t = 0;
+
+// ---- where every row is ----------------------------------------------------
+//
+// **Measured once, here, and read by both Step and Draw.** The list scrolls
+// now -- stage three has seventeen attacks and the plate holds about eleven --
+// and a scroll is two events agreeing about row positions; working them out in
+// Draw alone, as the list used to, would leave Step unable to say where the
+// cursor is.
+//
+// `row_y` is each row's centre measured from the first row's. A heading after
+// the first stands a little further off the list above it than one row pitch,
+// which is what separates one boss's attacks from the next.
+row_pitch = 52;
+row_head = 74;
+list_top = 220 + 66;              // the first row's centre, on screen
+row_y = [];
+var _y = 0;
+for (var _i = 0; _i < array_length(rows); _i++) {
+    if (rows[_i].header && _i > 0) _y += row_head - row_pitch;
+    row_y[_i] = _y;
+    _y += rows[_i].header ? row_head : row_pitch;
+}
+list_span = (array_length(rows) > 0) ? row_y[array_length(rows) - 1] : 0;
+
+// How much of that span the plate can show. The plate stops where it always
+// did, 150 above the foot of the screen, and the last visible centre sits 40
+// inside it -- so a list that fits is drawn exactly as it was before any of
+// this existed.
+list_window = min(list_span, (GAME_H - 150 - 40) - list_top);
+
+// Opened already scrolled to the cursor, rather than easing down to it from
+// the top every time the screen is entered.
+scroll_want = (array_length(picks) > 0)
+    ? practice_list_scroll(0, row_y[picks[pick]], list_span, list_window,
+                           row_head + 26)
+    : 0;
+scroll = scroll_want;
 
 // **The stage's own world behind it**, so the screen is about a place rather
 // than about a list. The fallback matters: `make_bg` is `undefined` on every

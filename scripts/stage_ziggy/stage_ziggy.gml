@@ -29,17 +29,6 @@ function stage_ziggy_def() {
         make_bg: bg_brimstone,
         build: stage_ziggy_script,
 
-        // **How many graded encounters this stage has, and it is provisional.**
-        // The console draws a socket per encounter so the ledger shows what is
-        // still to come rather than only what has happened, and it needs the
-        // total before the first one has been fought. Counting it from the
-        // timeline is what should happen and cannot yet: a wave is a line in a
-        // `{at, fn}` table, not a thing with a beginning and an outcome, so
-        // there is nothing to count. See the note at the top of
-        // `rank_functions` -- this number is the stand-in for the change that
-        // makes waves gradable, and it is nine (the two midboss attacks and
-        // Ziggy's seven) plus the five wave groups nobody grades yet.
-        encounters: 14,
 
         // **Who can be practised, in the order they are met.** Attack practice
         // needs a boss's table before anything has been spawned, so a boss is

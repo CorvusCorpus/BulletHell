@@ -43,6 +43,14 @@ if (_n > 0) {
 }
 cursor += (pick - cursor) * 0.3;
 
+// The page turns with the cursor, eased at the cursor's rate so the two read
+// as one movement. See `practice_list_scroll`.
+if (_n > 0) {
+    scroll_want = practice_list_scroll(scroll_want, row_y[picks[pick]],
+                                       list_span, list_window, row_head + 26);
+}
+scroll += (scroll_want - scroll) * 0.3;
+
 if (_n > 0 && keyboard_check_pressed(ord("Z"))) {
     enter_t = 26;
     sfx(Sfx.UiSelect);

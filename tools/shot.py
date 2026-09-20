@@ -66,6 +66,7 @@ SCENES = (
     "rays",         # moving ray lasers
     "clear",        # the phase-clear burst, bullets converting to shards
     "pause",        # the pause menu over a live field
+    "rank",         # the rank card: the medal an ended encounter throws up
     "result",       # the post-stage result screen
     "practice_ready",   # the count before a practised attack opens
     "practice_result",  # the end of a practice attempt: grade and menu
@@ -87,9 +88,7 @@ SCENES = (
     "grove_boss",    # Velka over the turned wood, danmaku across the moon
     "grove_spell",   # her caster's background: bone circle, antlers, wash
     "sanctum",       # stage three: two gateposts standing in a live wave
-    "mika",          # his opening non-spell: one ring on a long lead
-    "aperture",      # Gilded Aperture, from inside the middle band
-    "circuit",       # Ashiah's Circuit: current strung between two rings
+    "mika_attacks",  # its attack list, scrolled half way down Mika's fifteen
 
     # The hall itself, at the two ends of its reveal. **Two pictures of the
     # same room**, and the only difference between them is where the camera
@@ -103,6 +102,20 @@ SCENES = (
     "hall_turn",     # ...and half way between them, off the review card
     "hall_arrive",   # ...and the dark it all comes up out of
 )
+
+# **Mika's fifteen, one scene per slot**, generated the way `shot_scene_list`
+# generates them in the game: a non-spell and then a spell, seven times, and a
+# last spell -- `mika_n1`, `mika_s1`, ... `mika_n7`, `mika_s7`, `mika_s8`. Each
+# is his attack in that slot, practised in the open hall and photographed four
+# seconds in; `--burst` offsets are relative to that. The game refuses any name
+# its own list does not have, so a slot count that changed on one side only
+# fails loudly rather than photographing the wrong attack.
+MIKA_NONSPELLS = 7
+SCENES += tuple(
+    name
+    for k in range(1, MIKA_NONSPELLS + 1)
+    for name in ("mika_n%d" % k, "mika_s%d" % k)
+) + ("mika_s%d" % (MIKA_NONSPELLS + 1),)
 
 EXE = os.path.join(build.BUILD, "out", build.project_name() + ".exe")
 

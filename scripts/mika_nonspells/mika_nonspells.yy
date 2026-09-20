@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"mika_nonspells",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"mika_nonspells",
+  "parent":{
+    "name":"mika",
+    "path":"folders/Scripts/mika.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

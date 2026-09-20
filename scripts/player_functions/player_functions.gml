@@ -535,9 +535,10 @@ function player_collide(_p, _g) {
             player_hit(_p);
             return true;
         }
-        // A charged ring's metal, and the current strung between two of them.
-        // Both on the same terms as a laser: only ever while they are live,
-        // never during the warning that announced them.
+        // A ring's metal, and the current strung between two of them. The
+        // metal bites whenever it is solid -- charging widens it rather than
+        // switching it on -- and the arc is on a laser's terms: only ever
+        // while it is live, never during the warning that announced it.
         if (ring_any_hit(_p.x, _p.y, PLAYER_R)) {
             player_hit(_p);
             return true;

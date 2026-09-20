@@ -16,9 +16,17 @@ if (posed) shot_tick(scene, _g, t);
 // thing that happens *over time* reads, and the ordinary run is the burst
 // with one frame in it. `screen_save` is sandboxed into the game's own save
 // area, which is where `tools/shot.py` fetches these from.
+//
+// **Which name it saves under is decided by whether a burst was *asked for*,
+// not by how long it is.** The tool looks for `shot_0.png` whenever it passed
+// `-burst` and for `shot.png` when it did not, so a burst of exactly one frame
+// -- which is a perfectly reasonable thing to ask for, and the shortest way to
+// photograph one moment of a long attack -- had the game write one name and
+// the tool wait for the other. What came back was "no screenshot", with the
+// picture sitting on disk beside the one it was looking for.
 if (posed && fired < array_length(frames)) {
     if (t >= shutter + frames[fired]) {
-        screen_save(array_length(frames) > 1
+        screen_save(array_length(global.shot_burst) > 0
                     ? "shot_" + string(fired) + ".png" : "shot.png");
         show_debug_message("SHOT SAVED " + scene + " +"
                            + string(frames[fired]));

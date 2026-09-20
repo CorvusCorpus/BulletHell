@@ -15,6 +15,12 @@
 function enemy_init() {
     global.enemies = [];
     global.enemy_n = 0;
+    // **What the fodder that has arrived is worth, dead and collected.** A
+    // running total rather than a count, because it is read as a *difference*
+    // between two moments -- see `stage_encounter_close`, which uses it to
+    // work out what one group of waves was worth without anything having to
+    // tell it what spawned.
+    global.enemy_worth = 0;
 }
 
 function enemy_blank() {
@@ -87,6 +93,15 @@ function enemy_spawn(_kind, _x, _y, _hp, _act, _col = BCOL_CYAN,
     _e.mem = {};
     _e.red = _red; _e.blue = _blue; _e.gold = _gold;
     _e.boss = undefined;
+    // **Counted here rather than by the wave that asked for it.** A wave
+    // shape written next year is graded correctly without being told to
+    // report anything, which is the same bargain the delay marks and the
+    // near layer's keep-out window make: a thing that cannot be got wrong
+    // beats a thing that has to be got right. A boss is not fodder and pays
+    // out through its own phase table, so it is not counted.
+    if (_kind != EnemyKind.Boss) {
+        global.enemy_worth += TALLY_ENEMY + _gold * TALLY_ITEM;
+    }
     _e.leaving = false;
     _e.touch = true;
     _e.scale = 1;

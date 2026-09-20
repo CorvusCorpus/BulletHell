@@ -75,7 +75,25 @@ function hud_new() {
         life_seen: HP_MAX,
         mana_seen: 0,
         boss_phase_seen: -99,
+
+        // The medal a finished encounter throws on the screen, and the count
+        // of marks it has already thrown one for. See `rank_card`.
+        card: rank_card_new(),
     };
+}
+
+/// @desc Where the `_i`th socket of `_total` sits in the console's row.
+///
+///       **One answer, because two things read it.** The row draws the marks
+///       here and the rank card flies its medal to the same place, and a card
+///       that landed a few pixels off the socket it was filling would read as
+///       the console having missed rather than as two pieces of arithmetic
+///       having drifted -- which is what they would be.
+function hud_mark_xy(_i, _total) {
+    var _per = max(1, floor(HUD_COL_W / 46));
+    var _pitch = HUD_COL_W / min(max(_total, 1), _per);
+    return [HUD_COL_X + _pitch * ((_i mod _per) + 0.5),
+            HUD_ROW_MARKS + 64 + (_i div _per) * 42];
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +178,24 @@ function hud_step(_h, _g) {
     var _led = _g[$ "marks"];
     if (_led != undefined) _led.flare = max(0, _led.flare - 0.018);
 
+    // **The card is thrown by watching the ledger, like everything else on
+    // this plate.** Nothing in the engine calls it: `hud_step` compares how
+    // many marks the console has already animated with how many there are,
+    // and the difference is the event. That is the same bargain the slosh and
+    // the five flares are built on -- a new way to earn a mark animates
+    // correctly the day it is written, because nobody had to remember to say
+    // so. It also means the suites can file two hundred marks without
+    // animating one.
+    var _got = rank_count(_led);
+    if (_got > _h.card.seen) {
+        var _stage = _g[$ "stage"];
+        var _total = (_stage != undefined) ? _stage.encounters : _got;
+        rank_card_show(_h.card, _led.marks[_got - 1], _got - 1,
+                       max(_got, _total));
+    }
+    _h.card.seen = _got;
+    rank_card_step(_h.card);
+
     // **Health lost, not health changed.** Picking a shard up is a good thing
     // and should not set off the same alarm a bullet does, so the flare is one
     // sided -- which a plain `abs` difference could not express.
@@ -241,6 +277,11 @@ function hud_draw(_h, _g) {
     if (_boss != undefined && _boss.boss.started && !(_over && _practice)) {
         hud_boss_bar(_h, _boss);
     }
+
+    // **Last, so it is over the boss's line as well as over the field.** It
+    // is the only thing the console draws that is not on the plate, and for
+    // its second and a third it is the most important thing on the screen.
+    rank_card_draw(_h.card);
 
     draw_set_halign(fa_left);
     draw_set_valign(fa_top);
@@ -410,8 +451,10 @@ function hud_row(_y, _tag, _value, _font, _col, _alpha = 1, _scale = 1) {
 ///       **The sockets are drawn before they are earned**, which is most of
 ///       why the block never reads as empty. A stage opens showing fourteen
 ///       hollows: how long this is going to be, how much of it is left, and
-///       that there is something here to fill in. See `stage_def.encounters`
-///       for why that count is provisional.
+///       that there is something here to fill in. The total is counted off
+///       the stage's own timeline -- see `stage_count_encounters` -- rather
+///       than typed into the stage definition, which is what it used to be
+///       and which was already wrong by one on stage one.
 function hud_draw_marks(_h, _g) {
     var _x = HUD_COL_X;
     var _y = HUD_ROW_MARKS;
@@ -434,6 +477,7 @@ function hud_draw_marks(_h, _g) {
     // nobody has marked yet is not a bad attempt, and a console reading SLAG
     // before the first wave would be telling the player they were losing.
     var _overall = rank_overall(_led);
+    var _perfect = rank_is_perfect(_led);
     var _flare = (_led == undefined) ? 0 : _led.flare;
     if (_overall < 0) {
         draw_set_valign(fa_middle);
@@ -446,16 +490,23 @@ function hud_draw_marks(_h, _g) {
         draw_set_halign(fa_left);
         draw_set_valign(fa_top);
     } else {
-        var _oc = mark_colour(_overall);
-        if (_flare > 0.02) {
-            draw_bloom(_x + HUD_COL_W - 60, _y, 220, _oc, _flare * 0.35);
+        // **Shortened to one word, and never abbreviated anywhere else.**
+        // "ABSOLUTE AMETHYST" set at 56px does not fit a 416-pixel column
+        // beside its own tag, and shrinking the value to fit would make the
+        // one standing worth chasing the smallest thing on the plate. The
+        // row is drawn in a colour no other standing uses, so the word it
+        // drops is the one the colour is already saying.
+        var _oc = rank_overall_colour(_led);
+        if (_flare > 0.02 || _perfect) {
+            draw_bloom(_x + HUD_COL_W - 60, _y, 220, _oc,
+                       max(_flare * 0.35, _perfect ? 0.22 : 0));
         }
-        hud_row(_y, "MARKS", mark_name(_overall), fnt_ui(),
+        hud_row(_y, "MARKS", rank_overall_name(_led, true), fnt_ui(),
                 merge_colour(_oc, c_white, _flare * 0.5), 1);
     }
 
     hud_draw_block_rule(_x, _y + 26,
-                        (_overall < 0) ? COL_GILT : mark_colour(_overall),
+                        (_overall < 0) ? COL_GILT : rank_overall_colour(_led),
                         0.6);
 
     // ---- the whole ledger, at a glance ------------------------------------
@@ -464,15 +515,21 @@ function hud_draw_marks(_h, _g) {
     // than one line can hold, and wrapped rather than compressed past a floor:
     // a mark below about twenty pixels stops being a shape and starts being a
     // dot, and a dot cannot carry a rank by colour.
+    // **The total comes off the stage, which counted it from its own
+    // timeline.** It used to be a number typed into the stage definition by
+    // hand, and it was wrong on stage one -- see `stage_count_encounters`.
+    // The `max` stays: a stage that files more marks than it predicted grows
+    // the row rather than clipping it.
     var _got = rank_count(_led);
-    var _total = max(_got, _g.def[$ "encounters"] ?? _got);
+    var _stage = _g[$ "stage"];
+    var _want = (_stage != undefined)
+        ? _stage.encounters : (_g.def[$ "encounters"] ?? _got);
+    var _total = max(_got, _want);
     if (_total > 0) {
-        var _per = max(1, floor(HUD_COL_W / 46));
-        var _pitch = HUD_COL_W / min(_total, _per);
-        var _my = _y + 64;
         for (var _i = 0; _i < _total; _i++) {
-            var _mx = _x + _pitch * ((_i mod _per) + 0.5);
-            var _cy2 = _my + (_i div _per) * 42;
+            var _at = hud_mark_xy(_i, _total);
+            var _mx = _at[0];
+            var _cy2 = _at[1];
 
             if (_i < _got) {
                 var _m = _led.marks[_i];
@@ -892,6 +949,31 @@ function hud_draw_result(_g) {
                       _won ? "STAGE CLEAR" : "DEFEATED",
                       _won ? COL_GRAZE : COL_LIFE, _t, 3);
 
+    // **The standing, which nothing used to draw.** Every mark carried a
+    // label and a tier and the only readout was the row of sockets in the
+    // console; the one page in the game with room to say what the attempt was
+    // worth said nothing about it. It goes above the numbers rather than
+    // among them because it is not one of them -- it is the answer the five
+    // rows below are the working for.
+    // **Clear of the title, which took a screenshot to see.** `fnt_title` is
+    // 132px and the panel's headline is drawn from its middle, so it occupies
+    // roughly sixty pixels either side of `FIELD_Y0 + 190` -- and the first
+    // version put the tag at +232, which printed STANDING straight through
+    // the bottom of STAGE CLEAR. It is the crest-through-the-stage-name
+    // finding again, and nothing but a picture was going to report it: both
+    // coordinates are inside the field and neither box overlaps a console
+    // box, which is all `test_hud_layout` can ask.
+    var _led = _g[$ "marks"];
+    if (rank_count(_led) > 0) {
+        draw_set_font(fnt_small());
+        draw_text_tracked(FIELD_CX, FIELD_Y0 + 318, "STANDING", 10,
+                          COL_SILVER, _t * 0.7, 2, fa_center);
+        draw_set_halign(fa_center);
+        draw_set_font(fnt_head());
+        draw_text_outline(FIELD_CX, FIELD_Y0 + 376, rank_overall_name(_led),
+                          rank_overall_colour(_led), _t, 3);
+    }
+
     var _boss = _g.boss_ref;
     var _caught = (_boss == undefined) ? 0 : _boss.boss.captured;
 
@@ -908,7 +990,7 @@ function hud_draw_result(_g) {
     // first letter on the boundary. It is also the wrong hierarchy: the label
     // is the question and the number is the answer.
     for (var _i = 0; _i < array_length(_rows); _i++) {
-        var _y = FIELD_Y0 + 370 + _i * 78;
+        var _y = FIELD_Y0 + 476 + _i * 78;
         draw_set_halign(fa_right);
         draw_set_font(fnt_ui());
         draw_text_outline(FIELD_CX - 30, _y, _rows[_i][0], COL_SILVER,

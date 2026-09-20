@@ -131,6 +131,13 @@ function stage_is_cleared(_id) {
 ///       high-scoring run cannot take away a higher capture count. A record
 ///       that could go backwards is a record players learn not to trust.
 function progress_record(_id, _tally, _no_hit, _captured) {
+    // **An empty id is a run that is not a stage**, and it files nothing.
+    // Practice, the drafting table and the review card all carry one, and so
+    // does the old draft of stage three -- which, unlike the other three, is a
+    // whole run with a boss at the end, so it genuinely arrives here. Filed,
+    // it would be a cleared stage called "" in the player's save, counted by
+    // `progress_cleared_count` against a roster it is not on.
+    if (_id == "") return;
     var _old = progress_stage(_id);
     global.progress.stages[$ _id] = {
         cleared: true,

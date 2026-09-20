@@ -75,6 +75,26 @@ function practice_attack_label(_boss, _phases, _i) {
     return _boss.name + " " + string(_i + 1);
 }
 
+/// @desc How far down the attack list is scrolled, given where it was.
+///
+///       **It moves only when the cursor would leave the window**, and then
+///       only far enough to keep `_margin` of list on the far side of it -- a
+///       list that recentred on every keypress would move under the eye the
+///       whole time, where this one sits still while the cursor walks and
+///       turns the page only at the edge. The margin is what keeps a boss's
+///       heading in view above his first attack.
+///
+///       Everything is in list coordinates: `_sel` is the chosen row's centre
+///       measured from the first row's, `_span` is the last row's, and
+///       `_window` is how much of that span the plate can show at once. A list
+///       that fits answers zero whatever it is asked.
+function practice_list_scroll(_scroll, _sel, _span, _window, _margin) {
+    var _max = max(0, _span - _window);
+    var _m = min(_margin, _window * 0.5);
+    var _want = clamp(_scroll, _sel + _m - _window, _sel - _m);
+    return clamp(_want, 0, _max);
+}
+
 // ---------------------------------------------------------------------------
 // The best on an attack, this session
 // ---------------------------------------------------------------------------
@@ -95,7 +115,10 @@ function practice_attack_label(_boss, _phases, _i) {
 ///       an index alone would move under the map the first time a phase was
 ///       inserted into a table, which is a thing this mode exists to make easy.
 function practice_key(_stage, _boss_i, _phase_i) {
-    return _stage.id + "/" + string(_boss_i) + "/" + string(_phase_i);
+    // A card with no id -- the drafting table, the old draft of stage three
+    // -- is filed under its name, or every one of them would share one best.
+    var _who = (_stage.id != "") ? _stage.id : _stage.name;
+    return _who + "/" + string(_boss_i) + "/" + string(_phase_i);
 }
 
 function practice_best(_key) {
@@ -226,6 +249,13 @@ function practice_begin(_g) {
     if (_p.phase_i > 0) {
         _e.hp = _e.hp_max * _e.boss.phases[_p.phase_i - 1].hp_end;
     }
+
+    // **And the world the boss is fought in, not the one the stage opens
+    // on.** A boss entry says `turned` when it comes after its stage's turn;
+    // see `bg_skip_to_boss`. Guarded because the suites start runs with no
+    // background at all.
+    var _bg = _g[$ "bg"];
+    if (_bg != undefined) bg_skip_to_boss(_bg, _boss[$ "turned"] ?? false);
 
     // **The attack does not start on frame one, and this is the boss's own
     // pause rather than a new one.** An attack opening the instant the room

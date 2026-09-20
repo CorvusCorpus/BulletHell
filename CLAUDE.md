@@ -11,9 +11,9 @@ stages open as clears accumulate. So a stage is five to ten minutes of the same
 shape as a Touhou Extra: waves, a midboss, more waves, and a boss with a table
 of named attacks. Nothing is lost by failing one.
 
-**Every attack in the game except `Demon Sealing Hex` is a placeholder.** In
-their finished versions, all spells are meant to be at the Hex's level of
-artistry and complexity. The simple fans, rings and spirals in Ziggy's and
+**Every attack in the game except `Demon Sealing Hex` and Mika's N1 is a
+placeholder.** In their finished versions, all spells are meant to be at the
+Hex's level of artistry and complexity. The simple fans, rings and spirals in Ziggy's and
 Velka's tables will be replaced -- they are there so the stages have something
 to play through, not as the design. The point is for this to be worth playing
 rather than another basic bullet hell, outshone by Touhou and the Danmakufu
@@ -38,11 +38,11 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 | `tools/build.py` | The GML compiles. Reports real diagnostics with line numbers. |
 | `tools/test.py` | The GML is *correct*: builds, runs with `-selftest`, grades the suites in `scripts/selftest` off stdout. |
 | `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, no bare `draw_sprite` inheriting the draw state, **the hedgerow still covering the horizon it hides**, **the far chamber painted at the size it is hung at**, **no hall buffer drawn with a multi-frame sprite's page or against another sprite's**, and **the rings eating the player's shots before the enemies are offered them**. |
-| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Forty-two scenes; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
+| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Fifty-six scenes, fifteen of them one per slot of Mika's table; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
 
 **`shot.py` is not a nicety, and in this genre it is the most important of the
 four.** A bullet pattern that is arithmetically perfect and illegible is a bug,
-and no assertion can see it. It renders forty-two scenes and **fails on a game
+and no assertion can see it. It renders fifty-five scenes and **fails on a game
 error even when a screenshot appeared** — `obj_shot` calls `screen_save` from
 its Step event and `game_end()` lets the current frame finish, so a throw in the
 Draw event that follows happens *after* the file is on disk. The first crash
@@ -55,6 +55,13 @@ back to grading a crashed scene by whether it had photographed itself before
 dying. A guard nobody invokes is indistinguishable from no guard, and the
 comment above it is what makes that hard to notice — it reads exactly like a
 guard that works.
+
+**A burst of one frame is a burst.** The game named its file from how many
+frames it was photographing and the tool named it from whether `-burst` was
+passed, so asking for exactly one offset -- the shortest way to photograph one
+moment of a long attack -- wrote `shot.png` while the tool waited for
+`shot_0.png`. It reported "no screenshot", with the picture sitting on disk
+beside the name it was looking for. Both sides read the *request* now.
 
 **A posed player does not dodge, so it cannot be asked to survive.**
 `player.untouchable` is the harness's flag and nothing in play ever sets it.
@@ -230,30 +237,334 @@ reason to invent a readout. A ledger of what each encounter scored belongs on
 the result screen, where there is a whole page for it and the player has
 stopped dodging; `rank_note` records the label for exactly that.
 
-The ladder is `SLAG · IRON · SILVER · GOLD · ADAMANT` — metals rather than
-Bayonetta's stones, with slag under the familiar three because that is what is
-left when you smelt badly, and adamant over them because it is the one metal
-that is not. The standing is the **floored** mean of the marks earned, and the
-floor is the whole difficulty rule: rounding to nearest lets one good encounter
-pay for one bad one, which makes the grade a measure of the average attempt
-where it should be a measure of the consistent one.
+The ladder is `STONE · BRONZE · SILVER · GOLD · AMETHYST`, and above it, for a
+stage where every encounter took the top mark, **`ABSOLUTE AMETHYST`** —
+Bayonetta's Pure Platinum in this ladder's own material.
 
-**What is built is the ledger and the readout, not the scoring.** The boss's
-attacks are graded for real, because everything a grade needs about them already
-exists — whether the attack was beaten or timed out, how many times the player
-was hit during it, how many sigils they spent, and how much of its clock was
-left — so grading is a *read* rather than new bookkeeping. The stage's own waves
-are not: a wave is currently a line in a `{at, fn}` timeline and not a thing
-with a beginning, an end or an outcome, and giving it those is a change to
-`stage_functions`. `rank_note` is the seam that change will call, and
-`stage_def.encounters` is the provisional count standing in for it.
+**The five split by hue as well as by value, and the pair they replaced did
+not.** `SLAG` and `IRON` were both dim and both cool, and the only thing
+telling them apart was the word printed beside them; the note defending that
+said the distinction "matters after the run, not during it", which is an
+argument for not having drawn two rungs. Dark cool, warm brown, bright cool,
+bright warm, bright violet is a sequence that reads at thirty pixels in the
+dark without being read. Four of the five are the console's own furniture, and
+the fifth is `COL_SIGIL` lifted — **the top of the ladder is Szuix's own
+magic**, which is the right thing for a game about taking other people's off
+them, and it is far enough above `COL_ARCANE` in value not to sink into the
+plate it is drawn on.
 
-**The sockets are drawn before they are earned**, which is most of why the block
-never reads as empty. A stage opens showing fourteen hollows: how long this is
-going to be, how much of it is left, and that there is something here to fill
-in. Between encounters the foot of the block carries the last mark and what
-earned it — a grade filed and never mentioned again until the result screen is
-a grade nobody can learn from.
+**Perfect is not a sixth tier and must never become one.** `rank_note` clamps
+into the enum, so a sixth member would be awardable to a single encounter the
+day it was added — and the whole of what it says is that *all* of them were.
+It is a question about a ledger, `rank_is_perfect`, and it is a strictly
+harder test than any mean.
+
+#### How a mark is earned
+
+**Clean is the second rung from the top, not the top.** A player who took no
+hit and spent no sigil has done what the encounter asked and gets `RANK_BASE`
+for it. From there:
+
+| | |
+|---|---|
+| a hit | **−2** rungs |
+| a sigil | **−1** rung |
+| over the score threshold | **+1** rung |
+
+so a clean encounter over the threshold is amethyst, a clean one under it is
+gold, one bomb is silver, one hit is bronze, and two mistakes of any kind is
+stone. **A ladder whose top rung is "did not make a mistake" has nothing left
+to reward the player who was also good**, which is the whole reason the base is
+one below the top and the threshold is what reaches it.
+
+**A hit costs more than a bomb, and that is a reversal.** The first version of
+this ranked a bomb *below* a hit, which is backwards: a sigil is a resource the
+player chose to spend where a hit is one they did not choose at all, and
+`MP_PER_BOMB` against `ITEM_MP_VALUE` — twenty-five shards a bomb — already
+makes one expensive without the ladder charging twice.
+
+**Nothing asks whether the attack was beaten**, and that is a second reversal.
+A timeout used to be a hard bottom mark whatever else had happened, which is
+wrong twice over: running a card down to its clock can take more skill than
+breaking it, and **a survival spell, where the caster cannot be hurt until the
+clock runs out, could only ever have scored the bottom mark** — the engine
+supports exactly that pattern, since `resist` is how the genre writes one. The
+anti-hiding argument that branch was carrying is not lost. It lives in the
+**capture bonus**, which still wants the spell broken and untouched, so hiding
+in a corner costs the points it always cost and no longer costs the medal too.
+Those were always two different questions being answered by one branch.
+
+#### The score threshold, and the milking it opened
+
+**The top rung is a score, not a stopwatch.** `rank_score_target` is what an
+encounter pays out for simply being finished, plus `RANK_GRAZE_RATE` seconds of
+grazing on top — so the threshold is never "score more than is available", it
+is "finish it, and spend the time near the bullets". The flat award is *inside*
+the target rather than excluded from it, which is what makes failing to finish
+— letting half a wave fly off the bottom of the screen — cost the threshold by
+itself, with no second rule saying so.
+
+**Derived, with an override.** A hand-written threshold on every row would mean
+a number per slot across Mika's fifteen, Ziggy's seven, Velka's six, two
+midbosses and every wave group, in tables being rewritten one slot at a time,
+for a game nothing is balanced in yet — guessed twice over. A row may still
+carry its own `score` and take the lot; almost none do.
+
+**Taking time out of the mark put it straight back into the score, and it had
+to go somewhere.** With the top rung bought by score alone, the way to reach it
+is to *not kill the boss*: score during an attack is dominated by graze at 40
+apiece, and graze accrues per frame spent near bullets. So the clear award is
+Touhou's now — a flat part plus a part that decays with the clock — and milking
+costs exactly what it buys.
+
+**The bonus is priced as the grazing the player gave up, and the flat version
+that was not is worth writing down.** The first attempt split
+`TALLY_SPELL_CLEAR` into 24000 flat plus up to 16000 scaled by the clock left,
+on the reasoning that a fast clean break and a slow brave one should be two
+routes to the same threshold. It reads perfectly well and it is wrong the
+moment it is measured:
+
+| break with | 24s non-spell | 40s spell | 50s spell |
+|---|---|---|---|
+| no clock left | 14.0 graze/s | 14.0 | 14.0 |
+| ¼ left | 13.1 | 15.3 | 16.0 |
+| ½ left | 11.3 | 18.0 | 20.0 |
+| ¾ left | 6.0 | **26.0** | **32.0** |
+
+The exchange rate between the two routes was *the attack's own length* — a
+fixed bonus is worth more than the grazing it removes on a short attack and
+much less on a long one — which is nothing anybody chose, and the paragraph
+above it claimed they were equal. It is the `HEX_COL_FAN` shape of mistake
+again: the text describing the fix is the hardest place to notice the fix is
+not there.
+
+So `rank_speed_award` hands back `_frac` of what the whole clock's grazing was
+worth, and the arithmetic cancels — a player who finishes with `_frac` of the
+clock left has had `1 - _frac` of it to graze in and is paid for the rest, so
+the threshold asks `RANK_GRAZE_RATE` a second whatever they do. **The flat
+award drops out of the mark entirely**, because the threshold contains it too,
+which is why it is free to be whatever the score wants and went back to the
+number it always was.
+
+`test_marks` walks three clocks by four finishing times and measures the rate
+each one demands, because none of this is visible by reading it — which is how
+the flat version survived being written down with its own defence attached.
+
+**And it is not voided by a hit, which is where this departs from Touhou.**
+There the bonus is lost the moment you are touched — which here would make
+"met the threshold" and "was clean" the same measurement, and the clean case is
+already what sets the base mark. Hits and bombs are deducted once, by
+`rank_for_encounter`, and the score says something else.
+
+**And the capture bonus is paid after the mark is filed.** A capture is itself
+gated on being clean, so counting its forty thousand toward the threshold would
+be measuring "was not hit" twice and hand the top rung free to anybody who
+cleared a spell untouched. The threshold has to be reachable *and* missable by
+a player who was never touched, or it is not a second question. The suite that
+holds this down took two goes: the first named a target nothing could reach,
+which passes under both orderings and proves only that the code does not crash.
+
+**An attack's target is measured against its clock and a wave's against how
+long it actually took.** That looks inconsistent and is not. An attack's award
+already shrinks as its clock runs, so growing the *target* with the same
+seconds would charge for slowness twice and leave a survival spell — all clock,
+by definition — with a bar nobody could reach. A wave has no clock to measure
+against instead, so the duration goes in there, and it cancels: kill the same
+enemies in eight seconds and the bar asks for eight seconds of grazing, take
+twenty and it asks for twenty. The rate is the whole requirement either way,
+and dawdling through a wave buys nothing.
+
+#### The standing
+
+**The mean of the marks, to the nearest rung.** It was floored, and the floor
+was defended here at length on the grounds that one good encounter must not pay
+for one bad one. It does do that, and it costs the top rung its whole
+existence: under a floor, `overall == Amethyst` is true if and only if every
+single mark is amethyst, which is `rank_is_perfect`'s condition — so the ladder
+had a rung that no run could ever land on that was not already perfect.
+Rounding gives the standing its range back and leaves the top *overall* grade
+to a stricter test than any mean.
+
+What is genuinely given up shows at the margin: five golds and a stone average
+exactly 2.5 and come back **gold**. That is the price of the reversal rather
+than a defect, and `test_marks` asserts it so that nobody rediscovers it from a
+player asking why their stone did not count.
+
+**`floor(x + 0.5)` and not `round`, which is a GML trap.** GameMaker's `round`
+is banker's rounding: it breaks a tie toward the *even* number, so `round(2.5)`
+is 2 and `round(3.5)` is 4. On a five-rung ladder that is four halfway points
+behaving in two different ways — a run averaging silver-and-a-half rounds down
+while one averaging gold-and-a-half rounds up — and the player it happens to
+has no way of telling it is not a bug. It compiles, it runs, and it is right
+half the time, which is the worst frequency a mistake can have. Both rungs are
+asserted, because the wrong implementation gets one of them right.
+
+#### Waves are graded, and the socket count is counted
+
+**Both halves are real now.** The boss's attacks were always graded from what
+the fight recorded; the stage's own waves were not, because a wave was a line
+in a `{at, fn}` timeline and not a thing with a beginning, an end or an
+outcome.
+
+Giving it those turned out to need no new kind of timeline entry. **A group of
+waves is exactly the stretch during which there is fodder on the field**, which
+is the same predicate a gate already tests — so `stage_encounter_step` opens a
+window on the frame fodder appears and closes it on the frame the last of it is
+gone, and everything it needs is a difference between two snapshots: the score,
+the hits, the bombs and what the enemies were worth are all running totals
+already.
+
+- **Detected rather than declared.** The alternative was a call inside
+  `wave_line` and `wave_cross` announcing themselves, and a wave shape written
+  next year would have had to remember to make it. It is the same argument
+  `test_corridor` makes for walking the background struct rather than naming
+  the rings it knows about.
+- **What the enemies were worth is accumulated by `enemy_spawn`**, not by the
+  wave that asked for them, for the same reason — so a new wave shape is graded
+  correctly without being told to report anything.
+- **The window is counted in real frames, not stage time.** `stage.t` is frozen
+  for the whole of a gate, and a gate is where most of a wave group is actually
+  fought, so stage time would measure the stretch from the spawn to the gate's
+  own `at` and call a forty-second fight four seconds long.
+- **Not during a boss.** A boss that summons fodder is still a boss encounter,
+  graded by its own phase table; a second window opening underneath it would
+  file two marks for one thing.
+
+**The sockets are drawn before they are earned**, which is most of why the
+block never reads as empty: a stage opens showing thirteen hollows, which says
+how long this is going to be, how much of it is left, and that there is
+something here to fill in.
+
+**That count used to be typed in by hand and was wrong on two stages.**
+`stage_def.encounters` stood in for a count nothing could take — stage one
+carried fourteen against a true thirteen, and stage two thirteen against
+twelve, from the day they were written. Both halves are countable now and
+`stage_count_encounters` does it at `stage_new` time: a group of waves is a
+gate, a boss's encounters are its attacks, and the gates that follow a boss are
+subtracted, of which there are as many as there are bosses that are not the
+last one. A definition may still carry its own `encounters` and override the
+lot, which is what the practice, draft and preview cards do — their timelines
+are empty or synthetic and there is nothing in them to count.
+
+`test_stage_encounters` holds the three stages to **literals**, deliberately.
+The first version recomputed them with `stage_count_encounters`' own formula
+and compared the two, which is a test that cannot fail: it restates the
+implementation instead of the answer. A literal is the one thing a suite can
+hold that the code cannot also derive.
+
+#### The rank card
+
+**A mark used to land in the console with a flare on it and nothing else
+happened.** What a character-action game does at the end of a set piece is put
+the medal on the screen, at size, for about a second — and the reason is not
+celebration: a grade nobody notices is a grade nobody plays for. The row in
+the console is the record; the card is the moment.
+
+**It is additive, without exception, and that is a fairness rule rather than a
+look.** The window it lands in is much tighter than it looks:
+
+| | |
+|---|---|
+| `BOSS_PHASE_PAUSE` | 84 frames, and that is the **entire** clear window |
+| a spell's `BOSS_SPELL_LEAD` | 90 more, but the eye card owns the middle of the field for all of them |
+| a non-spell | the next pattern opens the frame the pause ends |
+| a wave gate | half a second of grace, then whatever the timeline says |
+
+So there is no timing at which the card can be promised clear air, and the rule
+`grove_draw_front` keeps is the only guarantee that survives all four: light
+can only brighten what is behind it, so no arrangement of this can hide a
+bullet at any size, at any alpha, at any moment. What is given up is a solid
+plate behind the medal, which is not a loss worth arguing about.
+
+**Additive is not the same as free, though**, and the first pass proved it: a
+620-pixel bloom at 55% over the medal photographed at frame two as a milky
+field. Added light cannot hide a bullet and it can still take most of the
+contrast out of what the bullet is read against. The strike has to be felt at
+the medal, not across the playfield.
+
+Four beats over `RANK_CARD_TIME`, which is 80 frames — the pause with four to
+spare:
+
+1. **Strike.** The medal arrives at 1.6× and settles, with a flash and a
+   shockwave leaving it. An overshoot rather than a ramp, because a thing that
+   arrives at exactly its final size has not been struck, it has been faded in.
+   Only amethyst and absolute shake the screen: a shake on every encounter is
+   a shake the player stops reading, and this game spends that budget on being
+   *hit*, which is the one thing good news must not imitate.
+2. **Settle.** A four-pointed spark crosses the face — the house's own motif
+   doing a sheen's job, because a sheen is a band clipped to a silhouette and
+   without a shader that is a band running off the edge of what it polishes.
+3. **Read.** The encounter's name above, the tier below it, then the score
+   against its target and what it cost. The target is printed *beside* the
+   score rather than instead of it, because "you scored 18420" answers nothing
+   and "18420 of 15000" is the whole of why the mark came out where it did. A
+   clean encounter says `FLAWLESS` rather than two zeroes — the one outcome the
+   ladder is built around deserves to be said rather than left as an absence.
+4. **File.** The medal contracts and **flies to its own socket in the console**,
+   which is the beat the card exists for: it makes the card and the ledger one
+   object rather than two readouts of one fact. It is the move the special
+   already makes when the motes it steals accelerate into the sigil's heart.
+   `hud_mark_xy` is the one answer for where a socket is, because a medal that
+   landed a few pixels off would read as the console having missed.
+
+**And the landing was a fencepost wrong by one frame.** The last frame the card
+is alive for is `RANK_CARD_TIME - 1`, so dividing the flight by its own length
+left the fraction at 23/24 — cubed, an ease of 0.88. The medal vanished an
+eighth short of the socket it was filling, every time. It reads as *nearly*
+right, which is exactly why `test_rank_card` measures where it lands rather
+than trusting the path: the +74 screenshot looked like it had arrived.
+
+**It is thrown by the console watching the ledger, not by `rank_note`.** That
+is the split `rank_functions` already keeps for the flare — the ledger is a
+record and how loudly it is drawn is the console's business — and it is why
+nothing in the engine has to remember there is a screen, and why the suites can
+file two hundred marks without animating one. What made it possible is that a
+**mark now carries what earned it**: the score, the target, the hits and the
+bombs live on the mark beside the tier, so the card is a read rather than a
+second call from both grading sites repeating facts the ledger was just handed.
+The result screen's itemised list will want the same record.
+
+#### The medals
+
+Six frames in `make_ui.py`: five rungs and the perfect standing.
+
+**They are one medal with an escalating amount of ornament on it**, and that is
+the design rather than a saving. Five unrelated shapes would be five objects;
+one shape that gains a course of beading, then volutes, then a crescent, then a
+burst of rays, then a second rim and a wreath is a *set* — and the player reads
+how far up the ladder they are from how decorated it is before they have read
+the colour or the word. It is the console's own argument about motifs (one
+crescent at three sizes is a house style; three motifs is a collection) applied
+to a thing that has to say six values.
+
+**The colour is the other half and it is not baked**, like everything else in
+that file. Stone is not a different drawing from gold; it is the same object in
+a worse material, which is what a grade ladder means.
+
+Three things took a second pass, all of them found on the preview sheet:
+
+- **The gem's facets did not read.** Shading each face by where it points is
+  physically right and puts the two faces either side of the light within a few
+  per cent of each other, so half the stone came back as one pale mass with
+  lines on it. Neighbouring faces are forced apart in value *on top of* the
+  lighting now — the same reason Mika's chain is drawn as two waves rather than
+  as a row of links.
+- **Stone was a ghost rather than a bad medal.** Two causes: it was drawn as a
+  faint brilliant, which reads as a good medal behind glass, and `COL_STONE`
+  was a dozen points above `COL_ARCANE`. It is an uncut lump in a pitted cast
+  rim now, and the colour was lifted — a grade the player cannot see reads as
+  the readout being broken rather than as the attempt being bad. The lift fixes
+  the console's bottom socket at the same time.
+- **Amethyst and absolute were the same picture twice**, separated by a tick
+  count and eight rays. The perfect standing has a second rim and a wreath now:
+  the rung above the top of the ladder has to be legible against the rung below
+  it, or the thing nobody ever gets looks like the thing people sometimes get.
+
+`tools/_preview/ui_medals.png` is their own sheet, and it is the one preview in
+that file drawn **in the tiers' own colours** rather than in a single tint —
+the only question about the rest of the furniture is whether it reads against
+the plate, and the only question about these is whether five materials read
+*apart*, which a monochrome sheet cannot answer.
 
 ### The boss's line
 
@@ -845,12 +1156,20 @@ Four verbs, and every one is a field on the struct:
 - **Block.** Player shots crossing the metal are absorbed. Enemy bullets are
   not, because they are his -- and the bomb's seals are not either, which is
   what stops a walled boss making the one panic button in the game useless.
-- **Kill.** A ring can be *charged*, after a visible warning, and then its band
-  hurts. `ring_is_hot` has to test `warn` as well as `hot`, because
-  `ring_charge` sets both at once: the first version killed for the whole of
+- **Kill.** The metal hurts to touch, always, from the frame it finishes
+  forming -- asked for in those words: his rings should do damage if the player
+  touches them, like with regular bullets. It did not use to, and a player who
+  flew into a cold ring passed through it. A ring can also be *charged*, after
+  a visible warning, which **widens** the lethal band from the core of the cuff
+  to the whole of it and lights it: charging escalates a danger that is already
+  there rather than being the only time there is one. Neither width ever
+  exceeds the drawn metal, which is the one promise the picture makes.
+  `ring_is_hot` still has to test `warn` as well as `hot`, because
+  `ring_charge` sets both at once: the first version was hot for the whole of
   the build-up it was drawing to say it had not started. `test_rings` found it
   on its first run, and nothing else could have -- the picture, the cue and the
-  timing were all correct.
+  timing were all correct. A cold band pays a graze on the same cooldown a
+  charged one does, off the same measurement.
 - **Arc.** Two rings strung with a line of current: a lethal segment between two
   *moving* points, which the player reads off the objects at its ends rather
   than off the wall itself. The drawn bolt jitters, and the jitter is bounded by
@@ -863,6 +1182,20 @@ Four verbs, and every one is a field on the struct:
   for one frame and wrong for ever after, because the delay marks appear inside
   the hole) and `ring_beam` anchors a following beam at the centre, because the
   hole is what a ring is for.
+
+  **And a moving ring has to be fired from where its metal is going to be.**
+  Every bullet is born as a mark that holds still for its delay, so a ring
+  orbiting its caster at six pixels a frame slides on while the mark waits --
+  and the *hole* arrives where the mark is sitting. What that reaches a player
+  as is bullets coming out of the middle of the ring about half the time,
+  which is how it was reported on Mika's N1, and it is intermittent because it
+  depends which side of a travelling ring the bullet left from.
+  `ring_rim_at_x` is the fix: the rim point plus the ring's own travel over
+  the delay, where the travel is measured rather than assumed, because a ring
+  carried round by its caster moves without either of its velocity fields
+  changing. A ring that stands still leads by nothing, so nothing that stands
+  still is affected. `test_mika_sand` walks the band at eight angles against a
+  travelling ring, and was checked against the old call first.
 
 **Blocking is swept, and the ordering is the mechanic.** A player shot travels
 `PSHOT_SPD` against metal a fifth as thick, so a point test would miss two in
@@ -1088,7 +1421,8 @@ surface to own.
 `Demon Sealing Hex` is the reference for what a finished spell looks like --
 see its own section under the drafting table for what went into it. New spells
 are written on the drafting table (`stage_drafts`) and move to their caster
-when they are done, which is how the Hex came to be Velka's.
+when they are done, which is how the Hex came to be Velka's. **Mika's are the
+exception**, written in place in his own table -- see "Mika's fifteen".
 
 ## The boss
 
@@ -1144,7 +1478,19 @@ draw.
 
 **A capture needs the spell beaten *and* untouched** — no hits and no bombs.
 That is the Touhou rule and it is the right one: a bonus for merely surviving
-rewards hiding in a corner.
+rewards hiding in a corner. **It is the only thing left that asks whether the
+attack was beaten**, and it carries that argument alone now: the mark no
+longer does, because a timeout graded as a hard bottom rung made a survival
+spell unmarkable. See "Marks".
+
+**And ending an attack pays a flat award plus a speed bonus** — Touhou's spell
+bonus. It exists because the top mark is bought with score: without a time
+term, the way to reach the threshold would be to stall an attack and graze it
+for forty seconds. The bonus is priced as *the grazing finishing early gave
+up*, which is what keeps the two routes to the threshold costing the same;
+`rank_speed_award` carries the measurement, and the flat version that did not
+work. It is not voided by a hit, and the capture bonus is paid **after** the
+mark is filed. Both reasons are under "Marks".
 
 **A boss holds station in the top quarter, and it used to hold it lower.**
 `BOSS_HOME_Y` was `FIELD_Y0 + 320`, which with a drift of 74 and half of a
@@ -1184,6 +1530,23 @@ wide non-spell wants the wander, and the spell after it may not.
   existed, so the read is `_p[$ "move"] ?? BossMove.Drift` — a bare `.move`
   would not merely default wrongly, it would *raise*, which is the same trap
   the `spell_bg` read one function over is about.
+- **`Close`** is the same wander with the traverse taken out of it —
+  `BOSS_CLOSE_X` either side of the station rather than 430. For an attack
+  built out of things the boss *carries*: rings on an orbit, and whatever they
+  are throwing, all move with him, so a boss crossing the field drags the whole
+  figure off one wall and back rather than letting it settle anywhere. It is
+  still a wander rather than a hold, because `Fixed` gives up the thing the
+  drift is for. Reported on Mika's N1, in those words: his drifting movement
+  should stay more confined to the centre instead of drifting to the far ends
+  of the screen.
+
+  **Its vertical is held far tighter than its horizontal** — `BOSS_CLOSE_Y` is
+  a fifth of `BOSS_CLOSE_X`. A pattern is read at the foot of the field and its
+  source is at the top, so anything the source does *vertically* arrives down
+  there as the whole figure sliding up and down the screen: streams reaching
+  the player a little further along on every pass, which is the pattern
+  refusing to be the same twice. Sideways matters much less, because a figure
+  that slides sideways is the same figure moved.
 - **`Track`** trends toward the player's column while still wandering on top
   of it. For an attack that traps the player: the boss comes to them because
   they cannot come to it.
@@ -2712,10 +3075,11 @@ be, by the additive foreground above.
 ## Stage three: the Gilded Sanctum
 
 Mika -- a black fennec in gold, head mage to Ashiah, the Living God of Death.
-Seven attacks: three non-spells and four spells, and **every one of them is
-built round a ring**. The stage exists for the same reason the Hollow Grove
-exists for its background: a mechanic cannot be judged from an engine test, so
-there is a fight to play it in.
+**His fight is being rebuilt as fifteen attacks**, one slot at a time; see
+"Mika's fifteen" below for the plan and where each slot stands. Every attack he
+has had so far is built round a ring, and the stage was first written for the
+same reason the Hollow Grove exists for its background: a mechanic cannot be
+judged from an engine test, so there is a fight to play it in.
 
 **His palace exists now**, and it is the third projection in the game: a room
 rather than a floor or a corridor. See below.
@@ -2747,10 +3111,225 @@ defect `BossMove` was invented to fix, arriving from a new direction. The
 volleys are tangential rather than radial either way, because radial ones would
 put a wall in every window the attack exists to open.
 
-The rest of the table is a placeholder in the sense the whole game's is. What is
-not placeholder is the vocabulary: between the Proctor's two attacks and Mika's
-seven they use every verb a ring has, which is the argument the drafting
-table's first five drafts are chosen on.
+That was the one real idea in the placeholder table. The rest were the plainest
+arrangements of a ring that make each of its verbs visible; between the
+Proctor's two attacks and Mika's old seven they use every verb a ring has.
+
+### Mika's fifteen
+
+**What the owner asked for**, in their words as near as possible: Mika's final,
+canon set is fifteen attacks -- **seven non-spells, which are similar
+variations of each other and act as the basic breather attacks between his
+special attacks, and eight spells**, structured like Touhou, so a non-spell and
+then a spell seven times over, **ending with one final eighth spell**. Every one
+is to be hand-crafted, played, and complex enough to feel like a Touhou Extra
+stage rather than a plain generic pattern -- multi-phase attacks built on
+trigonometry and mathematics, involving Mika and his rings. **Each is written
+in a dedicated session**, non-spells first. That is the whole of the brief so
+far; anything more specific about an attack is decided in its own session, and
+should be written down here as it is.
+
+**They are written in place, in the working copy of the stage, not on the
+drafting table.** That is the owner's call for this fight, and it is why the
+old stage is kept whole on a card of its own (below) rather than the working
+one being left alone.
+
+The slots are named for the structure -- `N1`..`N7` and `S1`..`S8` -- and
+`mika_slot_name` is the one place that turns a phase index into one. Where each
+stands:
+
+| Slot | Now | | Slot | Now |
+|---|---|---|---|---|
+| N1 | **written** -- the mill | | S1 | old placeholder, `Gilded Aperture` |
+| N2 | **written** -- the mill mirrored | | S2 | old placeholder, `Ashiah's Circuit` |
+| N3 | old placeholder | | S3 | old placeholder, `Three Open Gates` |
+| N4 | unwritten | | S4 | unwritten |
+| N5 | unwritten | | S5 | unwritten |
+| N6 | unwritten | | S6 | unwritten |
+| N7 | unwritten | | S7 | unwritten |
+| | | | S8 | old placeholder, `Grand Orrery` |
+
+The old placeholders are the six attacks the stage had before that are still
+standing, put in the slots nearest their old places with the health and clocks
+they had. An
+unwritten slot is a stub -- a ring or two turning round him and one slow
+pattern, the spells named `Unwritten Spell 4` and so on -- because the fight
+runs straight through every slot and the attack list offers every one. **Keep
+this table and the one in `mika_slots`' docstring true as slots are written.**
+
+**Working on a slot** is four things, and nothing else in the game has to
+change:
+
+- **The row.** `mika_slots` in `stage_sanctum` is one row per slot: a name
+  (empty for a non-spell -- a name is what makes a row a spell), a hue, the
+  health it is worth, a clock, the attack, and optionally a `move`. The
+  thresholds and his total health are *summed* from the `hp` column rather than
+  written by hand, so tuning one attack's share moves its own span of the bar
+  and nothing else's -- which is the property a table filled in over many
+  sessions needs. `test_mika_slots` holds the non-spell/spell order and the
+  arithmetic down.
+- **The code.** A script of its own in the `Scripts/mika` folder: one per
+  spell, and one for the seven non-spells, since they are variations of each
+  other. `tools/gm_new.py` registers it. The old placeholder a slot replaces is
+  deleted from `stage_sanctum` in the same change, along with anything only it
+  used.
+- **Playing it.** X on the rack, then the slot in the attack list. The list
+  scrolls now, because stage three's seventeen attacks are more than its plate
+  holds.
+- **Photographing it.** `python tools/shot.py mika_s3` is slot S3, practised
+  and taken four seconds into the attack; `--burst` offsets are relative to
+  that. There is one scene per slot, generated from the table on both sides,
+  and `mika_attacks` photographs the list itself.
+
+#### The sand, which every non-spell is made of
+
+**What the non-spells are**, in the owner's words: "small/sandy bullets
+continuously spraying in pretty patterns -- brewing sandstorms with magnetism
+-- from his rings as they spin, which shoot out quickly and then rapidly
+decelerate to a slower speed then drift in a deterministic pattern". So
+`scripts/mika_nonspells` holds one grain and every one of the seven throws it.
+
+A grain leaves the metal fast, brakes hard, and settles at a floor speed it
+keeps for the rest of its life -- and the frame it settles, it starts to turn,
+at a fixed rate, for ever. Three phases and three readings: a streak, a stall,
+a drift. **The settle is a clamp rather than a scheduled stop**: `spd_min` is
+already a field on every bullet and `bullet_step` clamps against it, so "brake
+to the floor and stay there" costs no queue entry and cannot overshoot into a grain
+flying backwards, which is what a bare negative acceleration does. What *is*
+scheduled is the turn, on the frame `mika_sand_settle` works out the floor is
+reached, so the drift begins when the stall ends rather than at a number
+tuned separately.
+
+**The drift is the magnetism, and it bends rather than circles.** A settled
+grain travels a circle of radius `speed / turn`; at 0.9 degrees a frame on a
+floor of 1.4 that circle was ninety pixels across, so every grain of an arm
+closed a loop -- and because an arm lays them down continuously along one path,
+they all closed the *same* loop. It photographed as a string of pearls looped
+over itself: pretty, and nothing to do with sand. The floor was the same
+mistake pointed the other way: at 1.4 a grain crossed the field in ten seconds,
+so the storm hung where it was thrown and the bottom of the field -- where the
+player lives -- stayed empty.
+
+Slackening the curl and raising the floor fixed both and left a third thing
+wrong, which is that **a turn that never stops is still a circle, just a bigger
+one**. Reported off the retuned version: the sand was nearly travelling
+horizontally by the time it reached the foot of the field, because it had gone
+on bending past the direction it was thrown in. So a grain now turns for
+`MIKA_SAND_BEND` degrees and then holds the heading it has reached. What that
+draws is a stream that curves and then runs true -- a shape, rather than a
+swirl that never resolves.
+
+**A grain leaves the metal, and it is aimed where the metal is going.**
+`mika_bead` fires from `ring_rim_at_x` -- the rim as it will stand when the
+bead goes live -- and the bearing and the throw are worked out at the same
+future frame, because at two degrees a frame the ring has turned thirteen
+degrees over a bead's delay and an angle taken now is thirteen degrees behind
+the metal by the time anything moves. Reported as the delay throwing the angle
+off. See the note under Rings.
+
+**A grain is a bullet drawn small, and the hitbox goes with it.** The smallest
+shape in the set is still a thirty-pixel bead at this size, which photographs
+as beads rather than as sand. `scale` is the picture and `r` is what the
+collision reads, and `mika_sand_dress` sets both from one number -- shrinking
+one without the other is the game lying sixty times a second about where its
+bullets are.
+
+**Amber, because it is sand.** The first pass drew it bone-white on this
+stage's own rule -- the rings are the gold thing on the field, and a warm volley
+off a warm ring photographs as a haze with the obstacles somewhere inside it --
+and it came back as snow. Asked for as yellow/orange, and both rules hold at
+once: amber is a good deal more saturated and darker than the gold of the
+metal, and every grain wears the white core and the hard dark contour additive
+scenery cannot draw.
+
+### N1, the mill
+
+Two rings, half a turn apart, and **Mika fires nothing at all** -- which is the
+brief for his opener and what makes the rings the thing to watch. What it does,
+in order:
+
+- **They come out of him.** The rings form on top of him at no radius and
+  extend to `MIKA_N1_DIST` while the orbit builds from a standstill, slow at
+  first and quick at the end. One factor drives the orbit and the metal's own
+  rotation, so the two are locked through the whole of it. Nothing fires until
+  it is over, so the spin-up costs the pattern nothing. **It ramps up to the
+  working speed and stops there** -- an overshoot that settled back afterwards
+  read as the rings slowing down at the exact moment the sand started, which
+  is the opposite of what a spin-up is for.
+- **The sand is kicked up in their wake.** Each ring throws from the rim it has
+  just come past, and it leaves straight out from *that point of the ring* --
+  which on the trailing rim already points backward along the orbit, so the
+  sand is left behind by construction. Aimed out from **Mika** with a
+  sweep-back instead, which is what the first pass did, the streams came out
+  about fifty degrees too far out and sprayed across the field rather than
+  wrapping round him; reported in those terms. Six arms spread round the whole
+  circumference was the version before that, and it put sand at every bearing
+  at once: whatever a single volley looked like, what accumulated was an even
+  scatter.
+- **Two streams a ring, laid down continuously.** Four ribbons on the field,
+  two-fold because the rings are half a turn apart. The beat is short enough
+  that consecutive beads are a few degrees apart -- much more and it reads as
+  burst fire rather than as a spray, which is how the first pass of this was
+  reported.
+- **A stream starts coarse and ends fine.** What leaves the metal is a
+  medium-small orb; it brakes **to a standstill**, hangs there for
+  `MIKA_MILL_HANG` frames, and then splits into pellets that drift. Braking to
+  a crawl and coasting instead read as one long slow phase rather than as an
+  arrival -- there is nothing clearer than a stop. So a stream is a line of beads near the rings and a cloud of sand
+  further out. There is no interim graphic between the two -- the bead is a
+  bead and the sand is sand.
+- **It stops firing while he hops.** `BossMove.Step`'s cycle is four seconds:
+  three and a quarter standing still and three quarters getting somewhere
+  else, and nothing is thrown during the move. The storm is an accumulation
+  over seconds, so anything laid down while the origin is sliding smears the
+  figure. The beat is still counted off the ring's own clock, so the streams
+  pick up in phase rather than restarting.
+
+The orbit is fast, and that reverses the version before it: the figure used to
+be drawn by the metal's own rotation and wanted the origin to hold still, so
+the rings walked round him at half a degree a frame. It is drawn by the orbit
+now, which has to outrun its own sand for a wake to read at all.
+
+**N2 is the same mill turned over.** The rings run the other way round him and
+the two storms trade hues, so the glints are the amber pair and the grains the
+ember one; everything else is N1's. `mika_mill_spawn` takes the direction and a
+hue per ring, and those two arguments are the whole of the difference -- the
+direction turns the orbit, the rim the sand leaves from, the lean on the throw
+and the way the drift bends over together, because a mill with any two of those
+disagreeing throws sand into its own wake.
+
+Every number in both is unplayed.
+
+**Practice starts him in the open hall.** A practice run skips the stage, and
+the stage is what turns the hall from the approach -- camera nine hundred units
+up and aimed at the floor -- into the open room he is fought in. Every picture
+of Mika's attacks taken before this was taken under the approach camera, which
+is a background he never appears against. A boss entry now says `turned` when
+it is fought after its stage's turn, and `practice_begin` hands that to
+`bg_skip_to_boss`, which also puts the stage's arrival (the hall's lights, the
+grove's fog) behind it. Velka carries the same flag, so she is practised in the
+blood wood.
+
+### The old draft, on a card of its own
+
+**`SANCTUM, OLD DRAFT` on the rack is stage three as it stood before the
+rebuild**: the waves, the Proctor and Mika's old seven, copied whole into
+`scripts/stage_sanctum_old` with every name prefixed `old_` or `OLD_` so the two
+can coexist. It calls nothing in the working stage, so the working stage can
+change anything -- helpers included -- without the old one moving. It is there
+so the new attacks have something to be played against, and so nothing about
+the old fight has to be dug out of git to be looked at.
+
+It is a full run with a boss at the end, which the drafting table and the
+review card are not, and that made a guard necessary: its `id` is the empty
+string, and **`progress_record` now refuses an empty id**. Without that, beating
+the old Mika would have filed a cleared stage called `""` in the player's save
+and counted it on the title screen. The guard is not asserted by calling it --
+a suite that did so and was wrong would write the real save.
+
+**It is meant to be deleted** once the working stage's slots are all filled:
+the file, its line in `rack_list`, `test_old_sanctum`, its line in
+`test_stage_run`, and the rack's `stage_is_old_draft` branch.
 
 ### The hall, and the sky over it
 
@@ -3792,7 +4371,7 @@ once, because PIL's draw calls are hard-edged and a bevel drawn at 1x reads as
 | `tools/make_boss.py` | Ziggy and his eye card — **placeholder, see below** |
 | `tools/make_bg.py` | Stage one's three parallax layers |
 | `tools/make_grove.py` | Stage two's scenery: trunks, trees, ivy, hanging charms, ferns, the moon, the forest floor, the far treeline, the canopy, mist — **and `scripts/grove_table`** |
-| `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint |
+| `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint — **and the six rank medals** |
 | `tools/make_sanctum.py` | Stage three's hall: **the pavement's three courses** (the marble field, the processional runner, the lotus border), the joinery, the banners, **the Bastet and the table of slices she is swept into a solid from** -- **the sky over it** (stars in three magnitudes, nebulae, the graduated limb the orrery's rings are made of) **and the chamber at the end of it**, which is one painting rather than a second room |
 | `tools/make_rings.py` | Mika's ring, **one sprite with its colour baked in** -- see the note under "Rings" |
 | `tools/make_mika.py` | Mika and his eye card, **cut out of the owner's own reference sheet**, plus his idle as a shareable GIF |
@@ -4461,9 +5040,9 @@ per frame *and a second copy under `layers/`*; an object's events live both as
 re-running a generator writes byte-identical files and produces no diff.
 
 To add a **stage**: a `stage_def` in `stage_list()`, a script beside
-`stage_ziggy` with its timeline and its boss's phase table, a provisional
-`encounters` count for the console's ledger, a `bosses` list of
-`{name, spawn, phases}` so its attacks can be practised, and a background —
+`stage_ziggy` with its timeline and its boss's phase table, a `bosses` list of
+`{name, spawn, phases}` so its attacks can be practised and so the console can
+count its encounters, and a background —
 either a palette entry in `make_bg.py` for a parallax stack, or a `bg_*`
 function returning a `BGKIND_CORRIDOR` struct and the scenery to fill it. A
 stage whose second half looks different puts `wave_bg_omen()` in its running
@@ -4507,11 +5086,12 @@ Playable end to end: the stage rack, stage one from its first wave through a
 midboss to Ziggy's seven attacks, stage two through a wood that turns to blood
 half way down it, stage three through a hall of rings to Mika, the result
 screen, and permanent progress —
-plus attack practice, which drills any one of the twenty-six attacks across
+plus attack practice, which drills any one of the thirty-four attacks across
 six casters on its own, the drafting table, which does the same for five
-attacks that have no boss yet, and the review card, which flies stage three's
-hall with nothing in it so the reveal can be watched rather than played for.
-555 assertions pass.
+attacks that have no boss yet, the review card, which flies stage three's
+hall with nothing in it so the reveal can be watched rather than played for,
+and the old draft of stage three, kept whole while Mika is rebuilt.
+714 assertions pass.
 
 Not done, in rough order of how much it is missed:
 
@@ -4528,12 +5108,19 @@ Not done, in rough order of how much it is missed:
   larger of the two remaining gaps and is not this file's shape at all: a cue
   is at most a second and a half and streams nothing, where a track loops for
   five minutes and wants `compression` and `preload` pointed the other way.
-- **Stage three is a placeholder fight around a finished mechanic, and the
-  two halves are at very different stages.** The ring pool is engine and is
-  tested; Mika's nine attacks are the plainest arrangements of it that make
-  each verb visible, and only `Gilded Aperture` is an idea rather than an
-  exercise. **The hall is the finished half** — a real room under an open sky
-  with the orrery at the end of it — and the fight standing in it is not.
+- **Mika is being rebuilt, and two of his fifteen are written.** N1 is the
+  mill -- two rings milling sand, and nothing fired by him -- and the grain it
+  throws is the vocabulary the other five non-spells will be variations of. N2
+  is the first of those: the same mill with the rings running the other way
+  round him and the two storms' hues traded, which is two arguments to
+  `mika_mill_spawn`. See "Mika's fifteen" and "The sand". The other thirteen
+  slots hold five old placeholders and eight stubs. **Every number in the sand is unplayed**, which
+  for this one matters more than usual: how dense a storm of settled grains can
+  be before a breather stops being a breather is exactly what a screenshot
+  cannot say. **The hall is the finished half** of stage three — a real room
+  under an open sky with the orrery at the end of it — and the fight standing
+  in it is not; the waves and the Proctor are placeholders and are not part of
+  the rebuild.
 
 - **The pavement, the arrival and the fade are unplayed**, in the same sense
   everything in `constants` is. `HALL_FADE_START` was moved a bay out once
@@ -4649,22 +5236,35 @@ Not done, in rough order of how much it is missed:
   shape of the sequence rather than against a fight. The damage in particular
   is a balance decision made by argument — a seal that strikes a boss and does
   nothing reads as broken — and it is one constant to take back out.
-- **Waves are not graded, and the ledger is half-built because of it.** A mark
-  per encounter is in and the boss's attacks earn theirs for real; the stage's
-  own waves do not, because a wave is a line in a `{at, fn}` timeline rather
-  than a thing with a beginning, an end and an outcome. Giving it those is the
-  next piece, and it is a change to `stage_functions` rather than to
-  `rank_functions` — `rank_note` is already the seam. Until then
-  `stage_def.encounters` is a hand-written count so the console can draw the
-  sockets, and it will be wrong the moment a timeline is edited.
-- **Nothing consumes the standing yet, and the labels are recorded for
-  something that does not exist.** Every mark carries the name of what earned
-  it and the console does not draw it: the result screen is the natural home
-  for the itemised list and the stage's final grade, and `progress_record`
-  would want to keep the best standing beside the best score.
-- **The grading thresholds are guesses.** `rank_for_attack` is four branches
-  picked by reasoning, and the 0.35 that separates gold from adamant has never
-  been played. It is the same honest gap as everything else in `constants`.
+- **The rank card is unplayed, and its length is the number that matters.**
+  Eighty frames is `BOSS_PHASE_PAUSE` with four to spare, which is right by
+  arithmetic and says nothing about whether a second and a third of medal is
+  a reward or an interruption when it happens fourteen times in a stage. The
+  two questions a still frame cannot touch are whether it reads as *paced*
+  between two attacks, and whether a wave group ending mid-fight — where the
+  next wave can arrive during beat three — throws it up over something the
+  player needed to be looking at. Both are `RANK_CARD_TIME` and neither is
+  knowable from `tools/_preview/rank_sheet.png`.
+- **`RANK_GRAZE_RATE` is one number and nobody has played it, and it is the
+  whole difficulty of the top rung.** Fourteen grazes a second is about a
+  third of a busy pattern going past at the range the hitbox is drawn at,
+  which is a guess. Too low and amethyst is free for anybody who is not hit;
+  too high and it is unreachable and the ladder is four rungs. **There is no
+  evidence about it at all**, and the one thing that looked like some is worth
+  writing down as a warning: the posed `practice_result` scene is a clean
+  capture of `Cinder Waltz`, and it came back gold under the flat speed bonus
+  and amethyst under the corrected one. That swing is not a finding about the
+  threshold — the harness ends the phase almost immediately, so the scene
+  poses a break with nearly the whole clock left, which is not a thing a
+  player does. A posed frame can show the ladder is plumbed in and cannot say
+  where the bar sits. The structure around it *is* checkable, and is checked:
+  the rate required is provably the same however the attack is finished. What
+  the rate should be is a question for somebody holding the keyboard.
+- **Nothing keeps the standing between runs, and the labels are recorded for a
+  readout that is only half there.** The result screen prints the standing now;
+  what it does not print is the itemised list, and every mark has carried the
+  name of what earned it since the day it was written. `progress_record` would
+  want to keep the best standing beside the best score, and does not.
 - **`fire_spray` is the only random helper and it is used once.** A pattern made
   of noise is a pattern nobody can learn, which is why. Worth keeping an eye on.
 - **The rest of ph3's shot surface, none of it load-bearing yet.** What is here
@@ -4708,11 +5308,6 @@ Not done, in rough order of how much it is missed:
   matter, are questions for somebody holding the keyboard. A screenshot can
   say the boss is over the player, which is what the pictures of the hex now
   say; it cannot say how it felt getting there.
-- **The attack list does not scroll.** Its plate is sized to its rows with the
-  old fixed height as a ceiling, so a boss with more attacks than fit would run
-  off the bottom rather than paging. The longest list is Ziggy's seven,
-  Velka's six is next and the drafting table has five; the line to change is
-  the one that computes `_y2` in `obj_practice`'s Draw.
 - **No options screen**: no volume, no window mode, no key remapping, no way to
   clear progress.
 - **The three fodder behaviours are `wave_line` and `wave_cross` and nothing

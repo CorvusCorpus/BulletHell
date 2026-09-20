@@ -36,10 +36,15 @@ function selftest_run() {
     test_laser();
     test_laser_graze();
     test_rings();
+    test_mika_slots();
+    test_mika_sand();
+    test_sand_burst();
+    test_boss_step();
     test_hall_sky();
     test_hall_orb();
     test_hall_floor();
     test_hall_preview();
+    test_old_sanctum();
     test_spell_resist();
     test_player();
     test_bomb_seals();
@@ -55,6 +60,9 @@ function selftest_run() {
     test_band_strip();
     test_grove_turn();
     test_marks();
+    test_wave_marks();
+    test_stage_encounters();
+    test_rank_card();
     test_practice();
     test_drafts();
     test_hex_seal();
@@ -1168,6 +1176,28 @@ function test_boss_move() {
     ok("and holds it", _hi - _lo < 1);
     ok("whatever the player does", abs(_b.x - _b.boss.home_x) < 2);
 
+    // ---- Close ------------------------------------------------------------
+    //
+    // **The wander with the traverse taken out of it.** It still has to wander
+    // -- a boss that stands still fires every aimed pattern from one pixel --
+    // and it may not reach the walls, which is the whole of what it is for:
+    // an attack built out of things the boss carries takes the whole figure
+    // with him when he crosses the field.
+    st_reset();
+    _g = st_game_at(GAME_CX, GAME_H - 300);
+    _b = st_boss_on_move(_g, BossMove.Close);
+    var _far = 0;
+    var _near = 9999;
+    for (var _i = 0; _i < 900; _i++) {
+        boss_act(_b, _g);
+        _far = max(_far, abs(_b.x - _b.boss.home_x));
+        _near = min(_near, abs(_b.x - _b.boss.home_x));
+    }
+    ok("a close attack keeps to its station", _far <= BOSS_CLOSE_X + 2);
+    ok("...and is nothing like the wide drift", _far < BOSS_DRIFT_X * 0.5);
+    ok("...but still wanders, so nothing fires from one pixel",
+       _far - _near > 40);
+
     // ---- Track ------------------------------------------------------------
     st_reset();
     _g = st_game_at(GAME_CX, GAME_H - 300);
@@ -1336,6 +1366,7 @@ function test_stage_run() {
     st_stage_run(stage_ziggy_def(), "the stage");
     st_stage_run(stage_grove_def(), "stage two");
     st_stage_run(stage_sanctum_def(), "stage three");
+    st_stage_run(old_stage_sanctum_def(), "the old stage three");
 }
 
 /// @desc Play a whole stage headlessly, killing everything a second after it
@@ -1375,6 +1406,14 @@ function st_stage_run(_def, _label) {
        enemy_count() <= ENEMY_MAX);
     ok(_label + " leaks no rings past its own cap",
        ring_count() <= RING_MAX);
+    // **The wave windows open and close inside a real timeline**, which is
+    // the half `test_wave_marks` cannot show: it drives a two-line stage of
+    // its own. The count is not asserted, because this harness kills the
+    // field every seventy frames and so closes more groups than the gates
+    // do -- what is being proved is that a timeline nobody wrote for this
+    // still files marks.
+    ok(_label + " grades the groups of waves it contains",
+       rank_count(_g.marks) > 0);
     st_reset();
 }
 
@@ -2053,31 +2092,157 @@ function test_marks() {
     }
     ok("every tier on the ladder is named", _named);
     ok("and the ladder is in order",
-       Mark.Slag < Mark.Iron && Mark.Iron < Mark.Silver
-       && Mark.Silver < Mark.Gold && Mark.Gold < Mark.Adamant);
+       Mark.Stone < Mark.Bronze && Mark.Bronze < Mark.Silver
+       && Mark.Silver < Mark.Gold && Mark.Gold < Mark.Amethyst);
+
+    // **The five have to be told apart in the dark**, which is why the pair
+    // this replaced were renamed: slag and iron were both dim and both cool,
+    // and the word beside them was the only thing distinguishing them. Five
+    // distinct colours is the weakest form of that claim a suite can make,
+    // and it is the one that catches a palette entry going missing.
+    var _distinct = true;
+    for (var _i = 0; _i < Mark.Count; _i++) {
+        for (var _j = _i + 1; _j < Mark.Count; _j++) {
+            if (mark_colour(_i) == mark_colour(_j)) _distinct = false;
+        }
+    }
+    ok("and no two rungs are the same colour", _distinct);
 
     var _led = rank_ledger_new();
     ok("an unmarked attempt has no standing at all", rank_overall(_led) == -1);
+    ok("and an unmarked attempt is not a perfect one", !rank_is_perfect(_led));
 
-    // **A run of golds and one slag is not a gold run**, which is the whole
-    // reason the mean is floored rather than rounded. Getting this backwards
-    // would let one good encounter pay for one bad one, and the grade would
-    // stop meaning "consistent" and start meaning "average".
+    // **The mean is rounded rather than floored**, which is Bayonetta's
+    // arithmetic and is a reversal: the floor made the top rung unreachable
+    // by anything except perfection, which left it doing no work at all. What
+    // the floor was defending -- that one good encounter must not pay for
+    // one bad one -- is genuinely given up at the margin, and this is where
+    // it shows: five golds and a stone average exactly 2.5 and come back
+    // gold. That is the price of the reversal rather than a defect, and it
+    // is written down as an assertion so that nobody has to rediscover it
+    // from a player asking why their stone did not count.
     for (var _i = 0; _i < 5; _i++) rank_note(_led, "x", Mark.Gold);
     ok("five golds is a gold standing", rank_overall(_led) == Mark.Gold);
-    rank_note(_led, "x", Mark.Slag);
-    ok("and one slag among them pulls it down",
+    rank_note(_led, "x", Mark.Stone);
+    ok("and one stone among five golds lands on a tie, which goes up",
+       rank_overall(_led) == Mark.Gold);
+    rank_note(_led, "x", Mark.Stone);
+    ok("but a second one pulls the standing down",
        rank_overall(_led) < Mark.Gold);
-    ok("the ledger counts what it was given", rank_count(_led) == 6);
+    ok("the ledger counts what it was given", rank_count(_led) == 7);
 
-    // The boss's own grading, from the three facts a phase ends knowing.
-    ok("running the clock out is the bottom of the ladder",
-       rank_for_attack(false, 0, 0, 0.9) == Mark.Slag);
-    ok("a sigil spent costs more than a hit taken",
-       rank_for_attack(true, 0, 1, 0.9) < rank_for_attack(true, 1, 0, 0.9));
-    ok("clean and slow is gold", rank_for_attack(true, 0, 0, 0.1) == Mark.Gold);
-    ok("clean and quick is the top of it",
-       rank_for_attack(true, 0, 0, 0.9) == Mark.Adamant);
+    // **A tie goes up, at every rung, which GameMaker's own `round` does not
+    // do.** `round` is banker's rounding -- ties break toward the even
+    // number -- so a ledger averaging exactly 2.5 would come back Silver
+    // while one averaging 3.5 came back Amethyst, which is two different
+    // rules at four halfway points on one five-rung ladder. Both are
+    // asserted, because the wrong implementation gets one of them right.
+    var _half_lo = rank_ledger_new();
+    rank_note(_half_lo, "x", Mark.Silver);
+    rank_note(_half_lo, "x", Mark.Gold);
+    var _half_hi = rank_ledger_new();
+    rank_note(_half_hi, "x", Mark.Gold);
+    rank_note(_half_hi, "x", Mark.Amethyst);
+    ok("a standing exactly between two rungs takes the higher one",
+       rank_overall(_half_lo) == Mark.Gold
+       && rank_overall(_half_hi) == Mark.Amethyst);
+
+    // **Perfect is all of them and not most of them.** It is deliberately not
+    // a sixth tier -- `rank_note` clamps into the enum, so a sixth member
+    // would be awardable to a single encounter the day it was added.
+    var _pf = rank_ledger_new();
+    for (var _i = 0; _i < 4; _i++) rank_note(_pf, "x", Mark.Amethyst);
+    ok("every encounter at the top is a perfect standing",
+       rank_is_perfect(_pf) && rank_overall_name(_pf) == "ABSOLUTE AMETHYST");
+    rank_note(_pf, "x", Mark.Gold);
+    ok("and one gold among them is not",
+       !rank_is_perfect(_pf) && rank_overall(_pf) == Mark.Amethyst);
+    ok("...which the standing can still reach on its own",
+       rank_overall_name(_pf) == "AMETHYST");
+    ok("the console's short form is one word",
+       string_pos(" ", rank_overall_name(_pf, true)) == 0);
+
+    // The deductions. **Clean is the second rung, not the top**, and what
+    // reaches the top is the score threshold.
+    ok("clean but under the threshold is the base rung",
+       rank_for_encounter(0, 0, false) == RANK_BASE);
+    ok("clean and over it is the top",
+       rank_for_encounter(0, 0, true) == Mark.Amethyst);
+    ok("a hit costs more than a sigil",
+       rank_for_encounter(1, 0, false) < rank_for_encounter(0, 1, false));
+    ok("and the threshold is worth exactly one sigil",
+       rank_for_encounter(0, 1, true) == rank_for_encounter(0, 0, false));
+    ok("two hits bottoms out and cannot go below it",
+       rank_for_encounter(2, 0, false) == Mark.Stone
+       && rank_for_encounter(9, 9, false) == Mark.Stone);
+
+    // **Nothing asks whether the attack was beaten**, which is the rule a
+    // survival spell made necessary: a card whose caster cannot be hurt until
+    // its clock runs out could only ever have scored the bottom mark under
+    // the branch this replaced. Its target is finite, so it is reachable.
+    var _surv = { kind: AttackKind.Spell, time: 30 * FPS, name: "S" };
+    ok("a survival spell has a target it can reach",
+       rank_attack_target(_surv) > 0 && rank_attack_target(_surv) < 1000000);
+
+    // The targets. **An attack's is measured against its clock and a wave's
+    // against how long it actually took**, which is the difference between a
+    // bar that taking longer makes harder and one it does not move.
+    var _short = { kind: AttackKind.Spell, time: 10 * FPS, name: "S" };
+    var _long = { kind: AttackKind.Spell, time: 40 * FPS, name: "L" };
+    ok("a longer attack asks for more grazing",
+       rank_attack_target(_long) > rank_attack_target(_short));
+    ok("a spell asks for more than a non-spell of the same length",
+       rank_attack_target(_long)
+       > rank_attack_target({ kind: AttackKind.NonSpell, time: 40 * FPS,
+                              name: "" }));
+    ok("and a row may name its own target",
+       rank_attack_target({ kind: AttackKind.Spell, time: 40 * FPS,
+                            name: "X", score: 1234 }) == 1234);
+
+    // **Breaking early and staying in to graze are the same deal**, at every
+    // clock and every finishing time. This is the assertion the first version
+    // of the speed bonus needed and did not have: a flat `TALLY_SPELL_SPEED`
+    // scaled by the clock left reads perfectly well, and measured it demanded
+    // 26 grazes a second on a long spell broken fast against 14 on the same
+    // spell run to its clock. Nothing about that is visible in the source.
+    //
+    // What is walked here is: hand the attack `_frac` of its clock back, take
+    // the speed bonus it pays, and work out the graze rate still needed over
+    // the time the player actually had. It must come out at `RANK_GRAZE_RATE`
+    // every time.
+    var _even = true;
+    var _clocks = [20 * FPS, 40 * FPS, 60 * FPS];
+    var _fracs = [0, 0.25, 0.5, 0.75];
+    for (var _c = 0; _c < array_length(_clocks); _c++) {
+        var _row = { kind: AttackKind.Spell, name: "M", time: _clocks[_c] };
+        for (var _f = 0; _f < array_length(_fracs); _f++) {
+            var _fr = _fracs[_f];
+            var _played = _clocks[_c] * (1 - _fr);
+            if (_played <= 0) continue;
+            // What the player still has to earn by grazing, and the rate
+            // that is over the seconds they were actually in there.
+            var _short = rank_attack_target(_row)
+                         - TALLY_SPELL_CLEAR - rank_speed_award(_row, _fr);
+            var _rate = _short / (_played / FPS) / TALLY_GRAZE;
+            if (abs(_rate - RANK_GRAZE_RATE) > 0.001) _even = false;
+        }
+    }
+    ok("the threshold asks the same graze rate however early it is broken",
+       _even);
+
+    // **The wave rate is the whole requirement and the duration cancels.**
+    // Killing the same enemies twice as slowly asks for twice the grazing, so
+    // dawdling buys exactly nothing -- which is the job an attack's clock
+    // does and a wave has none of.
+    var _fast = rank_wave_target(5000, 10 * FPS);
+    var _slow = rank_wave_target(5000, 20 * FPS);
+    ok("a wave dawdled through asks for more", _slow > _fast);
+    ok("and the extra is the graze rate over the extra seconds",
+       abs((_slow - _fast) - RANK_GRAZE_RATE * 10 * TALLY_GRAZE) < 1);
+    ok("a wave that leaves half of itself alive misses its own target",
+       rank_wave_target(5000, 10 * FPS) > 5000 * 0.5);
+    ok("and a group killed instantly is still held to a floor",
+       rank_wave_target(1000, 1) == rank_wave_target(1000, RANK_WAVE_MIN_TIME));
 
     // ...and a real fight files real marks. `test_boss_phases` drives the
     // phases; this checks the ledger they land in, because the grading being
@@ -2090,12 +2255,236 @@ function test_marks() {
     _e.boss.entry_t = 0;
     _e.boss.declare_t = 0;
     _e.boss.started = true;
+    boss_enter_phase(_e, _g, 0);
     var _before = rank_count(_g.marks);
     boss_end_phase(_e, _g, true);
     ok("beating an attack files a mark",
        rank_count(_g.marks) == _before + 1);
     ok("and the run now has a standing", rank_overall(_g.marks) >= 0);
+
+    // **The capture bonus is paid after the mark is filed, and that ordering
+    // is the mechanic.** A capture is itself gated on being clean, so a
+    // threshold that counted it would be measuring "was not hit" twice and
+    // the top rung would be free for anybody who cleared a spell untouched.
+    // **The target here is one point above what the attack pays without a
+    // capture**, which is the only setting that tells the two orderings
+    // apart: filed before the bonus the mark misses by a point, and filed
+    // after it clears by the whole forty thousand. A target nothing could
+    // reach was the first version and it passed under both orderings, which
+    // is a test that proves the code does not crash.
     st_reset();
+    var _g2 = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _e2 = boss_spawn(FIELD_CX, FIELD_Y0 + 300, 1000,
+                         [{ kind: AttackKind.Spell, name: "CAPTURE ME",
+                            col: BCOL_GOLD, bg: -1, hp_end: 0,
+                            time: 40 * FPS, move: BossMove.Fixed,
+                            attack: st_attack_idle,
+                            score: TALLY_SPELL_CLEAR
+                                   + rank_graze_worth(40 * FPS) + 1 }],
+                         ziggy_def());
+    _e2.boss.entry_t = 0;
+    _e2.boss.declare_t = 0;
+    _e2.boss.started = true;
+    boss_enter_phase(_e2, _g2, 0);
+    boss_end_phase(_e2, _g2, true);
+    ok("a captured spell is still marked against its own threshold",
+       _e2.boss.captured == 1 && _g2.marks.marks[0].tier == RANK_BASE);
+    st_reset();
+}
+
+/// @desc An attack that does nothing, for a suite that only wants a row.
+function st_attack_idle(_e, _g, _t) {
+}
+
+/// @desc A group of waves is an encounter: it opens, it closes, it is graded.
+function test_wave_marks() {
+    // **The window is detected rather than declared.** Nothing in a timeline
+    // says "an encounter starts here"; what says it is fodder being on the
+    // field, which is the same predicate a gate already tests. So the thing
+    // to prove is that spawning some and clearing it files exactly one mark.
+    var _def = {
+        id: "",
+        name: "T",
+        subtitle: "t",
+        needs: 0,
+        make_bg: bg_brimstone,
+        build: st_wave_script,
+    };
+
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _g.boss_ref = undefined;
+    _g.phase = Phase.Playing;
+    var _s = stage_new(_def);
+
+    // One gate and no bosses, so the stage predicts exactly one encounter.
+    ok("a stage counts its own encounters before it runs", _s.encounters == 1);
+
+    for (var _i = 0; _i < 20; _i++) stage_step(_s, _g);
+    ok("fodder arriving opens one", _s.enc != undefined);
+    ok("and nothing is filed while it is open", rank_count(_g.marks) == 0);
+
+    // **Clean, and nothing scored.** No enemy was killed and no bullet was
+    // grazed, so the group misses its target by the whole of it -- which is
+    // the base rung and not the top, and is the assertion that says the
+    // threshold is a real second question rather than a restatement of
+    // "was not hit".
+    enemy_sweep_fodder(_g);
+    stage_step(_s, _g);
+    ok("and the field clearing closes it", _s.enc == undefined);
+    ok("filing exactly one mark", rank_count(_g.marks) == 1);
+    ok("clean but unscored is the base rung",
+       _g.marks.marks[0].tier == RANK_BASE);
+    ok("labelled as the wave it was", _g.marks.marks[0].label == "WAVE 1");
+    ok("and a wave is never a spell", !_g.marks.marks[0].spell);
+
+    // **A hit inside the window is deducted and one outside it is not**,
+    // which is the whole of what a window is for.
+    st_reset();
+    var _g2 = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _g2.boss_ref = undefined;
+    _g2.phase = Phase.Playing;
+    _g2.player.hit_n = 7;            // before the encounter ever opens
+    var _s2 = stage_new(_def);
+    for (var _i = 0; _i < 20; _i++) stage_step(_s2, _g2);
+    _g2.player.hit_n++;
+    enemy_sweep_fodder(_g2);
+    stage_step(_s2, _g2);
+    ok("only the hits taken inside the window count",
+       rank_count(_g2.marks) == 1
+       && _g2.marks.marks[0].tier == RANK_BASE - RANK_HIT_COST);
+
+    // **A boss does not open one underneath itself.** A boss that summons
+    // fodder is still a boss encounter and is graded by its own phase table;
+    // a second window opening under it would file two marks for one thing.
+    st_reset();
+    var _g3 = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _g3.boss_ref = { x: 0, y: 0 };
+    _g3.phase = Phase.Playing;
+    var _s3 = stage_new(_def);
+    for (var _i = 0; _i < 20; _i++) stage_step(_s3, _g3);
+    ok("no encounter opens while a boss holds the field", _s3.enc == undefined);
+    st_reset();
+}
+
+/// @desc One wave and a gate. A timeline small enough to assert about.
+function st_wave_script() {
+    var _e = [];
+    array_push(_e, ev(2, wave_cross(EnemyKind.Wisp, 4, -1, 200, 40,
+                                    5.0, 3, BCOL_EMBER, undefined)));
+    array_push(_e, ev_gate(10));
+    return _e;
+}
+
+/// @desc The rank card: thrown by watching, and it lands on its own socket.
+function test_rank_card() {
+    var _c = rank_card_new();
+    ok("a fresh card is not on screen", !rank_card_live(_c));
+
+    // A mark, and everything the card prints comes off it rather than off a
+    // second call telling the console the same facts twice.
+    var _led = rank_ledger_new();
+    rank_note(_led, "WAVE 2", Mark.Gold, false, 18400, 15000, 0, 1);
+    rank_card_show(_c, _led.marks[0], 3, 13);
+    ok("shown, it carries what the mark carried",
+       _c.tier == Mark.Gold && _c.label == "WAVE 2"
+       && _c.earned == 18400 && _c.target == 15000 && _c.bombs == 1);
+
+    // It opens at the card's own station, oversized.
+    var _w0 = rank_card_where(_c);
+    ok("it strikes at the card's station, larger than it ends",
+       _w0[0] == FIELD_CX && _w0[1] == RANK_CARD_Y && _w0[2] > 1.2);
+
+    // **And it ends on the socket it is filling.** This is the assertion the
+    // whole fourth beat exists for: the medal flies home to where the row
+    // will draw the mark, and if the two ever disagreed the card would read
+    // as the console having missed. They cannot disagree, because both ask
+    // `hud_mark_xy` -- and that is exactly the kind of claim that is true
+    // until somebody inlines one of them.
+    var _live = 0;
+    while (rank_card_live(_c)) {
+        _live++;
+        if (_live > RANK_CARD_TIME * 4) break;   // never hang the suite
+        var _last = rank_card_where(_c);
+        rank_card_step(_c);
+        if (!rank_card_live(_c)) {
+            var _home = hud_mark_xy(3, 13);
+            ok("it lands on the socket it is filling",
+               abs(_last[0] - _home[0]) < 2 && abs(_last[1] - _home[1]) < 2);
+            ok("...and shrinks to the size of one",
+               abs(_last[2] - RANK_CARD_HOME_S) < 0.02);
+        }
+    }
+    ok("and it runs for exactly its own length", _live == RANK_CARD_TIME);
+    ok("then it is idle again", !rank_card_live(_c));
+
+    // **One card per mark, thrown by the console watching the ledger.**
+    // Nothing in the engine calls `rank_card_show`; `hud_step` compares what
+    // it has animated with what is in the ledger. The failure worth guarding
+    // is the one that would restart the card every frame.
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _g.marks = rank_ledger_new();
+    var _h = hud_new();
+    hud_step(_h, _g);
+    ok("an empty ledger throws no card", !rank_card_live(_h.card));
+
+    rank_note(_g.marks, "WAVE 1", Mark.Silver, false, 10, 20, 1, 0);
+    hud_step(_h, _g);
+    ok("a mark landing throws one", rank_card_live(_h.card)
+       && _h.card.tier == Mark.Silver);
+
+    var _t_after = _h.card.t;
+    hud_step(_h, _g);
+    ok("and the next frame advances it rather than throwing it again",
+       _h.card.t == _t_after + 1);
+    st_reset();
+}
+
+/// @desc Every stage's socket count is countable, and counts both halves.
+function test_stage_encounters() {
+    // **The number used to be typed in by hand and was wrong.** Stage one
+    // carried fourteen against a true thirteen from the day it was written,
+    // and stage two carried thirteen against twelve -- which is what a count
+    // maintained in a different file from the thing it counts always
+    // eventually is.
+    //
+    // **The expected numbers here are literals on purpose.** The first
+    // version of this suite recomputed them with `stage_count_encounters`'
+    // own formula and compared the two, which is a test that cannot fail:
+    // it restates the implementation instead of the answer. A literal is the
+    // one thing a suite can hold that the code cannot also derive, and the
+    // failure it produces -- "somebody added a gate or an attack" -- is
+    // exactly the event worth being told about.
+    var _want = [
+        [stage_ziggy_def(),   13, "stage one"],     // 4 wave groups + 9 attacks
+        [stage_grove_def(),   12, "stage two"],     // 4 + 8
+        [stage_sanctum_def(), 22, "stage three"],   // 5 + 17
+    ];
+
+    for (var _d = 0; _d < array_length(_want); _d++) {
+        var _def = _want[_d][0];
+        var _n = _want[_d][1];
+        var _label = _want[_d][2];
+        var _s = stage_new(_def);
+        ok(_label + " counts its own encounters", _s.encounters == _n);
+
+        // ...and both halves are in there. A count that had quietly lost the
+        // wave groups would still be a plausible number.
+        var _attacks = 0;
+        var _bosses = _def.bosses;
+        for (var _i = 0; _i < array_length(_bosses); _i++) {
+            _attacks += array_length(_bosses[_i].phases());
+        }
+        ok(_label + " counts its waves as well as its attacks",
+           _attacks > 0 && _s.encounters > _attacks);
+    }
+
+    // **A definition may still override it**, which is what the practice,
+    // draft and preview cards do -- their timelines are empty or synthetic
+    // and there is nothing in them to count.
+    ok("a card that names its own count keeps it",
+       stage_new(preview_stage_def()).encounters == 1);
 }
 
 /// @desc Attack practice: the list, the request, and the seam that ends one.
@@ -2255,6 +2644,54 @@ function test_practice() {
     ok("with no mark to show for it", practice_outcome(
         _b, PracticeEnd.Died, rank_ledger_new()).tier < 0);
 
+    // ---- the world the boss is found in -----------------------------------
+    //
+    // **A boss fought after its stage turns is practised after it.** Mika is
+    // fought in the open hall and the Proctor on the approach, and a practice
+    // run has no first half to get from one to the other in -- which is how
+    // every picture and every drill of Mika's attacks came to be taken under
+    // a camera still aimed at the floor.
+    var _hall = stage_sanctum_def();
+    st_reset();
+    _g = st_game_at(GAME_CX, GAME_H - 300);
+    _g.bg = bg_sanctum();
+    _g.practice = practice_new(_hall, 1, 0);
+    practice_begin(_g);
+    ok("Mika is practised in the open hall", _g.bg.omen_on && _g.bg.omen == 1);
+    ok("...with the lights already up", _g.bg.intro == 1);
+
+    st_reset();
+    _g = st_game_at(GAME_CX, GAME_H - 300);
+    _g.bg = bg_sanctum();
+    _g.practice = practice_new(_hall, 0, 0);
+    practice_begin(_g);
+    ok("and the Proctor on the approach, where he is fought",
+       !_g.bg.omen_on && _g.bg.omen == 0);
+    ok("...lights up there too, since the arrival is the stage's",
+       _g.bg.intro == 1);
+
+    // ---- the list, when it is longer than its plate -----------------------
+    //
+    // `practice_list_scroll` is the whole of the page-turning; the screen
+    // only eases toward what it answers.
+    ok("a list that fits never scrolls",
+       practice_list_scroll(0, 300, 400, 400, 100) == 0);
+    ok("the page does not move while the cursor is inside it",
+       practice_list_scroll(200, 500, 1000, 600, 100) == 200);
+    ok("it turns when the cursor nears the foot",
+       practice_list_scroll(0, 560, 1000, 600, 100) == 60);
+    ok("and when it nears the head",
+       practice_list_scroll(400, 450, 1000, 600, 100) == 350);
+    ok("and it never runs past either end",
+       practice_list_scroll(0, 1000, 1000, 600, 100) == 400
+       && practice_list_scroll(400, 0, 1000, 600, 100) == 0);
+
+    // A card with no id files its bests under its name, or the drafting table
+    // and the old stage three would be reading each other's.
+    ok("two cards with no id keep separate bests",
+       practice_key(draft_stage_def(), 0, 0)
+       != practice_key(old_stage_sanctum_def(), 0, 0));
+
     st_reset();
 }
 
@@ -2272,8 +2709,9 @@ function test_drafts() {
     // ---- the rack ---------------------------------------------------------
     var _stages = stage_list();
     var _rack = rack_list();
-    ok("the rack carries the roster, the review card and the table",
-       array_length(_rack) == array_length(_stages) + 2);
+    ok("the rack carries the roster, the old stage three, the review card "
+       + "and the table",
+       array_length(_rack) == array_length(_stages) + 3);
     ok("and the table is the last card",
        stage_is_draft(_rack[array_length(_rack) - 1]));
     // A bare `_def.draft` on any of the eight would raise rather than answer,
@@ -3711,6 +4149,454 @@ function test_hall_preview() {
     st_reset();
 }
 
+/// @desc Mika's fifteen slots. See `mika_slots`.
+///
+///       **The shape of the table, not the attacks in it.** Whether an attack
+///       is any good is what practice and the slot scenes are for; what a
+///       suite can hold down is the frame they are being written into --
+///       seven non-spells each followed by a spell, and an eighth spell to
+///       finish -- and that the health derived from the rows adds up.
+/// @desc Mika's sand: the grain every one of his non-spells is made of, and
+///       N1, the mill that throws it. See `mika_nonspells`.
+///
+///       **What a suite can hold down here is the *shape* of a grain's life**
+///       -- fast, then stalled at a floor it never goes under, then turning --
+///       and the two rules N1 is written to: the rings do all the firing, and
+///       the storm is the same storm every attempt. Whether it is nice to fly
+///       through is what practice and the slot scene are for.
+function test_mika_sand() {
+    // ---- one grain --------------------------------------------------------
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _ring = ring_new(FIELD_CX, FIELD_CY, MIKA_RING_COL, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(_g);
+
+    var _u = mika_sand(_ring, 0, MIKA_MILL_LEAN, MIKA_SAND_SPD, MIKA_SAND_HOLD,
+                       MIKA_SAND_BRAKE, MIKA_SAND_FLOOR, MIKA_SAND_CURL,
+                       MIKA_SAND_BEND, MIKA_SAND_LIFE, mika_sand_grade(0, 0));
+    ok("a grain reaches the field", _u != undefined);
+    // **Drawn small, and killing at the size it is drawn**, for every step of
+    // the cycle and not just the one a spot check happens to land on -- the
+    // steps differ in scale, so a grain drawn larger than it kills would be the
+    // game lying about exactly the grains that are easiest to see. See
+    // `mika_sand`.
+    var _k0 = mika_sand_grade(0, 0);
+    ok_near("a grain is drawn at its own scale", _u.scale, _k0.scale, 0.001);
+    ok("...and leaves the metal wearing its grain's shape",
+       _u.shape == _k0.shape);
+    ok_near("...with the hitbox its drawn size asks for",
+            _u.r, global.bshape_radius[_k0.shape] * _k0.scale, 0.001);
+    ok_near("...and leaves the metal rather than the middle",
+            point_distance(_ring.x, _ring.y, _u.x, _u.y), RING_R, 0.01);
+    ok("...at a slant to it, because the ring is turning",
+       abs(angle_difference(_u.dir, 0)) > 1);
+
+    // **And it still leaves the metal when the ring is moving**, which is the
+    // case that was wrong: the mark holds still for its delay while the ring
+    // orbits on, so a grain fired at the rim as it stood was in the *hole* by
+    // the time it went live -- reported as sand coming out of the middle of
+    // the ring about half the time. Measured where it matters: against the
+    // ring as it stands on the frame the grain becomes one, at every point
+    // round the band, because which side of a travelling ring it leaves from
+    // is the whole of whether it was ever wrong.
+    st_reset();
+    var _gm = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _mover = ring_new(FIELD_CX, FIELD_CY, MIKA_RING_COL, 0);
+    _mover.vx = 6.1;                    // what N1's orbit costs, in pixels
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(_gm);
+
+    var _worst = 0;
+    for (var _a = 0; _a < 360; _a += 45) {
+        var _grain = mika_sand(_mover, _a, _a, MIKA_SAND_SPD, MIKA_SAND_HOLD,
+                               MIKA_SAND_BRAKE, MIKA_SAND_FLOOR,
+                               MIKA_SAND_CURL, MIKA_SAND_BEND,
+                               MIKA_SAND_LIFE, mika_sand_grade(0, 0));
+        for (var _i = 0; _i < MIKA_SAND_DELAY; _i++) {
+            ring_step(_gm);
+            bullet_step(_gm.player.x, _gm.player.y);
+        }
+        if (_grain != undefined) {
+            _worst = max(_worst,
+                         abs(point_distance(_mover.x, _mover.y, _grain.x,
+                                            _grain.y) - RING_R));
+        }
+    }
+    ok("...from a ring that is travelling, all the way round it", _worst < 1);
+
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _ring = ring_new(FIELD_CX, FIELD_CY, MIKA_RING_COL, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(_g);
+    _u = mika_sand(_ring, 0, MIKA_MILL_LEAN, MIKA_SAND_SPD, MIKA_SAND_HOLD,
+                   MIKA_SAND_BRAKE, MIKA_SAND_FLOOR, MIKA_SAND_CURL,
+                   MIKA_SAND_BEND, MIKA_SAND_LIFE, mika_sand_grade(0, 0));
+
+    // The mark, then the throw, then the stall. `spd_min` is a clamp rather
+    // than a scheduled stop, so the floor cannot be overshot into a grain
+    // flying backwards -- which is what a bare negative acceleration does.
+    for (var _i = 0; _i < MIKA_SAND_DELAY; _i++) {
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok_near("it is thrown at the speed it was given", _u.spd, MIKA_SAND_SPD,
+            0.01);
+
+    // **The streak is a phase of its own**, and it is the one that was
+    // missing: a grain runs at its launch speed for `MIKA_SAND_HOLD` frames
+    // before the brake touches it, so the throw and the settle read as two
+    // movements rather than as one slow bullet.
+    for (var _i = 0; _i < MIKA_SAND_HOLD; _i++) {
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok_near("it holds its launch speed through the streak", _u.spd,
+            MIKA_SAND_SPD, 0.01);
+
+    var _settle = mika_sand_settle(MIKA_SAND_SPD, MIKA_SAND_BRAKE,
+                                   MIKA_SAND_FLOOR);
+    for (var _i = 0; _i < _settle; _i++) {
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok_near("and it has settled on its floor by the frame it should",
+            _u.spd, MIKA_SAND_FLOOR, 0.001);
+
+    // ...and then it drifts, for ever, at a fixed rate. One more step, because
+    // an event scheduled for frame `at` runs on the step after it -- `life` is
+    // incremented at the end of a step, which is asserted elsewhere rather
+    // than adjusted for.
+    bullet_step(_g.player.x, _g.player.y);
+    ok_near("...and only then starts to turn", _u.turn, MIKA_SAND_CURL, 0.001);
+
+    var _was = _u.spd;
+    for (var _i = 0; _i < 60; _i++) bullet_step(_g.player.x, _g.player.y);
+    ok_near("the drift holds its speed and does not creep below it",
+            _u.spd, _was, 0.001);
+
+    // ---- every step of every cycle ----------------------------------------
+    //
+    // **The table is one cycle per ring, and each is pictures of one grain**,
+    // so the only things allowed to differ are the shape, the hue and the
+    // drawn size -- and the hitbox has to follow the drawn size at every step
+    // of every cycle, not just the one the block above happens to fire. A step
+    // that drew large and killed small would be the game lying about exactly
+    // the grains that are easiest to see.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _ring = ring_new(FIELD_CX, FIELD_CY, MIKA_RING_COL, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(_g);
+
+    var _all = mika_sand_cycles();
+    var _honest = true;
+    var _looks = [];
+    for (var _c = 0; _c < array_length(_all); _c++) {
+        for (var _i = 0; _i < array_length(_all[_c]); _i++) {
+            var _k = mika_sand_grade(_c, _i);
+            var _grain = mika_sand(_ring, 0, MIKA_MILL_LEAN, MIKA_SAND_SPD,
+                                   MIKA_SAND_HOLD, MIKA_SAND_BRAKE,
+                                   MIKA_SAND_FLOOR, MIKA_SAND_CURL,
+                                   MIKA_SAND_BEND, MIKA_SAND_LIFE, _k);
+            if (_grain == undefined) { _honest = false; break; }
+            if (abs(_grain.r
+                    - global.bshape_radius[_k.shape] * _k.scale) > 0.001) {
+                _honest = false;
+            }
+            array_push(_looks, string(_k.shape) + "/" + string(_k.col));
+        }
+    }
+    ok("every step of every grain cycle kills at the size it is drawn",
+       _honest);
+
+    // **Every cycle is as long as the step count says**, or a ring's sand
+    // repeats at a period the orbit lock was never checked against.
+    var _even = true;
+    for (var _c = 0; _c < array_length(_all); _c++) {
+        if (array_length(_all[_c]) != MIKA_SAND_GRADES) _even = false;
+    }
+    ok("...and every cycle is MIKA_SAND_GRADES steps long", _even);
+
+    // ...and there is one cycle per ring the mill puts down, or a ring wraps
+    // onto another ring's sand and the two storms stop being two.
+    ok("...and one cycle per ring of the mill",
+       array_length(_all) >= MIKA_MILL_RINGS);
+
+    // ...and no two steps anywhere in the table draw the same grain, so the
+    // two rings are telling apart and neither repeats inside itself.
+    var _distinct = true;
+    for (var _i = 0; _i < array_length(_looks); _i++) {
+        for (var _j = _i + 1; _j < array_length(_looks); _j++) {
+            if (_looks[_i] == _looks[_j]) _distinct = false;
+        }
+    }
+    ok("...and no two steps in the table draw the same grain", _distinct);
+
+    // **Each ring throws one shape for the whole attack**, which is the thing
+    // that tells the two storms apart: a silhouette survives any distance, any
+    // background, and the shard the streak is drawn as, where a hue has to
+    // compete with a lit hall. Mixing both shapes into both rings is what the
+    // previous cycle did, and with twelve arms in the air neither kind read as
+    // a thing of its own.
+    var _all_c = mika_sand_cycles();
+    var _one_shape = true;
+    for (var _c = 0; _c < array_length(_all_c); _c++) {
+        for (var _i = 0; _i < array_length(_all_c[_c]); _i++) {
+            if (_all_c[_c][_i].shape != _all_c[_c][0].shape) {
+                _one_shape = false;
+            }
+        }
+    }
+    ok("each ring throws one shape for the whole attack", _one_shape);
+
+    // ...and no two rings throw the *same* shape, or there is nothing to tell
+    // apart and the split has bought nothing.
+    var _shapes_differ = true;
+    for (var _c = 0; _c < array_length(_all_c); _c++) {
+        for (var _d = _c + 1; _d < array_length(_all_c); _d++) {
+            if (_all_c[_c][0].shape == _all_c[_d][0].shape) {
+                _shapes_differ = false;
+            }
+        }
+    }
+    ok("...and no two rings throw the same one", _shapes_differ);
+
+    // **The colour is the other channel and it says the same thing on every
+    // ring**, so a hue means "where in the cycle" rather than "which ring" --
+    // two facts on two channels instead of both fighting over one.
+    var _cols_agree = true;
+    for (var _c = 1; _c < array_length(_all_c); _c++) {
+        if (array_length(_all_c[_c]) != array_length(_all_c[0])) {
+            _cols_agree = false;
+            break;
+        }
+        for (var _i = 0; _i < array_length(_all_c[_c]); _i++) {
+            if (_all_c[_c][_i].col != _all_c[0][_i].col) _cols_agree = false;
+        }
+    }
+    ok("...and every ring runs the same colour cycle under it", _cols_agree);
+
+    // ---- N1 can actually be broken ----------------------------------------
+    //
+    // **A boss who hides behind his own furniture has to be priced for it.**
+    // The mill's two rings each absorb player shots across a column 167 pixels
+    // wide whenever they are on the near side of him, so a player's damage
+    // lands for well under the whole attack -- and at 336 health over a
+    // 24-second clock N1 could not be broken at all, only waited out. That is
+    // the `BossMove` defect in a different currency: an attack whose only
+    // possible ending is its own timer.
+    //
+    // Asserted at half uptime, which is pessimistic for a player standing
+    // under him and about right for one who is also dodging and chasing his
+    // hops. It ties the health, the clock and the player's damage together, so
+    // retuning any one of the three cannot quietly make him unkillable again.
+    var _dps = (2 * PSHOT_DMG / PSHOT_PERIOD) * FPS;
+    var _n1 = mika_slots()[0];
+    var _secs = _n1.hp / (_dps * 0.5);
+    ok("N1 can be broken inside its clock at half uptime TAKES="
+       + string(_secs) + "s CLOCK=" + string(_n1.time / FPS) + "s",
+       _secs < _n1.time / FPS);
+
+    // ...and not so cheaply that the breather is over before it is read. At
+    // perfect uptime it is still several seconds of holding the trigger down.
+    ok("...and is not a pushover at full uptime", _n1.hp / _dps > 6);
+
+    // ---- the mill ---------------------------------------------------------
+    //
+    // **Nothing but the rings fires.** Run the attack with the ring pool not
+    // stepping: the rings are put down, their `act` never runs, and if the
+    // attack itself fired so much as one bullet the field would not be empty.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f < 240; _f++) {
+        mika_n1_sandmill(_boss, _g, _f);
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("Mika fires nothing in N1 -- the rings carry all of it",
+       bullet_count() == 0);
+    ok("...and he put two of them down", ring_count() == MIKA_MILL_RINGS);
+
+    // With the rings stepping, the storm arrives.
+    var _seen = mika_st_mill(600);
+    ok("and once they turn, the sand does", _seen.n > 0);
+    ok("...off the metal of a ring, every comet of it", _seen.off_rim);
+
+    // **The same storm every attempt.** Nothing in it is random, and that is
+    // the difference between a pattern that can be learnt and noise that can
+    // only be survived.
+    var _again = mika_st_mill(600);
+    ok("the storm is deterministic: the same attempt draws the same field",
+       _again.n == _seen.n && abs(_again.sum - _seen.sum) < 0.001);
+
+    // **And it is bounded.** A grain at a crawl with a turn on it orbits
+    // rather than leaving, so the expiry is the only thing between this
+    // attack and a full pool -- which is a boss whose later attacks quietly
+    // stop firing.
+    var _long = mika_st_mill(24 * FPS);
+    ok("a whole attack of it does not fill the pool STORMSIZE="
+       + string(_long.n) + " MIDSIZE=" + string(_seen.n),
+       _long.n < BULLET_MAX * 0.5);
+
+    st_reset();
+}
+
+/// @desc Play N1 headlessly for `_frames` and describe the field it left.
+///
+///       `sum` is a checksum of where every grain is, which is what makes
+///       "the same storm twice" one comparison rather than a walk.
+function mika_st_mill(_frames) {
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f < _frames; _f++) {
+        mika_n1_sandmill(_boss, _g, _f);
+        ring_step(_g);
+        bullet_step(_g.player.x, _g.player.y);
+    }
+
+    var _sum = 0;
+    var _off_rim = true;
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _u = bullet_get(_i);
+        _sum += _u.x * 0.5 + _u.y * 0.25 + _u.dir;
+        // A comet that has not moved yet is still on the metal it left,
+        // which is the one frame this can be asked about. Only the heads --
+        // the trail and the break are children, born wherever the head was.
+        if (_u.delay == _u.delay0 && _u.shape == MIKA_MILL_HEAD_SHAPE) {
+            var _near = 9999;
+            for (var _k = 0; _k < ring_count(); _k++) {
+                var _r = ring_get(_k);
+                _near = min(_near,
+                            abs(point_distance(_r.x, _r.y, _u.x, _u.y)
+                                - RING_R));
+            }
+            if (_near > 1) _off_rim = false;
+        }
+    }
+    var _out = { n: bullet_count(), sum: _sum, off_rim: _off_rim };
+    st_reset();
+    return _out;
+}
+
+function test_mika_slots() {
+    var _slots = mika_slots();
+    var _ph = mika_phases();
+    var _n = array_length(_ph);
+    ok("Mika has fifteen attacks", _n == 15
+       && _n == MIKA_NONSPELLS + MIKA_SPELLS
+       && array_length(_slots) == _n);
+
+    // **A non-spell and then a spell, seven times, and then a spell.** Read
+    // by kind, and a name is what makes a row a spell -- so this is also what
+    // catches a name given to a breather's row.
+    var _order = true;
+    for (var _i = 0; _i < _n; _i++) {
+        var _want = (_i >= 2 * MIKA_NONSPELLS) || ((_i mod 2) == 1);
+        if ((_ph[_i].kind == AttackKind.Spell) != _want) _order = false;
+    }
+    ok("in the order non-spell, spell, ..., spell, spell", _order);
+
+    var _named = true;
+    var _wash = true;
+    var _timed = true;
+    for (var _i = 0; _i < _n; _i++) {
+        var _spell = (_ph[_i].kind == AttackKind.Spell);
+        if (_spell && _ph[_i].name == "") _named = false;
+        if (_ph[_i].bg != (_spell ? MIKA_SPELL_WASH : -1)) _wash = false;
+        if (_ph[_i].time <= 0) _timed = false;
+    }
+    ok("every spell of his has a name", _named);
+    ok("every spell washes his colour and no non-spell washes at all", _wash);
+    ok("every attack of his has a time limit", _timed);
+
+    // **The slots are named for that structure**, and the names are what the
+    // screenshot scenes and `CLAUDE.md` call them by.
+    ok("the first slot is N1", mika_slot_name(0) == "N1");
+    ok("the second is S1", mika_slot_name(1) == "S1");
+    ok("the seventh pair is N7 and S7",
+       mika_slot_name(12) == "N7" && mika_slot_name(13) == "S7");
+    ok("and the last is S8", mika_slot_name(14) == "S8");
+    var _scenes = true;
+    for (var _i = 0; _i < _n; _i++) {
+        var _sc = shot_mika_scene(_i);
+        if (shot_mika_slot(_sc) != _i || !shot_scene_known(_sc)) {
+            _scenes = false;
+        }
+    }
+    ok("each slot has a screenshot scene, and the scene finds its slot",
+       _scenes);
+    ok("and a name that is not a slot finds none",
+       shot_mika_slot("mika_s9") < 0 && shot_mika_slot("sanctum") < 0);
+
+    // ---- health -----------------------------------------------------------
+    //
+    // **Every threshold is the health left after its slot, over the total.**
+    // That is the property the per-slot column exists for: tuning one attack's
+    // share moves its own span and nothing else's.
+    var _total = mika_hp();
+    var _left = _total;
+    var _worth = true;
+    var _derived = true;
+    for (var _i = 0; _i < _n; _i++) {
+        if (_slots[_i].hp <= 0) _worth = false;
+        _left -= _slots[_i].hp;
+        if (abs(_ph[_i].hp_end * _total - _left) > 0.01) _derived = false;
+    }
+    ok("every slot is worth some of him", _worth);
+    ok("each threshold is what is left after its slot", _derived);
+    ok("and the last is exactly zero", _ph[_n - 1].hp_end == 0);
+
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _e = mika_spawn(_g);
+    ok("he spawns with the slots' health summed",
+       _e != undefined && _e.hp_max == _total);
+    st_reset();
+}
+
+/// @desc The old draft of stage three: a whole stage on the rack that is not
+///       on the roster and cannot touch the save. See `stage_sanctum_old`.
+///
+///       **`progress_record` refusing an empty id is not asserted by calling
+///       it**, because a suite that called it and was wrong would write to
+///       the player's real save -- the thing `test_save_atomicity` exists to
+///       never do. What is asserted is that the card's id is the one that
+///       guard refuses.
+function test_old_sanctum() {
+    var _def = old_stage_sanctum_def();
+    ok("the old stage three is a stage to play", stage_is_built(_def));
+    ok("...open from the start", stage_is_unlocked(_def));
+    ok("...with its attacks to practise", practice_available(_def));
+    ok("...and no stage to file a clear against", _def.id == "");
+    ok("it says what it is", stage_is_old_draft(_def));
+    ok("...and nothing else claims to be it",
+       !stage_is_old_draft(stage_sanctum_def())
+       && !stage_is_old_draft(draft_stage_def())
+       && !stage_is_old_draft(preview_stage_def())
+       && !stage_is_old_draft(undefined));
+
+    var _on_rack = false;
+    var _rack = rack_list();
+    for (var _i = 0; _i < array_length(_rack); _i++) {
+        if (stage_is_old_draft(_rack[_i])) _on_rack = true;
+    }
+    var _on_roster = false;
+    var _roster = stage_list();
+    for (var _i = 0; _i < array_length(_roster); _i++) {
+        if (stage_is_old_draft(_roster[_i])) _on_roster = true;
+    }
+    ok("it is on the rack", _on_rack);
+    ok("...and not on the roster, which counts stages", !_on_roster);
+
+    // **It is the old fight, whole.** Seven attacks, descending to zero.
+    var _ph = old_mika_phases();
+    var _descends = true;
+    var _prev = 1.0;
+    for (var _i = 0; _i < array_length(_ph); _i++) {
+        if (_ph[_i].hp_end >= _prev) _descends = false;
+        _prev = _ph[_i].hp_end;
+    }
+    ok("its Mika has his old seven", array_length(_ph) == 7);
+    ok("...descending to zero",
+       _descends && _ph[array_length(_ph) - 1].hp_end == 0);
+}
+
 function test_rings() {
     st_reset();
 
@@ -3818,12 +4704,37 @@ function test_rings() {
     }
     ok("one shot of two is eaten by the metal", _stopped == 1);
 
-    // --- the charge ----------------------------------------------------
+    // --- the metal, and then the charge --------------------------------
+    //
+    // **Solid metal hurts to touch and it did not use to.** Asked for in those
+    // words; see `RING_KILL_FRAC`. What a charge changes is the *width*, so
+    // the three assertions that matter are: forming metal is harmless, cold
+    // metal bites at its core, and only a charged band bites out to the edge
+    // of the drawn cuff.
     st_reset();
     _ring = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
-    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(undefined);
-    ok("a cold ring cannot hurt anybody",
+    ok("a ring that is still forming cannot hurt anybody",
        !ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R));
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(undefined);
+    ok("...and the moment it is solid, the metal does",
+       ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R));
+
+    // A point inside the drawn cuff but outside the cold band's core: the
+    // margin a player gets for believing the black of the cuff is the hitbox.
+    var _bevel = FIELD_CY + RING_R
+                 + (RING_BAND_HALF * RING_KILL_FRAC + RING_BAND_HALF) * 0.5
+                 + PLAYER_R;
+    ok("cold, the bevel either side of the core is still margin",
+       !ring_any_hit(FIELD_CX, _bevel, PLAYER_R));
+
+    // And riding cold metal pays, because cold metal hurts. Same cooldown and
+    // the same measurement as the charged band below -- `ring_graze` asks
+    // `ring_kill_half`, so it follows the kill from one width to the other
+    // without being told.
+    ok("riding a cold band pays a graze",
+       ring_graze(FIELD_CX,
+                  FIELD_CY + RING_R + ring_kill_half(_ring) + PLAYER_R + 2,
+                  PLAYER_R) == 1);
 
     ring_charge(_ring, 20, 30);
     var _bit_during_warning = false;
@@ -3835,23 +4746,27 @@ function test_rings() {
     // to see because the first run of this was failing for a real reason as
     // well. See `ring_is_hot`.
     for (var _i = 0; _i < 20; _i++) {
-        if (_ring.warn > 0
-            && ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R)) {
+        if (_ring.warn > 0 && ring_any_hit(FIELD_CX, _bevel, PLAYER_R)) {
             _bit_during_warning = true;
         }
         ring_step(undefined);
     }
-    // **A telegraph that can kill is not a telegraph.** Same rule
-    // `laser_is_hot` keeps, and the reason `ring_charge` refuses a warning of
-    // zero in its docstring.
-    ok("a charging ring cannot hurt anybody either", !_bit_during_warning);
-    ok("and then the metal bites",
-       ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R));
+    // **What the build-up announces may not land before the build-up ends.**
+    // The metal was already lethal at its core through all of that -- which is
+    // what the sample point is chosen to see past: it is in the bevel, where
+    // only a charged band reaches.
+    ok("a charging ring does not widen before its warning is out",
+       !_bit_during_warning);
+    ok("and then the whole cuff bites",
+       ring_any_hit(FIELD_CX, _bevel, PLAYER_R));
 
-    // It kills a little narrower than it is drawn, on the genre's rule.
-    ok("it kills narrower than it is drawn",
-       ring_kill_half() < ring_band_half());
-    var _just_outside = FIELD_CY + RING_R + ring_kill_half() + PLAYER_R + 2;
+    // Either way it kills no wider than it is drawn, on the genre's rule.
+    ok("a cold band kills narrower than it is drawn",
+       RING_BAND_HALF * RING_KILL_FRAC < ring_band_half());
+    ok("...and a charged one no wider",
+       ring_kill_half(_ring) <= ring_band_half());
+    var _just_outside = FIELD_CY + RING_R + ring_kill_half(_ring)
+                        + PLAYER_R + 2;
     ok("...so the black of the cuff is the hitbox",
        !ring_any_hit(FIELD_CX, _just_outside, PLAYER_R));
 
@@ -3933,4 +4848,298 @@ function test_rings() {
        _ringed == array_length(_ph));
 
     st_reset();
+}
+
+/// @desc The widened `Split`/`Shed`, and the burster built on it.
+///
+///       **The dress method is the whole of what was added**, so what is
+///       asserted is that a child actually arrives wearing what the method put
+///       on it -- picture, hitbox and motion. Before the change a child could
+///       only ever be its parent's graphic flying straight for ever, and every
+///       one of these would have failed.
+function test_sand_burst() {
+    // ---- a split dresses its children -------------------------------------
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+
+    var _seen = { n: 0, idx: [] };
+    var _u = fire(FIELD_CX, FIELD_CY, 3, 0, BSHAPE_SPHERE, BCOL_GOLD, 0);
+    bullet_split_at(_u, 2, 6, 2.5, 0,
+                    method(_seen, function(_c, _k) {
+        n++;
+        array_push(idx, _k);
+        if (_c != undefined) _c.col = BCOL_JADE;
+    }));
+    for (var _f = 0; _f < 4 + BULLET_SPLIT_DELAY; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("a split calls its dress method once per child", _seen.n == 6);
+
+    // **Each child is told which one it is**, so a later pattern can grade a
+    // burst the way an arm is graded. 0..n-1, in order, and nothing repeated.
+    var _ordered = (array_length(_seen.idx) == 6);
+    for (var _i = 0; _i < array_length(_seen.idx); _i++) {
+        if (_seen.idx[_i] != _i) _ordered = false;
+    }
+    ok("...and told its index round the burst", _ordered);
+
+    // ...and what the method did to the child is on the child. The parent is
+    // spent by a split, so everything left in the pool is a child.
+    var _dressed = (bullet_count() == 6);
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        if (bullet_get(_i).col != BCOL_JADE) _dressed = false;
+    }
+    ok("...and what it did to the child reaches the field", _dressed);
+
+    // ---- a shed dresses its children too ----------------------------------
+    //
+    // Shed carries its children's distance already, so this is the one that
+    // needed a fifth slot on the queue entry rather than a free one.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _shed = { n: 0 };
+    _u = fire(FIELD_CX, FIELD_CY, 3, 0, BSHAPE_SPHERE, BCOL_GOLD, 0);
+    bullet_shed_at(_u, 2, 4, 2.5, 0, 0,
+                   method(_shed, function(_c, _k) { n++; }));
+    for (var _f = 0; _f < 4 + BULLET_SPLIT_DELAY; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("a shed dresses its children as well", _shed.n == 4);
+    ok("...and keeps its parent, which is what makes it a shed",
+       bullet_count() == 5);
+
+    // ---- the burster ------------------------------------------------------
+    //
+    // **The carrier is one bullet until it breaks, and sand afterwards.** That
+    // is the claim the whole change exists for, and it is two counts and a
+    // look.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _ring = ring_new(FIELD_CX, FIELD_CY, MIKA_RING_COL, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(_g);
+
+    var _look = mika_sand_grade(0, 0);
+    var _c = mika_sand_burst(_ring, 0, 0, _look, MIKA_CARRY_HOLD,
+                             MIKA_SAND_BRAKE, MIKA_SAND_FLOOR,
+                             MIKA_SAND_CURL, MIKA_SAND_BEND, MIKA_SAND_LIFE);
+    ok("a carrier reaches the field", _c != undefined);
+    ok("...drawn as the carrier and not as sand",
+       _c.shape == MIKA_CARRY_SHAPE && _c.col == MIKA_CARRY_COL);
+
+    for (var _f = 0; _f < MIKA_SAND_DELAY + MIKA_CARRY_AT; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("...and it is still one bullet on the frame before it breaks",
+       bullet_count() == 1);
+
+    // One more step for the event, and `BULLET_SPLIT_DELAY` for the marks.
+    for (var _f = 0; _f < 1 + BULLET_SPLIT_DELAY; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("...then it is a bloom of sand and the carrier is spent",
+       bullet_count() == MIKA_CARRY_N);
+
+    // **Every grain of the bloom is sand**, which is the thing a split could
+    // not do before: born wearing the carrier's sphere, dressed into the
+    // cycle's own grain, hitbox and all.
+    var _sand = true;
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _b = bullet_get(_i);
+        if (_b.shape != _look.shape || _b.col != _look.col) _sand = false;
+        if (abs(_b.scale - _look.scale) > 0.001) _sand = false;
+        if (abs(_b.r - global.bshape_radius[_look.shape] * _look.scale)
+            > 0.001) {
+            _sand = false;
+        }
+    }
+    ok("every grain of the bloom is the cycle's own sand, hitbox and all",
+       _sand);
+
+    // **The bloom opens where the carrier got to, not where it was fired.**
+    // That is the difference between a split and the computed bloom this could
+    // have been: the burst is anchored to the parent, so a carrier that is
+    // later retuned -- braked, nudged, given a longer run -- takes its bloom
+    // with it and cannot leave it behind. Measured off the ring's centre,
+    // which has not moved because nothing stepped the ring.
+    //
+    // The children are born at one point, so they are all at one radius; the
+    // tolerance is a frame of the carrier's travel, because an event scheduled
+    // for frame `at` runs on the step after it.
+    var _want = RING_R + MIKA_CARRY_SPD * MIKA_CARRY_AT;
+    var _bloom = (bullet_count() == MIKA_CARRY_N);
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _d = point_distance(_ring.x, _ring.y,
+                                bullet_get(_i).x, bullet_get(_i).y);
+        if (abs(_d - _want) > MIKA_CARRY_SPD + 0.01) _bloom = false;
+    }
+    ok("the bloom opens where the carrier got to, a carrier's run from the rim",
+       _bloom);
+
+    // ...and it behaves as sand: it brakes to the floor and then drifts.
+    var _settle = MIKA_CARRY_HOLD
+                  + mika_sand_settle(MIKA_CARRY_OUT, MIKA_SAND_BRAKE,
+                                     MIKA_SAND_FLOOR) + 2;
+    for (var _f = 0; _f < _settle; _f++) {
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    var _settled = (bullet_count() > 0);
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        if (abs(bullet_get(_i).spd - MIKA_SAND_FLOOR) > 0.001) {
+            _settled = false;
+        }
+        if (abs(bullet_get(_i).turn - MIKA_SAND_CURL) > 0.001) {
+            _settled = false;
+        }
+    }
+    // **This is the assertion that caught the `floor` shadowing.** It is
+    // stated as the speed and the turn rather than as "it is sand", because a
+    // grain clamped at its birth speed is sand by every other measure -- right
+    // picture, right hitbox, right queue -- and only the number says so.
+    ok("...and settles to the floor and drifts, like sand off the metal",
+       _settled);
+
+    // **And it stops being a shard on the frame it stops being fast.** The
+    // graphic change and the settle are one scheduled event apiece at the same
+    // frame rather than two numbers tuned to nearly agree -- and the hitbox
+    // comes down with the picture, which `BQ.Graphic` did not do until the
+    // sand became the first thing in the game to scale *and* change shape.
+    var _became = (bullet_count() > 0);
+    for (var _i = 0; _i < bullet_count(); _i++) {
+        var _b = bullet_get(_i);
+        if (_b.shape != _look.shape) _became = false;
+        if (abs(_b.r - global.bshape_radius[_look.shape] * _look.scale)
+            > 0.001) {
+            _became = false;
+        }
+    }
+    ok("...and has become the grain by then, hitbox and all", _became);
+
+    // ---- the draft runs ---------------------------------------------------
+    //
+    // **It is on the drafting table and not in `mika_slots`**, deliberately:
+    // the mechanic is built and no attack of Mika's has committed to it.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _boss = { x: FIELD_CX, y: BOSS_HOME_Y };
+    for (var _f = 0; _f < 240; _f++) {
+        draft_sand_burst(_boss, _g, _f);
+        ring_step(_g);
+        bullet_step(_g.player.x, _g.player.y);
+    }
+    ok("the burster draft puts its rings down",
+       ring_count() == DRAFT_BURST_RINGS);
+    ok("...and fills a field with carriers and their sand",
+       bullet_count() > DRAFT_BURST_RINGS * DRAFT_BURST_ARMS);
+
+    var _in_slots = false;
+    var _slots = mika_slots();
+    for (var _i = 0; _i < array_length(_slots); _i++) {
+        if (_slots[_i].attack == draft_sand_burst) _in_slots = true;
+    }
+    ok("...and it is not wired into Mika's fifteen", !_in_slots);
+}
+
+/// @desc The hop, and N1 firing only while he is holding.
+function test_boss_step() {
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+
+    // A boss whose one attack asks for the hop.
+    var _e = { x: FIELD_CX, y: BOSS_HOME_Y,
+               boss: { phase: 0, drift_t: 0, track_x: FIELD_CX,
+                       home_x: FIELD_CX, home_y: BOSS_HOME_Y,
+                       phases: [ { move: BossMove.Step } ] } };
+
+    // **He is still for the whole of a hold and moves for the whole of a
+    // hop.** That is the claim the attack's gating rests on, and it is the
+    // thing a screenshot cannot see -- a still frame of a hop and a still
+    // frame of a hold are the same picture.
+    var _moved_holding = 0;
+    var _moved_hopping = 0;
+    var _held_true = 0;
+    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
+    for (var _f = 0; _f < _cyc * 3; _f++) {
+        var _was_x = _e.x;
+        var _was_y = _e.y;
+        var _holding = boss_holding(_e);
+        boss_move(_e, _g, 0);
+        var _d = point_distance(_was_x, _was_y, _e.x, _e.y);
+        if (_holding) { _held_true++; _moved_holding = max(_moved_holding, _d); }
+        else          { _moved_hopping = max(_moved_hopping, _d); }
+    }
+    ok("he holds for the hold and hops for the hop",
+       _held_true == BOSS_STEP_HOLD * 3);
+    ok("...and travels during a hop", _moved_hopping > 1);
+
+    // **And he is genuinely still during a burst**, which is the whole point:
+    // a pattern fired over two seconds has to leave from one place. Not
+    // exactly zero, because the glide is an ease and the last hop's remainder
+    // bleeds a little way into the hold -- but under a pixel a frame, against
+    // a hop that moves tens.
+    ok("...and is effectively still during one MAXHOLD="
+       + string(_moved_holding) + " MAXHOP=" + string(_moved_hopping),
+       _moved_holding < 1.0 && _moved_hopping > _moved_holding * 4);
+
+    // **The hops are a sequence, not a roll.** The same attempt puts him in
+    // the same places in the same order, which is the rule the sand is under
+    // and the reason the storm can be learnt at all.
+    var _b = _e.boss;
+    var _same = true;
+    for (var _i = 0; _i < 8; _i++) {
+        if (abs(boss_step_x(_b, _i) - boss_step_x(_b, _i)) > 0.0001) {
+            _same = false;
+        }
+    }
+    ok("a hop's landing spot is a function of which hop it is", _same);
+
+    // ...and they are different places. Two hops that land together are a
+    // boss that stopped hopping.
+    var _apart = true;
+    for (var _i = 0; _i < 6; _i++) {
+        if (abs(boss_step_x(_b, _i) - boss_step_x(_b, _i + 1)) < 20) {
+            _apart = false;
+        }
+    }
+    ok("...and consecutive hops land somewhere else", _apart);
+
+    // ...inside the field, with his own half-width to spare.
+    var _inside = true;
+    for (var _i = 0; _i < 40; _i++) {
+        if (boss_step_x(_b, _i) - 130 < FIELD_X0) _inside = false;
+        if (boss_step_x(_b, _i) + 130 > FIELD_X1) _inside = false;
+    }
+    ok("...and never off the side of the field", _inside);
+
+    // ---- N1 mills only while he holds -------------------------------------
+    //
+    // **This is the fix, stated as the thing it changes.** The storm is an
+    // accumulation of a hundred volleys, so firing through a hop smears every
+    // figure in it by however far he walked.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _e = { x: FIELD_CX, y: BOSS_HOME_Y,
+           boss: { phase: 0, drift_t: 0, track_x: FIELD_CX,
+                   home_x: FIELD_CX, home_y: BOSS_HOME_Y,
+                   phases: [ { move: BossMove.Step } ] } };
+    mika_n1_sandmill(_e, _g, 0);
+
+    var _fired_holding = 0;
+    var _fired_hopping = 0;
+    for (var _f = 0; _f < _cyc * 2; _f++) {
+        var _holding = boss_holding(_e);
+        var _before = bullet_count();
+        boss_move(_e, _g, 0);
+        ring_step(_g);
+        if (bullet_count() > _before) {
+            if (_holding) _fired_holding++; else _fired_hopping++;
+        }
+        bullet_step(_g.player.x, _g.player.y);
+    }
+
+    // **The mill stops for the hop.** Asked for: the streams are read as an
+    // accumulation over seconds, so anything laid down while the origin is
+    // sliding smears the figure.
+    ok("the mill throws sand while he holds", _fired_holding > 0);
+    ok("...and nothing at all while he is moving FIRED="
+       + string(_fired_hopping), _fired_hopping == 0);
 }

@@ -58,6 +58,9 @@ def main():
         ("RUNE", A.RUNE, "the arcane accent"),
         ("SIGIL", A.SIGIL, "Szuix's own magic: the bomb's circle"),
         ("FLAME", A.FLAME, "Szuix's fire: the body of his shot"),
+        ("STONE", A.STONE, "the mark ladder: see rank_functions"),
+        ("BRONZE", A.BRONZE, ""),
+        ("AMETHYST", A.AMETHYST, ""),
     ]
     for name, col, note in named:
         tail = ("    // " + note) if note else ""

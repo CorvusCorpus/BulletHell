@@ -168,6 +168,29 @@ function bg_clear_omen(_b) {
     _b.omen = 0;
 }
 
+/// @desc **The background as a boss finds it**, for a run that begins at the
+///       boss rather than at the start of the stage. Attack practice is that
+///       run.
+///
+///       Two things a stage does before its boss arrives, and a run that skips
+///       the stage has to have them done for it. The arrival -- the grove's
+///       fog, the hall's lights coming up -- is the stage's opening and is
+///       long over by the time anybody fights a boss. And a boss fought in a
+///       stage's second half is fought after the turn: Velka in the blood
+///       wood, Mika in the open hall rather than under a camera still aimed at
+///       the floor. Practised without this, both were being drilled against a
+///       background they never appear in.
+///
+///       A cut, like `bg_clear_omen`, and for the same reason: there is no
+///       first half here for the turn to have happened during.
+function bg_skip_to_boss(_b, _turned) {
+    if (_b[$ "intro"] != undefined) _b.intro = 1;
+    if (_turned) {
+        _b.omen_on = true;
+        _b.omen = 1;
+    }
+}
+
 /// @desc Ease the turn along. One line, and every background gets it.
 function bg_omen_step(_b) {
     if (_b.omen_on && _b.omen < 1) {

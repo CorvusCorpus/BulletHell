@@ -359,9 +359,26 @@
 // have to agree about.
 #macro RING_SPR_LINE 0.78125
 
-// How much of the metal actually kills when it is charged. Under the drawn
-// width, on the genre's rule -- see `ring_kill_half`.
+// How much of the metal actually kills. Under the drawn width, on the genre's
+// rule -- see `ring_kill_half`.
+//
+// **The metal is lethal whenever it is solid**, which it did not used to be:
+// a ring only bit after being charged, and a player who flew into one at any
+// other time passed through a wall. Asked for in those words -- his rings
+// should do damage if the player touches them, like with regular bullets --
+// and it is the reading the object always had: a ring is a band of somebody
+// else's metal hanging in the air, and nothing else on this field that looks
+// solid is safe to stand in.
 #macro RING_KILL_FRAC 0.62
+
+// ...and what a *charged* one kills at, which is the whole of the cuff.
+//
+// **Charging still has to mean something now that cold metal bites.** What it
+// escalates is the width: cold, only the core of the band is lethal and the
+// bevel either side is the margin a player who believes the black of the cuff
+// is the hitbox gets; charged, the whole drawn cuff is live. It never goes
+// past the drawn width, because that is the one promise the picture makes.
+#macro RING_HOT_KILL_FRAC 1.0
 
 #macro RING_FORM 34                // frames arriving: no block, no kill
 #macro RING_FADE 22                // frames leaving
@@ -404,9 +421,102 @@
 #macro TALLY_GRAZE 40
 #macro TALLY_ENEMY 250
 #macro TALLY_ITEM 120
+
+// **Ending an attack pays a flat award and a speed bonus on top.** The
+// speed bonus is Touhou's spell bonus and it is here to answer a hole the
+// marks opened: the top mark is earned by passing a *score* threshold rather
+// than by being quick, so without a time term in the score the best way to
+// reach it would be to stall an attack and graze it for forty seconds.
+//
+// **It is not a constant, and that is the whole of what took two goes.** A
+// fixed sixteen thousand was the first version, and measured against the
+// threshold it made a fast break *harder* on a long attack and easier on a
+// short one -- 26 grazes a second to reach the bar on a 40-second spell
+// broken with three quarters of its clock left, against 6 on a 24-second
+// non-spell. The exchange rate between the two routes was the attack's own
+// length, which is nothing anybody chose. So the bonus is priced at exactly
+// **the grazing the player gave up by finishing early** -- see
+// `rank_speed_award` -- and the rate required to reach the threshold is
+// `RANK_GRAZE_RATE` at every clock and every finishing time.
+//
+// **The flat award cancels out of the mark entirely**, because the threshold
+// contains it too, so it is free to be whatever the score wants it to be. It
+// is the number it always was.
+//
+// **The bonus is not voided by a hit, which is where this departs from
+// Touhou.** There it is lost the moment you are touched -- which here would
+// make "met the threshold" and "was clean" the same measurement, and the
+// clean case is already what sets the base mark. Hits and bombs are deducted
+// once, by `rank_for_encounter`, and the score says something else.
 #macro TALLY_SPELL_CLEAR 40000
 #macro TALLY_PHASE_CLEAR 12000
+
+// Breaking a spell untouched. Its own constant rather than a second helping
+// of `TALLY_SPELL_CLEAR`, which is what it used to be: the capture bonus and
+// the clear award are two different facts and reading one off the other
+// meant tuning either one moved both.
+#macro TALLY_SPELL_CAPTURE 40000
+
 #macro TALLY_NO_HIT_BONUS 100000
+
+// ---------------------------------------------------------------------------
+// Marks
+//
+// What an encounter is graded on. See `rank_functions` for the ladder itself
+// and for why the deductions are the shape they are.
+// ---------------------------------------------------------------------------
+
+// **The mark a clean encounter starts from.** One below the top, so the top
+// is always something extra rather than the default for not making a mistake.
+#macro RANK_BASE Mark.Gold
+
+// What a mistake costs, in rungs. **A hit is worth two and a bomb is worth
+// one**, which is the opposite way round from the first version of this: a
+// sigil is a resource the player chose to spend and a hit is one they did not
+// choose at all. The meter refills at `ITEM_MP_VALUE` a shard against a cost
+// of `MP_PER_BOMB`, so a bomb is expensive enough already without the ladder
+// charging for it twice.
+#macro RANK_HIT_COST 2
+#macro RANK_BOMB_COST 1
+
+// **How much grazing an encounter is expected to be worth, per second.** This
+// is the whole of the score threshold's difficulty: a target is the score an
+// encounter hands out for simply finishing it, plus this rate over however
+// long it lasts. Nothing is being asked for beyond the ordinary except the
+// nerve, which is what the top mark should be for.
+//
+// **Unplayed**, like every number in this file. Fourteen grazes a second is
+// about a third of a busy pattern going past at the range the hitbox is drawn
+// at, which is a guess and is meant to be replaced by somebody's report.
+#macro RANK_GRAZE_RATE 14
+
+// A floor under a wave's clock, so a group cleared in a second and a half
+// cannot be marked against a target of nothing.
+#macro RANK_WAVE_MIN_TIME (4 * FPS)
+
+// **The rank card, and its length is not a taste decision.** The whole of the
+// clear air it can be promised is `BOSS_PHASE_PAUSE` -- eighty-four frames --
+// after which a non-spell's next pattern is already opening and a spell's eye
+// card owns the middle of the field. Eighty frames is that window with four
+// to spare, and the card is additive precisely because "promised" is doing a
+// lot of work in that sentence: a wave's gate grace is half a second and what
+// follows it is whatever the timeline says. See `rank_card`.
+#macro RANK_CARD_TIME 80
+#macro RANK_CARD_STRIKE 6          // the medal arrives oversized and settles
+#macro RANK_CARD_SETTLE 24         // ...with a small elastic under it
+#macro RANK_CARD_GLINT_END 40      // the glint crossing its face
+#macro RANK_CARD_FLY 24            // and it leaves for its socket
+
+// Where it lands: above the half of the field the player lives in, below the
+// boss's line and its station. **Not centred**, because the middle of the
+// field is where a boss stands and where the eye card goes, and a medal in
+// the same place as the ceremony is a medal that collides with it twice a
+// fight.
+#macro RANK_CARD_Y (FIELD_Y0 + FIELD_H * 0.38)
+
+#macro RANK_CARD_SCALE 1.25        // the medal is authored at 176
+#macro RANK_CARD_HOME_S 0.17       // ...and a socket is 30
+#macro RANK_CARD_FRAMES 6          // five rungs and the perfect standing
 
 // ---------------------------------------------------------------------------
 // Enemies and bosses
@@ -888,9 +998,92 @@ enum AttackKind {
 /// this existed still reads correctly. See `boss_move`.
 enum BossMove {
     Drift,      // the default: a wide lissajous wander round its station
+    Close,      // the same wander, kept near the station
     Track,      // trends toward the player's column, loosely, still wandering
     Fixed,      // takes its station and holds it
+    Step,       // holds still, hops to a new spot, holds again
 }
+
+// ---------------------------------------------------------------------------
+// The hop
+//
+// **A pattern whose structure lives in absolute space cannot be fired from a
+// moving origin**, and that is the whole of why this kind exists. Most attacks
+// in this game are read within a second of being fired -- a bullet crosses the
+// field and is gone, so where the boss was when it left hardly matters. Mika's
+// sand is not: a grain settles to a crawl and is still on the field eight
+// seconds later, so what the player is looking at is an accumulation of a
+// hundred volleys. Fire those from a hundred different positions and every
+// figure in it is smeared by however far the boss walked, however tidy each
+// volley was on its own. Reported as a heavy lack of visible structure, and
+// correctly diagnosed as the movement rather than the pattern.
+//
+// **This is what Touhou's bosses actually do**, and it is not a stylistic
+// choice there either: a boss holds station long enough for a pattern to
+// build and fire, then hops, then holds again. The hop is what stops the
+// player learning one pixel; the hold is what lets the pattern exist.
+//
+// An attack takes it by asking for `BossMove.Step` and by firing only while
+// `boss_holding` is true. The second half is the attack's business rather
+// than the movement's, because a pattern that reads fine from a moving origin
+// -- anything that crosses the field and is gone -- should keep firing
+// through the hop.
+// **A hop every four seconds, and a short one.** The hold is what the pattern
+// is drawn during and the move is dead time, so the cycle is mostly hold: over
+// three seconds of standing still and three quarters of a second of getting
+// somewhere else. N1 stops firing for the move -- see `mika_n1_rim` -- so a
+// long transition is a long hole in the storm.
+#macro BOSS_STEP_HOLD 195      // frames held still: the burst
+#macro BOSS_STEP_MOVE 45       // frames spent hopping, and the pause between
+
+// How far a hop goes. **It is the gap that wants to be long and the travel
+// that wants to be short**, which is the correction the first pass got
+// backwards: at 260 either side of the station, two consecutive hops could
+// put 500 pixels between one burst and the next, and 40 frames to cross it
+// meant he arrived at 70 pixels a frame. Reported as the hops being too long
+// and too drastic and the pauses between waves too short -- which is one
+// trade rather than two complaints, because both came out of the same pair of
+// numbers.
+//
+// So the travel is roughly a `Close` wander's width and the pause is nearly
+// twice what it was. He still lands somewhere else -- that is what stops the
+// player learning one pixel -- but the move reads as him repositioning rather
+// than as him being thrown across the field.
+#macro BOSS_STEP_X 140
+#macro BOSS_STEP_Y 24
+
+// How hard he chases the spot he is hopping to. It has to get there inside
+// `BOSS_STEP_MOVE`, because the frame the hold begins is the frame the pattern
+// starts being drawn again and a boss still sliding then smears it. At this
+// rate a 45-frame move covers better than 99% of the distance; much harder
+// than this and the hop reads as a lunge rather than as him repositioning.
+#macro BOSS_STEP_RATE 0.10
+
+// How far a `Close` attack wanders. **The wander without the traverse**: a
+// boss whose attack is built out of things he carries -- rings, and whatever
+// they are throwing -- takes the whole figure with him when he crosses the
+// field, so a four-hundred-pixel drift drags the pattern off one wall and
+// back rather than letting it settle anywhere. Reported on N1, in those
+// words: his drifting movement should stay more confined to the centre
+// instead of drifting to the far ends of the screen.
+//
+// It is still a wander rather than a hold, because `Fixed` gives up the one
+// thing the drift is for -- a boss that stands still fires every aimed
+// pattern from the same pixel, and the player learns the pixel.
+#macro BOSS_CLOSE_X 150
+
+// ...and the vertical, which is held much tighter still.
+//
+// **A pattern is read at the bottom of the field and its source is at the
+// top**, so anything the source does vertically arrives down there as the
+// whole figure sliding up and down the screen -- streams that reach the
+// player a little further along or a little further back on every pass, which
+// is the pattern refusing to be the same twice. Reported as the dodging at the
+// bottom feeling inconsistent and messy, with the suggestion that the vertical
+// drift come down and the boss keep closer to the top. Sideways it does not
+// matter nearly as much, because a figure that slides sideways is the same
+// figure moved; it is the *depth* the player is measuring against.
+#macro BOSS_CLOSE_Y 22
 
 // ---------------------------------------------------------------------------
 // Backgrounds that are corridors

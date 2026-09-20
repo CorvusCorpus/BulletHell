@@ -47,15 +47,14 @@ function stage_grove_def() {
         make_bg: bg_grove,
         build: stage_grove_script,
 
-        // Provisional, exactly as stage one's is: eight attacks -- the
-        // midboss's two and Velka's six -- and five wave groups, and nothing
-        // counts the wave groups yet. See `rank_functions`.
-        encounters: 13,
 
+        // `turned`: Velka is fought after the wood goes to blood, so that is
+        // the wood she is practised in. See `practice_begin`.
         bosses: [
             { name: "THE HUSK", spawn: grove_midboss_spawn,
               phases: grove_midboss_phases },
-            { name: "VELKA", spawn: velka_spawn, phases: velka_phases },
+            { name: "VELKA", spawn: velka_spawn, phases: velka_phases,
+              turned: true },
         ],
     };
 }

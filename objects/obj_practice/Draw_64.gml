@@ -39,28 +39,14 @@ draw_text_fit(GAME_CX, 176, stage.name, 1100,
 //
 // The old height is kept as the *ceiling* rather than as the value, so a long
 // list still stops where it always did and the two bottom hint lines never
-// have a plate landing on them. When a stage has more attacks than fit, this
-// is the line that has to learn to scroll.
-var _row_pitch = 52;
-var _row_head = 74;
-var _list_top = 220 + 66;
-
-var _list_h = 0;
-for (var _i = 0; _i < array_length(rows); _i++) {
-    if (rows[_i].header) {
-        if (_i > 0) _list_h += _row_head - _row_pitch;
-        _list_h += _row_head;
-    } else {
-        _list_h += _row_pitch;
-    }
-}
-
+// have a plate landing on them. A list longer than that scrolls inside it --
+// see Create for where the rows are, and `practice_list_scroll` for when the
+// page turns.
 var _x1 = 300;
 var _x2 = GAME_W - 300;
 var _y1 = 220;
-// The last row's centre sits a pitch above where the walk finishes, so the ink
-// ends about half a row higher again; 40 is the margin under it.
-var _y2 = min(GAME_H - 150, _list_top + _list_h - _row_pitch + 40);
+// 40 is the margin under the last visible row's centre.
+var _y2 = list_top + list_window + 40;
 draw_plate(_x1, _y1, _x2, _y2, 1);
 draw_corners(_x1, _y1, _x2, _y2, COL_GILT, 0.8, -4, 0.6);
 
@@ -77,20 +63,28 @@ if (array_length(picks) <= 0) {
     // **The cursor is a lit band behind the row, not a marker beside it.** A
     // caret at the left of a 1300-pixel row leaves the far end of that row
     // looking unselected, and the far end is where the numbers are.
-    var _y = _list_top;
-    var _pitch = _row_pitch;
-    var _head = _row_head;
+    //
+    // **Rows leaving the window fade over half a pitch rather than being cut
+    // off**, which is what says there is more list past the edge. Anything
+    // further out than that is not drawn at all, so nothing ever lands on the
+    // plate's own border.
+    var _top = list_top;
+    var _bot = list_top + list_window;
+    var _fade = row_pitch * 0.5;
 
     for (var _i = 0; _i < array_length(rows); _i++) {
         var _r = rows[_i];
+        var _y = list_top + row_y[_i] - scroll;
+        var _out = max(0, _top - _y, _y - _bot);
+        if (_out >= _fade) continue;
+        var _a = 1 - _out / _fade;
 
         if (_r.header) {
-            if (_i > 0) _y += _head - _pitch;
             draw_set_halign(fa_left);
             draw_set_font(fnt_small());
-            draw_text_tracked(_lx, _y, _r.label, 8, COL_GILT, 0.95, 2);
-            draw_rule((_lx + _rx) * 0.5, _y + 24, _rx - _lx, COL_GILT, 0.45);
-            _y += _head;
+            draw_text_tracked(_lx, _y, _r.label, 8, COL_GILT, 0.95 * _a, 2);
+            draw_rule((_lx + _rx) * 0.5, _y + 24, _rx - _lx, COL_GILT,
+                      0.45 * _a);
             continue;
         }
 
@@ -101,10 +95,10 @@ if (array_length(picks) <= 0) {
             // The band eases with the cursor, so a held arrow reads as travel
             // down a list rather than as the list flickering -- the same
             // easing the rack's card lift uses, one screen over.
-            draw_set_alpha(0.20 + 0.05 * dsin(t * 3));
+            draw_set_alpha((0.20 + 0.05 * dsin(t * 3)) * _a);
             draw_set_colour(COL_GILT);
             draw_rectangle(_lx - 26, _y - 24, _rx + 26, _y + 24, false);
-            draw_set_alpha(0.55);
+            draw_set_alpha(0.55 * _a);
             draw_rectangle(_lx - 26, _y - 24, _rx + 26, _y - 23, false);
             draw_rectangle(_lx - 26, _y + 23, _rx + 26, _y + 24, false);
             draw_set_alpha(1);
@@ -115,13 +109,13 @@ if (array_length(picks) <= 0) {
         // A spell and a non-spell are the two frames the ledger already uses,
         // so the list and the ledger name the same distinction the same way.
         draw_sprite_ext(spr_ui_mark, _r.spell ? 1 : 0, _lx + 14, _y,
-                        0.72, 0.72, 0, _bc, _sel ? 1 : 0.75);
+                        0.72, 0.72, 0, _bc, (_sel ? 1 : 0.75) * _a);
 
         draw_set_halign(fa_left);
         draw_set_font(fnt_ui());
         draw_text_outline(_lx + 50, _y, _r.label,
                           _sel ? COL_GILT_LIT : COL_PARCHMENT,
-                          _sel ? 1 : 0.78, 2);
+                          (_sel ? 1 : 0.78) * _a, 2);
 
         // **The two numbers anybody tuning the table wants**: how long the
         // attack has, and what span of the boss's bar it owns. Both are
@@ -133,14 +127,33 @@ if (array_length(picks) <= 0) {
         var _dim = merge_colour(COL_PARCHMENT, COL_ARCANE_LIT, 0.4);
         draw_text_outline(_rx - 210, _y,
                           string(floor(_r.time / FPS)) + "s",
-                          _sel ? COL_PARCHMENT : _dim, _sel ? 0.95 : 0.7, 2);
+                          _sel ? COL_PARCHMENT : _dim,
+                          (_sel ? 0.95 : 0.7) * _a, 2);
         draw_text_outline(_rx, _y,
                           string(round(_r.hp_from * 100)) + "% - "
                           + string(round(_r.hp_to * 100)) + "%",
-                          _sel ? COL_PARCHMENT : _dim, _sel ? 0.95 : 0.7, 2);
-
-        _y += _pitch;
+                          _sel ? COL_PARCHMENT : _dim,
+                          (_sel ? 0.95 : 0.7) * _a, 2);
     }
+
+    // **And a mark at each end that has more list past it.** The fade says it
+    // to anybody looking at the edge; these say it to anybody looking at the
+    // cursor, which is where the eye is on a list.
+    var _sx = _x2 - 30;
+    var _pulse = 0.55 + 0.2 * dsin(t * 4);
+    draw_set_colour(COL_GILT);
+    if (scroll > 1) {
+        draw_set_alpha(_pulse);
+        draw_triangle(_sx - 9, _top + 6, _sx + 9, _top + 6, _sx, _top - 8,
+                      false);
+    }
+    if (scroll < list_span - list_window - 1) {
+        draw_set_alpha(_pulse);
+        draw_triangle(_sx - 9, _bot - 6, _sx + 9, _bot - 6, _sx, _bot + 8,
+                      false);
+    }
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
 }
 
 // **The controls follow the plate up.** Pinned to the foot of the screen they

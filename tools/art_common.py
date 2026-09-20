@@ -114,6 +114,32 @@ RUNE = (110, 224, 255)       # the arcane accent: Szuix's own eye-cyan
 SIGIL = (150, 84, 255)
 FLAME = (60, 168, 255)
 
+# The mark ladder: STONE, BRONZE, SILVER, GOLD, AMETHYST. Only two of the five
+# are new colours -- silver and gold are already here, because a ladder whose
+# middle rungs are the console's own furniture is a ladder that belongs to the
+# console.
+#
+# **The five split by hue as well as by value**, which is the whole reason the
+# ladder was renamed: the pair it replaced were both dim and both cool, and
+# were told apart by the word printed beside them. Dark cool, warm brown,
+# bright cool, bright warm, bright violet is a sequence anybody reads at thirty
+# pixels in the dark without reading anything.
+#
+# Amethyst is `SIGIL` lifted rather than a sixth invented hue: the top of the
+# ladder being *Szuix's own magic* is the right thing for a game about taking
+# other people's off them, and it is far enough above `ARCANE` in value not to
+# sink into the plate it is drawn on -- which is the one risk a violet mark on
+# an indigo console runs.
+# **Stone has to be visible to be a rung.** It was (62, 62, 76) for one pass,
+# which is a dozen points above `ARCANE` -- so the bottom medal was a ghost on
+# the plate and the bottom socket in the row was not there at all. A grade the
+# player cannot see is a grade that reads as the readout being broken rather
+# than as the attempt being bad. What makes it the bottom rung is that it has
+# no chroma and less value than silver, not that it is nearly invisible.
+STONE = (118, 118, 132)      # smelted badly: cold, dull, and not quite grey
+BRONZE = (176, 112, 62)      # the warm rung, so the low half is not all grey
+AMETHYST = (186, 132, 255)   # SIGIL lifted: the top mark is his own magic
+
 # The fourteen bullet hues. They are a wheel plus a neutral rather than a
 # curated set, because a boss designs its own attacks out of them and a gap in
 # the wheel is a colour some pattern will want and not find.

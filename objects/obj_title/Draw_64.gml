@@ -136,6 +136,16 @@ for (var _i = 0; _i < _shown; _i++) {
             draw_text_outline(_x + _cw * 0.5, _cy + 216, "NOTHING TO CLEAR",
                               merge_colour(COL_PARCHMENT, COL_ARCANE_LIT,
                                            0.45), 0.8, 1);
+        } else if (stage_is_old_draft(_def)) {
+            // A whole stage that can never be cleared, for the reason the
+            // review card cannot: it has no id to file a clear against.
+            draw_set_font(fnt_ui());
+            draw_text_outline(_x + _cw * 0.5, _cy + 176, "OLD DRAFT",
+                              COL_MANA, 0.9, 2);
+            draw_set_font(fnt_small());
+            draw_text_outline(_x + _cw * 0.5, _cy + 216, "NOTHING TO CLEAR",
+                              merge_colour(COL_PARCHMENT, COL_ARCANE_LIT,
+                                           0.45), 0.8, 1);
         } else if (_rec.cleared) {
             draw_set_font(fnt_ui());
             draw_text_outline(_x + _cw * 0.5, _cy + 176,

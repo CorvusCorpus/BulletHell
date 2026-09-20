@@ -65,6 +65,10 @@ function boss_spawn(_x, _y, _hp, _phases, _def) {
 
         hits_this_phase: 0,
         bombs_this_phase: 0,
+        // What the run had scored when this attack opened. The third input
+        // the mark needs, beside the hits and the bombs, and the only one
+        // that was not already being kept -- see `rank_attack_target`.
+        tally_at_phase: 0,
         captured: 0,               // spells cleared without being hit
         beaten: false,
         death_t: 0,
@@ -250,8 +254,14 @@ function boss_move_kind(_b, _i) {
 ///       to get it.
 function boss_move(_e, _g, _i) {
     var _b = _e.boss;
-    _b.drift_t++;
 
+    // **The clock is advanced at the end, not the start.** `boss_holding` is
+    // read by an attack *before* this runs -- a ring's `act` and the boss's
+    // movement are both in the same step -- so a clock incremented up here
+    // would have the two disagree about which frame it is. What that produced
+    // was one volley leaking into the first frame of every hop, which is the
+    // frame the boss moves furthest: measured at 74 pixels of travel on a
+    // frame the mill had been told was a hold.
     var _k = boss_move_kind(_b, _i);
 
     // **Tracking always starts from where the boss is.** The tracked column is
@@ -264,8 +274,14 @@ function boss_move(_e, _g, _i) {
     switch (_k) {
         case BossMove.Track: boss_move_track(_e, _g); break;
         case BossMove.Fixed: boss_move_hold(_e);      break;
+        case BossMove.Step:  boss_move_step(_e);      break;
+        case BossMove.Close:
+            boss_move_drift(_e, BOSS_CLOSE_X, BOSS_CLOSE_Y);
+            break;
         default:             boss_move_drift(_e);     break;
     }
+
+    _b.drift_t++;
 }
 
 /// @desc The drift. A boss that stood still would make every aimed pattern it
@@ -277,10 +293,16 @@ function boss_move(_e, _g, _i) {
 ///       roughly the same place, which is the thing drifting was supposed to
 ///       prevent. `BOSS_DRIFT_X` is wide enough that the player has to keep
 ///       turning round to find him.
-function boss_move_drift(_e) {
+/// @desc The lissajous wander. `_amp` is how far it reaches either side of
+///       the station -- the whole width of the field for `Drift`, and
+///       `BOSS_CLOSE_X` for `Close`, which is the same movement with the
+///       traverse taken out of it. `_amp_y` is the same either side of the
+///       station down the field, and `Close` holds it far tighter than it
+///       holds the sideways one -- see `BOSS_CLOSE_Y`.
+function boss_move_drift(_e, _amp = BOSS_DRIFT_X, _amp_y = BOSS_DRIFT_Y) {
     var _b = _e.boss;
-    var _x = _b.home_x + dsin(_b.drift_t * 0.55) * BOSS_DRIFT_X;
-    var _y = _b.home_y + dsin(_b.drift_t * 0.93) * BOSS_DRIFT_Y;
+    var _x = _b.home_x + dsin(_b.drift_t * 0.55) * _amp;
+    var _y = _b.home_y + dsin(_b.drift_t * 0.93) * _amp_y;
     _e.x += (_x - _e.x) * BOSS_DRIFT_RATE;
     _e.y += (_y - _e.y) * BOSS_DRIFT_RATE;
 }
@@ -335,6 +357,66 @@ function boss_move_hold(_e) {
     enemy_glide(_e, _b.home_x, _b.home_y, BOSS_DRIFT_RATE);
 }
 
+/// @desc The hop: hold still for `BOSS_STEP_HOLD`, move for `BOSS_STEP_MOVE`,
+///       hold still somewhere else. See the note over `BOSS_STEP_HOLD` for why
+///       a pattern would want it.
+///
+///       **Everything is derived from `drift_t`**, so the boss carries no new
+///       state and a hop cannot be left half-finished by a phase change. The
+///       spot for hop `n` is a function of `n` rather than a roll: the same
+///       attempt puts him in the same places in the same order, which is the
+///       difference between a boss a player can read and one they can only
+///       react to -- and it is the rule the sand itself is already under.
+function boss_move_step(_e) {
+    var _b = _e.boss;
+    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
+    var _n = _b.drift_t div _cyc;
+
+    // During the hold, the target is this hop's spot -- he is already there,
+    // so the glide is doing nothing and that is the point. During the move it
+    // is the next one.
+    var _to = ((_b.drift_t mod _cyc) < BOSS_STEP_HOLD) ? _n : _n + 1;
+
+    enemy_glide(_e, boss_step_x(_b, _to), boss_step_y(_b, _to),
+                BOSS_STEP_RATE);
+}
+
+/// @desc Where hop `_n` lands. Two turns of different, incommensurable size
+///       round the station, which gives a sequence that does not repeat inside
+///       an attack and does not need a hash to say so.
+function boss_step_x(_b, _n) {
+    return _b.home_x + dsin(_n * 137) * BOSS_STEP_X;
+}
+
+/// @desc ...and the same down the field, held far tighter for `BOSS_CLOSE_Y`'s
+///       reason: a source that moves vertically slides the whole figure up and
+///       down the screen by the time it reaches the player.
+function boss_step_y(_b, _n) {
+    return _b.home_y + dsin(_n * 71) * BOSS_STEP_Y;
+}
+
+/// @desc Is the boss holding station this frame?
+///
+///       **True for every movement kind but `Step`**, so an attack that gates
+///       its fire on this keeps firing under a drift -- which is what a
+///       pattern that crosses the field and is gone should do. Only the hop
+///       has frames that are not for firing.
+///
+///       Takes anything and answers true if it is not a boss, because the
+///       suites pose bare `{x, y}` stand-ins and a bare read of `.boss` on one
+///       raises rather than answering `undefined`.
+function boss_holding(_e) {
+    if (_e == undefined) return true;
+    var _b = _e[$ "boss"];
+    if (_b == undefined) return true;
+    if (boss_move_kind(_b, _b.phase) != BossMove.Step) return true;
+    // Through a local, because `mod (` reads as a call to a function named
+    // `mod` to `check_unknown_functions`, which is the one check standing
+    // between a typo here and a modal error box under the harness.
+    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
+    return (_b.drift_t mod _cyc) < BOSS_STEP_HOLD;
+}
+
 /// @desc Start attack `_i`. Sets up the ceremony a spell gets and a non-spell
 ///       does not.
 function boss_enter_phase(_e, _g, _i) {
@@ -343,6 +425,7 @@ function boss_enter_phase(_e, _g, _i) {
     _b.phase_t = 0;
     _b.hits_this_phase = 0;
     _b.bombs_this_phase = 0;
+    _b.tally_at_phase = (_g == undefined) ? 0 : _g.tally;
 
     if (_i >= array_length(_b.phases)) {
         boss_finish(_e, _g);
@@ -420,17 +503,79 @@ function boss_end_phase(_e, _g, _beaten) {
     item_drop_spread(_e.x, _e.y, 6, 10, 8);
 
     if (_g != undefined) {
-        _g.tally += (_p != undefined && _p.kind == AttackKind.Spell)
-                    ? TALLY_SPELL_CLEAR : TALLY_PHASE_CLEAR;
+        var _spell = (_p != undefined && _p.kind == AttackKind.Spell);
+
+        // **How much of the attack's clock was left when it ended.** Zero on
+        // a timeout by definition, and zero for a survival spell, whose whole
+        // shape is that it cannot end any other way.
+        var _frac = (_p != undefined && _p.time > 0)
+            ? clamp(1 - _b.phase_t / _p.time, 0, 1) : 0;
+
+        // **A flat award, and a speed bonus on top of it.** Touhou's spell
+        // bonus, and it is here because the top mark is a *score* threshold
+        // rather than a stopwatch: without a time term in the score, the
+        // best way to reach the threshold would be to stall the attack and
+        // graze it for its full forty seconds.
+        //
+        // The bonus is priced as the grazing finishing early gave up, which
+        // is what makes the two routes to the threshold cost the same -- see
+        // `rank_speed_award`, where the flat version that did not is written
+        // down. It is not voided by a hit, which is where this departs from
+        // Touhou.
+        _g.tally += _spell ? TALLY_SPELL_CLEAR : TALLY_PHASE_CLEAR;
+        _g.tally += rank_speed_award(_p, _frac);
         _g.tally += _swept * 10;
+
+        // **The mark for this attack, filed here because this is the only
+        // place that knows how it ended.** Everything a grade needs is
+        // already on the boss -- how many times the player was hit, how many
+        // sigils they spent, and what the run had scored when the attack
+        // opened -- so grading is a read rather than a new set of books.
+        //
+        // **Before the capture bonus is paid, and that ordering is the
+        // mechanic.** A capture is itself gated on being clean, so counting
+        // its forty thousand toward the threshold would make "met the
+        // threshold" and "was not hit" the same measurement -- and the clean
+        // case is already what sets the base mark. The threshold has to be
+        // reachable and missable by a player who was never touched, or it is
+        // not a second question.
+        //
+        // A non-spell has no name (see `ziggy_phases`), so the label is the
+        // boss's plus which pass it was -- "ZIGGY 3". The boss's name alone
+        // was the first version and it put three identical rows in the
+        // ledger, which reads as the list having repeated itself rather than
+        // as three encounters that happened to be against the same thing.
+        //
+        // **`_g[$ "marks"]`, not `_g.marks`.** A missing struct member in GML
+        // *raises*; it does not read as `undefined`. The suites drive a boss
+        // with a stub controller, so a bare read here turns "this run has no
+        // ledger" into a crash in the middle of an unrelated assertion --
+        // which is the same trap the note about globals in `obj_boot` is
+        // about, and `rank_note` already answers to `undefined`.
+        var _label = (_spell && _p.name != "")
+            ? _p.name
+            : (_b.def.name + " " + string(_b.phase + 1));
+        var _earned = _g.tally - _b.tally_at_phase;
+        var _target = rank_attack_target(_p);
+        rank_note(_g[$ "marks"], _label,
+                  rank_for_encounter(_b.hits_this_phase, _b.bombs_this_phase,
+                                     _earned >= _target),
+                  _spell, _earned, _target,
+                  _b.hits_this_phase, _b.bombs_this_phase);
 
         // **A capture needs the spell beaten *and* untouched.** That is the
         // Touhou rule and it is the right one: a bonus for merely surviving
         // rewards hiding in a corner, and this rewards beating it cleanly.
-        if (_beaten && _p != undefined && _p.kind == AttackKind.Spell
+        //
+        // It is also where the anti-hiding rule now lives *entirely*. The
+        // mark no longer asks whether the attack was beaten -- see
+        // `rank_for_encounter` for why a survival spell made that untenable
+        // -- so this is the one thing left that a player cannot get by
+        // outlasting a card they never threatened.
+        if (_beaten && _spell
             && _b.hits_this_phase == 0 && _b.bombs_this_phase == 0) {
             _b.captured++;
-            _g.tally += TALLY_SPELL_CLEAR;
+            _g.tally += TALLY_SPELL_CAPTURE;
             // **Over the break rather than instead of it.** The break already
             // said the attack ended; this says the one extra thing, and it is
             // drawn thin and high in `make_sfx.py` precisely so the two can
@@ -439,34 +584,6 @@ function boss_end_phase(_e, _g, _beaten) {
             fx_text(FIELD_CX, FIELD_CY - 120, "SPELL CAPTURED", COL_GRAZE,
                     96, 2.4);
         }
-        // **The mark for this attack, filed here because this is the only
-        // place that knows how it ended.** Everything a grade needs is already
-        // on the boss -- whether it was beaten or timed out, how many times
-        // the player was hit and how many sigils they spent -- so grading is a
-        // read rather than a new piece of bookkeeping. See `rank_for_attack`.
-        //
-        // A non-spell has no name (see `ziggy_phases`), so the label is the
-        // boss's plus which pass it was -- "ZIGGY 3". The boss's name alone
-        // was the first version and it put three identical rows in the ledger,
-        // which reads as the list having repeated itself rather than as three
-        // encounters that happened to be against the same thing. A non-spell
-        // is the boss's handwriting rather than a sentence, and numbering the
-        // passes is the honest way to say that in a list.
-        var _frac = (_p != undefined && _p.time > 0)
-            ? clamp(1 - _b.phase_t / _p.time, 0, 1) : 0;
-        var _spell = (_p != undefined && _p.kind == AttackKind.Spell);
-        var _label = (_spell && _p.name != "")
-            ? _p.name
-            : (_b.def.name + " " + string(_b.phase + 1));
-        // **`_g[$ "marks"]`, not `_g.marks`.** A missing struct member in GML
-        // *raises*; it does not read as `undefined`. The suites drive a boss
-        // with a stub controller, so a bare read here turns "this run has no
-        // ledger" into a crash in the middle of an unrelated assertion --
-        // which is the same trap the note about globals in `obj_boot` is
-        // about, and `rank_note` already answers to `undefined`.
-        rank_note(_g[$ "marks"], _label,
-                  rank_for_attack(_beaten, _b.hits_this_phase,
-                                  _b.bombs_this_phase, _frac), _spell);
 
         // **The run is told the attack ended, because this is the only place
         // that knows how it ended.** `_beaten` is the difference between a
