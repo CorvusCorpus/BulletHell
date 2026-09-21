@@ -65,6 +65,7 @@ SCENES = (
     "laser",        # telegraphed beam lasers, warning lines live
     "rays",         # moving ray lasers
     "clear",        # the phase-clear burst, bullets converting to shards
+    "items",        # the three pickups over a live pattern, some being caught
     "pause",        # the pause menu over a live field
     "rank",         # the rank card: the medal an ended encounter throws up
     "result",       # the post-stage result screen

@@ -38,11 +38,11 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 | `tools/build.py` | The GML compiles. Reports real diagnostics with line numbers. |
 | `tools/test.py` | The GML is *correct*: builds, runs with `-selftest`, grades the suites in `scripts/selftest` off stdout. |
 | `tools/check_project.py` | The project files are sound: `.yy` JSON, event lists matching `.gml` on disk, resources registered, every SHOUTING_IDENTIFIER a `#macro` that exists, no call with the wrong argument count, no legacy built-in globals, no sprite too big for its texture page, **every background layer tiling seamlessly**, the near layer keeping out of the field, no bare `draw_sprite` inheriting the draw state, **the hedgerow still covering the horizon it hides**, **the far chamber painted at the size it is hung at**, **no hall buffer drawn with a multi-frame sprite's page or against another sprite's**, and **the rings eating the player's shots before the enemies are offered them**. |
-| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Fifty-six scenes, fifteen of them one per slot of Mika's table; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
+| `tools/shot.py` | What it **looks like**: builds, runs with `-shot <scene>`, poses a real game state, saves a screenshot. A posed player can be made `untouchable` — see below. Fifty-seven scenes, fifteen of them one per slot of Mika's table; `--all` does the lot, and `--burst 0,20,40` photographs one scene at several frames in a single launch and tiles them into a sheet. |
 
 **`shot.py` is not a nicety, and in this genre it is the most important of the
 four.** A bullet pattern that is arithmetically perfect and illegible is a bug,
-and no assertion can see it. It renders fifty-five scenes and **fails on a game
+and no assertion can see it. It renders every scene and **fails on a game
 error even when a screenshot appeared** — `obj_shot` calls `screen_save` from
 its Step event and `game_end()` lets the current frame finish, so a throw in the
 Draw event that follows happens *after* the file is on disk. The first crash
@@ -4818,7 +4818,8 @@ once, because PIL's draw calls are hard-edged and a bevel drawn at 1x reads as
 | `tools/art_common.py` | Palette, `Canvas`, `Cut` and the cut-body shader, the distance-field shader, glows, fbm noise, preview sheets |
 | `tools/make_palette.py` | `scripts/palette` — the palette, in GML |
 | `tools/make_bullets.py` | Every bullet sprite **and** `scripts/bullet_table` |
-| `tools/make_fx.py` | Sparks, blooms, rings, laser textures, the shards, the hitbox, the boss sigil, **Szuix's fire** (the shot and the bomb's wisps) and **his sigil** |
+| `tools/make_fx.py` | Sparks, blooms, rings, laser textures, the hitbox, the boss sigil, **Szuix's fire** (the shot and the bomb's wisps) and **his sigil** |
+| `tools/make_items.py` | **The pickups**: three ray-traced, spinning stones, plus the glint and the splinter their effects use |
 | `tools/make_fonts.py` | The six sprite-font atlases |
 | `tools/make_enemies.py` | The four fodder shapes |
 | `tools/make_boss.py` | Ziggy and his eye card — **placeholder, see below** |
@@ -4940,51 +4941,41 @@ a second glyph-bearing shape, which is deliberately *not* the ofuda's idea
 twice: a talisman is paper somebody wrote on, and a rune is a stone somebody
 charged.
 
-**And the pickup took four goes, each of which drew a bullet a different
-way.** It began as five flat polygons with a highlight line — a pentagon token
-in three tints, the same structureless read, on the one object the player
-actively chases. Then a cut quartz point, which was simply a bullet that
-happened to be collectable: the same `Cut`, the same saturated hue, the same
-hot core, and photographed against Ziggy's amber volleys **a gold one and an
-amber bullet were the same colour at the same size with the same finish**.
-Then a jewelled pendant, where being handsome was the problem twice over — it
-was **bright and pointed downward**, which is to say pointed at the player,
-which is what a bullet *is*; and at 42x46 it was larger than every bullet on
-the field, so a shower of them after a bomb hid the pattern underneath. Then
-flat enamel, which fixed all of that and stopped reading as a gemstone at all.
+### The pickups are cut stones
 
-What ships is a **dark cut stone in a gilt bezel**, and every property of it is
-load-bearing:
+**What the owner asked for**: crystal or gemstone pickups in red, blue and
+yellow, kept small and partly see-through so they do not compete with the
+brighter, telegraphed bullets. What stood here before, a dark stone in a gilt
+octagonal bezel, was an earlier session's call and read as a stack of little
+cards. It is gone.
 
-- **Small.** Thirty by twenty-four of drawing, under half the pendant and
-  smaller than the `orb` half this boss's patterns are made of. It is drawn
-  *over* the field, so the near-parallax rule applies to it: nothing that is
-  not a bullet may be big enough to hide one.
-- **Blunt.** No point anywhere on it. A shape coming to a point aimed down the
-  screen is aimed at the player, and nobody stops mid-dodge to check whether
-  this particular one is friendly.
-- **Dark.** The stone is the hue at under half strength, which puts the whole
-  token below the value of anything being dodged.
-- **Lit rather than emissive, which is the rule worth keeping.** Every bullet
-  is a light: no direction to its brightness and a white core burning in the
-  middle. The pickup has no core at all and one small hard glint up and to the
-  left — an *object catching* light. That is exactly the specular this redesign
-  took off the bullets, put back on the one thing that should always have had
-  it, and it inverts a bullet's most recognisable property in four pixels.
-- **Two materials**, which no bullet in the set has. `COL_GILT` is a muted
-  brass and every bullet hue is above 240 in its dominant channel, so the
-  bezel is a family nothing a boss fires can reach — and the right family,
-  since gilt on indigo is the console's, the console is the player's, and a
-  pickup is loot Szuix is taking off somebody.
+`tools/make_items.py` makes them, and its docstring has the details:
 
-It is two `cut_shade` passes composited, because that function takes one hue
-and the point of the shape is that it has two.
+- **Three cuts, not one shape in three colours**: a ruby brilliant for life, a
+  double-terminated sapphire crystal for the sigil, a citrine octahedron for
+  points. They read apart by silhouette before hue.
+- **Ray-traced.** Each cut is a convex solid written as facet planes, traced
+  with refraction and internal reflection, then gradient-mapped to its jewel
+  ramp. Twelve frames cover one symmetry period, so the spin loops exactly.
+- **Translucent body, solid rim.** Dark facets are about half opaque; a
+  one-pixel rim lit from the upper left keeps the outline on any ground.
+- **Nothing a bullet has**: no white core, no near-black contour, a light
+  direction, and a turn. They are drawn under the bullets, and the brilliant,
+  the largest, is about twenty-two pixels across.
 
-**What makes it findable is not the token.** It is the soft additive bloom
-`item_draw` already lays under it, and that division of labour is why the token
-itself is allowed to be this quiet: a coloured glow is a mark the scenery makes
-constantly and no bullet can make at all, so it attracts the eye without ever
-being mistaken for something to dodge.
+`item_draw` turns them (each at its own rate and direction, thrown spinning
+and settling), pops them in with an overshoot, lays the coloured bloom under
+each, twinkles each on its own clock with `spr_fx_glint`, and draws a streak
+and a brighter copy once the player has pulled one in. A catch throws a
+flash, a ring and `spr_fx_shard` splinters -- **once per kind per frame**,
+wider for every extra stone that landed. A burst per stone stacked additively
+into a white blot on the player's centre, because a bomb or a close drop
+brings them all in on the same pixel. A stone near the end of `ITEM_LIFE`
+flickers out rather than vanishing. `python tools/shot.py items` photographs
+all three over a live pattern.
+
+None of it has been played. The size, the translucency and how often they
+twinkle are the numbers most likely to move.
 
 ### The sprite's edge is a hard clip
 
@@ -5544,7 +5535,7 @@ six casters on its own, the drafting table, which does the same for five
 attacks that have no boss yet, the review card, which flies stage three's
 hall with nothing in it so the reveal can be watched rather than played for,
 and the old draft of stage three, kept whole while Mika is rebuilt.
-800 assertions pass.
+802 assertions pass.
 
 Not done, in rough order of how much it is missed:
 

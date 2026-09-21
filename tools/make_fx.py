@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The system sprites: sparks, glows, rings, lasers, shards, and the two marks
+"""The system sprites: sparks, glows, rings, lasers, and the two marks
 that tell the player where they actually are.
 
 Everything here is drawn white or near-white and **tinted at draw time**, which
@@ -7,13 +7,8 @@ is why there is one bloom and not fourteen. A tint is one multiply on a sprite
 the texture page already holds; a hue baked per colour would be fourteen copies
 of the same disc.
 
-The exceptions are the three pickups, which are baked in their own colours
-because they are **objects** rather than light. They are cut bodies, drawn with
-`art_common`'s `Cut` and shaded by `cut_shade` as the bullets are -- and they
-are two materials at once, a coloured stone in a gilt setting, which is the one
-thing a tint could not have produced under any circumstances: a tint is a
-multiply over the whole sprite, and the housing has to stay brass while the
-stone changes.
+The pickups are not here: they are cut stones, traced rather than drawn, and
+they have `tools/make_items.py` to themselves.
 
 Usage:
     python tools/make_fx.py
@@ -494,104 +489,6 @@ def make_focus_ring(size=96):
 
 
 # ---------------------------------------------------------------------------
-# Pickups
-# ---------------------------------------------------------------------------
-
-# The pickup. Small on purpose -- see `make_item`.
-ITEM_W, ITEM_H = 30, 24
-
-# A blunt octagon and the stone set inside it. **Nothing here comes to a
-# point**, which is the one hard rule the shape has to obey.
-_BEZEL = [(6.5, 2.0), (22.5, 2.0), (27.0, 6.5), (27.0, 16.5), (22.5, 21.0),
-          (6.5, 21.0), (2.0, 16.5), (2.0, 6.5)]
-_STONE = [(8.4, 4.4), (20.6, 4.4), (24.6, 8.4), (24.6, 14.6), (20.6, 18.6),
-          (8.4, 18.6), (4.4, 14.6), (4.4, 8.4)]
-_TABLE = [(22.0, 11.5), (14.5, 7.0), (7.0, 11.5), (14.5, 16.0)]
-
-
-def make_item(rim):
-    """A pickup: a dark cut stone in a gilt bezel.
-
-    **Four goes, and each failure was a different way of drawing a bullet.**
-    The original was five flat polygons with a highlight line -- a pentagon
-    token in three tints. The second was a cut quartz point, which was a bullet
-    that happened to be collectable: same `Cut`, same saturated hue, same hot
-    core, and against Ziggy's amber volleys a gold one was indistinguishable.
-    The third was a jewelled pendant, and being handsome was the problem twice
-    over -- **bright and pointed downward**, which is to say pointed at the
-    player, which is what a bullet *is*; and at 42x46 larger than every bullet
-    on the field, so a shower of them after a bomb hid the pattern underneath.
-    The fourth was flat enamel, which fixed all of that and stopped reading as
-    a gemstone at all.
-
-    So: still a cut stone, and none of the four things that make a cut stone
-    read as ammunition.
-
-    - **Small.** Thirty by twenty-four of drawing, smaller than the `orb` half
-      this boss's patterns are made of. It is drawn *over* the field, so the
-      near-parallax rule applies: nothing that is not a bullet may be big
-      enough to hide one.
-    - **Blunt.** No point anywhere. A shape that comes to a point aimed down
-      the screen is aimed at the player, and nobody is going to stop mid-dodge
-      to check whether this particular one is friendly.
-    - **Dark.** The stone is the hue at under half strength, which puts the
-      whole token below the value of anything being dodged. Every point of
-      brightness out here is a point the bullets no longer have.
-    - **Lit rather than emissive, and that is the rule worth keeping.** Every
-      bullet in the game is a light: no direction to its brightness, and a
-      white core burning in the middle of it. This has no core at all and one
-      small hard glint up and to the left -- an *object catching* light. That
-      is precisely the specular this whole redesign took off the bullets, put
-      back on the one thing that should have had it, and it inverts the single
-      most recognisable property of a bullet in about four pixels.
-
-    What makes it *findable* is not the token, it is the soft additive bloom
-    `item_draw` lays under it. That is the right division of labour: a coloured
-    glow is a mark the scenery makes constantly and no bullet can make at all,
-    so it attracts without ever being mistaken for something to dodge.
-
-    The bezel is gilt because gilt is the console's palette and the console
-    belongs to the player rather than to the stage -- a pickup is loot Szuix is
-    taking, so it wears his furniture. It is also a colour no bullet can reach:
-    every hue in `BULLET_HUES` is above 240 in its dominant channel and this is
-    a muted brass.
-    """
-    bezel = A.Cut(ITEM_W, ITEM_H)
-    bezel.poly("body", _BEZEL)
-    bezel.line("groove", _STONE + [_STONE[0]], 1.1)
-    bezel.line("core", [(10.5, 3.2), (18.5, 3.2)], 0.9, v=120)
-    bezel.blur("core", 0.40)
-
-    stone = A.Cut(ITEM_W, ITEM_H)
-    stone.poly("body", _STONE)
-    # The crown: a table with eight facets breaking away to the girdle. Dense
-    # for a stone twenty pixels across, and that density *is* the read -- a cut
-    # gem has no curvature anywhere, and what the eye takes for sparkle is
-    # flat planes disagreeing about which way they face.
-    stone.poly("bevel", _TABLE, v=70)
-    stone.line("groove", _TABLE + [_TABLE[0]], 1.0)
-    for (tx, ty), corners in ((_TABLE[0], (_STONE[2], _STONE[3])),
-                              (_TABLE[1], (_STONE[0], _STONE[1])),
-                              (_TABLE[2], (_STONE[6], _STONE[7])),
-                              (_TABLE[3], (_STONE[4], _STONE[5]))):
-        for c in corners:
-            stone.line("groove", [(tx, ty), c], 0.9)
-    # The glint. **No `core` layer anywhere on this sprite**: a core goes to
-    # white, and white in the middle of a shape is the one mark every bullet in
-    # the game carries. A second, brighter `bevel` is a highlight on a facet
-    # instead -- warm, hard-edged, and four pixels of it.
-    stone.poly("bevel", [(10.2, 10.5), (13.8, 8.6), (14.8, 9.5),
-                         (11.2, 11.4)], v=255)
-
-    body = A.over(A.cut_shade(bezel.parts(), A.GILT, lit_t=0.06, bevel_t=0.20,
-                              deep_t=0.26),
-                  A.cut_shade(stone.parts(), A.shade(rim, -0.46), lit_t=0.0,
-                              bevel_t=0.74, deep_t=0.44, groove_k=0.42))
-    return A.cut_finish(body, ITEM_W, ITEM_H, rim,
-                        contour=2.0, bloom=0.34, bloom_r=2.4)
-
-
-# ---------------------------------------------------------------------------
 # The boss sigil
 # ---------------------------------------------------------------------------
 
@@ -869,13 +766,6 @@ def main():
                           int(horn.height * HORN_ROOT[1])),
                   folder="Sprites/fx")
     made.append(("spr_spell_horn", horn))
-
-    # **Thirty-six, up from thirty.** A cut point wants a ridge, a girdle and a
-    # lit facet in it, and at thirty pixels two of those are the same pixel.
-    # `ITEM_R` is the collection radius and is unrelated, so this is a picture
-    # change and not a reach change.
-    for name, col in (("red", A.LIFE), ("blue", A.MANA), ("gold", A.GRAZE)):
-        emit("spr_item_" + name, make_item(col), folder="Sprites/ui")
 
     A.preview([i for _, i in made],
               os.path.join(A.PREVIEW, "fx.png"),

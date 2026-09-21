@@ -45,6 +45,8 @@
   },
   "name":"Bullet Hell",
   "resources":[
+    {"id":{"name":"spr_fx_shard","path":"sprites/spr_fx_shard/spr_fx_shard.yy",},},
+    {"id":{"name":"spr_fx_glint","path":"sprites/spr_fx_glint/spr_fx_glint.yy",},},
     {"id":{"name":"obj_boot","path":"objects/obj_boot/obj_boot.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},
     {"id":{"name":"obj_practice","path":"objects/obj_practice/obj_practice.yy",},},

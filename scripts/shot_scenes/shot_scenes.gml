@@ -22,7 +22,8 @@
 function shot_scene_list() {
     var _l = ["title", "practice", "stage", "focus", "bomb", "hit", "peril",
               "midboss",
-              "declare", "spell", "boss", "laser", "rays", "clear", "pause",
+              "declare", "spell", "boss", "laser", "rays", "clear", "items",
+              "pause",
               "result", "rank", "practice_ready", "practice_result",
               "bullets",
               "motion", "drafts", "draft_attacks", "draft_spell",
@@ -457,6 +458,20 @@ function shot_pose(_scene, _g) {
             _g.player.y = FIELD_Y1 - 260;
             return 230 + BOSS_SPELL_LEAD;   // the clear is fired in shot_tick
 
+        case "items":
+            // **All three stones over a live pattern**, dropped in four lots so
+            // the picture holds them at every age: one arriving, a couple
+            // falling, and a handful already caught and on their way in to the
+            // player. The drops are made in `shot_tick`, through the same
+            // function a dying enemy uses. No shot button, so the player's own
+            // fire is not the brightest thing near the stones being judged.
+            shot_boss(_g, 0, ziggy_spawn);
+            _g.input_override = shot_input(false, false);
+            _g.player.x = FIELD_CX + 60;
+            _g.player.y = FIELD_Y1 - 200;
+            _g.player.untouchable = true;
+            return 196;
+
         case "rank":
             // **The rank card, posed two frames after the attack ends.** It
             // is a second and a third long and it moves for all of it, so
@@ -825,6 +840,16 @@ function shot_tick(_scene, _g, _t) {
                 var _b = enemy_find_boss();
                 if (_b != undefined) boss_end_phase(_b, _g, true);
             }
+            break;
+
+        case "items":
+            if (_t == 110) item_drop_spread(FIELD_X0 + 300, FIELD_Y0 + 330, 3, 3, 5);
+            if (_t == 140) item_drop_spread(FIELD_X0 + 980, FIELD_Y0 + 280, 3, 3, 5);
+            if (_t == 172) item_drop_spread(FIELD_X0 + 560, FIELD_Y0 + 420, 2, 2, 4);
+            // Just inside the magnet's reach, so they are streaking in at the
+            // shutter and caught a few frames after it.
+            if (_t == 188) item_drop_spread(_g.player.x - 70,
+                                            _g.player.y - 180, 2, 2, 3);
             break;
 
         case "rank":

@@ -866,6 +866,17 @@ function test_player() {
                       shoot: false, bomb: true, focus: false }, _g);
     player_collide(_p, _g);
     ok("a special on the frame of a hit beats the hit", _p.hp == HP_MAX);
+
+    // **One press is one sigil on the count**, which is what the run watches
+    // to tell the boss -- `bomb_t` is already ticking down by the time
+    // `player_step` returns, and a check keyed to it never fired.
+    ok("a special is counted once", _p.bomb_n == 1);
+    for (var _i = 0; _i < BOMB_INVULN - 2; _i++) {
+        player_step(_p, { left: false, right: false, up: false, down: false,
+                          shoot: false, bomb: true, focus: false }, _g);
+    }
+    ok("...and holding the key through its grace does not count it again",
+       _p.bomb_n == 1);
     st_reset();
 }
 

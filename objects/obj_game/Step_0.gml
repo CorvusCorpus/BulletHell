@@ -155,9 +155,16 @@ fx_step();
 bg_step(bg, player_field_aim(player));
 
 var _hp_before = player.hp;
+var _bombs_before = player.bomb_n;
 player_step(player, _in, self);
 if (player.hp < _hp_before) on_player_hit();
-if (_in.bomb && player.bomb_t == BOMB_INVULN) boss_note_bomb(boss_ref);
+// **Off the count, not off `bomb_t`.** This used to ask whether `bomb_t` was
+// still `BOMB_INVULN`, which it never is by here -- `player_step` casts and
+// then ticks the grace down on the same frame -- so no boss ever heard about
+// a sigil: every one spent in an attack still graded amethyst and still paid
+// the capture bonus. `stage_encounter_close` diffs `bomb_n` for the same
+// reason.
+if (player.bomb_n > _bombs_before) boss_note_bomb(boss_ref);
 
 pshot_step();
 bullet_step(player.x, player.y);

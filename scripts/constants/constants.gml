@@ -402,6 +402,15 @@
 #macro ITEM_HP_VALUE 1
 #macro ITEM_MP_VALUE 1
 
+// How the stones are drawn -- see `item_draw`. Decoration only: nothing here
+// changes where a stone is or when it is caught.
+#macro ITEM_TURN 0.45              // turns a second, give or take a fifth
+#macro ITEM_POP 10                 // frames a new stone takes to arrive
+#macro ITEM_FADE 50                // frames a stone takes to go out at ITEM_LIFE
+#macro ITEM_GLOW_PX 54             // the light under each stone
+#macro ITEM_GLINT_EVERY 150        // frames between twinkles, give or take
+#macro ITEM_GLINT_LEN 18           // frames one twinkle lasts
+
 // **Auto-collect above a line.** Touhou's point-of-collection: fly to the top
 // of the field and everything comes to you. It is the one place the genre
 // rewards being where the bullets are, and removing it would remove the only
