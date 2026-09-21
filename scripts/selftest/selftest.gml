@@ -67,6 +67,8 @@ function selftest_run() {
     test_drafts();
     test_hex_seal();
     test_hud_layout();
+    test_boss_rig();
+    test_counter();
     test_run_starts_clean();
     test_boss_is_never_invisible();
     test_save_atomicity();
@@ -3226,6 +3228,191 @@ function test_hex_seal() {
 
     st_reset();
 }
+/// @desc The boss's percentage and the attack's clock are odometers, and they
+///       stop square.
+///
+///       **Both halves of that are invisible in a still.** A screenshot can
+///       show a wheel half-turned and cannot say whether it is half-turned
+///       because it is moving or because it has come to rest there -- which is
+///       what a counter driven straight off the vessel's eased number would
+///       do for an entire attack, since that number almost never lands on a
+///       whole tenth.
+function test_counter() {
+    // **The carry.** A wheel turns only while everything below it is in its
+    // last unit, which is what makes it read as a mechanism rather than as a
+    // row of reels.
+    ok("the lowest wheel is the counter itself",
+       abs(counter_wheel_pos(753.4, 0) - 753.4) < 0.0001);
+    ok("a higher wheel stands still while the one below it turns",
+       counter_wheel_pos(753.4, 1) == 75 && counter_wheel_pos(753.4, 2) == 7);
+    ok("and turns while the one below passes through nine",
+       abs(counter_wheel_pos(759.5, 1) - 75.5) < 0.0001
+       && counter_wheel_pos(759.5, 2) == 7);
+    ok("so 100.0 to 99.9 turns every wheel at once",
+       abs(counter_wheel_pos(999.5, 1) - 99.5) < 0.0001
+       && abs(counter_wheel_pos(999.5, 2) - 9.5) < 0.0001
+       && abs(counter_wheel_pos(999.5, 3) - 0.5) < 0.0001);
+    ok("and a full counter reads one, zero, zero, zero",
+       counter_wheel_pos(1000, 3) == 1 && counter_wheel_pos(1000, 2) == 10
+       && counter_wheel_pos(1000, 1) == 100);
+
+    // **It rolls, and it stops on a whole tenth.** A shot landing is a boss
+    // losing a few hundredths of a per cent; the counter has to turn to the
+    // tenth below and stand there, not creep toward the truth for ever.
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _h = hud_new();
+    var _b = ziggy_spawn(_g);
+    ok("a counter starts full", _h.pct_roll == 1000);
+
+    _b.hp = _b.hp_max * 0.7463;
+    var _moving = 0;
+    var _last = _h.pct_roll;
+    var _up = false;
+    for (var _i = 0; _i < 90; _i++) {
+        hud_step(_h, _g);
+        if (_h.pct_roll != _last) _moving++;
+        if (_h.pct_roll > _last) _up = true;
+        _last = _h.pct_roll;
+    }
+    ok("damage turns it down", _h.pct_roll < 1000 && !_up);
+    ok("over several frames rather than one", _moving > 6);
+    ok("and it comes to rest on the tenth below the truth",
+       _h.pct_roll == 746);
+
+    // A single tenth has to *roll*, not creep: the step floor is what makes
+    // the last wheel turn over in a handful of frames rather than spending
+    // most of a second on its last few per cent.
+    _b.hp = _b.hp_max * 0.7453;
+    var _n = 0;
+    while (_h.pct_roll != 745 && _n < 60) {
+        hud_step(_h, _g);
+        _n++;
+    }
+    ok("a single tenth turns over in a handful of frames",
+       _h.pct_roll == 745 && _n > 2 && _n < 16);
+
+    // **Any damage at all leaves 100.0.** Rounding would show a scratched
+    // boss as full, which is the one reading this counter must never give.
+    _b.hp = _b.hp_max * 0.9996;
+    for (var _i = 0; _i < 120; _i++) hud_step(_h, _g);
+    ok("a scratched boss does not read full", _h.pct_roll == 999);
+
+    // **In attack practice the rail is the attack, not the fight.** The boss
+    // keeps the whole fight's health and the attack still breaks at its own
+    // threshold; what changes is only what the rail and the counter read it
+    // as. The span is read off the boss's own table, so this holds whatever
+    // the thresholds are tuned to.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _h = hud_new();
+    _b = ziggy_spawn(_g);
+    var _ph = _b.boss.phases;
+    var _top = _ph[1].hp_end;
+    var _bot = _ph[2].hp_end;
+    _g.practice = { phase_i: 2 };
+
+    _b.hp = _b.hp_max * _top;
+    for (var _i = 0; _i < 150; _i++) hud_step(_h, _g);
+    ok("a practised attack opens at 100.0", _h.pct_roll == 1000
+       && abs(_h.boss_shown - 1) < 0.01);
+    _b.hp = _b.hp_max * lerp(_bot, _top, 0.5);
+    for (var _i = 0; _i < 150; _i++) hud_step(_h, _g);
+    ok("half way through it the rail is half full", _h.pct_roll == 500
+       && abs(_h.boss_shown - 0.5) < 0.01);
+    _b.hp = _b.hp_max * _bot;
+    for (var _i = 0; _i < 150; _i++) hud_step(_h, _g);
+    ok("and it breaks at 0.0", _h.pct_roll == 0 && _h.boss_shown < 0.01);
+
+    // ...and outside practice the same health reads as the fight it is.
+    _g.practice = undefined;
+    _b.hp = _b.hp_max * lerp(_bot, _top, 0.5);
+    for (var _i = 0; _i < 150; _i++) hud_step(_h, _g);
+    ok("a stage reads the same health against the whole fight",
+       _h.pct_roll == floor(lerp(_bot, _top, 0.5) * 1000 + 0.0001));
+
+    st_reset();
+}
+
+/// @desc The boss's rail is lowered into view and drawn back up, and nothing
+///       tells it to.
+///
+///       **None of this is visible in a still frame**, which is the whole
+///       reason it is a suite. `tools/shot.py` can photograph the rail at four
+///       points of its descent and say that each one reads; what it cannot say
+///       is that the thing stows *behind the frame* rather than merely above
+///       it, that it arrives inside the beat it exists to fill, that it
+///       overshoots once rather than ringing, or that the landing fires once.
+///       The first of those is the one that matters most: "hidden" is a fact
+///       about geometry here rather than an alpha somebody remembered to set,
+///       and the only thing holding that up is `BOSS_RIG_STOW`.
+function test_boss_rig() {
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _h = hud_new();
+
+    ok("a console opens with its rail stowed", _h.rig == 0);
+    // **Stowed means behind the mask, not merely above the bar.** The frame
+    // paints every pixel outside the field opaque, so a rail whose *bottom*
+    // edge is above `FIELD_Y0` cannot be seen at all -- which is what lets the
+    // arrival be one number rather than a number and a fade.
+    ok("and stowed is entirely behind the frame",
+       hud_rig_y(_h) + BOSS_BAR_H <= FIELD_Y0);
+    ok("and down is exactly the rail's resting place",
+       abs(lerp(BOSS_RIG_STOW, BOSS_BAR_Y, 1) - BOSS_BAR_Y) < 0.001);
+
+    // An empty field leaves it stowed, however long it is stepped for.
+    for (var _i = 0; _i < 200; _i++) hud_step(_h, _g);
+    ok("and an empty field never lowers it", _h.rig == 0);
+    ok("...nor lights its landing", _h.rig_flare == 0);
+
+    // **A boss arriving lowers it, and nothing asked.** `hud_step` compares
+    // what is on the field with what it is showing, which is the bargain every
+    // other reaction on this plate is built on -- so a midboss, a practised
+    // attack and a drafting-table row all get the arrival without any of them
+    // knowing there is a rail.
+    var _b = ziggy_spawn(_g);
+    ok("a boss reaches the field", _b != undefined);
+
+    var _home = 0;
+    var _lands = 0;
+    var _peak = 0;
+    for (var _i = 0; _i < BOSS_ENTRY_TIME; _i++) {
+        hud_step(_h, _g);
+        if (_home == 0 && _h.rig >= 1) _home = _i + 1;
+        if (_h.rig_flare >= 1) _lands++;
+        _peak = max(_peak, _h.rig);
+    }
+    ok("the rail comes down when a boss arrives", _h.rig > 0.9);
+    ok("and is home inside the arrival it is filling",
+       _home > 0 && _home < BOSS_ENTRY_TIME);
+    // **Slow enough to be a descent.** The first pair of spring constants put
+    // it home in ten frames, which is arithmetically a drop and visually a
+    // cut; the assertion is on the *time*, because that is the half of it a
+    // screenshot cannot show.
+    ok("and slow enough to read as one", _home > 24);
+    // One overshoot, and a small one: enough to read as chains coming up taut,
+    // not so much that the rail looks like it fell past its stop.
+    ok("it overshoots its stop once", _peak > 1.02 && _peak < 1.2);
+    ok("and the landing fires exactly once", _lands == 1);
+
+    for (var _i = 0; _i < 240; _i++) hud_step(_h, _g);
+    ok("then it settles", abs(_h.rig - 1) < 0.01);
+    ok("and the landing is spent", _h.rig_flare == 0);
+
+    // **A dying boss takes it back up.** The body keeps flying for its death
+    // throes, so there is a boss in the pool the whole time the rail is
+    // retracting -- which is what lets the retraction be the same spring run
+    // the other way rather than a second animation.
+    _b.boss.beaten = true;
+    for (var _i = 0; _i < 300; _i++) hud_step(_h, _g);
+    ok("a beaten boss draws it back up", _h.rig < 0.02);
+    ok("and back up is behind the frame again",
+       hud_rig_y(_h) + BOSS_BAR_H <= FIELD_Y0);
+
+    st_reset();
+}
+
 
 function test_hud_layout() {
     // **The assertion the whole HUD rests on: nothing in the console is over
@@ -3275,6 +3462,11 @@ function test_hud_layout() {
        !rect_clear_of_field(_bb[0], _bb[1], _bb[2], _bb[3]));
     ok("its bar is a line rather than a strip",
        BOSS_BAR_H <= FIELD_OVERLAY_MAX_H);
+    // **The top eighth, which the line grew out of for a pass and came back
+    // into.** Hanging a nameplate and a capture flag under the rail took it
+    // down to the top fifth; the plate is on top of the rail now, in the gap
+    // the chains already use, and the flag is gone, so what hangs below the
+    // rail is the spell's name at one end and nothing in the middle.
     ok("and the whole line sits in the field's top eighth",
        _bb[3] < FIELD_Y0 + FIELD_H * 0.125);
 
@@ -3354,21 +3546,75 @@ function test_hud_layout() {
     // The order down the line is bar, then the caster's name, then the spell's
     // -- the bar pinned to the top because it is the part read mid-dodge, and
     // the type hanging off it because type can.
-    ok("the bar is pinned to the top of the field",
-       BOSS_BAR_Y - FIELD_Y0 <= 20);
-    ok("the boss's name sits under its bar",
-       BOSS_NAME_Y >= BOSS_BAR_Y + BOSS_BAR_H);
-    ok("and the spell name under that",
-       BOSS_SPELL_Y >= BOSS_NAME_Y + BOSS_SPELL_ROW
-       && BOSS_SPELL_Y < FIELD_Y0 + FIELD_H * 0.14);
+    // **The rail hangs from the frame rather than being pinned to it**, which
+    // is what the chains are for and what the arrival is drawn on. The gap
+    // between the two is the one number that has to be right: too little and
+    // there is no chain to see, too much and the rail is in the boss's
+    // airspace.
+    ok("the rail hangs clear of the frame, with room for a chain",
+       BOSS_BAR_Y - FIELD_Y0 >= 24 && BOSS_BAR_Y - FIELD_Y0 <= 60);
+    // **Stowed means the whole rig, not the bar.** The dial and the cartouche
+    // stand proud of the rail on both sides and the nameplate stands on top of
+    // it, so a rail that cleared the frame could still leave a bezel poking
+    // out of the bottom of the mask between bosses.
+    ok("and the whole rig stows behind the frame between bosses",
+       BOSS_RIG_STOW + BOSS_BAR_H * 0.5
+       + max(BOSS_DIAL_D, BOSS_PCT_H) * 0.5 <= FIELD_Y0);
+    ok("the channel is a recess in the rail, not the whole of it",
+       BOSS_BAR_CHANNEL > 0 && BOSS_BAR_CHANNEL <= BOSS_BAR_H - 12);
 
-    // **What the boss clears is the bar, and only the bar.** It used to have
-    // to clear the whole line, because the name was centred over the middle of
-    // it -- which is exactly where a boss stands. The name and the timer are
-    // at the two ends now, so the middle of the line is the boss's, and the
-    // one thing it may not fly through is the fourteen pixels of tube.
-    ok("the boss flies below its own bar, not through it",
-       BOSS_HOME_Y - BOSS_DRIFT_Y - 125 > BOSS_BAR_Y + BOSS_BAR_H);
+    // The two readouts mounted on the rail have to stay inside the field, and
+    // the cartouche is the one that stands proudest of it.
+    ok("the cartouche and the dial stay inside the field",
+       BOSS_BAR_Y + BOSS_BAR_H * 0.5 - max(BOSS_PCT_H, BOSS_DIAL_D) * 0.5
+       > FIELD_Y0);
+
+    // **The caster's name stands on the rail, in the gap the chains use.** It
+    // was hung underneath for a pass, which put a forty-pixel plate in the
+    // middle of the field's top edge -- exactly where the boss stands. What
+    // has to hold is that it is inside the field, that its foot is sunk into
+    // the rail rather than floating above it, and that it does not reach down
+    // as far as the channel.
+    ok("the nameplate stands inside the field, above its rail",
+       BOSS_PLATE_Y > FIELD_Y0 && BOSS_NAME_Y < BOSS_BAR_Y);
+    ok("and its foot is sunk into the rail's top flange",
+       BOSS_PLATE_Y + BOSS_PLATE_H > BOSS_BAR_Y
+       && BOSS_PLATE_Y + BOSS_PLATE_H
+          <= BOSS_BAR_Y + (BOSS_BAR_H - BOSS_BAR_CHANNEL) * 0.5);
+    // **The spell's name hangs under the cartouche and clears it.** On the
+    // caster's row it ran across the bottom of the cartouche, which was
+    // reported as overlapping the meter. Half a cap height of `fnt_ui` is
+    // about twelve pixels; the rest is air.
+    ok("the spell's name clears the cartouche above it",
+       BOSS_SPELL_Y - 16 >= BOSS_BAR_Y + BOSS_BAR_H * 0.5 + BOSS_PCT_H * 0.5);
+    ok("and it is fitted to stay at the rail's end",
+       FIELD_X0 + BOSS_BAR_INSET + BOSS_SPELL_W < FIELD_CX - 120);
+
+    // **What the boss clears is the rail, and only the rail.** The middle of
+    // the line under it is type, and outlined type over a boss's horns is what
+    // the genre does.
+    //
+    // **What that is measured against is ink, and it used to be a box.** The
+    // old number was 125 -- half of `spr_boss_ziggy`'s 250-pixel frame -- and
+    // twenty-five of those pixels are empty canvas above his horns. Asserting
+    // padding as though it were drawing was conservative by accident, and it
+    // was what made a hung rail impossible: the assertion, rather than the
+    // boss, was what the chain could not fit past. `BOSS_INK_ABOVE` is the
+    // tallest ink any boss sprite carries above its own origin, measured off
+    // the shipped PNGs -- Ziggy's 260x250 box holds 198x208 of drawing with
+    // its origin at 125, so his horns reach 100.
+    ok("the boss flies below its own rail, not through it",
+       BOSS_HOME_Y - BOSS_DRIFT_Y - BOSS_INK_ABOVE > BOSS_BAR_Y + BOSS_BAR_H);
+    // ...and the allowance is inside the box of the sprite it was measured
+    // from, so a replacement that is *shorter* than the number claims is
+    // caught rather than quietly flying through the rail.
+    //
+    // **Only Ziggy's**, because the number is the tallest ink of any boss and
+    // the others are shorter: Mika's origin is at 95 and his ink reaches 77,
+    // so holding him to the same hundred would be asserting that every boss
+    // sprite has to be as tall as the tallest one.
+    ok("and the ink allowance fits inside the sprite it came from",
+       BOSS_INK_ABOVE <= sprite_get_yoffset(spr_boss_ziggy));
 
     // **And it holds station in the top third, not over the player.** At its
     // lowest drift the foot of the sprite has to stay out of the bottom half

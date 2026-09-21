@@ -1255,6 +1255,69 @@ def check_font_ink_ratio():
                  "will get its spacing wrong" % (name, ratio, declared))
 
 
+def check_font_digit_mid():
+    """`FONT_DIGIT_MID_*` must match where the atlases actually put a digit.
+
+    The boss's percentage and the dial's clock are counters: each digit is set
+    on a wheel centred in a window, and the window's edges are what the eye
+    measures it against. `text_digit_middle_y` centres a digit's ink with these
+    two ratios, so a regenerated font that moved its digits would put every
+    counter in the game a pixel or two off-centre -- the defect they exist to
+    fix, reported first as the percentage sitting two pixels low -- and nothing
+    else would notice.
+
+    Measured as the mean over the ten digits of where the ink's middle sits
+    above the bottom of the cell, as a fraction of the cell.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return
+
+    consts = os.path.join(ROOT, "scripts", "constants", "constants.gml")
+    if not os.path.exists(consts):
+        return
+    with open(consts, encoding="utf-8-sig") as fh:
+        text = fh.read()
+
+    for macro, sprite in (("FONT_DIGIT_MID_NUM", "spr_fnt_num"),
+                          ("FONT_DIGIT_MID_UI", "spr_fnt_ui")):
+        match = re.search(r"#macro\s+%s\s+([0-9.]+)" % macro, text)
+        if not match:
+            fail("constants.gml declares no %s" % macro)
+            continue
+        declared = float(match.group(1))
+
+        yy_path = os.path.join(ROOT, "sprites", sprite, sprite + ".yy")
+        data = load_yy(yy_path) if os.path.exists(yy_path) else None
+        if data is None:
+            continue
+        frames = [f.get("name") for f in data.get("frames", [])]
+        mids = []
+        for ch in "0123456789":
+            i = ord(ch) - 32
+            if i >= len(frames):
+                break
+            png = os.path.join(ROOT, "sprites", sprite, frames[i] + ".png")
+            if not os.path.exists(png):
+                continue
+            im = Image.open(png).convert("RGBA")
+            box = im.getchannel("A").getbbox()
+            if box is None:
+                continue
+            h = im.size[1]
+            mids.append((h - (box[1] + box[3]) * 0.5) / h)
+        if len(mids) < 10:
+            fail("%s: could not measure all ten digits" % sprite)
+            continue
+        measured = sum(mids) / len(mids)
+        if abs(measured - declared) > 0.01:
+            fail("%s: a digit's ink is centred %.3f of the cell above its "
+                 "bottom, but constants.gml declares %s %.3f -- every counter "
+                 "set in that face will sit off the middle of its window"
+                 % (sprite, measured, macro, declared))
+
+
 def _bg_layers():
     """Every parallax layer sprite's newest PNG frame."""
     out = []
@@ -1967,6 +2030,7 @@ def main():
     check_macro_references()
     check_sprite_texture_pages()
     check_font_ink_ratio()
+    check_font_digit_mid()
     check_bg_seams()
     check_bg_keepout()
     check_scrub_covers_horizon()

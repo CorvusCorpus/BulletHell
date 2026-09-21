@@ -70,6 +70,30 @@ function hud_new() {
         graze_flare: 0,          // a near miss
         boss_flare: 0,           // a phase threshold crossed
 
+        // **The rig: how far the boss's rail has come down.** A spring rather
+        // than an eased number, because a thing on a chain has weight and a
+        // thing that arrives at exactly its resting place has been faded in
+        // rather than lowered -- the same argument the rank card's overshoot
+        // is built on. It runs past 1 on the way down and settles back, so
+        // `hud_rig_y` extrapolates rather than clamping.
+        rig: 0,
+        rig_v: 0,
+
+        // **What the boss's percentage counter is showing, in tenths of a
+        // per cent** -- a position on its wheels rather than a value. It rests
+        // on whole tenths and turns between them, which the vessel's own
+        // eased number cannot do: that converges on the truth, and the truth
+        // is almost never a whole tenth, so a counter driven by it would sit
+        // with its last wheel part-turned for the whole of an attack.
+        pct_roll: 1000,
+
+        // **Which stretch of the boss's health the rail spans**, as
+        // `[top, bottom]` fractions of the whole. The whole fight in a stage;
+        // one attack in practice. See `hud_boss_span`.
+        boss_span: [1, 0],
+        rig_seen: 0,             // what it was last frame, to catch the landing
+        rig_flare: 0,            // the chains coming up taut
+
         graze_seen: 0,           // what the counters were last frame
         tally_seen: 0,
         life_seen: HP_MAX,
@@ -126,9 +150,13 @@ function hud_box(_which) {
         // **Deliberately over the field**, and the only one that is. See the
         // note at the top of the file and in `constants` under "The boss's
         // line".
+        // **From the frame down, because the rig hangs off the frame.** The
+        // box starts at `FIELD_Y0` rather than at the rail, since the chains
+        // and the nameplate occupy everything between the two -- and it ends
+        // under the spell's name, which is the lowest thing the line prints.
         case "boss":
-            return [FIELD_X0 + BOSS_BAR_INSET, BOSS_BAR_Y,
-                    FIELD_X1 - BOSS_BAR_INSET, BOSS_SPELL_Y + BOSS_SPELL_ROW];
+            return [FIELD_X0 + BOSS_BAR_INSET, FIELD_Y0,
+                    FIELD_X1 - BOSS_BAR_INSET, BOSS_SPELL_Y + 20];
     }
     return [0, 0, 0, 0];
 }
@@ -218,15 +246,64 @@ function hud_step(_h, _g) {
     _h.graze_seen = _p.graze_n;
 
     var _boss = enemy_find_boss();
-    var _want = (_boss == undefined) ? 1 : (_boss.hp / _boss.hp_max);
+    // **In attack practice the rail is the attack, not the fight.** The boss
+    // still has the whole fight's health and the attack still ends at its own
+    // threshold -- practice starts it where the attack starts and changes
+    // nothing about the rules -- but a spell that runs from 65% to 50% read
+    // as exactly that, which is a figure about a fight nobody is having. The
+    // rail and the counter read the boss's health as a share of the practised
+    // attack's span instead, so it opens at 100.0 and breaks at 0.0.
+    _h.boss_span = hud_boss_span(_g, _boss);
+    var _want = (_boss == undefined) ? 1
+              : hud_span_frac(_h.boss_span, _boss.hp / _boss.hp_max);
     _h.boss_slosh = max(_h.boss_slosh * 0.93,
                         min(1, abs(_want - _h.boss_shown) * 6));
     _h.boss_shown += (_want - _h.boss_shown) * 0.18;
+
+    // **The counter turns toward the truth and stops on a whole tenth.** Its
+    // share per frame is the vessel's own, so the number and the liquid drain
+    // together; the floor on the step is what makes a single tenth roll over
+    // in a few frames rather than creeping into place, and the snap is what
+    // lets it come to rest square in the window. Floored rather than rounded,
+    // so a boss that has taken any damage at all no longer reads 100.0.
+    var _pct_want = clamp(floor(_want * 1000 + 0.0001), 0, 1000);
+    var _pd = _pct_want - _h.pct_roll;
+    if (abs(_pd) <= COUNTER_MIN_STEP) {
+        _h.pct_roll = _pct_want;
+    } else {
+        _h.pct_roll += sign(_pd) * max(abs(_pd) * COUNTER_EASE,
+                                       COUNTER_MIN_STEP);
+    }
 
     // A phase boundary crossed is the one event in a fight worth marking on
     // the bar itself, and the bar is the only thing that knows it happened --
     // the boss's own phase index is the fact, and comparing it here costs an
     // integer.
+    // **The rig is lowered by watching, like everything else on this plate.**
+    // Nothing in the engine says "a boss has arrived": the console compares
+    // what is on the field with what it is showing, which is the same bargain
+    // the slosh and the five flares are built on and the reason a midboss, a
+    // practised attack and a drafting-table row all get the arrival without
+    // any of them being told to ask for one.
+    //
+    // It comes down for a boss that is on the field and not yet beaten, so it
+    // is already hanging through the arrival and the declaration -- which is
+    // the two seconds the movement exists to fill -- and draws back up over a
+    // dying one while the body is still flying off the top.
+    var _over = (_g[$ "phase"] == Phase.Won || _g[$ "phase"] == Phase.Lost);
+    var _hung = (_boss != undefined) && !_boss.boss.beaten
+                && !(_over && _g[$ "practice"] != undefined);
+    _h.rig_v += ((_hung ? 1 : 0) - _h.rig) * BOSS_RIG_K
+                - _h.rig_v * BOSS_RIG_D;
+    _h.rig = max(0, _h.rig + _h.rig_v);
+
+    // The landing: the one frame the chains come up taut. Caught by watching
+    // the rig cross its own resting place rather than by a timer, so it fires
+    // once however long the drop took.
+    _h.rig_flare = max(0, _h.rig_flare - 0.045);
+    if (_h.rig >= 1 && _h.rig_seen < 1) _h.rig_flare = 1;
+    _h.rig_seen = _h.rig;
+
     var _ph_now = (_boss == undefined) ? -99 : _boss.boss.phase;
     if (_ph_now != _h.boss_phase_seen) {
         if (_h.boss_phase_seen != -99 && _ph_now > _h.boss_phase_seen) {
@@ -261,22 +338,11 @@ function hud_draw(_h, _g) {
     hud_draw_meters(_h, _g);
     hud_draw_marks(_h, _g);
 
-    // The boss's own line, over the field.
-    //
-    // **It goes when a practice attempt is over.** The phase index does not
-    // move until `clear_t` runs out, so for a second and a half after the
-    // attack has ended the line is still naming it and still counting its
-    // clock down -- under a panel announcing the same attack in the past
-    // tense. In a stage that is fine, because the boss is dead and the bar
-    // says so; in practice the bar is describing a fight that is not over,
-    // during a screen that says it is. The whole line goes rather than only
-    // its name: what a bar spanning seven attacks has to say about the one
-    // that was practised is nothing.
-    var _over = (_g.phase == Phase.Won || _g.phase == Phase.Lost);
-    var _practice = (_g[$ "practice"] != undefined);
-    if (_boss != undefined && _boss.boss.started && !(_over && _practice)) {
-        hud_boss_bar(_h, _boss);
-    }
+    // **The boss's line is not drawn from here**, and it is the only piece of
+    // the HUD that is not. It hangs from the frame, so it has to go down
+    // *before* the frame's mask cuts its chains off -- see
+    // `hud_draw_boss_line`, which `obj_game` calls a line earlier for exactly
+    // that reason.
 
     // **Last, so it is over the boss's line as well as over the field.** It
     // is the only thing the console draws that is not on the plate, and for
@@ -639,116 +705,632 @@ function hud_meter(_y, _name, _value, _fraction, _col, _divs, _slosh, _flare,
 
 // ---------------------------------------------------------------------------
 // The boss's line
+//
+// **It is a rig now, not a bar.** What used to be here was a fourteen-pixel
+// tube pinned flush to the top of the field with its phase boundaries marked
+// by rectangles poking out of it, a small tracked name at one end and a large
+// numeral at the other. Every part of that was legible and none of it was an
+// *object*: it existed the frame a fight started and vanished the frame one
+// ended, and the two readouts on it were at two sizes for no reason anybody
+// chose.
+//
+// What is drawn now is a gilded rail hung on two chains that run up out of the
+// top of the frame, with the health in a channel cut down it, a graduated
+// scale on its flanges, and a cartouche at its left end carrying the boss's
+// health to a tenth of a per cent. Under it, on one line: what is being cast
+// at the left, who is casting in the middle, and how long is left at the
+// right -- all three at sizes that belong to each other.
+//
+// **Drawn before the field's mask**, which is what lets the chains be cut off
+// by the frame rather than clamped by arithmetic. See the note in
+// `hud_draw_boss_line`.
 // ---------------------------------------------------------------------------
 
-/// @desc The boss's name, health tube, timer and marks -- inside the field.
+/// @desc The stretch of a boss's health the rail spans, as `[top, bottom]`
+///       fractions of its whole health.
 ///
-///       **One bar, with the thresholds notched on it.** Touhou refills a
-///       boss's bar per attack, which is legible and says nothing about how
-///       far through the fight you are. Here it only ever goes down and the
-///       phase table's thresholds are cut into it, so a glance answers both
-///       "how is this attack going" and "how much of this is left".
+///       **The whole fight, except in attack practice.** There the attempt is
+///       one attack, and a rail spanning the fight would open a spell at 65.0
+///       and break it at 50.0 -- accurate about a fight nobody is having and
+///       useless for the one they are. So in practice the span is the attack's
+///       own: from where the attack before it ends to where this one does,
+///       read off the same phase table the boss is running, so the rail cannot
+///       disagree with when the attack will actually break.
 ///
-///       **The bar is pinned to the top of the field and the words hang off
-///       it.** They were the other way round for a pass, with the name centred
-///       above the tube and the timer beside it -- fifty-six pixels of type
-///       between the top of the playfield and the one part of this line that
-///       is read at a glance mid-dodge.
+///       Read off the practice *request* rather than off the boss's current
+///       phase, because the attempt opens in a pause where the boss is on no
+///       phase at all -- and the rail is already down by then.
+function hud_boss_span(_g, _boss) {
+    var _pr = _g[$ "practice"];
+    if (_pr == undefined || _boss == undefined) return [1, 0];
+    var _ph = _boss.boss.phases;
+    var _i = _pr.phase_i;
+    if (_i < 0 || _i >= array_length(_ph)) return [1, 0];
+    var _top = (_i > 0) ? _ph[_i - 1].hp_end : 1;
+    return [_top, _ph[_i].hp_end];
+}
+
+/// @desc A fraction of a boss's whole health, as a fraction of `_span`.
+function hud_span_frac(_span, _f) {
+    var _d = _span[0] - _span[1];
+    if (_d <= 0.0001) return clamp(_f, 0, 1);
+    return clamp((_f - _span[1]) / _d, 0, 1);
+}
+
+/// @desc Where the rail is this frame, given how far the rig has come down.
 ///
-///       **And the name is at the bar's left-hand end, not over its middle.**
-///       Centring it was right while the boss held station well below the
-///       line: the caption owned the centre because nothing else was ever
-///       there. Raising `BOSS_HOME_Y` takes that away -- the middle of the top
-///       of the field is the boss's face now -- so the name goes back to the
-///       left end and the timer to the right, which is where the genre has
-///       always put them and which is what gives the boss the middle.
-function hud_boss_bar(_h, _boss) {
-    var _b = _boss.boss;
+///       **One answer, because four things read it** -- the chains, the
+///       terminals, the rail and everything printed under it -- and a rig
+///       whose caption did not travel with its bar would come apart on the way
+///       down.
+function hud_rig_y(_h) {
+    return lerp(BOSS_RIG_STOW, BOSS_BAR_Y, _h.rig);
+}
+
+/// @desc The boss's line: the rig it hangs from, the rail, the readouts on it
+///       and the caption under it.
+///
+///       **Called from the GUI event before `field_draw_frame`, and that is
+///       the whole reason it is not drawn with the rest of the console.** The
+///       chains run *up out of the top of the field* and have to stop being
+///       visible at the boundary; the frame's mask is four opaque rectangles
+///       painted over everything outside the field, so drawing the rig under
+///       it cuts the chains off at exactly the line the frame is on, for free.
+///       Clamping them in arithmetic instead would be the thing
+///       `BG_NEAR_EDGE`'s window and `cut_pad`'s margin are both notes about:
+///       a number that can be got wrong where a construction cannot.
+///
+///       It is also what makes the *arrival* possible. The rail is stowed
+///       above `FIELD_Y0`, which is to say behind the mask, so "hidden" is a
+///       fact about where it is rather than an alpha somebody has to remember
+///       to set -- and lowering it into view is one number.
+function hud_draw_boss_line(_h, _g) {
+    if (_h.rig <= 0.004) return;
+
+    var _boss = enemy_find_boss();
     var _x1 = FIELD_X0 + BOSS_BAR_INSET;
     var _x2 = FIELD_X1 - BOSS_BAR_INSET;
-    var _w = _x2 - _x1;
-    var _y = BOSS_BAR_Y;
+    var _y  = hud_rig_y(_h);
+    var _cy = _y + BOSS_BAR_H * 0.5;
+    var _a  = clamp(_h.rig * 1.6, 0, 1);
 
-    var _p = boss_phase(_boss);
-    var _col = (_p == undefined) ? COL_LIFE : global.bullet_colour[_p.col];
-
-    // The name, under the bar's left-hand end and tracked, which is what lets
-    // it be small and still read as a title.
-    draw_set_font(fnt_ui());
-    draw_set_valign(fa_top);
-    draw_text_tracked(_x1, BOSS_NAME_Y, string_upper(_b.def.name), 9,
-                      merge_colour(COL_GILT_LIT, _col, 0.3), 0.95, 3,
-                      fa_left);
-
-    // **The marks are in the console and not here.** Touhou draws its
-    // remaining-attack stars in the playfield beside the bar, and the first
-    // pass of this line copied that; what it produced was a row of small
-    // coloured shapes over live scenery a few pixels above a bar that already
-    // carries the same information as notches. Two readouts of one fact, one
-    // of them occluding, when the console beside the field has a whole row for
-    // them and the room to draw them at a size that reads. See
-    // `hud_draw_attacks`.
-
-    // The timer on the current attack, if it has one, at the other end.
-    var _secs = boss_time_left(_boss);
-    if (_secs >= 0) {
-        var _urgent = (_secs < 8);
-        draw_set_font(fnt_num());
-        draw_set_halign(fa_right);
-        draw_text_outline(_x2, BOSS_NAME_Y - 12, string(floor(_secs)),
-                          _urgent ? merge_colour(COL_LIFE, c_white,
-                                                 0.4 + 0.4 * dsin(current_time * 0.4))
-                                  : COL_GILT_LIT,
-                          _urgent ? 1 : 0.9, 3);
-        draw_set_halign(fa_left);
+    // What the liquid is coloured. The current attack's hue while there is
+    // one, and the caster's own before the fight has started -- the rail comes
+    // down during the arrival, when `boss_phase` is still `undefined`, and a
+    // bar that arrived in the health meter's pink and changed colour on the
+    // frame the first attack opened would read as a fault.
+    var _p = (_boss == undefined) ? undefined : boss_phase(_boss);
+    var _col = COL_LIFE;
+    if (_p != undefined) _col = global.bullet_colour[_p.col];
+    else if (_boss != undefined) {
+        _col = global.bullet_colour[_boss.boss.def.col];
     }
 
-    draw_gauge_h(_x1, _y, _w, BOSS_BAR_H, _h.boss_shown, _col, 1, {
+    // --- the rig itself ------------------------------------------------
+    //
+    // **Chain, then rail, then terminal**, and the order is the assembly's.
+    // The chain is cut at the terminal's eye and the eye drawn over the cut,
+    // so the last link is never a link sawn in half; the collar clasps the
+    // rail, so it has to be in front of it. Drawn the other way round -- which
+    // it was for one screenshot -- the rail paints over its own hardware and
+    // what is left is a bar with two small knobs floating above it.
+    var _eye = _cy - (sprite_get_yoffset(spr_ui_hanger) - UI_HANGER_EYE);
+    for (var _s = 0; _s < 2; _s++) {
+        var _hx = (_s == 0) ? (_x1 + BOSS_RIG_END) : (_x2 - BOSS_RIG_END);
+        draw_chain(_hx, FIELD_Y0 - 30, _eye, COL_GILT, _a);
+    }
+
+    draw_rail(_x1, _y, _x2 - _x1, BOSS_BAR_H, _a);
+
+    // --- the health, in the channel cut down the rail -------------------
+    //
+    // **The two ends carry the two things that are fractions.** The cartouche
+    // at the left holds the boss's health as a number and the dial at the
+    // right holds the attack's clock; between them is the channel, which is
+    // the same pair of facts as a shape. Both are set in from the terminals by
+    // the same margin, so the rail reads as one instrument rather than as a
+    // bar with things on it.
+    var _px0 = _x1 + BOSS_RIG_END + 22;
+    var _dx  = _x2 - BOSS_RIG_END - 28 - BOSS_DIAL_D * 0.5;
+    var _ch_x = _px0 + BOSS_PCT_W + 14;
+    var _ch_w = (_dx - BOSS_DIAL_D * 0.5 - 14) - _ch_x;
+    var _ch_y = _cy - BOSS_BAR_CHANNEL * 0.5;
+
+    // **The liner is bronze, not the console's slate.** A vessel takes the
+    // colour of whatever it is set into, and this one is set into gold -- a
+    // cool grey ring inside a gilded rail reads as a fitting in a different
+    // alloy rather than as a recess, which is exactly what photographed when
+    // the rail was first drawn round it.
+    draw_gauge_h(_ch_x, _ch_y, _ch_w, BOSS_BAR_CHANNEL, _h.boss_shown, _col,
+                 _a, {
         slosh: _h.boss_slosh,
         glow: _h.boss_flare,
         seed: 29,
+        rim: merge_colour(COL_GILT, COL_VOID, 0.52),
     });
 
-    // The notches. Drawn from the table, so they cannot disagree with where
-    // the attacks actually end.
-    for (var _i = 0; _i < array_length(_b.phases); _i++) {
-        var _f = _b.phases[_i].hp_end;
-        if (_f <= 0.001) continue;
-        var _nx = _x1 + _w * _f;
-        // A spell's boundary is marked taller than a non-spell's, so the shape
-        // of the fight -- where the named attacks are -- is legible on the bar
-        // before any of them has been reached.
-        var _tall = (_b.phases[_i].kind == AttackKind.Spell) ? 9 : 4;
-        // **Dark where it crosses the liquid, pale where it crosses the empty
-        // glass.** One colour cannot do both: a dark notch on the unfilled half
-        // of the tube is a dark mark on a near-black trough and simply is not
-        // there -- and that is the half of the bar saying how much of the fight
-        // is left, which is the whole reason the notches exist.
-        var _on_liquid = (_f <= _h.boss_shown + 0.001);
-        draw_set_colour(_on_liquid ? COL_VOID : COL_GILT);
-        draw_set_alpha(0.9);
-        draw_rectangle(_nx - 1, _y - _tall, _nx + 1, _y + BOSS_BAR_H + _tall,
-                       false);
+    // **A recess is read off the shadow its lip casts into it**, not off the
+    // fact that it is dark. One hairline of void along the channel's upper
+    // contour is the whole of it, and it is the difference between a slot cut
+    // into a bar and a dark stripe painted along one.
+    gpu_set_blendmode(bm_normal);
+    draw_primitive_begin(pr_trianglestrip);
+    var _lipr = BOSS_BAR_CHANNEL * 0.5;
+    var _lxs = capsule_samples(_ch_x, _ch_x + _ch_w, _lipr, _ch_x + _ch_w);
+    for (var _i = 0; _i < array_length(_lxs); _i++) {
+        var _lx = _lxs[_i];
+        var _lh = capsule_half(_lx, _ch_x, _ch_x + _ch_w, _lipr);
+        draw_vertex_colour(_lx, _cy - _lh, COL_VOID, _a * 0.55);
+        draw_vertex_colour(_lx, _cy - _lh + 2.4, COL_VOID, 0);
+    }
+    draw_primitive_end();
+
+    hud_rail_scale(_h, _boss, _ch_x, _ch_w, _cy, _col, _a);
+
+    // --- the readouts ---------------------------------------------------
+    var _ta = clamp((_h.rig - 0.42) * 2.4, 0, 1);
+    // **The dial is hardware and is drawn whether or not there is a clock.** A
+    // rail that grew a bezel on the frame an attack started and lost it again
+    // between attacks would read as the instrument coming apart; what the
+    // clock changes is what is *in* the dial, which is what a dial is for.
+    hud_draw_boss_dial(_h, _boss, _dx, _cy, _a);
+    if (_boss != undefined) {
+        hud_draw_boss_pct(_h, _px0, _cy, _col, _a);
+        hud_draw_boss_plate(_boss, _y - BOSS_BAR_Y, _a, _ta);
+        hud_draw_boss_caption(_h, _boss, _p, _y - BOSS_BAR_Y, _ta);
     }
 
-    // The spell's name, under the bar. Drawn from here rather than from
-    // `hud_draw` because it is part of the boss's line and shares its
-    // geometry -- see `hud_draw_spell_name`.
-    if (_p != undefined && _p.kind == AttackKind.Spell) {
-        hud_draw_spell_name(_h, _boss, _p);
+    // The terminals last, so each collar is in front of the metal it clasps.
+    for (var _s = 0; _s < 2; _s++) {
+        var _hx = (_s == 0) ? (_x1 + BOSS_RIG_END) : (_x2 - BOSS_RIG_END);
+        draw_sprite_ext(spr_ui_hanger, 0, _hx, _cy, 1, 1, 0, COL_GILT, _a);
     }
 
-    // A phase broken: a flash travelling out from the threshold that was just
-    // crossed. It is the one moment in a fight the bar is the thing that
-    // happened, and it lasts about half a second.
-    if (_h.boss_flare > 0.02) {
-        draw_bloom(_x1 + _w * _h.boss_shown, _y + BOSS_BAR_H * 0.5,
-                   340 * (1.2 - _h.boss_flare), _col, _h.boss_flare * 0.5);
+    // **The landing, said at the hardware rather than across the field.** A
+    // rail this size arriving with no impact anywhere reads as a sprite being
+    // moved; a flash at the two points actually taking the load reads as
+    // something coming up short on its chains. Additive and small, on
+    // `grove_draw_front`'s rule -- light can only brighten what is behind it,
+    // so nothing here can hide a bullet at any strength.
+    if (_h.rig_flare > 0.02) {
+        var _f = _h.rig_flare;
+        for (var _s = 0; _s < 2; _s++) {
+            var _hx = (_s == 0) ? (_x1 + BOSS_RIG_END) : (_x2 - BOSS_RIG_END);
+            draw_bloom(_hx, _cy, 120 * (1.4 - _f), COL_GILT_LIT, _f * 0.5);
+        }
+        // And a sheen running out from the middle along the metal, which is
+        // the rail's own length being announced. It is the same move the sigil
+        // meter makes when it is ready, run once instead of forever.
+        gpu_set_blendmode(bm_add);
+        draw_primitive_begin(pr_trianglestrip);
+        var _sw = (_x2 - _x1) * 0.5 * (1 - _f);
+        for (var _s = -1; _s <= 1; _s += 2) {
+            draw_vertex_colour(FIELD_CX + _sw * _s, _y, COL_GILT_LIT, 0);
+            draw_vertex_colour(FIELD_CX + _sw * _s, _y + BOSS_BAR_H,
+                               COL_GILT_LIT, 0);
+        }
+        draw_primitive_end();
+        draw_bloom(FIELD_CX + _sw, _cy, 90, COL_GILT_LIT, _f * 0.35);
+        draw_bloom(FIELD_CX - _sw, _cy, 90, COL_GILT_LIT, _f * 0.35);
+        gpu_set_blendmode(bm_normal);
     }
 
+    draw_set_halign(fa_left);
+    draw_set_valign(fa_top);
     draw_set_alpha(1);
     draw_set_colour(c_white);
 }
+
+/// @desc The graduations on the rail's flanges and the phase boundaries cut
+///       through them.
+///
+///       **The minor ticks are what make it an instrument.** A scale with only
+///       the values that matter marked on it is a diagram; one with a regular
+///       graduation behind those is a thing that was manufactured, and it
+///       costs nineteen hairlines. They are on both flanges, because a rule
+///       graduated on one edge only reads as having been printed on rather
+///       than cut into.
+///
+///       **A boundary is dark where it crosses the liquid and pale where it
+///       crosses the empty channel.** One colour cannot do both: a dark notch
+///       on the unfilled half of a near-black channel is not there at all, and
+///       that is the half of the bar saying how much of the fight is left.
+///
+///       **A spell's boundary carries a stud under the metal and a non-spell's
+///       does not**, so the shape of the fight -- where the named attacks are
+///       -- is legible before any of them has been reached. They were
+///       rectangles standing out of the top and bottom of the tube before,
+///       which is the readout this whole line was reported as looking
+///       primitive for.
+function hud_rail_scale(_h, _boss, _x, _w, _cy, _col, _alpha) {
+    var _r = BOSS_BAR_CHANNEL * 0.5;
+    var _lo = _x + _r;
+    var _hi = _x + _w - _r;
+
+    // The graduation, on both flanges of the casing.
+    var _top = _cy - BOSS_BAR_H * 0.5;
+    var _bot = _cy + BOSS_BAR_H * 0.5;
+    draw_set_colour(COL_GILT_LIT);
+    for (var _i = 1; _i < RAIL_GRADS; _i++) {
+        var _gx = lerp(_lo, _hi, _i / RAIL_GRADS);
+        var _major = (_i mod 5 == 0);
+        var _len = _major ? 4.6 : 2.6;
+        // A dark groove with a pale line beside it, which is what the console's
+        // divisions are engraved with and the only thing that reads as a cut
+        // rather than as a painted mark. A single hairline in gilt on gilt at
+        // this size is not there at all -- it was drawn that way first and the
+        // scale photographed blank.
+        draw_set_colour(COL_VOID);
+        draw_set_alpha(_alpha * (_major ? 0.75 : 0.5));
+        draw_rectangle(_gx - 1, _top + 2.4, _gx, _top + 2.4 + _len, false);
+        draw_rectangle(_gx - 1, _bot - 2.4 - _len, _gx, _bot - 2.4, false);
+        draw_set_colour(COL_GILT_LIT);
+        draw_set_alpha(_alpha * (_major ? 0.6 : 0.36));
+        draw_rectangle(_gx, _top + 2.4, _gx + 1, _top + 2.4 + _len, false);
+        draw_rectangle(_gx, _bot - 2.4 - _len, _gx + 1, _bot - 2.4, false);
+    }
+
+    if (_boss == undefined) {
+        draw_set_alpha(1);
+        draw_set_colour(c_white);
+        return;
+    }
+
+    // The boundaries, from the table, so they cannot disagree with where the
+    // attacks actually end.
+    var _ph = _boss.boss.phases;
+    var _now = _boss.boss.phase;
+    for (var _i = 0; _i < array_length(_ph); _i++) {
+        // Mapped into the rail's span, so in practice -- where the rail is one
+        // attack -- every other attack's boundary falls off one end and is
+        // not drawn, rather than being notched somewhere the liquid can never
+        // reach.
+        var _f = hud_span_frac(_h.boss_span, _ph[_i].hp_end);
+        if (_f <= 0.001 || _f >= 0.999) continue;
+        var _nx = _lo + (_hi - _lo) * _f;
+        var _spell = (_ph[_i].kind == AttackKind.Spell);
+        var _on_liquid = (_f <= _h.boss_shown + 0.001);
+
+        // **The one still being fought for pulses.** Everything else on this
+        // scale says where the fight has been; the next boundary down is the
+        // only one that says what the player is working toward, and it is free
+        // to say so because it is the one mark nothing else is competing with.
+        var _live = (_i == _now);
+        var _puls = _live ? (0.55 + 0.45 * dsin(current_time * 0.22)) : 1;
+
+        // The groove through the channel.
+        draw_set_colour(_on_liquid ? COL_VOID : COL_GILT_LIT);
+        draw_set_alpha(_alpha * (_on_liquid ? 0.9 : 0.75) * _puls);
+        draw_rectangle(_nx - 1, _cy - _r + 0.5, _nx, _cy + _r - 0.5, false);
+        draw_set_colour(_on_liquid ? merge_colour(_col, c_white, 0.7)
+                                   : COL_GILT);
+        draw_set_alpha(_alpha * (_on_liquid ? 0.6 : 0.4) * _puls);
+        draw_rectangle(_nx, _cy - _r + 0.5, _nx + 1, _cy + _r - 0.5, false);
+
+        // The key cut through the flanges: a full-depth notch for a spell and
+        // a shallow one for a non-spell.
+        var _deep = _spell ? (BOSS_BAR_H * 0.5) : (BOSS_BAR_H * 0.5 - 4);
+        draw_set_colour(COL_GILT_LIT);
+        draw_set_alpha(_alpha * (_spell ? 0.85 : 0.5) * _puls);
+        draw_rectangle(_nx - 1, _cy - _deep, _nx + 1, _cy - _r, false);
+        draw_rectangle(_nx - 1, _cy + _r, _nx + 1, _cy + _deep, false);
+
+        if (_spell) {
+            // The stud: a small lozenge sitting proud of the metal, in the
+            // same family as the lozenge the console's ledger marks a spell
+            // with -- one motif at two sizes, which is the rule the crescent
+            // in the rules and the crest is under.
+            //
+            // **Under the rail, and it was on top.** The top of the rail is
+            // where the nameplate stands now, and a stud rising into it
+            // wherever a spell's boundary falls near the middle is two pieces
+            // of hardware in one place. Underneath, a stud is seven pixels of
+            // gold at the one height the rail already costs the field.
+            var _sy = _cy + BOSS_BAR_H * 0.5 + 4;
+            var _sr = 5 * (_live ? (0.9 + 0.22 * dsin(current_time * 0.22))
+                                 : 1);
+            draw_set_alpha(_alpha * 0.9);
+            draw_set_colour(COL_GILT_LIT);
+            draw_triangle(_nx, _sy - _sr, _nx - _sr * 0.62, _sy,
+                          _nx + _sr * 0.62, _sy, false);
+            draw_triangle(_nx, _sy + _sr, _nx - _sr * 0.62, _sy,
+                          _nx + _sr * 0.62, _sy, false);
+            if (_live) draw_bloom(_nx, _sy, 34, COL_GILT_LIT, 0.30 * _alpha);
+        }
+    }
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+}
+
+/// @desc The boss's health as a percentage, in the cartouche at the rail's
+///       left end.
+///
+///       **A tube answers "roughly how much" and cannot answer "how close is
+///       this to breaking".** In the last tenth of an attack the liquid moves
+///       a few pixels for damage the player can feel landing, which reads as
+///       the bar having stopped responding; a tenth of a per cent is a number
+///       that visibly moves for every shot that connects. The two are not a
+///       duplicate readout -- the bar is a shape and this is a value, and the
+///       genre has always wanted both.
+///
+///       **It is a counter, and it used to be a string.** Redrawn every frame
+///       from the eased value, the digits simply *were* a different number on
+///       the next frame, which the eye has to notice rather than being shown.
+///       On wheels, damage is a digit rolling down out of the window and the
+///       next rolling in over the top, and a big loss spins the low wheels
+///       while the high ones turn over once -- see `draw_counter_wheel`.
+///
+///       **It turns at the vessel's own rate**, driven by `pct_roll` rather
+///       than by the liquid's number: that one converges on the truth and
+///       almost never lands on a whole tenth, so a counter driven by it would
+///       stand part-turned for the whole attack. The two share `COUNTER_EASE`
+///       with the liquid's ease, so they drain together and cannot be seen to
+///       disagree -- the defect the note above `hall_orb_x` in `bg_sanctum`
+///       is about, one screen over.
+function hud_draw_boss_pct(_h, _x, _cy, _col, _alpha) {
+    // **The ground is a drum, not a hole.** Flat void behind a counter reads
+    // as digits printed on black; a field lit across its middle and falling
+    // away to dark at top and bottom reads as a cylinder the digits are
+    // painted on, which is what makes the roll read as the drum turning
+    // rather than as numbers sliding. Opaque, because at eighty-two per cent
+    // the stage's embers came through it and sat on it as warm blobs.
+    var _gx = _x + 9;
+    var _gw = BOSS_PCT_W - 18;
+    var _gh = BOSS_PCT_H - 14;
+    var _gr = _gh * 0.5;
+    var _gxs = capsule_samples(_gx, _gx + _gw, _gr, _gx + _gw);
+    var _drum = merge_colour(COL_VOID, COL_ARCANE, 0.6);
+    for (var _side = -1; _side <= 1; _side += 2) {
+        draw_primitive_begin(pr_trianglestrip);
+        for (var _i = 0; _i < array_length(_gxs); _i++) {
+            var _px = _gxs[_i];
+            var _hh = capsule_half(_px, _gx, _gx + _gw, _gr);
+            draw_vertex_colour(_px, _cy, _drum, _alpha);
+            draw_vertex_colour(_px, _cy + _side * _hh, COL_VOID, _alpha);
+        }
+        draw_primitive_end();
+    }
+
+    // **Damage is said on the number as well as in the glass.** The wheels go
+    // toward white while they are turning and on the frame a threshold falls,
+    // which is the one event in a fight this readout is better placed to
+    // report than the bar is.
+    var _hot = min(1, _h.boss_slosh * 1.3 + _h.boss_flare);
+    var _tint = merge_colour(COL_GILT_LIT, c_white, _hot * 0.7);
+    var _p = clamp(_h.pct_roll, 0, 1000);      // tenths of a per cent
+    var _sc = BOSS_PCT_SCALE;
+
+    // **Fixed columns, laid out from the right.** A counter's wheels do not
+    // move sideways, so the decimal point stays put however many digits the
+    // number has -- which the proportional layout this replaced could only
+    // manage by right-aligning a string that changed width under it.
+    //
+    // **One baseline under three sizes.** The whole part is centred on the
+    // rail by its digits' ink; the tenth, the point and the sign stand on the
+    // same baseline rather than on the same centre, or the small ones float
+    // half way up the digits they belong to.
+    draw_set_font(fnt_num());
+    var _num_ink = string_height("0") * FONT_INK_RATIO * _sc;
+    var _cw = string_width("0") * _sc;
+    var _base = _cy + _num_ink * 0.5;
+    var _rx = _x + BOSS_PCT_W - UI_PLAQUE_CHAMF - 7;
+
+    draw_set_font(fnt_small());
+    var _wpc = string_width("%");
+    draw_set_halign(fa_right);
+    draw_set_valign(fa_bottom);
+    draw_text_outline(_rx, text_baseline_y(_base), "%", COL_GILT,
+                      _alpha * 0.9, 2);
+
+    draw_set_font(fnt_ui());
+    var _tw = string_width("0");
+    var _ui_ink = string_height("0") * FONT_INK_RATIO;
+    var _tx = _rx - _wpc - 3 - _tw * 0.5;
+    draw_counter_wheel(_tx, _base - _ui_ink * 0.5, counter_wheel_pos(_p, 0),
+                       _tint, _alpha, 1, false, 2);
+
+    var _wdot = string_width(".");
+    var _dot_r = _tx - _tw * 0.5 - 1;
+    draw_set_halign(fa_right);
+    draw_set_valign(fa_bottom);
+    draw_text_outline(_dot_r, text_baseline_y(_base), ".", _tint, _alpha, 2);
+
+    // The whole part: units, tens and hundreds. The hundreds wheel never shows
+    // a zero, and the tens wheel shows one only while there is a hundred above
+    // it -- so 100.0 reads as three digits and 75.0 as two, and the roll from
+    // one to the other shows the 1 leaving and nothing arriving.
+    draw_set_font(fnt_num());
+    var _ox = _dot_r - _wdot - 2 - _cw * 0.5;
+    draw_counter_wheel(_ox, _cy, counter_wheel_pos(_p, 1), _tint, _alpha,
+                       _sc, false, 3);
+    draw_counter_wheel(_ox - _cw, _cy, counter_wheel_pos(_p, 2), _tint,
+                       _alpha, _sc, _p < 100, 3);
+    draw_counter_wheel(_ox - _cw * 2, _cy, counter_wheel_pos(_p, 3), _tint,
+                       _alpha, _sc, true, 3);
+
+    // **The moulding goes on last, over the wheels**, so a digit half turned
+    // away -- which stands proud of the window by a few pixels -- disappears
+    // behind the frame of the window rather than being drawn across it. It is
+    // the construction a real counter has, and it is why the window needs no
+    // clip.
+    draw_sprite_ext(spr_ui_plaque, 0, _x + BOSS_PCT_W * 0.5, _cy, 1, 1, 0,
+                    COL_GILT, _alpha);
+
+    draw_set_halign(fa_left);
+    draw_set_valign(fa_top);
+    draw_set_alpha(1);
+}
+
+/// @desc The attack's clock, as a dial mounted at the rail's right end.
+///
+///       **A clock is a fraction of something and was drawn as a bare count.**
+///       The seconds left were set in the numeral face at the end of the line,
+///       at a size nothing else on it shared -- so the readout that most wants
+///       to be read without being parsed was the one thing here that had to
+///       be. A dial answers "how much of this attack is left" the way the
+///       channel beside it answers "how much of this boss is", which is the
+///       vessel-over-a-bar argument applied to the last number on the line.
+///
+///       It is the player's own grace ring, one screen over: a faint band for
+///       the whole clock, a bright arc for what is left sweeping clockwise
+///       back to noon, and the head of the arc carrying the bloom because the
+///       head is the part that moves. Additive, on `grove_draw_front`'s rule,
+///       so nothing in it can hide a bullet.
+///
+///       **The count stays, inside it.** A dial says how much and a numeral
+///       says how many; a player deciding whether to spend a sigil on the last
+///       four seconds of a spell wants the second of those, and the middle of
+///       a dial is the one place it can be printed without competing with
+///       anything.
+function hud_draw_boss_dial(_h, _boss, _cx, _cy, _alpha) {
+    if (_alpha <= 0.004) return;
+
+    var _r = BOSS_DIAL_D * 0.5;
+    var _secs = (_boss == undefined) ? -1 : boss_time_left(_boss);
+    var _p = (_boss == undefined) ? undefined : boss_phase(_boss);
+    var _whole = (_p == undefined) ? 0 : max(1, _p.time);
+    var _frac = (_secs < 0) ? 0 : clamp(_secs * FPS / _whole, 0, 1);
+    var _urgent = (_secs >= 0 && _secs < BOSS_DIAL_URGENT);
+
+    // The face, so the arc has something to be read against and the stage's
+    // own scenery does not show through the middle of the instrument.
+    draw_set_colour(COL_VOID);
+    draw_set_alpha(_alpha);
+    draw_circle(_cx, _cy, _r - BOSS_DIAL_D * 0.09, false);
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+
+    var _bz = BOSS_DIAL_D / sprite_get_width(spr_ui_dial);
+    draw_sprite_ext(spr_ui_dial, 0, _cx, _cy, _bz, _bz, 0, COL_GILT, _alpha);
+
+    if (_secs < 0) return;
+
+    var _col = _urgent ? merge_colour(COL_GILT_LIT, COL_LIFE, 0.72)
+                       : COL_GILT_LIT;
+    // **Lifted toward white rather than taken to it.** At 0.45 the sweep came
+    // back a pale grey ring, which is the one hue on this rail that is not
+    // gold and reads as a different object entirely.
+    var _lit = merge_colour(_col, c_white, 0.22);
+    var _flick = _urgent ? (0.62 + 0.38 * dsin(current_time * 0.4)) : 1;
+    var _rad = _r - BOSS_DIAL_D * 0.165;
+    var _to = 90 - 360 * _frac;
+    var _steps = max(2, ceil(360 * _frac / 6));
+    var _a = _alpha * _flick;
+
+    gpu_set_blendmode(bm_add);
+    // The whole clock, so what has gone reads as gone.
+    draw_arc_band(_cx, _cy, _rad - 2, _rad + 2, 0, 360, COL_GILT,
+                  0.10 * _alpha, 0.10 * _alpha, 48);
+    if (_frac > 0.001) {
+        // **Dim at the tail and bright at the head.** Run at the strength the
+        // player's grace ring is drawn at, a full clock came back as a
+        // near-white ring at the end of the bar -- which is the brightest
+        // thing on the screen saying the *least* interesting thing a dial can
+        // say, since a fresh attack is exactly the moment nobody is reading
+        // the clock. What the eye wants off this is where the head is.
+        draw_arc_band(_cx, _cy, _rad - 6, _rad + 6, 90, _to, _col,
+                      0.03 * _a, 0.13 * _a, _steps);
+        draw_arc_band(_cx, _cy, _rad - 2.5, _rad + 2.5, 90, _to, _lit,
+                      0.10 * _a, 0.52 * _a, _steps);
+    }
+    gpu_set_blendmode(bm_normal);
+    if (_frac > 0.001) {
+        draw_bloom(_cx + lengthdir_x(_rad, _to), _cy + lengthdir_y(_rad, _to),
+                   BOSS_DIAL_D * 0.34, _lit, 0.42 * _a);
+    }
+
+    // **The count, on two wheels that turn over as each second goes.** It
+    // was a string that changed on the frame a second elapsed, which is the
+    // one moment a clock is meant to be *seen* to move. The wheel turns in
+    // the first fifth of each new second and then stands still, eased so it
+    // snaps over rather than drifting -- a mechanism, not a slider.
+    var _n = floor(_secs);
+    var _u = clamp((_secs - _n - (1 - DIAL_TICK_SHARE)) / DIAL_TICK_SHARE,
+                   0, 1);
+    var _pos = _n + _u * _u * (3 - 2 * _u);
+    var _ncol = _urgent ? merge_colour(COL_LIFE, c_white,
+                                       0.35 + 0.35 * dsin(current_time * 0.4))
+                        : COL_GILT_LIT;
+
+    // **One digit is centred and two straddle the centre**, and the pair
+    // slides between the two as the tens wheel turns away, so going from ten
+    // seconds to nine is one movement rather than a roll followed by a jump.
+    draw_set_font(fnt_num());
+    var _ncw = string_width("0") * BOSS_DIAL_SCALE;
+    var _two = clamp(_pos - 9, 0, 1);
+    var _ones_x = _cx + _ncw * 0.5 * _two;
+    draw_counter_wheel(_ones_x, _cy, counter_wheel_pos(_pos, 0), _ncol,
+                       _alpha, BOSS_DIAL_SCALE, false, 3);
+    draw_counter_wheel(_ones_x - _ncw, _cy, counter_wheel_pos(_pos, 1), _ncol,
+                       _alpha, BOSS_DIAL_SCALE, true, 3);
+    draw_set_alpha(1);
+}
+
+/// @desc The caster's nameplate, standing on the rail.
+///
+///       **Small type in a setting, not large type on a field.** Free-standing
+///       the name had to be set at the numeral face's own size to read as a
+///       title at all, which is a great deal of outlined capitals across the
+///       part of the field the boss is in. The plate is what says "this is a
+///       label", so the letters no longer have to -- and it is what makes the
+///       rail read as one object with a name on it rather than as a bar with a
+///       caption near it.
+///
+///       **On top of the rail, in the gap the chains already occupy.** It was
+///       hung underneath for one pass, which is a forty-pixel tab in the
+///       middle of the field's top edge -- exactly where the boss stands. The
+///       rail's whole job is to keep the field under it clear.
+///
+///       **Hardware and type fade separately.** The plate is part of the rig
+///       and comes down with it at `_hw`; the name is type and eases in at
+///       `_ta` once the rig is most of the way home, like everything else
+///       printed on this line.
+function hud_draw_boss_plate(_boss, _dy, _hw, _ta) {
+    if (_hw <= 0.004) return;
+
+    // **Tracked, because a name set solid is a word and a name opened out is a
+    // title.** Measured before it is drawn, so the plate is sized to the name
+    // rather than the name fitted to a plate somebody guessed at: `THE
+    // PROCTOR` and `MIKA` are the two ends of that, and neither gets a hole in
+    // its frame.
+    var _nm = string_upper(_boss.boss.def.name);
+    draw_set_font(fnt_ui());
+    var _nw = text_tracked_width(_nm, BOSS_NAME_TRACK);
+    var _pw = min(BOSS_PLATE_MAX_W, _nw + BOSS_PLATE_PAD * 2);
+    draw_tablet(FIELD_CX, BOSS_PLATE_Y + _dy, _pw, BOSS_PLATE_H, _hw);
+
+    if (_ta <= 0.02) return;
+    // **Centred by its ink, not by its cell.** See `text_cap_middle_y`: a name
+    // in capitals has no descender and sits high in a cell that reserves room
+    // for one -- invisible on a free-standing caption, and the entire defect
+    // on one set inside a frame.
+    draw_set_valign(fa_bottom);
+    draw_text_tracked(FIELD_CX, text_cap_middle_y(BOSS_NAME_Y + _dy), _nm,
+                      BOSS_NAME_TRACK, COL_GILT_LIT, _ta * 0.96, 3,
+                      fa_center);
+    draw_set_valign(fa_top);
+    draw_set_alpha(1);
+}
+
+/// @desc What is printed under the rail, which is the spell's name and
+///       nothing else.
+///
+///       **The field under the rail is the boss's.** It carried the caster's
+///       name, then the caster's name and the clock, then the caster's name
+///       and the spell's name and a capture flag. Every one of those has moved
+///       somewhere it does not cost the boss room: the name is on a plate on
+///       top of the rail, the clock is a dial on it, and the capture flag is
+///       gone. What is left is the one fact that changes during a fight and
+///       is not a fraction of anything.
+function hud_draw_boss_caption(_h, _boss, _p, _dy, _alpha) {
+    if (_alpha <= 0.02) return;
+    if (_p != undefined && _p.kind == AttackKind.Spell) {
+        hud_draw_spell_name(_h, _boss, _p, _dy, _alpha);
+    }
+    draw_set_valign(fa_top);
+    draw_set_alpha(1);
+}
+
 
 // ---------------------------------------------------------------------------
 // The ceremony
@@ -832,7 +1414,7 @@ function hud_draw_spell(_boss) {
 }
 
 /// @desc The spell's name, for as long as the spell lasts. Drawn under the
-///       boss's own bar, inside the field.
+///       left end of the boss's rail, inside the field.
 ///
 ///       **The banner is ceremony and it leaves; this is information and it
 ///       stays.** A named attack in this genre is a thing the player learns by
@@ -863,38 +1445,34 @@ function hud_draw_spell(_boss) {
 ///       It arrives *as the banner goes* -- `spell_a` only starts easing up
 ///       once `banner_t` has run out, because the same words in two places at
 ///       once reads as a bug rather than as ceremony.
-function hud_draw_spell_name(_h, _boss, _p) {
+function hud_draw_spell_name(_h, _boss, _p, _dy = 0, _alpha = 1) {
     if (_h.spell_a <= 0.02 || _boss == undefined || _p == undefined) return;
 
-    var _a = _h.spell_a;
+    var _a = _h.spell_a * _alpha;
     var _col = global.bullet_colour[_p.col];
 
-    // **Stacked under the caster's name, at the same left margin.** It was
-    // centred while the boss stood clear below this line; the boss is up here
-    // now and the middle of the line is its face. The two names together are
-    // one block -- who is casting, and what -- which is how they are read.
-    draw_set_valign(fa_top);
-    draw_set_halign(fa_left);
+    // **Under the cartouche, at the rail's left end.** It shared the caster's
+    // row for a pass, which put its capitals across the bottom of the
+    // cartouche -- reported as sitting too high and overlapping the meter,
+    // which it was. `BOSS_SPELL_Y` is derived from the cartouche's own depth,
+    // so it cannot be put back under it by a change to either.
+    //
+    // **Fitted rather than clipped**, so a long title shrinks and stays at the
+    // rail's end rather than running out into the middle, which is the
+    // boss's. The scale is worked out here rather than inside `draw_text_fit`
+    // because centring by ink needs it: a shrunk line has a shorter cap height
+    // and has to be set on its centre line at its own size.
     draw_set_font(fnt_ui());
-    draw_text_fit(FIELD_X0 + BOSS_BAR_INSET, BOSS_SPELL_Y, _p.name,
-                  FIELD_W * 0.42, _col, _a, 3);
-
-    // **Whether the capture is still live, at the other end of the line.**
-    // It is the one fact about the attempt still in play, and a player who has
-    // been hit has nothing left to protect -- they should be told at the time
-    // rather than finding out on the result screen. It goes at the far end
-    // rather than beside the name so that losing it does not shift the name,
-    // which would read as the spell having changed.
-    var _clean = (_boss.boss.hits_this_phase == 0
-                  && _boss.boss.bombs_this_phase == 0);
-    if (_clean) {
-        draw_set_font(fnt_small());
-        draw_text_tracked(FIELD_X1 - BOSS_BAR_INSET, BOSS_SPELL_Y + 8,
-                          "CAPTURE LIVE", 5, COL_GRAZE, _a * 0.9, 2,
-                          fa_right);
-    }
+    var _w = string_width(_p.name);
+    var _s = (_w > BOSS_SPELL_W && _w > 0) ? (BOSS_SPELL_W / _w) : 1;
+    draw_set_valign(fa_bottom);
+    draw_set_halign(fa_left);
+    draw_text_fit(FIELD_X0 + BOSS_BAR_INSET,
+                  text_cap_middle_y(BOSS_SPELL_Y + _dy, _s), _p.name,
+                  BOSS_SPELL_W, _col, _a, 3);
 
     draw_set_halign(fa_left);
+    draw_set_valign(fa_top);
     draw_set_alpha(1);
 }
 

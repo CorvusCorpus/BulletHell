@@ -9,6 +9,16 @@
 // margin along one edge on every hit.
 // The frame carries the damage flash, which is the one readout in the game
 // drawn entirely in pixels no bullet can ever be behind. See `field_draw_frame`.
+//
+// **The boss's line goes down first, and it is the only thing that does.** It
+// hangs on two chains that run up out of the top of the field, and what stops
+// them being visible in the margin is the mask painting over them -- so the
+// chains are cut off at exactly the line the frame is on, by the frame, rather
+// than by arithmetic that has to be kept in step with it. It is also what lets
+// the rail be *stowed* above the field between bosses instead of being hidden
+// by an alpha. See `hud_draw_boss_line`.
+hud_draw_boss_line(hud, self);
+
 field_draw_frame(hud.life_flare, COL_LIFE);
 
 hud_draw(hud, self);

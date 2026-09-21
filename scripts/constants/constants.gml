@@ -623,6 +623,19 @@
 // the player gains is 70 pixels of room under the thing shooting at them.
 #macro BOSS_HOME_Y (FIELD_Y0 + 250)
 
+// **The tallest ink any boss sprite carries above its own origin**, measured
+// off the shipped PNGs: Ziggy's 260x250 frame holds 198x208 of drawing with
+// its origin at y=125, so his horns reach 100 above it; Mika's reach 77. It
+// mirrors the art the way `UI_CORNER_DEPTH` mirrors its generator, and it is
+// what the rail's clearance is measured against -- half a sprite's *box* is
+// twenty-five pixels of empty canvas asserted as though it were horns.
+//
+// A commissioned replacement has to be measured and this number moved with it;
+// `test_hud_layout` checks it against every boss sprite's own origin so a
+// sprite that got shorter is caught rather than quietly flying through the
+// bar.
+#macro BOSS_INK_ABOVE 100
+
 // ---------------------------------------------------------------------------
 // The HUD
 //
@@ -796,70 +809,233 @@
 // the boundary; this is not, because a boss's health belongs beside the boss
 // and because every game in the genre puts it there.
 //
-// What makes the exception affordable is that the whole thing is a *line*. Its
-// occlusion budget is its height, not its alpha: fourteen pixels of a
-// 992-pixel field is one and a half per cent, and a bullet crossing it is
-// hidden for a single frame at the slowest speed this game fires at. The name,
-// the timer and the marks are outlined text on either side of it, which is
-// what the genre does and what `draw_text_outline` exists for.
+// What makes the exception affordable is that the part of it a bullet can hide
+// behind is a *line*. Its occlusion budget is its height, not its alpha:
+// twenty-two pixels of a 992-pixel field is two per cent, and a bullet
+// crossing it is behind it for a single frame at the slowest speed this game
+// fires at. Everything under the bar is outlined text, which is what the genre
+// does and what `draw_text_outline` exists for.
 //
-// `test_hud_layout` asserts the height rather than asserting the box is clear
-// of the field, because the box is not clear of the field and is not meant to
-// be. See the note there.
+// `test_hud_layout` asserts the bar's height rather than asserting the box is
+// clear of the field, because the box is not clear of the field and is not
+// meant to be. See the note there.
 // ---------------------------------------------------------------------------
 
 #macro BOSS_BAR_INSET 34           // in from the field's left and right edges
-#macro BOSS_BAR_Y (FIELD_Y0 + 14)  // the tube's top edge
-#macro BOSS_BAR_H 14
 
-// **The bar is the top of the field and the words are under it.** They were
-// the other way round: the name centred over the bar and the timer beside it,
-// which put fifty-six pixels of type between the top of the playfield and the
-// only part of the line that is a *number the player reads while dodging*.
-// The bar is fourteen pixels and is the thing that wants to be pinned to an
-// edge; type can hang off it.
+// **The rail hangs from the frame rather than being pinned to it.** It was
+// flush with the top of the field -- fourteen pixels of tube floating in
+// mid-air, which is a game element rather than an object, and which left
+// nowhere for a boss's arrival to be *staged*: the bar simply existed from the
+// frame the fight started.
 //
-// **And the words moved out of the middle at the same time.** The name was
-// centred precisely because the boss used to stand clear below it -- so the
-// caption could own the centre and the boss would never be under it. Raising
-// the boss takes that away: the centre of the top of the field is where its
-// face now is. So the name goes back to the left-hand end of the bar and the
-// timer to the right-hand end, which is where the genre has always put them
-// and which leaves the whole middle of the line to the boss.
-#macro BOSS_NAME_Y (BOSS_BAR_Y + BOSS_BAR_H + 6)
+// Dropped forty-four pixels it is a thing hung on two chains that run up out
+// of the top of the frame and are cut off by the mask, so it can be lowered
+// into view when a boss appears and drawn back up when one dies. The number is
+// what the chain costs: much less and there is no chain, much more and the
+// rail is in the boss's airspace -- see the clearance assertion in
+// `test_hud_layout`, which measures against the tallest ink any boss sprite
+// carries above its own origin rather than against the sprite's box.
+#macro BOSS_BAR_Y (FIELD_Y0 + 38)  // the rail's top edge, at rest
+#macro BOSS_BAR_H 30               // the casing's full height
 
-// **The spell's name goes under the bar, and this reverses a decision.** It
-// lived in the console for one pass, on the reasoning that forty seconds of
-// nameplate over the play area is not affordable where two and a half seconds
-// of banner is. Two things changed. The names are single now rather than a
-// type and a title, so the plate is one short line instead of three; and a
-// name that is a fact about the boss belongs where the boss's other facts are,
-// which is the line the bar is on -- in the console it was the width of the
-// column away from the health it refers to, and it clipped off the bottom of
-// the plate the moment a title ran long.
+// **The liquid's own height inside the casing.** The rail is a container and
+// the health is what is in it, so the gauge is inset into a channel rather
+// than being the whole of the bar: the gilt above and below the channel is
+// what the graduations are cut into, and it is the difference between a health
+// bar and a thing somebody machined.
+#macro BOSS_BAR_CHANNEL 14
+
+// The hardware at each end: how far in from the rail's ends the terminals --
+// and therefore the chains -- are centred.
+#macro BOSS_RIG_END 26
+
+// **Where the rail is stowed.** Far enough above `FIELD_Y0` that the frame's
+// mask covers the whole assembly, which is what makes "hidden" a fact about
+// geometry rather than an alpha somebody has to remember to set.
+#macro BOSS_RIG_STOW (FIELD_Y0 - BOSS_BAR_H - 40)
+
+// The spring that lowers it. **An overshoot rather than an ease**, for the
+// reason the rank card arrives at 1.6x: a thing that stops exactly where it
+// was going has been faded in, and a thing on a chain has weight. `K` is the
+// pull and `D` the damping.
 //
-// It is the same exception the bar itself is, on the same terms: outlined
-// text, one line, at the top of the field where the player is not.
+// **They are slower than they look like they should be, and the first pair
+// were not.** At a stiffness of 0.055 the rail was fully down inside ten
+// frames, which is a sixth of a second -- arithmetically a descent and
+// visually a cut. The pair here put the rail home at about fifty frames, the
+// bottom of its dip at seventy, and everything settled by a hundred and ten --
+// which is inside `BOSS_ENTRY_TIME`, the beat the arrival exists to fill.
 //
-// **It stacks under the boss's own name rather than being centred**, for the
-// same reason that one moved: the middle of this line belongs to the boss
-// now. Under the caster's name and set to the caster's left margin, the two
-// read as one block -- who is casting, and what they are casting -- which is
-// what they are.
-#macro BOSS_SPELL_ROW 42                        // one line of `fnt_ui`
-#macro BOSS_SPELL_Y (BOSS_NAME_Y + BOSS_SPELL_ROW)
+// The damping is set for roughly a tenth of the travel in overshoot, which on
+// a hundred-pixel drop is the ten pixels of dip that read as chains coming up
+// taut rather than as the rail falling past its stop.
+#macro BOSS_RIG_K 0.0030
+#macro BOSS_RIG_D 0.066
 
-// The tallest a line drawn over the playfield may be. One number, so the
-// exception above cannot quietly grow back into a strip.
-#macro FIELD_OVERLAY_MAX_H 22
+// **The percentage, in a cartouche at the rail's left end.** A tube answers
+// "roughly how much" and cannot answer "how close is this to breaking", which
+// is the question a player asks in the last ten per cent of an attack -- and
+// the left end of the rail was empty, because the caster's name moved out of
+// it.
+// **Sized to the widest thing it will ever hold, which is `100.0%`.** It was
+// 236 by 58, which is a plate built for a number two digits longer than one
+// that exists -- and a cartouche with that much air in it reads as a gap with
+// something in the middle rather than as a setting. Every pixel taken off it
+// goes to the channel, which is the readout that actually wants the length.
+#macro BOSS_PCT_W 178
+#macro BOSS_PCT_H 50
 
-// **The spell name goes in the console, not over the play area.** It was at
-// the bottom of the screen first, which on a full-bleed field is inside the
-// player's working area -- the one permanent piece of text in the game
-// competing for the pixels being read hardest.
-#macro HUD_SPELL_W HUD_COL_W
+// How large the whole part of the percentage is set, against the numeral
+// face's own size. It is what makes the digits fit inside the cartouche's
+// moulding rather than standing over it.
+#macro BOSS_PCT_SCALE 0.72
+
+// **The clock, as a dial at the rail's other end.** It was set as a numeral
+// under the bar, which made the one readout on this line that is a *fraction
+// of something* the only one not drawn as one -- and put it in competition
+// with the caster's name for a size. A dial says how much of the attack is
+// left the way the channel beside it says how much of the boss is.
+// **It mirrors `DIAL_D` in `tools/make_ui.py`**, and the sprite is scaled to
+// it rather than drawn at 1:1, so the two drifting apart costs a soft bezel
+// rather than a dial that is the wrong size for the hole it sits in.
+#macro BOSS_DIAL_D 84
+#macro BOSS_DIAL_URGENT 8      // seconds, below which it goes to the hit hue
+
+// How large the count inside it is set, against the numeral face's own size.
+#macro BOSS_DIAL_SCALE 0.72
+
+// **The caster's name is set in a plate standing on the rail**, not printed on
+// the field below it. Free-standing it had to be large to read as a title at
+// all -- it was set in the numeral face at the size the clock used to be --
+// and a hundred and forty pixels of outlined capitals across the middle of the
+// top of the field is a lot of type over the one part of the playfield the
+// boss is actually in. In a setting it can be small and still read as a name,
+// which is the whole of what a frame buys: the plate says "this is a label" so
+// the type does not have to.
+//
+// **Above the rail, and it was below it for one pass.** Hung off the underside
+// it was a forty-pixel tab in the middle of the field's top edge, which is
+// exactly where the boss stands -- the rail's whole job is to keep the field
+// under it clear, and a nameplate there spends the room it exists to save.
+// Above, it sits in the gap the chains already occupy, between the rail and
+// the frame, where nothing is ever fought.
+//
+// It is an extension of the rail rather than something set on top of it: the
+// plate's bottom edge sinks *into* the casing's top flange, so the two read as
+// one piece of metal with a tab formed out of it.
+#macro BOSS_PLATE_H 38
+#macro BOSS_PLATE_SINK 6       // how far the plate's foot sinks into the rail
+#macro BOSS_PLATE_Y (BOSS_BAR_Y + BOSS_PLATE_SINK - BOSS_PLATE_H)
+#macro BOSS_PLATE_PAD 30       // metal either side of the name
+#macro BOSS_NAME_TRACK 7
+
+// The name's centre line, which is the plate's. See `text_cap_middle_y` for
+// why the name is centred by its ink rather than by its cell.
+#macro BOSS_NAME_Y (BOSS_PLATE_Y + BOSS_PLATE_H * 0.5)
+
+// **How wide the plate may grow before the name in it is shrunk.** A caster
+// with a long name gets a wider plate rather than smaller type, up to a width
+// that still leaves the chains either side of it clear of the frame's corners.
+#macro BOSS_PLATE_MAX_W 560
+
+// **The spell's name, at the rail's left end and under the cartouche.** It sat
+// on the caster's row for a pass, which put its capitals across the bottom of
+// the cartouche -- reported as overlapping the meter, and it was. Under the
+// cartouche it is clear of everything on the rail, and it is at the left end
+// rather than the middle, which is the boss's. A centre line, not a top edge,
+// and the name is centred on it by its ink.
+#macro BOSS_SPELL_Y (BOSS_BAR_Y + BOSS_BAR_H * 0.5 + BOSS_PCT_H * 0.5 + 18)
+
+// **There is no capture readout.** "Capture live" printed beside the spell's
+// name said whether the attack could still be broken clean, and it was the
+// genre's own terminology copied straight across -- noise on the one line the
+// player reads mid-dodge, for a fact the result screen already reports. The
+// capture bonus itself is gameplay and is unchanged; only the readout went.
+
+// **How much room a spell's name has before it is shrunk.** It is fitted to
+// this rather than clipped by it, so a long title stays at the rail's end
+// rather than running out into the middle of the field, which is the boss's.
+#macro BOSS_SPELL_W 330
+
+// **How many divisions the rail is graduated in.** Twenty, so the scale reads
+// every five per cent, with a longer tick at each quarter. It is what makes
+// the bar an instrument rather than a diagram -- see `hud_rail_scale`.
+#macro RAIL_GRADS 20
+
+// **Where the chain attaches on `spr_ui_hanger`, measured down its own
+// canvas.** It mirrors `HANGER_EYE_CY` in `tools/make_ui.py` exactly as
+// `UI_CORNER_DEPTH` mirrors the corner piece's inset, and for the same reason:
+// a chain that ended four pixels above the eye it is threaded through reads as
+// a mistake in a way that a chain ten pixels longer would not.
+#macro UI_HANGER_EYE 8
+
+// **The cartouche's chamfer**, mirroring `PLAQUE_CHAMF` in `tools/make_ui.py`.
+// The percentage is laid out from the plate's inner right corner, and a number
+// set against the plate's *outer* edge instead runs over the angled end -- the
+// `%` sat on the chamfer for one screenshot, which reads as the plate being
+// too small for what is in it.
+#macro UI_PLAQUE_CHAMF 16
+
+// The tallest a *bar* drawn over the playfield may be. One number, so the
+// exception above cannot quietly grow back into the 168-pixel strip it was
+// carved out of.
+//
+// **It was 22 and the rail could not be drawn inside it.** A casing with a
+// channel cut down it needs a flange either side wide enough to carry the
+// graduation, and at twenty-two with a fourteen-pixel channel that flange was
+// four pixels -- of which one is the contour -- so what photographed was two
+// gold hairlines with a black slot between them rather than a bar. Thirty is
+// three per cent of the field's height and a sixth of the strip this whole
+// exception was carved out of; the guarantee it encodes is unchanged, and it
+// is still asserted against the rail rather than against the line, because
+// everything under the rail is outlined text and occludes nothing.
+#macro FIELD_OVERLAY_MAX_H 30
 
 #macro FONT_INK_RATIO 0.58         // see check_font_ink_ratio
+
+// **How far a sprite font's cell falls below its own baseline**, as a fraction
+// of the cell. Every face in this game is one of two typefaces at six sizes,
+// so the metric is nearly the same proportion in all of them, and it is the
+// one number `text_baseline_y` and `text_cap_middle_y` need to set several
+// sizes on a shared line.
+//
+// Aligning *middles* instead is what the boss's percentage did first, and it
+// reads exactly as wrong as it sounds: three pieces of one number, each
+// centred in its own cell, so the tenth and the sign float half way up the
+// digits they belong to. It is the finding `hud_row` records about a tag
+// beside a value, inside a single number.
+//
+// **It is measured, not guessed, and the guess was 0.21.** The bottom ink row
+// of an `H` is the baseline, and across the six atlases it lands between 0.238
+// and 0.290 of the cell above its own bottom edge. The guess put the caster's
+// name two pixels high in its plate -- which is a defect nothing can see
+// except somebody looking at it, and which was reported that way.
+#macro FONT_BASELINE_DROP 0.26
+
+// **Where a digit's ink is centred, above the bottom of its cell, as a
+// fraction of the cell** -- one per typeface, because a number set in a window
+// is measured against the window's edges and the shared caption metric put the
+// numeral face's digits two pixels low in the boss's cartouche. Measured off
+// the atlases and re-derived by `check_font_digit_mid`; see
+// `text_digit_middle_y`.
+#macro FONT_DIGIT_MID_NUM 0.527     // Cinzel, `fnt_num`
+#macro FONT_DIGIT_MID_UI 0.561      // Spectral, `fnt_ui` and `fnt_small`
+
+// **How fast a counter's wheels catch up with the number they are showing**:
+// the share of the gap closed per frame, and the least it may close by, in
+// units of the lowest wheel. The share matches the vessel's own ease, so the
+// boss's percentage and the liquid beside it drain together; the floor is what
+// makes a single tenth *roll* rather than creep, since an exponential ease
+// spends most of its time on the last few per cent of the way.
+#macro COUNTER_EASE 0.18
+#macro COUNTER_MIN_STEP 0.09
+
+// **The dial's seconds turn over in the first part of each second, not across
+// all of it.** A clock whose wheel was always half way between two numbers
+// would be a clock that could never be read; one that snaps over in a fifth of
+// a second and then sits still is a mechanism.
+#macro DIAL_TICK_SHARE 0.2
 
 // ---------------------------------------------------------------------------
 // Spell backgrounds

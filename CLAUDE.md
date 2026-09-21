@@ -131,15 +131,13 @@ lot of unused space to the right".
 
 The strip is gone. Both of its tenants moved and neither is worse off:
 
-- **The health tube is inside the field**, which is where the genre has always
-  drawn one, because a boss's health is a fact about the thing you are shooting
-  and belongs beside it.
-- **The name hangs under the tube's left-hand end and is small**, tracked
-  rather than large — see the note on tracking below. It was centred over the
-  tube for a pass, which worked only while the boss held station well below the
-  line: the caption could own the middle because nothing else was ever there.
-  Raising the boss takes that away, so the name went back to the left end and
-  the timer to the right, which is where the genre has always put them.
+- **The boss's health is inside the field**, which is where the genre has
+  always drawn it, because a boss's health is a fact about the thing you are
+  shooting and belongs beside it. It is a gilded rail hung from the frame now —
+  see "The boss's line".
+- **The name is on a small plate standing on that rail**, tracked rather than
+  large — see the note on tracking below — in the gap between the rail and the
+  frame, so the field under the rail is left to the boss.
 
 So: `FIELD_X0`, `FIELD_Y0`, `FIELD_W`, `FIELD_H` — **1360x992 at (44, 44)**,
 with the same 44-pixel margin on three sides — and one console down the fourth.
@@ -568,49 +566,141 @@ the plate, and the only question about these is whether five materials read
 
 ### The boss's line
 
+**It is a rig, not a bar.** What used to be here was a fourteen-pixel tube
+pinned flush to the top of the field, its phase boundaries marked by rectangles
+poking out above and below, a small tracked name at one end and a large numeral
+at the other. It was reported as underbaked and primitive, and every part of
+that was fair: it was legible and none of it was an *object*. It existed the
+frame a fight started and vanished the frame one ended, and its two readouts
+were at two sizes for no reason anybody chose.
+
+What is drawn now, left to right and top to bottom:
+
+| | |
+|---|---|
+| the chains | two, one at each end, running up out of the top of the field and cut off by the frame's mask |
+| the nameplate | the caster's name, tracked, in a chamfered plate standing on the middle of the rail |
+| the cartouche | the boss's health to a tenth of a per cent, at the rail's left end |
+| the channel | the health as a vessel, cut into the rail, graduated every five per cent |
+| the dial | the attack's clock as a sweep with the seconds in its middle, at the right end |
+| the spell's name | under the cartouche, and only while a spell is live |
+
+**Everything that carries a style is a sprite and everything that carries a
+value is a primitive**, which is the rule `make_ui.py` is built on. The chain,
+the terminals, the cartouche and the dial's bezel are art (`spr_ui_chain`,
+`spr_ui_hanger`, `spr_ui_plaque`, `spr_ui_dial`); the rail, the nameplate and
+everything inside the cartouche and the dial are GML, because their widths or
+their contents are data.
+
+**Drawn before the field's mask, and it is the only part of the HUD that is.**
+`obj_game`'s GUI event calls `hud_draw_boss_line` a line before
+`field_draw_frame`, so the four opaque rectangles of the mask cut the chains
+off at exactly the line the frame is on, and the whole rig can be *stowed*
+above `FIELD_Y0` between bosses — "hidden" is a fact about geometry rather than
+an alpha somebody has to remember to set.
+
+**It is lowered in on a spring, and nothing tells it to.** `hud_step` compares
+what is on the field with what it is showing, like every other reaction on the
+console: a boss arriving lowers the rig, a beaten one draws it back up while the
+body is still flying off the top. So a midboss, a practised attack and a
+drafting-table row all get the arrival without asking for it. `BOSS_RIG_K` and
+`BOSS_RIG_D` put the rail home at about fifty frames with one overshoot of
+about a tenth — the first pair had it down in ten frames, which is a descent in
+arithmetic and a cut on screen. `test_boss_rig` holds the timing, the single
+overshoot, the one landing flare and the stow, because none of that is visible
+in a still.
+
+**The rail is mostly dark with a line of light on it.** Solid gilt across its
+whole section came back as the brightest thing on the screen lying across the
+top of a field bullets have to read against. `draw_rail` is a section — dark
+contour, hot bevel, a fall through the body, a bounce line — sampled off a
+contour whose ends are chamfered rather than capsule-round, because every band
+of a section converging on one point draws a blade. The recess is cut only
+where the health is; a dark channel down the whole length photographed as a
+trough with two hairlines on it.
+
+**The cartouche is sized to `100.0%` and no wider.** The first was 236 wide and
+reported as far too long for what was in it. The whole part is large, the tenth
+and the sign small, and all three sit on **one baseline** — `text_baseline_y`.
+Centred on one line instead, the tenth floats half way up the digits it belongs
+to.
+
+**Both numbers on the rail are odometers.** They were strings redrawn every
+frame, so a change was a cut — reported as the numbers simply dropping to their
+new value on the next frame. `draw_counter_wheel` sets each digit on a drum a
+quarter-turn from the next, squashed and faded by the cosine, so damage is a
+digit rolling *down* out of the window while the next comes over the top, and
+`counter_wheel_pos` carries the way a real counter does: a wheel turns only
+while the one below it passes through nine. The cartouche's moulding is drawn
+over its wheels, so a half-turned digit goes behind the frame rather than across
+it, and the ground is shaded as a drum rather than a flat hole.
+
+The percentage is driven by `pct_roll`, in tenths, not by the liquid's eased
+number — that converges on the truth, which is almost never a whole tenth, so a
+counter driven by it would stand part-turned for a whole attack. It closes the
+gap at the liquid's own rate (`COUNTER_EASE`), with a floor so a single tenth
+rolls over in a few frames, and snaps to rest square. It floors rather than
+rounds, so a scratched boss never reads 100.0. The dial's seconds turn over in
+the first fifth of each second (`DIAL_TICK_SHARE`) and then stand still. Both
+are held by `test_counter`.
+
+**Digits are centred by their own metric.** The shared caption metric put the
+numeral face's digits two pixels low in the window: `FONT_DIGIT_MID_NUM` and
+`FONT_DIGIT_MID_UI` are measured off the atlases and `check_font_digit_mid`
+re-derives them. What is left over is Cinzel's own figures — its 3, 5 and 9 dip
+about two pixels below the others — and wheels on one drum share a line.
+
+**The clock is a dial because it is a fraction of something.** It used to be a
+numeral at the end of the bar in the numeral face, at a size nothing else on the
+line shared. It is the player's own grace ring one screen over: a faint band
+for the whole clock, a bright arc for what is left sweeping back to noon, the
+head carrying the bloom, and the count in the middle. The arc is dim at its
+tail and bright at its head — at the grace ring's own strength a fresh attack
+drew a near-white ring, which is the loudest thing on the line saying the least
+interesting thing a clock can say.
+
+**The caster's name stands on the rail, in the gap the chains already use.** It
+was centred *under* the rail for a pass, which put a forty-pixel plate in the
+middle of the field's top edge, exactly where the boss stands. In a setting the
+name can be small and still read as a title; free-standing it had to be set in
+the numeral face to read at all. It is centred by its ink rather than its cell
+— `text_cap_middle_y`, since a line of capitals sits high in a cell that
+reserves room for descenders, which is invisible on a caption and is the entire
+defect on one inside a frame.
+
+**The spell's name is under the cartouche, at the rail's end.** It has been in
+four places. On the caster's row it ran across the bottom of the cartouche. It
+is fitted to `BOSS_SPELL_W` rather than clipped, so a long title shrinks and
+stays out of the middle, which is the boss's.
+
+**There is no capture readout.** A "capture live" flag sat beside the spell's
+name; it was the genre's terminology copied straight across, and noise on the
+one line read mid-dodge. The capture bonus is gameplay and is unchanged.
+
+**The spell studs hang under the rail and the scale runs along both flanges.**
+Minor ticks every five per cent and longer ones at the quarters are what make
+it an instrument rather than a diagram. A boundary is a groove through the
+channel — dark where it crosses the liquid, pale across the empty glass, because
+one colour cannot do both — with a key cut through both flanges, full-depth for
+a spell and shallow for a non-spell; a spell also carries a small lozenge
+underneath, and the boundary currently being fought for pulses.
+
 `BOSS_BAR_Y` is inside the field, and it is the one deliberate exception to the
-rule the boundary was built to keep. **The bar is pinned to the top of the
-field and every word on the line hangs below it** — first the caster's name at
-the left end and the timer at the right, then the spell's name under the
-caster's. It was the other way round for a pass, with the type above the tube,
-which spent fifty-six pixels of the top of the playfield on captions before
-reaching the one part of this line that is read at a glance mid-dodge. A bar is
-what wants to be pinned to an edge; type can hang off it. What makes it affordable is that the whole
-thing is a *line*: its occlusion budget is its height, not its alpha, and
-fourteen pixels of a 992-pixel field is one and a half per cent — a bullet
-crossing it is hidden for a single frame at the slowest speed this game fires
-at. The name, the timer and the notches are outlined text and hairlines either
-side of it, which is what the genre does and what `draw_text_outline` is for.
+rule the boundary was built to keep. What makes it affordable is that the part a
+bullet can hide behind is a *line*: `FIELD_OVERLAY_MAX_H` is thirty, which is
+three per cent of the field and a sixth of the strip the exception was carved
+out of. It was twenty-two, and a casing with a channel cut down it could not be
+drawn inside that — the flanges were two pixels. `test_hud_layout` asserts the
+height rather than asserting the box is clear of the field, because the box is
+not clear of the field and is not meant to be. Everything else the HUD draws
+still goes through `rect_clear_of_field`, and `hud_console_boxes` is the list.
 
-`FIELD_OVERLAY_MAX_H` is the number that stops the exception growing quietly
-back into a strip, and `test_hud_layout` asserts the height rather than
-asserting the box is clear of the field — because the box is not clear of the
-field and is not meant to be. Everything else the HUD draws still goes through
-`rect_clear_of_field`, and `hud_console_boxes` is the list.
-
-**The spell's name goes under the bar, and that reverses a decision twice
-made.** It started at the bottom of the field, which on a full-bleed playfield
-is inside the player's working area — the one permanent piece of text in the
-game competing for the pixels being read hardest. It moved to the console on
-the reasoning that forty seconds of nameplate over the play area is not
-affordable where two and a half seconds of banner is. In the console it was the
-width of the column away from the health bar it refers to, three lines tall,
-and it clipped off the bottom of the plate the moment a title ran long.
-
-Two things changed to make the bar the right home. **The names are single now**
-— "Cinder Waltz" rather than "Ember Sign — Cinder Waltz". The two-part form is
-Touhou's signature and borrowing it that exactly is closer to copying than to
-being inspired by, and it cost three lines of plate to say what one says. And
-the top of the field is where the boss is and the player is not, which is the
-same exception the bar itself is, on the same terms: outlined text, one line,
-nothing opaque. Whether the capture is still live goes at the *other end* of
-the line rather than beside the name, so that losing it does not shift the name
-— which would read as the spell having changed.
-
-**It stacks under the caster's name at the same left margin rather than being
-centred**, for the reason the caster's name moved there: the middle of this
-line is the boss's face now. Set one under the other, the two read as one
-block — who is casting, and what they are casting — which is what they are.
+**The rail's clearance from the boss is measured against ink, not the
+sprite's box.** `BOSS_INK_ABOVE` is the tallest ink any boss sprite carries
+above its origin — a hundred, on Ziggy, whose 250-pixel frame has twenty-five
+pixels of empty canvas above his horns. Half the box was the old number, and it
+was the assertion rather than the boss that the chain could not fit past. A
+commissioned replacement has to be measured and the number moved with it.
 
 **The marks for the remaining attacks are in the console, not beside the bar.**
 Touhou draws its stars in the playfield; the first pass of this line copied
@@ -876,11 +966,10 @@ than painted for the same reason — a dark hairline with a pale one beside it i
 a groove cut into the glass, where a single bright bar across the liquid is a
 bar drawn on top of it.
 
-The boss's bar is the same vessel at fourteen pixels, with the phase table's
-thresholds notched into it. A notch is **dark where it crosses the liquid and
-pale where it crosses the empty glass**: one colour cannot do both, and a dark
-notch on the unfilled half of a near-black trough is not there at all — which
-is the half of the bar that says how much of the fight is left.
+The boss's health is the same vessel at fourteen pixels, set into a channel
+cut down a gilded rail — see "The boss's line". `draw_gauge_h` takes a `rim`
+for that: a vessel takes the colour of what it is set into, and the console's
+slate liner inside gold read as a fitting in a different alloy.
 
 ### Feedback, and where it is allowed to be loud
 
@@ -1545,8 +1634,11 @@ over the middle of the line and the timer sat beside it, so the station had to
 clear a block fifty-six pixels deep standing exactly where the boss wanted to
 be. Moving both to the two ends of the bar gave the middle of the line back
 and the station came up with it, to `FIELD_Y0 + 250`. The one thing it may not
-fly through is the fourteen pixels of tube, and `test_hud_layout` asserts that
-and that the foot of the sprite stays out of the player's half.
+fly through is the rail, and `test_hud_layout` asserts that -- against the
+sprite's ink, `BOSS_INK_ABOVE`, not its box -- and that the foot of the sprite
+stays out of the player's half. The name is on a plate *above* the rail now and
+the clock is a dial on it, so the middle of the field under the rail carries
+nothing at all.
 
 **A boss drifts, and that is a default rather than a rule.** One that stood
 still would fire every aimed pattern from the same pixel and the player would
@@ -1732,20 +1824,15 @@ then ran for another forty. Three seconds in, nothing anywhere said which spell
 was being survived.
 
 So the banner is announced across the field, at size, and slides out to the
-right as it fades; and `hud_draw_spell_name` puts the name in the HUD column and
-holds it until the attack ends. `spell_a` only eases up once `banner_t` has run
+right as it fades; and `hud_draw_spell_name` puts the name under the left end of
+the boss's rail and holds it until the attack ends. `spell_a` only eases up once `banner_t` has run
 out, because the same words in two places at once reads as a bug rather than as
 ceremony.
 
-The plate **breaks the name at the double dash**, onto two lines. A Touhou spell
-name is a type and a title — "Ember Sign" and "Cinder Waltz" — and set as one
-string in a 446-pixel column it has to shrink to a third of its size to fit,
-which puts the most evocative text in the game at the size of a footnote. The
-split is free, because the names already carry the separator.
-
-It also carries the one fact about the attempt still in play: whether the
-capture is still live. A player who has been hit has nothing left to protect and
-should be told at the time rather than on the result screen.
+**The names are single** — "Cinder Waltz" rather than "Ember Sign — Cinder
+Waltz". The two-part form is Touhou's signature and borrowing it that exactly
+is closer to copying than to being inspired by, and it cost three lines to say
+what one says.
 
 ### Practising one attack
 
@@ -1795,6 +1882,17 @@ lying about the rules the attack is played under. A capture is a fourth word
 again, because a spell broken untouched is the thing being practised *for* and
 telling somebody who has just managed it that they merely cleared it reports
 the good outcome as the ordinary one.
+
+**The rail reads the attack, not the fight.** The boss keeps the whole
+fight's health and the attack breaks at its own threshold -- practice starts it
+where the attack starts and changes nothing about the rules -- but a rail
+spanning the fight opened a spell at 65.0 and broke it at 50.0, which is a
+figure about a fight nobody is having. `hud_boss_span` maps the rail, the
+counter and the notches onto the practised attack's own stretch of the table,
+so every attempt opens at 100.0 and breaks at 0.0 with no other attack's
+boundary drawn on it. It is the HUD's reading of the same numbers, and
+`test_counter` holds both halves: 100 to 0 in practice, the fight's own figure
+in a stage.
 
 **Full life and full sigil, every attempt.** A practice attempt is about the
 attack and not about what the four minutes before it left behind, and starting
@@ -4726,7 +4824,7 @@ once, because PIL's draw calls are hard-edged and a bevel drawn at 1x reads as
 | `tools/make_boss.py` | Ziggy and his eye card — **placeholder, see below** |
 | `tools/make_bg.py` | Stage one's three parallax layers |
 | `tools/make_grove.py` | Stage two's scenery: trunks, trees, ivy, hanging charms, ferns, the moon, the forest floor, the far treeline, the canopy, mist — **and `scripts/grove_table`** |
-| `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint — **and the six rank medals** |
+| `tools/make_ui.py` | The console's furniture: gilt corners, crescent dividers, the crest, attack marks, plate glint — **the six rank medals**, and **the boss's rig**: its chain, the terminals at the rail's ends, the percentage cartouche and the clock's dial |
 | `tools/make_sanctum.py` | Stage three's hall: **the pavement's three courses** (the marble field, the processional runner, the lotus border), the joinery, the banners, **the Bastet and the table of slices she is swept into a solid from** -- **the sky over it** (stars in three magnitudes, nebulae, the graduated limb the orrery's rings are made of) **and the chamber at the end of it**, which is one painting rather than a second room |
 | `tools/make_rings.py` | Mika's ring, **one sprite with its colour baked in** -- see the note under "Rings" |
 | `tools/make_mika.py` | Mika and his eye card, **cut out of the owner's own reference sheet**, plus his idle as a shareable GIF |
@@ -5446,7 +5544,7 @@ six casters on its own, the drafting table, which does the same for five
 attacks that have no boss yet, the review card, which flies stage three's
 hall with nothing in it so the reveal can be watched rather than played for,
 and the old draft of stage three, kept whole while Mika is rebuilt.
-714 assertions pass.
+800 assertions pass.
 
 Not done, in rough order of how much it is missed:
 
@@ -5619,6 +5717,14 @@ Not done, in rough order of how much it is missed:
   shape of the sequence rather than against a fight. The damage in particular
   is a balance decision made by argument — a seal that strikes a boss and does
   nothing reads as broken — and it is one constant to take back out.
+- **The boss's rig is unplayed.** Its layout was designed against screenshots,
+  which answers whether it reads and nothing about how it feels: whether the
+  second and a bit it takes to lower is an arrival or a wait, whether the
+  dial's sweep is read peripherally or only when looked at, and whether a
+  thirty-pixel gilded rail across the top of the field is ever in the way of a
+  bullet that matters, and whether a counter rolling on every hit is lively
+  or merely busy. `BOSS_RIG_K`, `BOSS_RIG_D`, `FIELD_OVERLAY_MAX_H`,
+  `BOSS_DIAL_D`, `COUNTER_EASE` and `DIAL_TICK_SHARE` are one number each.
 - **The rank card is unplayed, and its length is the number that matters.**
   Eighty frames is `BOSS_PHASE_PAUSE` with four to spare, which is right by
   arithmetic and says nothing about whether a second and a third of medal is

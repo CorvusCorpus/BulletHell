@@ -53,6 +53,35 @@ function text_ink_height(_str) {
     return string_height(_str) * FONT_INK_RATIO;
 }
 
+/// @desc The y to draw at with `fa_bottom` so the *current* font's baseline
+///       lands on `_baseline`.
+///
+///       **Three sizes of one number belong on one baseline, not on one centre
+///       line.** `fa_middle` centres a font's whole cell, and a cell reserves
+///       room under the baseline for descenders in proportion to its size -- so
+///       a tenth set beside a large digit at the same centre floats half way up
+///       it. Every face here is one of two typefaces at six sizes, so the drop
+///       is the same fraction of the cell in all of them and one constant
+///       answers it.
+function text_baseline_y(_baseline, _scale = 1) {
+    return _baseline + string_height("0") * FONT_BASELINE_DROP * _scale;
+}
+
+/// @desc The y to draw at with `fa_bottom` so a line of *capitals* is centred
+///       on `_cy`.
+///
+///       **`fa_middle` centres the cell, which is not the same thing.** A cell
+///       reserves room under its baseline for descenders, so a line with none
+///       -- which is every caption, tag and name in this interface -- sits
+///       high in it by half the descent. At `fnt_ui` that is two and a half
+///       pixels, which is invisible on a free-standing caption and is the
+///       whole defect on one set inside a plate, because the plate is what the
+///       eye measures it against.
+function text_cap_middle_y(_cy, _scale = 1) {
+    var _cell = string_height("H") * _scale;
+    return _cy + _cell * (FONT_INK_RATIO * 0.5 + FONT_BASELINE_DROP);
+}
+
 /// @desc Text with a hard dark outline under it.
 ///
 ///       **Every string drawn over the field gets one.** The field is a moving
@@ -146,10 +175,7 @@ function draw_text_tracked(_x, _y, _str, _track, _col, _alpha = 1, _thick = 2,
     var _n = string_length(_str);
     if (_n <= 0) return 0;
 
-    var _w = -_track;
-    for (var _i = 1; _i <= _n; _i++) {
-        _w += string_width(string_char_at(_str, _i)) + _track;
-    }
+    var _w = text_tracked_width(_str, _track);
 
     var _cx = _x;
     if (_halign == fa_center) _cx -= _w * 0.5;
@@ -871,7 +897,7 @@ function draw_gauge_trough(_x, _y, _w, _h, _alpha) {
 ///       the trough's arc do not agree to the pixel -- and with the rim
 ///       underneath, the disagreement *is* the outline of the liquid.
 function draw_gauge_rim(_x, _y, _w, _h, _ready, _alpha,
-                        _col = COL_SILVER) {
+                        _col = COL_SILVER, _cold = COL_SLATE) {
     // **A ready rim is the vessel's own hue lit, not white.** White is what
     // every selected control in every menu is drawn in, so a white outline
     // round a meter reads as "this thing has focus" rather than as "there is
@@ -880,7 +906,7 @@ function draw_gauge_rim(_x, _y, _w, _h, _ready, _alpha,
     var _rim = _ready
         ? merge_colour(merge_colour(_col, COL_SILVER, 0.45), c_white,
                        0.1 + 0.3 * dsin(current_time * 0.25))
-        : COL_SLATE;
+        : _cold;
     // One ring two pixels thick, from the same contour the liquid is drawn
     // from -- so the rim covers the seam it is there to cover rather than
     // tracing a differently-shaped outline near it.
@@ -899,7 +925,14 @@ function draw_gauge_rim(_x, _y, _w, _h, _ready, _alpha,
 ///       displaces in x: the same `liquid_wave` with its axes swapped, and a
 ///       meniscus that lurches every time a phase threshold is crossed.
 ///
-///       `_opts`: `ready`, `slosh`, `seed`, `quadrants`, `glow`.
+///       `_opts`: `ready`, `slosh`, `seed`, `quadrants`, `glow`, `rim`.
+///
+///       **`rim` is what a vessel is *set into* rather than what is in it.**
+///       The console's meters are set into its slate furniture and take the
+///       default; the boss's channel is cut into a gilded rail, and a cool
+///       grey liner inside gold reads as a fitting in a different alloy rather
+///       than as a recess -- which is what photographed when the rail was
+///       first drawn round it.
 function draw_gauge_h(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts = {}) {
     _fraction = clamp(_fraction, 0, 1);
     if (_alpha <= 0.004) return;
@@ -1094,7 +1127,344 @@ function draw_gauge_h(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts = {}) {
         gpu_set_blendmode(bm_normal);
     }
 
-    draw_gauge_rim(_x, _y, _w, _h, _ready, _alpha, _colour);
+    draw_gauge_rim(_x, _y, _w, _h, _ready, _alpha, _colour,
+                   _opts[$ "rim"] ?? COL_SLATE);
     draw_set_alpha(1);
     draw_set_colour(c_white);
+}
+
+// ---------------------------------------------------------------------------
+// The hung rail
+//
+// **A bar drawn as a rectangle of colour is a game element; a bar drawn as a
+// thing somebody bolted up there is an object.** The boss's health used to be
+// the first, pinned flush to the top of the field with its phase boundaries
+// marked by rectangles poking out of it above and below. What is here now is a
+// gilded casing with a channel cut down it, graduated like an instrument, hung
+// on two chains that run up out of the top of the frame.
+//
+// The split is the one `make_ui.py` is built on: the casing stretches to the
+// field's width and so is drawn here in GML, and the chain, the terminals and
+// the cartouche are shapes and so are sprites.
+// ---------------------------------------------------------------------------
+
+/// @desc How far the rail reaches above and below its centre line at `_x`.
+///
+///       **A bar end is chamfered, not pointed.** The rail was drawn on the
+///       capsule contour the vessels use, and a section whose every band
+///       converges on a single point draws a *blade*: photographed, the two
+///       ends of the bar came back as spear tips, which is the one thing a
+///       piece of mounting hardware must not look like. A real bar is cut
+///       square and its arris knocked off, so the contour holds the full
+///       half-height everywhere except within `_cap` pixels of each end, where
+///       it eases back to a blunt face.
+function rail_half(_x, _lo, _hi, _half, _cap) {
+    var _d = min(_x - _lo, _hi - _x);
+    if (_d >= _cap) return _half;
+    return _half * (0.62 + 0.38 * sqrt(max(0, _d) / _cap));
+}
+
+/// @desc The gilded casing a boss's health is carried in.
+///
+///       **Drawn as a section, not as a fill.** What makes four pixels of gold
+///       read as gold is the profile across it -- a dark contour, a hot bevel
+///       just inside it, a fall through the body, and a cooler bounce line
+///       where light comes back up off whatever is underneath. That is the
+///       finding `bg_sanctum` records about the orrery's limb, and it is worth
+///       more than any amount of detail *along* the bar, because the section is
+///       the part that reads at a glance.
+///
+///       **Every band is sampled off the capsule's own contour**, so the
+///       section foreshortens into the rounded ends exactly as a real bar's
+///       would -- the property `capsule_half` buys the meters, one shape out.
+///       Nothing here hands a radius to GameMaker, so nothing here can be
+///       silently clamped; see the note above `capsule_half`.
+///
+///       **It is gilt whatever the stage is**, like the frame and the console:
+///       the rail belongs to the interface Szuix carries through other
+///       people's territory, and the only thing on it that takes the attack's
+///       colour is what is *in* the channel.
+function draw_rail(_x, _y, _w, _h, _alpha = 1) {
+    if (_alpha <= 0.004 || _w <= 0) return;
+
+    var _r   = _h * 0.5;
+    var _cap = min(_h * 0.42, _w * 0.5);
+    var _lo  = _x;
+    var _hi  = _x + _w;
+    var _cy  = _y + _r;
+    // Sampled finely inside the chamfers and coarsely across the straight run,
+    // for `capsule_samples`' own reason: an evenly spaced walk spends its
+    // samples where nothing is happening and crosses the whole of the shape in
+    // one segment.
+    var _xs = capsule_samples(_lo, _hi, _cap, _hi);
+    var _n  = array_length(_xs);
+
+    var _dark = merge_colour(COL_GILT, COL_VOID, 0.84);
+
+    // Top to bottom, as fractions of the local half-height.
+    //
+    // **Most of the section is dark and the light on it is a line**, which is
+    // the same budget the console is drawn to and the reason the fascia reads
+    // as bookbinding rather than as a dialog box: a dark saturated ground with
+    // a *small area* of very bright gold on it. Run at full gilt across its
+    // whole depth the rail came back as thirteen hundred by thirty pixels of
+    // the brightest thing on the screen, lying across the top of a field
+    // bullets have to read against -- which is the one thing the frame's own
+    // colour note says the interface may not become.
+    //
+    // **Solid metal all
+    // the way across**, and the first version was not: it carried the channel
+    // as a dark band running the whole length of the bar, so everywhere the
+    // health was not -- the end beyond the slot, and the whole left end under
+    // the cartouche -- the rail was a black trough with two gold hairlines on
+    // it. Photographed, the ends came back as spear points, because a dark
+    // core converging into a rounded cap between two lit edges is a blade.
+    // The recess is cut *where the health is* by the gauge's own trough and
+    // nowhere else, which is what a slot machined into a bar looks like.
+    var _ts = [-1.00, -0.92, -0.72, -0.18, 0.42, 0.86, 1.00];
+    var _cs = [_dark,
+               COL_GILT_LIT,
+               COL_GILT,
+               merge_colour(COL_GILT, COL_VOID, 0.44),
+               merge_colour(COL_GILT, COL_VOID, 0.68),
+               merge_colour(COL_GILT_LIT, COL_GILT, 0.24),
+               _dark];
+
+    for (var _b = 0; _b < array_length(_ts) - 1; _b++) {
+        var _t0 = _ts[_b];
+        var _t1 = _ts[_b + 1];
+        if (_t1 <= _t0) continue;
+        draw_primitive_begin(pr_trianglestrip);
+        for (var _i = 0; _i < _n; _i++) {
+            var _px = _xs[_i];
+            var _hh = rail_half(_px, _lo, _hi, _r, _cap);
+            draw_vertex_colour(_px, _cy + _t0 * _hh, _cs[_b], _alpha);
+            draw_vertex_colour(_px, _cy + _t1 * _hh, _cs[_b + 1], _alpha);
+        }
+        draw_primitive_end();
+    }
+
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+}
+
+/// @desc Chain hanging from `_y0` down to `_y1`, centred on `_x`.
+///
+///       **Tiled from the top, because that is where it is fixed.** The links
+///       belong to the ceiling and the rail hangs at their end, so the phase is
+///       anchored at `_y0`: lowering the rail reveals more chain rather than
+///       stretching the links it already has, which is what a chain does and
+///       what a scrolling texture would not. The run is cut at the terminal's
+///       eye, which is drawn over the cut.
+function draw_chain(_x, _y0, _y1, _col, _alpha) {
+    if (_alpha <= 0.004 || _y1 <= _y0) return;
+    var _sw = sprite_get_width(spr_ui_chain);
+    var _sh = sprite_get_height(spr_ui_chain);
+    var _px = _x - _sw * 0.5;
+    var _y = _y0;
+    while (_y < _y1) {
+        var _take = min(_sh, _y1 - _y);
+        draw_sprite_part_ext(spr_ui_chain, 0, 0, 0, _sw, _take,
+                             _px, _y, 1, 1, _col, _alpha);
+        _y += _sh;
+    }
+}
+
+/// @desc How wide a tracked run will be, without drawing it.
+///
+///       **Split out because two callers want the same number for different
+///       reasons**: `draw_text_tracked` needs it to honour an alignment a
+///       sprite font cannot, and anything drawing a *plate* behind the run
+///       needs it before there is anything to measure. Two copies of this
+///       arithmetic is two copies that come apart the first time the tracking
+///       changes, and what that draws is a caption sitting off-centre in its
+///       own frame.
+function text_tracked_width(_str, _track) {
+    var _n = string_length(_str);
+    if (_n <= 0) return 0;
+    var _w = -_track;
+    for (var _i = 1; _i <= _n; _i++) {
+        _w += string_width(string_char_at(_str, _i)) + _track;
+    }
+    return _w;
+}
+
+/// @desc A framed tablet with chamfered ends: gold moulding, dark field.
+///
+///       **The shape the cartouche is, drawn at any width.** A caption set
+///       straight onto a bar is a caption floating on a bar; the same caption
+///       in a setting is a *nameplate*, and the difference is one frame. The
+///       cartouche at the rail's left end is a sprite because its width is
+///       fixed and it can afford ornament; this one takes its width from the
+///       string in it, so it is a primitive -- the split this interface is
+///       built on, which is that anything carrying a value is drawn in GML.
+///
+///       Chamfered rather than square, because everything else on the rail is:
+///       a rectangular plate hung under a capsule-ended bar between two
+///       chamfered tablets reads as a different object that happened to land
+///       there.
+function draw_tablet(_cx, _y, _w, _h, _alpha, _chamf = -1) {
+    if (_alpha <= 0.004 || _w <= 0) return;
+    var _ch = (_chamf < 0) ? (_h * 0.44) : _chamf;
+    var _x1 = _cx - _w * 0.5;
+    var _x2 = _cx + _w * 0.5;
+    var _my = _y + _h * 0.5;
+
+    // The metal, then the field cut out of it. Two fans rather than a stroked
+    // outline, because an outline is one value on all four sides and a plate
+    // lit from above is not.
+    var _pts = [[_x1, _my], [_x1 + _ch, _y], [_x2 - _ch, _y], [_x2, _my],
+                [_x2 - _ch, _y + _h], [_x1 + _ch, _y + _h]];
+    for (var _pass = 0; _pass < 2; _pass++) {
+        var _in = (_pass == 0) ? 0 : 3;
+        var _c = (_pass == 0) ? COL_GILT : COL_VOID;
+        var _a = (_pass == 0) ? _alpha : _alpha;
+        draw_primitive_begin(pr_trianglefan);
+        draw_vertex_colour(_cx, _my, _c, _a);
+        for (var _i = 0; _i <= 6; _i++) {
+            var _p = _pts[_i mod 6];
+            var _dx = (_p[0] - _cx);
+            var _dy = (_p[1] - _my);
+            var _sx = (_w * 0.5 - _in) / max(1, _w * 0.5);
+            var _sy = (_h * 0.5 - _in) / max(1, _h * 0.5);
+            draw_vertex_colour(_cx + _dx * _sx, _my + _dy * _sy, _c, _a);
+        }
+        draw_primitive_end();
+    }
+
+    // Lit along the top of the band and shadowed along the bottom, which is
+    // what turns a flat outline into a moulding -- the same two lines the
+    // cartouche's own art carries.
+    draw_set_alpha(_alpha * 0.9);
+    draw_set_colour(COL_GILT_LIT);
+    draw_line_width(_pts[0][0], _pts[0][1], _pts[1][0], _pts[1][1], 2);
+    draw_line_width(_pts[1][0], _pts[1][1], _pts[2][0], _pts[2][1], 2);
+    draw_line_width(_pts[2][0], _pts[2][1], _pts[3][0], _pts[3][1], 2);
+    draw_set_alpha(_alpha * 0.85);
+    draw_set_colour(merge_colour(COL_GILT, COL_VOID, 0.72));
+    draw_line_width(_pts[3][0], _pts[3][1], _pts[4][0], _pts[4][1], 2);
+    draw_line_width(_pts[4][0], _pts[4][1], _pts[5][0], _pts[5][1], 2);
+    draw_line_width(_pts[5][0], _pts[5][1], _pts[0][0], _pts[0][1], 2);
+
+    // A spark in each apex, where the chamfer leaves a triangle of metal with
+    // nothing on it -- the cartouche's own detail, at the cartouche's size.
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+    draw_sprite_ext(spr_ui_mark, 0, _x1 + _ch * 0.42, _my, 0.34, 0.34, 0,
+                    COL_GILT_LIT, _alpha * 0.85);
+    draw_sprite_ext(spr_ui_mark, 0, _x2 - _ch * 0.42, _my, 0.34, 0.34, 0,
+                    COL_GILT_LIT, _alpha * 0.85);
+}
+
+// ---------------------------------------------------------------------------
+// Counters
+//
+// **A number that changes by being redrawn is a readout; a number that
+// changes by *turning* is an instrument.** The boss's percentage and the
+// attack's clock were both set as strings, so every change was a cut: the
+// value was one thing on one frame and another on the next, and the player's
+// eye had to notice that it was different. A counter whose digits are on
+// wheels shows the change *happening* -- a digit rolling down out of the
+// window while the next one rolls in from above -- which is caught by the
+// periphery the way the vessels' sloshing surface is, and for the same reason.
+//
+// It is an odometer and not a row of independent reels, which is the part
+// that makes it read as mechanical: a wheel only turns while the wheel below
+// it is passing through zero, so a tenth of a per cent taken off the boss
+// rolls the last wheel alone, and one that takes 90.0 to 89.9 rolls three.
+// ---------------------------------------------------------------------------
+
+/// @desc Where wheel `_k` of an odometer stands when the whole counter reads
+///       `_p`, in units of its lowest wheel.
+///
+///       **The carry is the whole of it.** Wheel `_k` sits on
+///       `floor(_p / 10^k)` and moves only while everything below it is in
+///       its last unit -- `9.x` for the wheel above the units, `99.x` for the
+///       one above that -- so the higher wheels turn exactly when, and exactly
+///       as far as, a real counter's would. Pure, so a suite can walk it.
+function counter_wheel_pos(_p, _k) {
+    var _u = power(10, _k);
+    var _whole = floor(_p / _u);
+    var _rest = _p - _whole * _u;
+    return _whole + clamp(_rest - (_u - 1), 0, 1);
+}
+
+/// @desc Text with an outline, scaled on each axis separately. What a
+///       counter's drum draws a foreshortened digit with.
+function draw_text_outline_ext(_x, _y, _str, _col, _alpha, _xs, _ys,
+                               _thick = 2, _outline = c_black) {
+    // The outline's vertical reach shrinks with the glyph, or a digit turned
+    // most of the way away is a thin sliver inside a thick black box.
+    var _ty = _thick * clamp(_ys / max(0.001, _xs), 0.3, 1);
+    draw_set_colour(_outline);
+    draw_set_alpha(_alpha * 0.85);
+    for (var _i = 0; _i < 8; _i++) {
+        draw_text_transformed(_x + lengthdir_x(_thick, _i * 45),
+                              _y + lengthdir_y(_ty, _i * 45), _str,
+                              _xs, _ys, 0);
+    }
+    draw_set_colour(_col);
+    draw_set_alpha(_alpha);
+    draw_text_transformed(_x, _y, _str, _xs, _ys, 0);
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+}
+
+/// @desc The y to draw at with `fa_bottom` so a line of *digits* in the
+///       current font has its ink centred on `_cy`.
+///
+///       **Digits get their own metric, and the shared one put them two pixels
+///       low.** `text_cap_middle_y` averages two typefaces into one ratio,
+///       which is close enough for a caption and is not for a number set in a
+///       window whose edges the eye measures it against: in the numeral face a
+///       digit's ink centre is 0.527 of the cell above its bottom, not 0.55.
+///       `check_font_digit_mid` re-derives both of these from the atlases.
+function text_digit_middle_y(_cy, _yscale = 1) {
+    var _f = (draw_get_font() == fnt_num()) ? FONT_DIGIT_MID_NUM
+                                            : FONT_DIGIT_MID_UI;
+    return _cy + string_height("0") * _yscale * _f;
+}
+
+/// @desc One wheel of a counter in the current font, its window centred on
+///       (`_cx`, `_cy`), standing at position `_pos`.
+///
+///       **A drum, drawn as one.** The two digits either side of the position
+///       are placed round a cylinder a quarter-turn apart: each is pushed off
+///       the window's centre line by the sine of its angle, squashed by the
+///       cosine, and faded by it. At rest one digit faces the window square
+///       and the next is edge-on and invisible; half way, each is turned
+///       forty-five degrees and the two stand stacked, which is the frame of a
+///       mechanical counter everybody recognises.
+///
+///       **Rolling down means counting down.** As the position falls, the
+///       digit in the window turns away *downward* and the lower one comes
+///       over the top -- which is the direction a boss's health goes, and the
+///       direction the eye expects a number that is decreasing to move in.
+///
+///       `_blank_zero` leaves a zero out, for a leading wheel: 75.0 is not
+///       075.0. It is per glyph, so a wheel rolling from 1 to a blank shows
+///       the 1 leaving and nothing arriving.
+function draw_counter_wheel(_cx, _cy, _pos, _col, _alpha, _scale,
+                            _blank_zero = false, _thick = 2) {
+    if (_alpha <= 0.004) return;
+    var _d = floor(_pos);
+    var _f = _pos - _d;
+    var _r = string_height("0") * FONT_INK_RATIO * _scale * 0.5;
+
+    draw_set_halign(fa_center);
+    draw_set_valign(fa_bottom);
+    for (var _k = 0; _k < 2; _k++) {
+        var _ang = (_k - _f) * 90;       // 0 faces the window, + is below
+        var _c = dcos(_ang);
+        if (_c < 0.04) continue;
+        var _digit = ((_d + _k) mod 10 + 10) mod 10;
+        if (_blank_zero && _digit == 0) continue;
+        var _ys = _scale * _c;
+        var _gy = _cy + _r * dsin(_ang);
+        draw_text_outline_ext(_cx, text_digit_middle_y(_gy, _ys),
+                              string(_digit), _col, _alpha * power(_c, 1.5),
+                              _scale, _ys, _thick);
+    }
+    draw_set_halign(fa_left);
+    draw_set_valign(fa_top);
 }

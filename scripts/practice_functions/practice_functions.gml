@@ -225,11 +225,12 @@ function practice_new(_stage, _boss_i, _phase_i) {
 ///       because that is a property of the attack and the attack is the
 ///       subject.
 ///
-///       The health starts where the attack does, so the bar spans this attack
-///       rather than sitting nearly full during the sixth one. Same argument
-///       as `shot_boss`, and it matters more here: the notches either side of
-///       the fill are how the player reads how far through the attack they
-///       are, and they are wrong if the fill starts in the wrong place.
+///       The health starts where the attack does, so the attack is fought
+///       over exactly the health it is fought over in a stage and breaks at
+///       the same threshold. **What the rail shows is the attack alone** --
+///       100.0 to 0.0 rather than the stretch of the fight it occupies -- and
+///       that is the HUD's reading of the same numbers, not a change to them:
+///       see `hud_boss_span`.
 function practice_begin(_g) {
     var _p = _g.practice;
     practice_seed_best(_p);
