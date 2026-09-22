@@ -1,22 +1,10 @@
-/// @desc The shards enemies drop, and how they reach the player.
+/// @desc The pickups enemies drop, and how they reach the player.
 ///
-/// Red is health, blue is special, gold is points. **One point each**, which
-/// is the whole reason a shard is worth picking up in a game with a hundred-
-/// point bar: a hit costs twenty-five and the field gives back one at a time,
-/// so recovering from a hit is something you spend a minute doing rather than
-/// something a single drop undoes.
-///
-/// They arc up and then fall, which is Touhou's shape and is not arbitrary: an
-/// item that fell straight down from where the enemy died would be collected
-/// by standing where you were already standing, and the little arc is what
-/// makes going and getting it a decision.
-///
-/// **They are drawn as cut stones** -- a ruby, a sapphire crystal and a
-/// citrine, each a different cut so the three read apart by shape as well as
-/// by colour. The sprites are ray-traced by `tools/make_items.py`, which has
-/// the argument for how they are kept from reading as bullets; this file
-/// turns them, and gives them the handful of moments that make picking one up
-/// feel like something: arriving, twinkling, being pulled in, and breaking.
+/// Red is health, blue is sigil, gold is points; a red or blue one is worth
+/// `ITEM_HP_VALUE` / `ITEM_MP_VALUE`. They are thrown up, fall, and home in
+/// once the player is near or above `ITEM_AUTO_LINE`. Drawn as cut stones
+/// (ruby, sapphire crystal, citrine) ray-traced by `tools/make_items.py`;
+/// this file spins, pops, twinkles and fades them.
 
 function item_init() {
     global.items = [];
@@ -67,8 +55,7 @@ function item_spawn(_x, _y, _kind, _vx = undefined, _vy = undefined) {
     _it.t = 0;
     _it.drawn = 0;
     _it.homing = false;
-    // What makes one stone turn and twinkle differently from its neighbour.
-    // Drawing reads it and nothing else does.
+    // Per-stone variation for the spin and twinkle; only drawing reads it.
     _it.seed = random(1);
     return _it;
 }
@@ -80,20 +67,16 @@ function item_drop_spread(_x, _y, _red, _blue, _gold) {
     for (var _i = 0; _i < _gold; _i++) item_spawn(_x, _y, ItemKind.Tally);
 }
 
-/// @desc Advance every shard, and hand the player what it caught.
-///       Returns a struct counting what was collected this frame, so the
-///       caller does the applying -- which keeps this function pure enough to
-///       assert on and keeps every change to the player's numbers in one file.
+/// @desc Advance every item. Returns what was collected this frame
+///       (`{hp, mp, tally, n}`); the caller applies it to the player.
 function item_step(_px, _py) {
     var _got = { hp: 0, mp: 0, tally: 0, n: 0 };
 
-    // **Above the line, everything comes to you.** The point of collection: it
-    // is the one thing in the genre that rewards flying up into the pattern,
-    // and taking it out would leave no reason ever to go there.
+    // Point of collection: above this line every item homes in.
     var _auto = global.item_auto || (_py < ITEM_AUTO_LINE);
 
-    // Catches this frame, by kind, and where the first of each landed -- the
-    // burst is thrown once per kind after the loop. See `item_catch_fx`.
+    // Catches this frame by kind, and where the first of each landed: one
+    // catch burst per kind is thrown after the loop.
     var _caught = [0, 0, 0];
     var _cx = [0, 0, 0];
     var _cy = [0, 0, 0];
@@ -107,8 +90,7 @@ function item_step(_px, _py) {
 
         if (_it.homing) {
             var _dir = point_direction(_it.x, _it.y, _px, _py);
-            // Accelerates the closer it gets, so the last stretch snaps in
-            // rather than drifting -- collection has to feel like a catch.
+            // Faster the closer it gets.
             var _spd = ITEM_MAGNET_SPD * (1 + 0.9 * (1 - min(1, _d / ITEM_MAGNET_R)));
             _it.vx = lengthdir_x(_spd, _dir);
             _it.vy = lengthdir_y(_spd, _dir);
@@ -132,17 +114,14 @@ function item_step(_px, _py) {
                 _cy[_it.kind] = _it.y;
             }
             _caught[_it.kind]++;
-            // Once per shard, and a bomb can put fifty on the field. One voice
-            // comes out of it, bigger for having been fifty -- see
-            // `audio_functions`, which exists for exactly this shape of call.
+            // Called per item; `sfx` coalesces a frame's requests into one voice.
             sfx(Sfx.Item);
             item_kill_at(_i);
             continue;
         }
 
-        // Off the bottom, or simply too old. Not off the top: a shard thrown
-        // hard by a dying boss goes up before it comes down, and killing it up
-        // there would eat the drop.
+        // Off the bottom, or too old. Not culled off the top, because items
+        // are thrown upward before they fall.
         if (_it.y > FIELD_Y1 + 80 || _it.t > ITEM_LIFE) {
             item_kill_at(_i);
         }
@@ -173,14 +152,10 @@ function item_clear_all() {
     global.item_n = 0;
 }
 
-/// @desc The burst a stone leaves when it is caught: a flash, a ring opening
-///       out, and splinters of it thrown off spinning.
-///
-///       **One per kind per frame, however many landed.** A bomb pulls fifty
-///       stones in along converging paths and they arrive on the same pixel
-///       within a frame or two; a burst each stacked, additively, into a white
-///       blot over the player's centre at the moment they most need to see it.
-///       So `_n` makes the one burst wider rather than brighter.
+/// @desc The burst when stones are caught: a flash, a ring and spinning
+///       splinters. Thrown once per kind per frame (many stones landing
+///       together would otherwise stack into a white blot); `_n`, the number
+///       caught, makes it wider rather than brighter.
 function item_catch_fx(_x, _y, _kind, _n) {
     var _col = item_colour(_kind);
     var _more = min(_n - 1, 6);
@@ -214,10 +189,9 @@ function item_catch_fx(_x, _y, _kind, _n) {
     }
 }
 
-/// @desc How many rotational copies of itself each stone has -- a quarter
-///       turn of the citrine is the same picture again. The sprites hold one
-///       such period, so this is what turns frames into a rate. It is a fact
-///       about the art: see `STONES` in `tools/make_items.py`.
+/// @desc Each stone's rotational symmetry. The sprite holds one symmetry
+///       period, so this converts frames into a spin rate. Must match `STONES`
+///       in `tools/make_items.py`.
 function item_symmetry(_kind) {
     switch (_kind) {
         case ItemKind.Health: return 8;     // round brilliant
@@ -226,10 +200,10 @@ function item_symmetry(_kind) {
     return 4;                               // octahedron
 }
 
-/// @desc Which frame a stone is showing. Each turns at its own rate and in its
-///       own direction, and a new one is thrown spinning and settles: the
-///       extra term is the integral of a rate falling from 3.5x to 1x over its
-///       first half second, so the picture never jumps as it slows.
+/// @desc Which frame a stone is showing. Each turns at its own rate and
+///       direction; a new one starts spinning fast and settles (the extra term
+///       integrates a rate falling from 3.5x to 1x over its first 30 frames,
+///       so the frame never jumps).
 function item_frame(_it, _spr) {
     var _n = sprite_get_number(_spr);
     var _rate = ITEM_TURN * item_symmetry(_it.kind) * _n / FPS
@@ -241,9 +215,7 @@ function item_frame(_it, _spr) {
     return ((_f mod _n) + _n) mod _n;
 }
 
-/// @desc A new stone's scale: up from nothing with a little overshoot, since
-///       a thing that arrives at exactly its size has been faded in rather
-///       than thrown.
+/// @desc A new stone's scale: up from nothing with a small overshoot.
 function item_pop(_t) {
     if (_t >= ITEM_POP) return 1;
     var _u = _t / ITEM_POP - 1;
@@ -251,8 +223,7 @@ function item_pop(_t) {
 }
 
 /// @desc 0..1: how brightly a stone is twinkling. Once as it arrives, then
-///       every couple of seconds on its own clock, so a shower of them
-///       glitters rather than pulsing together.
+///       every couple of seconds on its own clock.
 function item_glint(_it) {
     var _u = (_it.t - 3) / ITEM_GLINT_LEN;
     if (_u >= 0 && _u < 1) return dsin(_u * 180);
@@ -261,9 +232,8 @@ function item_glint(_it) {
     return (_u < 1) ? dsin(_u * 180) : 0;
 }
 
-/// @desc How much of a stone is left to see: whole until near the end of its
-///       life, then going out with a flicker that quickens, so a stone about
-///       to be lost says so rather than simply vanishing.
+/// @desc A stone's alpha: 1 until the last `ITEM_FADE` frames of its life,
+///       then fading out with a quickening flicker.
 function item_alpha(_it) {
     var _left = ITEM_LIFE - _it.t;
     if (_left >= ITEM_FADE) return 1;
@@ -271,16 +241,9 @@ function item_alpha(_it) {
     return _u * (0.7 + 0.3 * dcos(_it.t * lerp(40, 14, _u)));
 }
 
-/// @desc Every stone on the field. Under the bullets -- see `obj_game`'s Draw.
-///
-///       Three passes, because each has its own blend. **A light under each
-///       stone** is what makes it findable: a coloured glow is a mark the
-///       scenery makes all the time and no bullet makes at all, so it draws
-///       the eye without being mistaken for something to dodge. **The stone
-///       itself**, turning, and rocking a little as it falls. **Light over
-///       it**: the twinkle, and -- once the player has it -- a streak behind
-///       it and a brighter copy on top, so a stone on its way in looks caught
-///       rather than merely moving.
+/// @desc Draw every stone (under the bullets; see `obj_game`'s Draw). Three
+///       passes by blend mode: an additive glow (plus a streak while homing),
+///       the stone itself, then an additive highlight and twinkle.
 function item_draw() {
     var _bw = sprite_get_width(spr_fx_bloom);
     var _sw = sprite_get_width(spr_fx_spark);
@@ -328,8 +291,7 @@ function item_draw() {
         }
         var _g = item_glint(_it);
         if (_g > 0) {
-            // On the upper-left facet: the side the lamp is on, in every
-            // frame of every stone.
+            // On the upper-left facet, the lit side in every frame.
             var _gs = (10 + 26 * _g) / _gw;
             draw_sprite_ext(spr_fx_glint, 0,
                             _it.x - sprite_get_width(_spr) * 0.16,

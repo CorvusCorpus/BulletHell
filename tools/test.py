@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
 """Build the game, run its self-tests, and report.
 
-`build.py` proves the GML compiles. This proves it is *right*: it launches the
-built executable with `-selftest`, which runs the suites in `scripts/selftest`
-and ends the game before drawing a frame, then reads the results back off
-stdout.
-
-A bullet hell is mostly arithmetic on positions and angles, and nearly all of
-it is invisible in a still frame: a ring that is one bullet short, a laser
-whose warning line and beam disagree, a boss phase table whose thresholds do
-not descend. Those are the things this catches.
+Launches the built executable with `-selftest`, which runs the suites in
+`scripts/selftest` and quits before drawing a frame, then reads the results
+(`SELFTEST PASS/FAIL/DONE` lines) back off stdout.
 
 Usage:
     python tools/test.py
@@ -43,9 +37,7 @@ def main():
         return 1
 
     try:
-        # **Minimised and un-activated.** The suites draw nothing anybody
-        # looks at and this runs every few minutes while somebody is working
-        # on something else. See `build.run_game`.
+        # Minimised and without focus (see `build.run_game`).
         proc = build.run_game([EXE, "-selftest"], TIMEOUT)
     except subprocess.TimeoutExpired:
         print("FAILED: the self-test did not finish within %ds" % TIMEOUT)

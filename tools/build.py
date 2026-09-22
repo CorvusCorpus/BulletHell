@@ -1,25 +1,16 @@
 #!/usr/bin/env python3
 """Compile the project headlessly with Igor, and report GML errors.
 
-Lifted from the Wordsearch project, which is where the discovery that this
-works at all was made. The installed runtime ships `Igor.exe`, it matches the
-IDE version in the `.yyp`, and a cached build takes a couple of seconds. So a
-change can be *compiled* rather than eyeballed, and the whole class of mistakes
-a static checker only approximates -- a typo'd variable, a script that does not
-parse -- is caught by the real compiler instead.
-
-`check_project.py` is still worth running, because the two see different
-things: Igor compiles GML but says nothing about a room instance missing from
-`instanceCreationOrder`, and it will happily build a project whose `.yy` files
-GameMaker's *IDE* would refuse to open. Run both.
+Uses the installed runtime's `Igor.exe` (matching the IDE version in the
+`.yyp`); a cached build takes a few seconds. Igor only compiles GML, so also
+run `check_project.py` for project-file problems.
 
 Usage:
     python tools/build.py            # compile, report errors, exit non-zero on failure
     python tools/build.py --run      # compile and launch the game
     python tools/build.py --clean    # discard the cache first (slower)
 
-The build artefacts go to a scratch folder outside the project so they never
-end up in the repo or in front of GameMaker's asset scanner.
+Build artefacts go to a temp folder outside the project.
 """
 import argparse
 import os
@@ -38,25 +29,10 @@ IGOR = os.path.join(RUNTIME, "bin", "igor", "windows", "x64", "Igor.exe")
 
 BUILD = os.path.join(tempfile.gettempdir(), "bullethell_build")
 
-# Windows' CreateProcess show-window request. **This is where "the harness does
-# not take over the screen" actually lives**, and both tools go through it.
-#
-# `option_windows_start_fullscreen` used to be on, so every harness run changed
-# the display mode and raised a borderless window over everything else before a
-# line of GML could object -- see `obj_boot`'s Create for that half. Turning it
-# off stops the game seizing the *display*; it does not stop the window
-# appearing and taking the foreground, and a run launched from a terminal the
-# user is looking at inherits the right to do exactly that.
-#
-# So the process is started minimised and un-activated. GameMaker keeps
-# rendering into it -- measured: a `-shot` run launched this way saves the same
-# 1864x1048 screenshot with the same content, because `screen_save` reads the
-# game's own surface and never the desktop -- so nothing is given up.
-#
-# **`window_set_visible(false)` is the version of this that does not work.**
-# From inside GML it stops the game stepping at all, so `room_test` never runs
-# and `tools/test.py` reports its timeout. Minimising from outside is a
-# different thing and the runner is happy with it.
+# Harness runs start the game minimised and without focus
+# (SW_SHOWMINNOACTIVE), so they don't take the foreground. The game still
+# renders normally (`screen_save` reads its own surface). Hiding the window
+# from GML instead (`window_set_visible(false)`) stops the game stepping.
 SW_SHOWMINNOACTIVE = 7
 
 
@@ -71,11 +47,8 @@ def _background_startupinfo():
 
 
 def run_game(cmd, timeout, show=False):
-    """Run the built game and hand back the finished process.
-
-    ``show`` opens it normally, for the rare run somebody actually wants to
-    watch -- `shot.py --fullscreen` is the one that asks, because a minimised
-    full screen is a contradiction.
+    """Run the built game and return the finished process. Starts minimised
+    without focus unless ``show`` (used by `shot.py --fullscreen`).
     """
     return subprocess.run(cmd, capture_output=True, text=True,
                           errors="replace", timeout=timeout,
@@ -151,11 +124,8 @@ def main():
         "Run" if args.run else "PackageZip",
     ]
 
-    # **Run from the build folder, not the project.** `--tf` names the target
-    # archive and Igor writes it relative to the working directory, so running
-    # from ROOT drops a multi-megabyte zip in the project root -- in front of
-    # GameMaker's asset scanner, and into git as an untracked file. Nothing
-    # here needs the project as its cwd; `--project` is absolute.
+    # Run from the build folder: Igor writes the `--tf` archive relative to
+    # the working directory, and it mustn't land in the project.
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           errors="replace", cwd=BUILD)
     output = (proc.stdout or "") + (proc.stderr or "")

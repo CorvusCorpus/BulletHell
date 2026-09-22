@@ -1,64 +1,34 @@
-/// @desc The scrolling world behind the field, and what replaces it when a
-///       spell is declared.
+/// @desc Backgrounds: the shared struct and dispatch (`bg_step`,
+///       `bg_draw_back`, `bg_draw_front`), stage one's parallax stack, the
+///       mid-stage turn (`omen`), and the spell backgrounds.
 ///
-/// **Three layers, scrolling down at three rates, and nothing else.** The
-/// player sprite is a back view -- he is flying away from the camera -- so the
-/// world comes toward the viewer, which on a flat screen is the world moving
-/// down it. Parallax is the whole of the depth: the ground crawls, the rocks
-/// move, the foreground races.
-///
-/// **Every layer is one sprite drawn twice.** The art tiles seamlessly top to
-/// bottom (see `tools/make_bg.py`), so a layer is the sprite at `y` and the
-/// sprite at `y - FIELD_H`, and the offset is `scroll mod FIELD_H`. No surface,
-/// no tilemap, two draw calls a layer.
-///
-/// **The near layer draws over the field and keeps out of the middle.** That
-/// is a rule enforced in the generator rather than here, because a spire in
-/// the centre of the screen is somewhere a bullet can hide, and no amount of
-/// care at draw time can fix art that was authored wrong.
+/// Stage one (`bg_brimstone`) is three layers scrolling down at three rates,
+/// each one sprite drawn twice (the art tiles vertically; see
+/// `tools/make_bg.py`). The near layer draws over the field, so it is
+/// translucent (`BG_NEAR_ALPHA`) and its art keeps out of the middle. Stage two
+/// is a corridor (`bg_corridor`, `bg_grove`) and stage three a 3D room
+/// (`bg_sanctum`).
 
-/// @desc One stage's backdrop. `_speed` is how fast the world goes past, in
-///       pixels a frame at the middle layer.
+/// @desc A parallax background. `_speed` is the middle layer's scroll speed in
+///       px/frame. Other kinds start from this struct and override fields.
 function bg_new(_ground, _rock, _near, _air, _speed) {
     return {
-        // **Which kind of world this is**, and it is the one field every
-        // background has. Stage one is a floor scrolling down the screen and
-        // stage two is a corridor flown into -- see `bg_corridor` -- and the
-        // two have almost nothing in common but the three entry points below,
-        // so the dispatch is here rather than either kind pretending to be
-        // the other.
+        // `BGKIND_PARALLAX` or `BGKIND_CORRIDOR` (dispatched on below).
         kind: BGKIND_PARALLAX,
 
-        // **How this background draws itself.** `bg_step` and its two
-        // neighbours dispatched on `kind`, with one `if` per world -- which
-        // was honest while there were two and becomes a switch statement the
-        // day there are four. A background that carries its own three
-        // functions is the same shape as a phase carrying its own `attack`
-        // and a ring carrying its own `act`, and it is what lets a stage add
-        // a world without editing this file at all.
-        //
-        // `undefined` is "the parallax stack below", so nothing that already
-        // worked had to change to gain the seam.
+        // Optional overrides for the three entry points (the hall uses these);
+        // `undefined` means use the dispatch on `kind`.
         f_step: undefined,
         f_back: undefined,
         f_front: undefined,
 
-        // **A stage may have a second half.** `bg_set_omen` starts it, it
-        // eases over `BG_OMEN_TIME`, and a background that has nothing to say
-        // about it simply never reads it -- which is stage one. It lives on
-        // the base struct rather than on the corridor because "the stage
-        // turns" is a fact about a *run*, and the run has to be able to say
-        // it without knowing what kind of world it is saying it to.
+        // The mid-stage turn: `bg_set_omen` sets `omen_on`, and `omen` eases
+        // 0 -> 1 over `BG_OMEN_TIME`. Backgrounds without a turn ignore it.
         omen: 0,
         omen_on: false,
 
-        // **Where the player is across the field, -1 at the left wall and +1
-        // at the right.** A request in exactly the sense `omen` is: the run
-        // knows where the player is and has no idea what kind of world it is
-        // telling, and a background that has nothing to say about it never
-        // reads it -- which is stage one. Zero is the honest answer for every
-        // screen that has no player on it, and it is what the rack and the
-        // attack list get.
+        // The player's position across the field, -1 (left wall) to +1
+        // (right wall), passed in by `bg_step`; 0 on screens with no player.
         aim: 0,
 
         ground: _ground,
@@ -68,9 +38,7 @@ function bg_new(_ground, _rock, _near, _air, _speed) {
         speed: _speed,
         t: 0,
 
-        // How much the three layers lag the middle one. The near layer moving
-        // faster than the world is what sells the depth; the ground moving at
-        // a fifth is what keeps it from reading as a sliding texture.
+        // Each layer's speed relative to `speed`.
         ground_rate: 0.22,
         rock_rate: 1.0,
         near_rate: 2.1,
@@ -80,25 +48,16 @@ function bg_new(_ground, _rock, _near, _air, _speed) {
     };
 }
 
-/// @desc The brimstone stage. Later stages are another of these.
+/// @desc Stage one's background.
 function bg_brimstone() {
-    // The world goes past faster than it did, for the same reason everything
-    // else here does: the screen is 1080 tall and a layer crawling at 2.6
-    // pixels a frame takes seven seconds to travel its own height, which reads
-    // as hanging still. See the note on speed in `constants`.
     var _b = bg_new(spr_bg_brim_ground, spr_bg_brim_rock, spr_bg_brim_near,
                     make_colour_rgb(40, 14, 12), 4.6);
     bg_seed_embers(_b, 64, make_colour_rgb(214, 74, 26));
     return _b;
 }
 
-/// @desc The motes drifting up through the scene.
-///
-///       **Derived from the clock, not simulated.** Each ember is a phase and
-///       a rate, and where it is this frame is `frac` of the two -- so there
-///       is no pool to step, nothing to respawn, and a background that has
-///       been off screen for a minute is already correct on the frame it comes
-///       back. The same argument Wordsearch's gauge bubbles are built on.
+/// @desc Seed the drifting embers. Positions are derived from the clock (a
+///       phase and rate each) rather than simulated.
 function bg_seed_embers(_b, _n, _col) {
     _b.embers = [];
     for (var _i = 0; _i < _n; _i++) {
@@ -116,12 +75,9 @@ function bg_seed_embers(_b, _n, _col) {
 }
 
 function bg_step(_b, _aim = 0) {
-    // **Pushed rather than pulled.** The background could read the player
-    // itself -- it is a global -- and then the title screen and the attack
-    // list would both be reading a player that is standing wherever the last
-    // run left it. Handing it in means the three screens that step a
-    // background each say what they actually know, and a suite can fly the
-    // camera without posing a player at all.
+    // The player's aim is passed in rather than read from the player, so
+    // screens without a run (the rack, the attack list) and suites can step
+    // a background.
     _b.aim = clamp(_aim, -1, 1);
     bg_omen_step(_b);
     if (!is_undefined(_b.f_step)) {
@@ -135,54 +91,22 @@ function bg_step(_b, _aim = 0) {
     _b.t++;
 }
 
-/// @desc **The stage turns.** Called once, from the timeline, and after that
-///       the background has a second half.
-///
-///       It is a request rather than a state, because the turn takes four and
-///       a half seconds and the thing that asks for it -- a line in a stage's
-///       running order -- happens on one frame. Idempotent on purpose: asking
-///       twice is what a restarted timeline would do.
-///
-///       **On the base struct rather than on the corridor**, so a stage can
-///       say it without knowing what kind of world it is saying it to.
+/// @desc Start the mid-stage turn (from a stage's timeline via
+///       `wave_bg_omen`). Idempotent.
 function bg_set_omen(_b) {
     _b.omen_on = true;
 }
 
-/// @desc **Put the turn back.** For the review card and for nothing else.
-///
-///       `bg_set_omen` is one-way because a stage turns once, and that is the
-///       right shape for a stage: a second half does not become a first half
-///       again. A card whose whole purpose is to show the turn does want it
-///       again, though, and without quitting to the rack in between -- so the
-///       rewind is a named function here rather than two fields poked from a
-///       stage script, because which fields the turn is made of is this
-///       file's business and not a timeline's.
-///
-///       It is a **cut**, not a rewind: `omen` goes straight to zero and any
-///       background reading it snaps back. That is what is wanted where it is
-///       used -- two poses either side of a cut is how two poses get compared
-///       -- and it is why nothing that is actually a stage should call it.
+/// @desc Undo the turn instantly (`omen` straight to 0). Only the review card
+///       uses this; a stage never should.
 function bg_clear_omen(_b) {
     _b.omen_on = false;
     _b.omen = 0;
 }
 
-/// @desc **The background as a boss finds it**, for a run that begins at the
-///       boss rather than at the start of the stage. Attack practice is that
-///       run.
-///
-///       Two things a stage does before its boss arrives, and a run that skips
-///       the stage has to have them done for it. The arrival -- the grove's
-///       fog, the hall's lights coming up -- is the stage's opening and is
-///       long over by the time anybody fights a boss. And a boss fought in a
-///       stage's second half is fought after the turn: Velka in the blood
-///       wood, Mika in the open hall rather than under a camera still aimed at
-///       the floor. Practised without this, both were being drilled against a
-///       background they never appear in.
-///
-///       A cut, like `bg_clear_omen`, and for the same reason: there is no
-///       first half here for the turn to have happened during.
+/// @desc Set the background up as it would be when a boss is reached, for
+///       practice runs that skip the stage: the opening (`intro`) is finished,
+///       and if `_turned`, the turn has already happened.
 function bg_skip_to_boss(_b, _turned) {
     if (_b[$ "intro"] != undefined) _b.intro = 1;
     if (_turned) {
@@ -191,7 +115,7 @@ function bg_skip_to_boss(_b, _turned) {
     }
 }
 
-/// @desc Ease the turn along. One line, and every background gets it.
+/// @desc Advance the turn one frame.
 function bg_omen_step(_b) {
     if (_b.omen_on && _b.omen < 1) {
         _b.omen = min(1, _b.omen + 1 / BG_OMEN_TIME);
@@ -200,25 +124,15 @@ function bg_omen_step(_b) {
 
 /// @desc Where a layer's top edge is this frame.
 function bg_offset(_b, _rate) {
-    // `mod` on a negative in GML answers a negative, and a negative offset
-    // leaves a band of nothing across the top of the screen. Adding the height
-    // back before the second `mod` is what keeps it in [0, FIELD_H).
+    // GML's `mod` keeps the sign of a negative; fold into [0, FIELD_H).
     var _v = (_b.t * _b.speed * _rate) mod FIELD_H;
     return (_v + FIELD_H) mod FIELD_H;
 }
 
-/// @desc The two layers that go *behind* the field.
-///
-///       **`_fill` scales the world up to cover the whole screen**, which the
-///       stage rack needs and a run must never have. The layers are generated
-///       at the field's size -- see the note at the top of `tools/make_bg.py`
-///       -- so a screen with no field on it got the world in a 1360-wide
-///       rectangle with a hard vertical edge down it and flat black beyond,
-///       which on the rack read as the art having failed to load. Scaling is
-///       the right answer rather than tiling sideways, because the layers tile
-///       seamlessly *top to bottom only*: a second copy laid alongside would
-///       trade one visible seam for another. Behind the rack's own scrim the
-///       enlargement is invisible.
+/// @desc The layers behind the field. `_fill` scales the world up to cover the
+///       whole screen (for the rack, which has no field); the layers are
+///       generated at field size and only tile vertically, so they are scaled
+///       rather than tiled sideways.
 function bg_draw_back(_b, _fill = false) {
     if (!is_undefined(_b.f_back)) {
         _b.f_back(_b, _fill);
@@ -235,17 +149,9 @@ function bg_draw_back(_b, _fill = false) {
     var _y0 = _fill ? 0 : FIELD_Y0;
     var _th = FIELD_H * _s;
 
-    // Pinned to the field's top-left, because that is where the world is
-    // now. The layers are generated at FIELD_W x FIELD_H -- see the note at
-    // the top of `tools/make_bg.py` -- so a layer exactly covers the field and
-    // nothing has to be clipped.
-    // **Explicit colour and alpha, like every other sprite draw in the game.**
-    // These two were the only bare `draw_sprite` calls left, and bare means
-    // "use whatever blend colour and alpha are currently set" -- so the ground
-    // layer, and only the ground layer, inherited whatever the *previous
-    // frame's GUI event* finished on. The stage-name splash fading its text
-    // out was enough to fade the world out with it. The layer below states
-    // what it wants; so does this one now.
+    // The layers are exactly field-sized and pinned to its top-left. Drawn
+    // with explicit colour and alpha (a bare `draw_sprite` inherits leftover
+    // draw state).
     var _gy = _y0 + bg_offset(_b, _b.ground_rate) * _s;
     draw_sprite_ext(_b.ground, 0, _x0, _gy, _s, _s, 0, c_white, 1);
     draw_sprite_ext(_b.ground, 0, _x0, _gy - _th, _s, _s, 0, c_white, 1);
@@ -257,27 +163,9 @@ function bg_draw_back(_b, _fill = false) {
     bg_draw_embers(_b, _x0, _y0, _s);
 }
 
-/// @desc The one layer that goes *in front* of the field.
-///
-///       **It is never opaque.** See `BG_NEAR_ALPHA`: this is the only piece
-///       of the world drawn over the top of live danmaku, and at ninety-four
-///       per cent it did not hide scenery, it hid bullets -- which reads to a
-///       player as taking damage from nothing.
-///
-///       **It stands down for a spell background.** This layer is the only
-///       piece of the world drawn over the top of the danmaku, so when
-///       `spell_bg_draw` washes the stage out it is the one thing left
-///       competing with the pattern -- and photographed mid-spell that is
-///       exactly what it was: the world correctly gone, and two columns of lit
-///       basalt still standing over the field on either side, brighter than
-///       anything behind them. A background that works by *subtraction* cannot
-///       have a foreground that opted out of it.
-///
-///       It is faded rather than switched off, and it never goes all the way,
-///       because a foreground that vanished on the declaration frame would
-///       flatten the depth at the exact moment the screen is trying to be
-///       dramatic. `_spell` is the same eased 0..1 the wash uses, so the two
-///       move together.
+/// @desc The near layer, drawn over the field: translucent at most
+///       (`BG_NEAR_ALPHA`, so bullets show through), and faded most of the
+///       way out by `_spell` (the spell background's 0..1 fade).
 function bg_draw_front(_b, _spell = 0, _fill = false) {
     if (!is_undefined(_b.f_front)) {
         _b.f_front(_b, _spell, _fill);
@@ -297,23 +185,9 @@ function bg_draw_front(_b, _spell = 0, _fill = false) {
     draw_sprite_ext(_b.near, 0, _x0, _ny - FIELD_H * _s, _s, _s, 0, c_white, _a);
 }
 
-/// @desc The motes drifting up through the scene.
-///
-///       **Small, dim, and a deeper red than any bullet.** This was the one
-///       piece of scenery that had to be re-tuned rather than re-drawn, and
-///       what forced it was a screenshot: at ten to twenty-eight pixels
-///       across, in the same bright orange the ember bullets use, they were
-///       the *same object* as a `BSHAPE_PELLET` in `BCOL_EMBER`. A player
-///       cannot be asked to tell an obstacle from scenery by watching which of
-///       them accelerates.
-///
-///       Three things separate them now and only the first is a number here.
-///       They are half the size and much fainter. They are pushed toward the
-///       deep red the lava is, which is a hue no bullet in the game uses. And
-///       -- the one that actually does the work -- every bullet wears a hard
-///       dark contour, which is a mark an additive light cannot make: light
-///       can only ever brighten what is behind it, so a dark edge means an
-///       object. See `CONTOUR` in `tools/make_bullets.py`.
+/// @desc The embers drifting up through the scene: small, faint and deep red,
+///       so they aren't mistaken for bullets (which also carry a dark contour
+///       additive scenery can't draw).
 function bg_draw_embers(_b, _x0 = FIELD_X0, _y0 = FIELD_Y0, _k = 1) {
     gpu_set_blendmode(bm_add);
     var _sw = sprite_get_width(spr_fx_bloom);
@@ -321,12 +195,12 @@ function bg_draw_embers(_b, _x0 = FIELD_X0, _y0 = FIELD_Y0, _k = 1) {
         var _e = _b.embers[_i];
         // Rising: 1 at the bottom of the cycle, 0 at the top.
         var _p = frac(_e.phase + _b.t * _e.rate);
-        // Seeded in field coordinates and drawn in the view's, so the same
-        // motes rise through the rack's enlarged world as through the field's.
+        // Seeded in field coordinates and drawn in the view's (the rack's is
+        // enlarged).
         var _y = _y0 + (FIELD_H + 40 - _p * (FIELD_H + 80)) * _k;
         var _x = _x0 + (_e.x - FIELD_X0
                         + dsin(_b.t * _e.sway_rate + _i * 40) * _e.sway) * _k;
-        // Fades in at the bottom and out at the top, so nothing pops.
+        // Fades in at the bottom and out at the top.
         var _a = min(1, _p * 5) * min(1, (1 - _p) * 4) * 0.42;
         var _s = _e.size * 2.2 * _k / _sw;
         draw_sprite_ext(spr_fx_bloom, 0, _x, _y, _s, _s, 0, _e.col, _a);
@@ -338,31 +212,13 @@ function bg_draw_embers(_b, _x0 = FIELD_X0, _y0 = FIELD_Y0, _k = 1) {
 // The spell background
 // ---------------------------------------------------------------------------
 
-/// @desc What a spell replaces the stage with.
+/// @desc The spell background, drawn over the stage background during a
+///       spell. The style comes from the boss (`def.spell_bg`: one per boss,
+///       the owner's rule). `_col` is the phase's `bg` colour: the sigil style
+///       tints with it; the brimstone and grove styles ignore it.
 ///
-///       **Drawn in code rather than as art, and that is what makes it cheap
-///       to give every spell its own.** A painted background per spell is a
-///       1920x1080 sprite per spell, eleven of them for one boss, and a
-///       texture page nobody can budget. What is actually wanted is "the world
-///       goes away and something of this boss takes over", and that is a
-///       handful of tintable motifs arranged by a function -- which costs a
-///       hue and a style per spell and nothing per pixel.
-///
-///       **The style is the boss's, not the spell's**, which is the change
-///       that mattered. Every boss used to get the same two counter-rotating
-///       magic circles, and a magic circle says nothing about *who is casting*
-///       -- it is the visual equivalent of naming an attack "Attack". A style
-///       is a `SPELLBG_*` on the boss's definition and a function here, so a
-///       new boss is one field and one function; the spell's own hue still
-///       tints it, so a boss's four spells are recognisably a set without
-///       being the same picture.
-///
-///       Whatever the style, it works by **subtraction**. The field does not
-///       get brighter; the world behind it stops competing. It is the same
-///       reasoning the spirit in the Wordsearch project is built on, and it is
-///       the rule the first version of this broke -- flooding the screen with
-///       the spell's own colour so that `Cinder Waltz` was gold bullets on a
-///       gold field.
+///       Every style darkens the field (a dark wash with dim motifs) rather
+///       than brightening it, so the bullets stay the brightest thing.
 function spell_bg_draw(_style, _col, _t, _fade) {
     if (_fade <= 0.01) return;
     switch (_style) {
@@ -372,13 +228,7 @@ function spell_bg_draw(_style, _col, _t, _fade) {
     }
 }
 
-/// @desc The wash every style starts from: the world, turned down.
-///
-///       **Dark, and that is the whole mechanism.** The temptation is to flood
-///       the screen with the spell's colour, and photographed that way the
-///       first version of this was a gold screen with gold bullets on it --
-///       the pattern lost, which is the one thing a spell background must
-///       never do.
+/// @desc A dark wash over the field, faintly tinted with `_col`.
 function spell_bg_wash(_col, _fade, _amount = 0.26) {
     draw_set_alpha(_fade);
     draw_set_colour(merge_colour(c_black, global.bullet_dim[_col], _amount));
@@ -387,29 +237,16 @@ function spell_bg_wash(_col, _fade, _amount = 0.26) {
     draw_set_colour(c_white);
 }
 
-/// @desc The default: two counter-rotating sigils, a bloom and pushing rings.
-///
-///       Kept as the fallback rather than deleted, because it is the right
-///       answer for a boss whose whole idea *is* ceremony -- the Warden is a
-///       carved stone told to watch, and a magic circle is exactly what one of
-///       those stands in. What it is not is a default that suits everybody.
+/// @desc The default style: two counter-rotating sigils, a bloom and rings
+///       pushing outward.
 function spell_bg_sigil(_col, _t, _fade) {
     var _c = global.bullet_colour[_col];
     spell_bg_wash(_col, _fade);
 
     gpu_set_blendmode(bm_add);
 
-    // **Centred on the caster's station, not on the field.** A magic circle is
-    // something somebody stands in, and this one was centred on `_cy` --
-    // two hundred and fifty pixels below where any boss in this game ever
-    // stands, so what it drew was a circle of power with nobody in it and a
-    // caster hovering above the rim. It was reported the moment a boss whose
-    // whole fight is rings was put in front of it.
-    //
-    // The *station* rather than the boss's live position, deliberately: a boss
-    // drifts four hundred pixels either way, and a background that slid with
-    // him would be a room following its occupant about. The station is where
-    // he is on average and it does not move.
+    // Centred on the boss's home station (not the field centre, and not the
+    // boss's live position, so it doesn't slide as the boss drifts).
     var _cy = BOSS_HOME_Y;
 
     // A slow bloom behind everything, breathing.
@@ -417,8 +254,7 @@ function spell_bg_sigil(_col, _t, _fade) {
     draw_sprite_ext(spr_fx_bloom, 0, FIELD_CX, _cy, _bs, _bs, 0,
                     _c, 0.10 * _fade * (0.8 + 0.2 * dsin(_t * 1.1)));
 
-    // Two sigils, counter-rotating at unrelated rates so the pattern they make
-    // together never visibly repeats.
+    // Counter-rotating sigils at unrelated rates.
     var _ss = 1500 / sprite_get_width(spr_boss_sigil);
     draw_sprite_ext(spr_boss_sigil, 0, FIELD_CX, _cy, _ss, _ss,
                     _t * 0.13, _c, 0.13 * _fade);
@@ -427,8 +263,7 @@ function spell_bg_sigil(_col, _t, _fade) {
     draw_sprite_ext(spr_boss_sigil, 0, FIELD_CX, _cy, _ss * 1.55,
                     _ss * 1.55, _t * 0.07, _c, 0.07 * _fade);
 
-    // Rings pushing outward on a four-second cycle, which is what keeps the
-    // background moving when the sigils are only turning.
+    // Rings pushing outward on a four-second cycle.
     for (var _i = 0; _i < 3; _i++) {
         var _p = frac(_t / 240 + _i / 3);
         var _r = 120 + _p * 1500;
@@ -440,69 +275,36 @@ function spell_bg_sigil(_col, _t, _fade) {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc Ziggy's: the world becomes the inside of a forge.
-///
-///       **One background for all of his spells, in red, grey and black.** An
-///       earlier version tinted this with each spell's own hue, so `Cinder
-///       Waltz` ran gold and `Meteor Fall` ran crimson. That is a feature
-///       nobody asked for and it is worse than not having it: a boss's arena
-///       is a *place*, and a place that changes colour every forty seconds
-///       stops being one. Ziggy is a red imp who throws fire; his forge is red
-///       and it stays red, and the spell's own colour lives where it belongs
-///       -- on the bullets, the banner and the notch in his health bar.
-///
-///       Nothing here reads `_col`. That is deliberate and it is the point.
-///
-///       **What makes it his rather than generic fire** is that the light has
-///       a source and the source is him: `spr_spell_veins` is drawn centred on
-///       his station, so the rock fractures outward from wherever he is
-///       standing rather than from the middle of the screen. Every four
-///       seconds a wavefront of heat travels out along those cracks, which is
-///       the one thing in here that is doing something rather than turning.
-///       And his horns rise out of the bottom corners, lit along their leading
-///       edge -- a black silhouette on a near-black wash is nothing at all, so
-///       what reads is the contour, and the eye completes it into a mass.
-///
-///       **Six layers, back to front**, which is most of what separates this
-///       from a rotating sprite: a wash, a cold grey texture, a deep glow, the
-///       fracture, the horns, then ash and embers moving in front of all of
-///       it. Each is cheap; the depth is in there being six of them at four
-///       different rates.
-///
-///       It works by **subtraction** like every spell background here. The
-///       whole thing lives under half opacity and the brightest thing in it is
-///       a crack a few pixels wide, because the field has to stay the lit
-///       thing on the screen.
+/// @desc Ziggy's spell background: a forge in fixed red, grey and black (it
+///       doesn't use `_col`). Six layers: a near-black wash, a faint grey crack
+///       texture, a deep glow behind his station, the glowing crack network
+///       (`spr_spell_veins`) centred on his station with a heat wave pulsing
+///       out along it every four seconds, his horns rising from the bottom
+///       corners, and smoke, ash and embers. Then a vignette.
 function spell_bg_brimstone(_col, _t, _fade) {
-    // Fixed. Not `global.bullet_colour[_col]`.
+    // Fixed colours.
     var _hot  = make_colour_rgb(232, 96, 34);    // the fire in the cracks
     var _deep = make_colour_rgb(126, 28, 16);    // rock lit from underneath
     var _ash  = make_colour_rgb(126, 124, 132);  // smoke and cinder
 
-    // Barely any colour in the wash: this style carries its hue in the cracks,
-    // and a tinted floor under tinted cracks is the gold-on-gold mistake with
-    // one more step in it.
     draw_set_alpha(_fade);
     draw_set_colour(make_colour_rgb(14, 8, 9));
     draw_rectangle(FIELD_X0, FIELD_Y0, FIELD_X1, FIELD_Y1, false);
     draw_set_alpha(1);
     draw_set_colour(c_white);
 
-    // Where the fire is coming from: his station, not the middle of the field.
-    // Everything else in here is arranged about this point.
+    // Everything is arranged about his home station.
     var _fx = FIELD_CX;
     var _fy = BOSS_HOME_Y;
 
     gpu_set_blendmode(bm_add);
 
-    // 1. The cold rock. The same crack network, enormous, grey and nearly
-    //    invisible -- it is texture rather than light, and it is what stops the
-    //    black between the hot cracks reading as flat black.
+    // 1. The crack network, huge, grey and faint (texture in the dark).
     var _vs = 2600 / sprite_get_width(spr_spell_veins);
     draw_sprite_ext(spr_spell_veins, 0, _fx, _fy + 120, _vs * 2.4, _vs * 2.4,
                     -_t * 0.011, _ash, 0.030 * _fade);
 
-    // 2. The forge itself: a deep glow behind him, breathing.
+    // 2. A deep glow behind him.
     var _bs = (FIELD_W * 1.30) / sprite_get_width(spr_fx_bloom);
     draw_sprite_ext(spr_fx_bloom, 0, _fx, _fy, _bs, _bs, 0, _deep,
                     0.16 * _fade * (0.82 + 0.18 * dsin(_t * 1.3)));
@@ -511,24 +313,17 @@ function spell_bg_brimstone(_col, _t, _fade) {
     draw_sprite_ext(spr_spell_veins, 0, _fx, _fy, _vs, _vs, _t * 0.045,
                     _hot, 0.085 * _fade * (0.85 + 0.15 * dsin(_t * 2.6)));
 
-    // 4. **The wavefront.** `_pulse` runs 0..1 every four seconds and the
-    //    network is drawn again, larger and expanding, which reads as heat
-    //    travelling out along it. One extra draw of a sprite already loaded,
-    //    and it is the difference between a background that moves and one that
-    //    merely rotates.
+    // 4. The heat wave: the network drawn again, expanding, every 240 frames.
     var _pulse = frac(_t / 240);
     var _ps = _vs * (0.5 + _pulse * 0.95);
     draw_sprite_ext(spr_spell_veins, 0, _fx, _fy, _ps, _ps, -_t * 0.028,
                     _hot, (1 - _pulse) * 0.075 * _fade);
-    // ...with a white edge on the leading part of it only, which is what makes
-    // it read as heat rather than as a second, dimmer copy.
+    // ...with a faint white copy just outside it.
     draw_sprite_ext(spr_spell_veins, 0, _fx, _fy, _ps * 1.02, _ps * 1.02,
                     -_t * 0.028, c_white,
                     (1 - _pulse) * _pulse * 0.055 * _fade);
 
-    // 5. His horns, out of the bottom corners of the field. Mirrored rather
-    //    than drawn twice: a negative xscale about the root is exactly the
-    //    other side of a head.
+    // 5. His horns, from the bottom corners (mirrored with a negative xscale).
     var _hs = 0.74;
     var _ha = 0.44 * _fade * (0.88 + 0.12 * dsin(_t * 0.9));
     draw_sprite_ext(spr_spell_horn, 0, FIELD_X0 + 40, FIELD_Y1 + 20,
@@ -536,11 +331,7 @@ function spell_bg_brimstone(_col, _t, _fade) {
     draw_sprite_ext(spr_spell_horn, 0, FIELD_X1 - 40, FIELD_Y1 + 20,
                     -_hs, _hs, 0, _hot, _ha);
 
-    // 6. Columns of smoke standing in the heat, and ash and cinder going up
-    //    through them. All of it derived from the clock the way
-    //    `bg_draw_embers` is -- there is no pool here and nothing to step, so
-    //    a background that has been off screen for a minute is already correct
-    //    on the frame it comes back.
+    // 6. Smoke columns, and ash and embers rising (derived from the clock).
     var _sw = sprite_get_width(spr_fx_bloom);
     for (var _i = 0; _i < 5; _i++) {
         var _cx = FIELD_X0 + (0.10 + 0.20 * _i) * FIELD_W
@@ -550,9 +341,7 @@ function spell_bg_brimstone(_col, _t, _fade) {
                         _ash, 0.040 * _fade * (0.7 + 0.3 * dsin(_t * 0.8 + _i * 90)));
     }
 
-    // **The ash is grey and the embers are red**, which is the whole of the
-    // palette brief in two lines: grey is the only thing in this game that is
-    // never a bullet, so it can be as busy as it likes.
+    // Grey ash and red embers.
     for (var _i = 0; _i < 40; _i++) {
         var _p = frac(_t * (0.0016 + 0.0011 * frac(_i * 0.37)) + _i * 0.117);
         var _x = FIELD_X0 + frac(_i * 0.618) * FIELD_W
@@ -567,16 +356,12 @@ function spell_bg_brimstone(_col, _t, _fade) {
 
     gpu_set_blendmode(bm_normal);
 
-    // **A vignette, drawn last and normally rather than additively.** Four
-    // strips darkening the field's own edges inward. It is the cheapest single
-    // thing that separates a background somebody made from a background
-    // something generated: without it, a radial composition sits in a
-    // rectangle with four bright corners and the eye goes to the corners.
+    // A vignette, drawn last with normal blending.
     spell_bg_vignette(_fade * 0.55);
 }
 
-/// @desc Darken the field inward from its own edges. `_amount` is how black
-///       the very edge goes.
+/// @desc Darken the field inward from its edges; `_amount` is the alpha at
+///       the very edge.
 function spell_bg_vignette(_amount) {
     if (_amount <= 0.004) return;
     var _d = 260;                     // how far in it reaches

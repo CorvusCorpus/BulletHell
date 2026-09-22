@@ -1,40 +1,18 @@
 #!/usr/bin/env python3
 """The fodder: a wisp, a grimoire, a cut gem and a stone sentry.
 
-**Nothing here is a creature**, which is a story decision before it is an art
-one. The game is about an imp who is tired of being somebody's trash mob, so
-filling his stages with trash mobs that are people would say the opposite of
-what the game is about. What he cuts through is animated furniture -- somebody
-else's tools, left running.
+Nothing in a wave is a creature (owner's rule): the fodder is animated
+objects.
 
-**They are drawn greyscale and tinted at draw time**, so one set of four serves
-every stage in the game: crimson wisps over Ziggy's brimstone, jade ones in a
-yokai forest, violet in a vampire's hall. `enemy_draw` multiplies by the hue on
-the enemy's `col`, which is why the art here is built out of a bright core and
-a dark rim exactly as the bullets are -- a multiply maps that structure onto
-any hue and keeps the reading. A flat mid-grey would tint to a flat mid-hue and
-disappear.
+They are drawn greyscale and tinted at draw time (`enemy_draw`), so one set
+serves every stage. Like the bullets, each has a bright core and a darker
+rim so the tint keeps its shape, and a hard dark contour.
 
-What a silhouette is not enough for
------------------------------------
+Each is three layers multiplied together:
 
-The first version of these was a silhouette per shape run through
-`shade_shape`, and at the size they are actually seen that is what it looked
-like: four flat lozenges. `shade_shape` lights a shape by how deep inside it a
-pixel is, which is the right answer for a *bullet* -- a bullet is a bead of
-light and has no interior -- and the wrong one for an object, because an object
-has planes and the planes are how the eye works out what it is looking at.
-
-So each of these is now three things multiplied together:
-
-body      the silhouette, shaded by depth, exactly as before
-facets    a value per plane, so the form turns rather than bulges
-detail    grooves, grain and inlay -- what the object is made of
-
-plus a hard dark contour round the outside, for the same reason every bullet
-has one: it is the one mark an additive background light cannot make, and it is
-what keeps a dark shape legible over a bright one. See `CONTOUR` in
-`make_bullets.py`.
+body      the silhouette, shaded by depth (`shade_shape`)
+facets    a value per plane, so the form reads as planes rather than a bulge
+detail    grooves, grain and inlay
 
 Usage:
     python tools/make_enemies.py
@@ -53,10 +31,8 @@ import gm_new
 
 SS = A.SS
 
-# The "hue" the greyscale art is built in. Not pure white: `shade_shape` puts
-# the rim at a third of this, and a rim off pure white is a neutral grey that
-# tints to a dead colour. A hair of blue keeps the dark parts cool, which is
-# what the multiply then carries into whatever hue it is given.
+# The near-white the greyscale art is built in: a hint of blue keeps the dark
+# parts cool after tinting.
 PALE = (236, 240, 252)
 
 # The dark ring, in final pixels. Same argument as the bullets'.
@@ -68,25 +44,16 @@ def _mask(w, h):
     return img, ImageDraw.Draw(img)
 
 
-# The value a facet map treats as leaving a plane alone, and the most it is
-# allowed to brighten one by.
-#
-# **Neutral is high and the ceiling is low, because the body underneath is
-# already nearly white.** `shade_shape` puts a white core in the middle of
-# every silhouette; a facet map centred on mid-grey is therefore free to
-# multiply that core by 1.8, which clips -- and a clipped facet is a flat white
-# region with no plane information left in it at all. Photographed, all four of
-# these came back as paper cut-outs.
-#
-# Painting mostly *below* neutral keeps the arithmetic in range, and it is also
-# how carving works: a plane turned toward the light is barely brighter than
-# the material it is cut from, and every other plane is darker.
+# The facet-map value that leaves a plane unchanged, and the most a facet may
+# brighten one by. Neutral is high and the ceiling low because the body is
+# already nearly white at its core; painting mostly below neutral darkens
+# planes rather than clipping them to flat white.
 FACET_NEUTRAL = 190.0
 FACET_MAX = 1.15
 
 
 def _facets(w, h):
-    """A canvas to paint plane values into. FACET_NEUTRAL leaves one alone."""
+    """A canvas for plane values; FACET_NEUTRAL leaves a plane unchanged."""
     img = Image.new("L", (int(w * SS), int(h * SS)), int(FACET_NEUTRAL))
     return img, ImageDraw.Draw(img)
 
@@ -96,14 +63,7 @@ def _facets(w, h):
 # ---------------------------------------------------------------------------
 
 def wisp(w, h, frame, frames):
-    """A flame: rounded at the foot, bulging low, tapering to a licking point.
-
-    The first version made the width a single `sin(pi * t)`, which is symmetric
-    -- and a symmetric flame is an oval. **What makes a flame a flame is that
-    its widest point is near the bottom**, so the silhouette has a shoulder and
-    then a long taper; a shape whose widest point is in the middle reads as an
-    egg however much it flickers.
-    """
+    """A flame: round at the foot, widest low down, tapering to a point."""
     img, d = _mask(w, h)
     W, H = img.width - 1, img.height - 1
     cx = W / 2.0
@@ -117,16 +77,13 @@ def wisp(w, h, frame, frames):
         taper = (1.0 - t) ** 1.7               # convex fall to the point
         foot = min(1.0, (0.10 + t) / 0.26)     # rounds the very bottom off
         half = W * 0.32 * taper * foot + W * 0.012
-        # The lick: the tip wanders and the base does not, so it flickers
-        # rather than sways.
+        # The tip wanders and the base does not, so it flickers.
         lick = math.sin(t * 3.4 + ph) * W * 0.09 * (t ** 2)
         pts_l.append((cx + lick - half, y))
         pts_r.append((cx + lick + half, y))
     d.polygon(pts_l + pts_r[::-1], fill=255)
 
-    # A ring of shed embers, orbiting rather than scattered. **Orbiting is what
-    # says the thing is running**; a random spray of dots says it is on fire,
-    # which for a lantern-flame somebody left burning is the wrong verb.
+    # A ring of embers orbiting it.
     for i in range(5):
         ang = ph + i * 2 * math.pi / 5
         ex = cx + math.cos(ang) * W * 0.40
@@ -138,15 +95,12 @@ def wisp(w, h, frame, frames):
 
 
 def wisp_facets(w, h, frame, frames):
-    """The flame's two sides. A flame is not flat, and one side of it is
-    turned away -- which is the entire reason it reads as a volume rather than
-    as a leaf."""
+    """The flame's lit and shaded sides, and a bright ring round its hollow."""
     img, d = _facets(w, h)
     W, H = img.width - 1, img.height - 1
     cx = W / 2.0
     ph = 2 * math.pi * frame / frames
-    # The far side, darkened. Drawn as a tall wedge down the right of the
-    # flame, which is the side away from the light everything else here uses.
+    # The far side (right, away from the light), darkened.
     d.polygon([(cx + W * 0.02, H * 0.90), (cx + W * 0.06, H * 0.10),
                (cx + W * 0.34, H * 0.55), (cx + W * 0.26, H * 0.88)],
               fill=86)
@@ -154,9 +108,7 @@ def wisp_facets(w, h, frame, frames):
     d.polygon([(cx - W * 0.13, H * 0.82), (cx - W * 0.06, H * 0.22),
                (cx + W * 0.02, H * 0.60), (cx - W * 0.02, H * 0.86)],
               fill=214)
-    # A bright iris round the hollow. **This is what turns a teardrop into a
-    # wisp**: an eye is a dark centre with a lit ring, and without the ring the
-    # hollow reads as a hole punched in a leaf.
+    # A bright ring round the dark hollow (the "eye" of the wisp).
     ey = H * 0.60 + math.sin(ph) * H * 0.02
     rx, ry = W * 0.26, H * 0.22
     d.ellipse([cx - rx, ey - ry, cx + rx, ey + ry], fill=218)
@@ -164,8 +116,7 @@ def wisp_facets(w, h, frame, frames):
 
 
 def wisp_cuts(w, h, frame, frames):
-    """The dark hollow at the flame's heart -- what makes it a wisp with a core
-    rather than a leaf."""
+    """The dark hollow at the flame's heart."""
     img, d = _mask(w, h)
     W, H = img.width - 1, img.height - 1
     cx = W / 2.0
@@ -177,41 +128,17 @@ def wisp_cuts(w, h, frame, frames):
 
 
 # ---------------------------------------------------------------------------
-# The grimoire -- an open tome, seen from above, pages beating
+# The grimoire -- an open tome seen from above, pages lifting
 # ---------------------------------------------------------------------------
 #
-# **This is the third silhouette this object has had and the reasoning behind
-# each rejection is worth keeping**, because it is the same reasoning any
-# future piece of fodder will have to survive.
-#
-# It was drawn open and face-on first: two panels meeting at a point, which at
-# this size is a bowtie, and unmistakably was one.
-#
-# It was then drawn shut -- a squat block with page-fans beating either side --
-# and that read, in the project's own notes, as "a floating tome and not much
-# more". The trouble was that a closed book is a *rectangle*, and a rectangle
-# with fins is read as whatever the viewer has most recently seen with fins.
-# Standing it on its end and adding a spine and a page block made it a
-# rectangle with a stripe down each side, which is a door.
-#
-# What it is now is open again, but seen from **above** rather than from the
-# front, which is the view that fixes the bowtie: from overhead the two halves
-# are quadrilaterals lying at an angle rather than triangles meeting at a
-# vertex, they are separated by a gutter instead of touching, and the outer
-# edges are page blocks rather than points. Nothing about it can collapse into
-# a bowtie because nothing about it comes to a point.
-#
-# The lesson underneath all three: at eighty pixels an object is read off its
-# *silhouette and its proportions*, never off its detail. Detail is what makes
-# it look expensive once it is already recognisable.
+# Seen from above so the two halves are splayed quadrilaterals separated by a
+# gutter (open and face-on it read as a bowtie; shut, as a door). At this size
+# an object is recognised by its silhouette and proportions, not its detail.
 
 
 def _tome_pages(W, H):
-    """The two page panels, as (left, right) point lists.
-
-    Splayed from a gutter down the middle, each one wider at its outer edge --
-    which is what a book lying open looks like from above and is the whole of
-    why this cannot read as a bowtie.
+    """The two page panels, as (left, right) point lists, splayed from a gutter
+    down the middle and wider at their outer edges.
     """
     cx, cy = W / 2.0, H / 2.0
     gut = W * 0.045                       # half the gutter
@@ -232,17 +159,14 @@ def grimoire(w, h, frame, frames):
 
     left, right = _tome_pages(W, H)
 
-    # The boards, behind and a little below the pages, so the book has a
-    # thickness rather than being two sheets of paper.
+    # The boards, behind and a little below the pages (thickness).
     for pts in (left, right):
         d.polygon([(x + (W * 0.012 if x > cx else -W * 0.012), y + H * 0.030)
                    for x, y in pts], fill=255)
     d.polygon(left, fill=255)
     d.polygon(right, fill=255)
 
-    # **Loose pages lifting off the outer corners.** They are the animation and
-    # they are also what says the book is *working* -- a tome lying open and
-    # still is furniture, and a tome shedding pages is casting.
+    # Loose pages lifting off the outer corners (the animation).
     for sign, pts in ((-1, left), (1, right)):
         for i in range(3):
             spread = (i + 1) / 3.0
@@ -254,9 +178,7 @@ def grimoire(w, h, frame, frames):
                        (rx + sign * W * 0.15, ry + H * 0.09),
                        (rx - sign * W * 0.05, ry + H * 0.20)], fill=255)
 
-    # The rune hanging over the gutter, pulsing. It is the only part of the
-    # object above the book, so it is also what keeps the silhouette from being
-    # a horizontal slab.
+    # A rune hanging over the gutter, pulsing.
     rr = W * (0.085 + 0.012 * beat)
     ry = cy - H * 0.40
     pts = []
@@ -269,19 +191,15 @@ def grimoire(w, h, frame, frames):
 
 
 def grimoire_facets(w, h, frame, frames):
-    """The two page planes, the gutter between them, and the boards under.
-
-    An open book from above is two flat sheets tilted toward each other, so
-    they cannot be the same value -- and the gutter between them is the darkest
-    thing on the object, because it is the one part light does not reach.
+    """The two page planes (one lit, one turned away), the gutter between them
+    (darkest), and the boards under.
     """
     img, d = _facets(w, h)
     W, H = img.width - 1, img.height - 1
     cx, cy = W / 2.0, H / 2.0
     left, right = _tome_pages(W, H)
 
-    # Loose paper first, across the whole canvas, then covered by everything
-    # else -- so the flying pages get the palest value and nothing else does.
+    # Loose paper first (palest), then covered by everything else.
     d.rectangle([0, 0, W, H], fill=216)
     # The boards: dark leather under the paper.
     for pts in (left, right):
@@ -297,11 +215,8 @@ def grimoire_facets(w, h, frame, frames):
 
 
 def grimoire_cuts(w, h, frame, frames):
-    """Text on the pages, and the leaves stacked under each one.
-
-    **Ruled lines, not letters.** Anything glyph-shaped at this size is a
-    smudge that reads as dirt; a stack of horizontal rules is read as writing
-    by everybody and costs six calls.
+    """Text on the pages (ruled lines, since glyphs at this size are smudges),
+    and the leaves stacked under each page.
     """
     img, d = _mask(w, h)
     W, H = img.width - 1, img.height - 1
@@ -344,8 +259,7 @@ def _gem_outline(W, H, frame, frames):
 def gem(w, h, frame, frames):
     img, d = _mask(w, h)
     W, H = img.width - 1, img.height - 1
-    # Turning about its vertical axis: the silhouette narrows and swells, which
-    # is the whole of the rotation at this size.
+        # Turning about its vertical axis: the silhouette narrows and swells.
     cx, cy, half, waist = _gem_outline(W, H, frame, frames)
     d.polygon([(cx, cy - H * 0.42), (cx + half, cy - waist),
                (cx + half * 0.82, cy + waist), (cx, cy + H * 0.42),
@@ -355,15 +269,8 @@ def gem(w, h, frame, frames):
 
 
 def gem_facets(w, h, frame, frames):
-    """Six planes, each its own value.
-
-    **This is the whole of what makes a gem a gem.** A cut stone has no
-    curvature at all; every part of what the eye reads as sparkle is flat faces
-    at different angles to the light, and shading one silhouette by depth --
-    which is what this used to do -- produces a pillow. Six polygons and six
-    numbers produce a stone, and the numbers are more important than the
-    polygons: crown bright, girdle mid, pavilion dark, and one face on each
-    side left near-white as the catch-light.
+    """Six flat faces, each its own value: crown bright, girdle mid, pavilion
+    dark, lit from the left.
     """
     img, d = _facets(w, h)
     W, H = img.width - 1, img.height - 1
@@ -384,14 +291,12 @@ def gem_facets(w, h, frame, frames):
     # Pavilion: darkest, because it is pointing away and down.
     d.polygon([l_dn, mid_dn, bot], fill=114)
     d.polygon([r_dn, mid_dn, bot], fill=61)
-    # **Barely blurred.** A gem's facets meet at hard lines; softening them by
-    # more than a pixel is how a cut stone turns back into a pebble.
+    # Barely blurred: facets meet at hard lines.
     return img.filter(ImageFilter.GaussianBlur(SS * 0.35))
 
 
 def gem_cuts(w, h, frame, frames):
-    """The grooves where facets meet. Subtracted, so they are edges in the
-    stone rather than lines on it."""
+    """The grooves where facets meet, subtracted from the body."""
     img, d = _mask(w, h)
     W, H = img.width - 1, img.height - 1
     cx, cy, half, waist = _gem_outline(W, H, frame, frames)
@@ -422,17 +327,17 @@ def sentry(w, h, frame, frames):
     ph = 2 * math.pi * frame / frames
 
     d.polygon(_sentry_face(W, H), fill=255)
-    # Horns, so it reads as an idol rather than as a shield.
+    # Horns.
     for sign in (-1, 1):
         d.polygon([(cx + sign * W * 0.25, cy - H * 0.29),
                    (cx + sign * W * 0.45, cy - H * 0.47),
                    (cx + sign * W * 0.33, cy - H * 0.18)], fill=255)
-    # A collar under the chin: it is a bust, not a face floating alone.
+    # A collar under the chin.
     d.polygon([(cx - W * 0.22, cy + H * 0.20), (cx + W * 0.22, cy + H * 0.20),
                (cx + W * 0.15, cy + H * 0.36), (cx - W * 0.15, cy + H * 0.36)],
               fill=255)
 
-    # Three orbiting shards, which is what says it is *active*.
+    # Three orbiting shards.
     for i in range(3):
         ang = ph + i * 2 * math.pi / 3
         ox = cx + math.cos(ang) * W * 0.43
@@ -444,17 +349,14 @@ def sentry(w, h, frame, frames):
 
 
 def sentry_facets(w, h, frame, frames):
-    """The planes a face is carved in: brow, cheeks, nose, jaw.
-
-    A mask is a *carving*, and a carving is a small number of large flat cuts.
-    The values below are doing the same job the gem's are and are picked the
-    same way -- lit from the upper left, so the left cheek is the pale one.
+    """The carved planes of the mask (brow, cheeks, nose, jaw), lit from the
+    upper left.
     """
     img, d = _facets(w, h)
     W, H = img.width - 1, img.height - 1
     cx, cy = W / 2.0, H / 2.0
 
-    # The brow, overhanging and therefore the brightest thing on the face.
+    # The brow, overhanging: the brightest part of the face.
     d.polygon([(cx - W * 0.32, cy - H * 0.31), (cx + W * 0.32, cy - H * 0.31),
                (cx + W * 0.30, cy - H * 0.14), (cx - W * 0.30, cy - H * 0.14)],
               fill=213)
@@ -486,8 +388,7 @@ def sentry_cuts(w, h, frame, frames):
                    (cx + sign * W * 0.08, cy - H * 0.04)], fill=255)
     d.rectangle([cx - W * 0.12, cy + H * 0.09, cx + W * 0.12, cy + H * 0.15],
                 fill=255)
-    # Weathering: chips along the brow and a split down one cheek, so no two
-    # sentries in a wave are read as one sprite repeated.
+    # Weathering: chips along the brow and a split down one cheek.
     rnd = np.random.default_rng(5)
     for _ in range(7):
         ex = rnd.uniform(cx - W * 0.28, cx + W * 0.28)
@@ -500,11 +401,8 @@ def sentry_cuts(w, h, frame, frames):
 
 
 # ---------------------------------------------------------------------------
-#
-# **Half again the size they were.** These are seen against a 1920x1080 field
-# with 54-pixel bullets on it, and at 60 to 96 pixels they were smaller than
-# some of the things they fire. The hit radii in `enemy_radius` came up with
-# them.
+# The four shapes. Their hit radii are in `enemy_radius` and must be updated if
+# these sizes change.
 # ---------------------------------------------------------------------------
 
 SHAPES = [
@@ -521,38 +419,27 @@ def build(spec):
     out = []
     for f in range(frames):
         mask = body_fn(w, h, f, frames)
-        # **A smaller white core than a bullet gets.** These are tinted by a
-        # multiply, so the only band of the greyscale that can carry a hue is
-        # the one that is not already white -- at 0.46 nearly half of every
-        # enemy was pure white and came out of the multiply as flat,
-        # undifferentiated colour. Under a third is enough to keep the shape
-        # reading against a bright background, and it leaves the rest of the
-        # body to be tinted.
+        # A smaller white core than a bullet's: the tint multiply can only
+        # colour what isn't already white.
         img = A.shade_shape(mask, PALE, core_frac=0.30, edge_frac=0.40,
                             halo=0.30)
         arr = np.asarray(img, dtype=np.float32)
 
         if facet_fn is not None:
-            # **Planes, multiplied in.** FACET_NEUTRAL leaves a region alone,
-            # so anything the facet map does not paint keeps the depth shading
-            # underneath -- which means a facet map is a set of corrections to
-            # a body that already reads, not a replacement for it.
+            # Planes, multiplied in (FACET_NEUTRAL leaves the depth shading
+            # unchanged where the facet map doesn't paint).
             fac = np.asarray(facet_fn(w, h, f, frames),
                              dtype=np.float32) / FACET_NEUTRAL
             arr[..., :3] *= np.minimum(fac, FACET_MAX)[..., None]
 
         if cut_fn is not None:
-            # The grooves: darken the body where the cut is, rather than
-            # punching a hole in it. A hole would show the background through a
-            # solid object, and at this size that reads as a rendering fault.
+            # The grooves darken the body rather than cutting holes in it.
             cut = np.asarray(
                 cut_fn(w, h, f, frames).filter(ImageFilter.GaussianBlur(SS * 0.6)),
                 dtype=np.float32) / 255.0
             arr[..., :3] *= (1 - cut[..., None] * 0.74)
 
-        # Grain, so a surface is a material rather than a fill. Two scales,
-        # because one reads as film noise and two as stone -- the finding the
-        # Wordsearch slabs are built on, and the backgrounds here too.
+        # Grain at two scales.
         g1 = np.asarray(A.fbm_field(arr.shape[1], arr.shape[0], hash(name) % 9973,
                                     octaves=3, base=26), dtype=np.float32) / 255.0
         g2 = np.asarray(A.fbm_field(arr.shape[1], arr.shape[0],
@@ -566,8 +453,9 @@ def build(spec):
 
 
 def _contoured(small):
-    """The dark ring, traced at final size around the body rather than the
-    halo. Same routine and same reasons as `make_bullets._contoured`."""
+    """The dark ring, traced at final size around the body (not the halo); as
+    `make_bullets._contoured`.
+    """
     solid = small.getchannel("A").point(lambda v: 255 if v >= 150 else 0)
     body = small.copy()
     body.putalpha(solid)
@@ -591,8 +479,7 @@ def main():
         print("%-18s %d frames of %dx%d" % (spec[0], len(frames),
                                             spec[1], spec[2]))
 
-    # Previewed tinted, because greyscale is not the state they ship in and a
-    # sheet of grey shapes proves nothing about how they read on a stage.
+    # Previewed tinted, as they appear in game.
     tinted = []
     for _name, col in (("crimson", A.hue("crimson")), ("jade", A.hue("jade")),
                        ("violet", A.hue("violet"))):

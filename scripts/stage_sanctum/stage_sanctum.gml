@@ -1,68 +1,25 @@
 /// @desc Stage three: the Gilded Sanctum, and Mika at the end of it.
 ///
-/// **The working copy, and Mika's fight in it is being rebuilt.** He is to
-/// have fifteen attacks -- seven non-spells, each followed by a spell, and an
-/// eighth spell to finish -- and they are written one slot at a time, each in
-/// a session of its own. Until a slot is written it holds either one of the
-/// seven placeholder attacks this stage used to have or a plain stub; see
-/// `mika_slots` for which is which. The stage as it stood before the rebuild
-/// is kept whole, renamed, in `stage_sanctum_old`, and is on the rack as its
-/// own card.
+/// Mika's fight is being rebuilt as fifteen attacks, one slot at a time (see
+/// `mika_slots`). The stage as it was before the rebuild is kept on its own
+/// rack card in `stage_sanctum_old`. The waves and the Proctor are
+/// placeholders and are not part of the rebuild.
 ///
-/// `scripts/ring_functions` is what the fight is built on: the first object in
-/// this game that is neither a bullet nor an enemy -- a thing that stops the
-/// player's fire, hurts to touch, can be charged until the whole cuff bites,
-/// can be strung to another one with a line of current, and fires patterns of
-/// its own.
+/// The fight is built on rings (`ring_functions`). Every ring is the same
+/// size (`RING_R`; owner's rule).
 ///
-/// **Every ring is the same size and there are never more than six.** The
-/// first pass drew them at four hundred pixels and let each attack pick a
-/// radius, which produced architecture rather than the bands he wears -- two
-/// of them walled the field, and three concentric ones made a boss who could
-/// not be shot at all from outside. `RING_R` is a constant now and there is no
-/// way for an attack to ask for a different one, so what the player learns is
-/// one object and then six arrangements of it.
-///
-/// The waves and the Proctor are placeholders in the sense the whole game's
-/// attacks are -- see the note about the bar in `CLAUDE.md` -- and are not
-/// part of the rebuild.
-///
-/// **The spell wash is `SPELLBG_SIGIL` and it very nearly did not work, for a
-/// reason worth writing down: the fallback's own motif is a ring.** Two
-/// counter-rotating magic circles behind a boss whose entire fight is rings
-/// looks like the perfect fit on paper, and photographed it is scenery drawn
-/// in the same shape as the one object on the field that has to be told apart
-/// from scenery -- which is the ember-and-pellet finding at four hundred
-/// pixels. What separates them is *value and hue*, not shape: the wash is
-/// indigo for every one of his spells, so his rings are the only warm lit
-/// thing in the frame. The first pass ran `Gilded Aperture` gold on gold and
-/// came back as three gold bands dissolving into a gold field, which is
-/// exactly what `Cinder Waltz` did and exactly what the subtraction rule is
-/// for.
-///
-/// Mika is the head mage of Ashiah, the Living God of Death. What that buys
-/// the fight is the reason the rings are his: they are the god's seals, and he
-/// is the one who is allowed to open them.
+/// Mika is head mage to Ashiah, the Living God of Death.
 
 // ---------------------------------------------------------------------------
-// The numbers this stage is written in
-//
-// Written out here rather than in `constants`, because a pattern is meant to
-// read as a paragraph -- see the note on speed in `constants`. What is in
-// `constants` is the engine's half: how big a ring is, how thick its metal is,
-// how long one takes to arrive, how long a charge warns for.
+// Stage numbers (engine-level ring numbers live in `constants`)
 // ---------------------------------------------------------------------------
 
 #macro MIKA_RING_COL BCOL_GOLD
 
-// **Six, and it is a ceiling rather than a target.** Six rings of `RING_R` on
-// one orbit leave gaps about as wide as a ring, which is what makes an
-// aperture an aperture; seven closes them and five makes the arrangement read
-// as an accident.
+// How many rings his six-ring formations use.
 #macro MIKA_RING_N 6
 
-// How far out his formations sit. One number for all of them, so the player
-// learns where his furniture lives.
+// The radius his formations sit at.
 #macro MIKA_ORBIT 300
 
 // ---------------------------------------------------------------------------
@@ -74,21 +31,13 @@ function stage_sanctum_def() {
         id: "gilded_sanctum",
         name: "THE GILDED SANCTUM",
         subtitle: "the death-god's hall of rings",
-        // **Open from the start, on the same terms stage two is.** The rack's
-        // locks pace a first playthrough, and this stage exists so that a
-        // mechanic can be *played*; gating the thing that has to be tried
-        // behind two stages of progress is the circle the drafting table's
-        // note is about. It goes to `2` on the day Mika has a fight worth
-        // reaching, and it is one number.
-        needs: 0,
+        needs: 0,                       // unlocked from the start, for now
         make_bg: bg_sanctum,
         build: stage_sanctum_script,
 
 
-        // **`turned`, because Mika is fought after the hall opens** and the
-        // Proctor before it. A practice run has no first half to play
-        // through, so this is how it knows to start him in the open room --
-        // see `practice_begin`.
+        // `turned`: Mika is fought after the hall opens, so practice starts
+        // him in the open room (see `practice_begin`).
         bosses: [
             { name: "THE PROCTOR", spawn: sanctum_midboss_spawn,
               phases: sanctum_midboss_phases },
@@ -98,14 +47,8 @@ function stage_sanctum_def() {
     };
 }
 
-/// @desc The running order.
-///
-///       **The fodder teaches the ring before the Proctor tests it.** The
-///       second wave group flies in behind a pair of rings that are doing
-///       nothing but sitting there, so the first time a player's shots are
-///       eaten -- and the first time they find out the metal hurts -- it is
-///       against an object with nothing else going on, in a wave slow enough
-///       to take a second over.
+/// @desc The running order. The second wave group flies in behind two idle
+///       rings, so the player meets a ring before the Proctor uses them.
 function stage_sanctum_script() {
     var _e = [];
 
@@ -116,7 +59,7 @@ function stage_sanctum_script() {
                                       BCOL_AMBER, sanctum_fodder_pellet)));
     array_push(_e, ev_gate(280));
 
-    // --- and here is what a ring does ----------------------------------
+    // --- two idle rings --------------------------------------------------
     array_push(_e, ev(400, wave_sanctum_gateposts()));
     array_push(_e, ev(430, wave_line(EnemyKind.Grimoire, 5,
                                      -100, 160, 0, 0,
@@ -131,21 +74,12 @@ function stage_sanctum_script() {
                                       BCOL_AMBER, sanctum_fodder_aimed)));
     array_push(_e, ev_gate(670));
 
-    // --- the lesser hand -----------------------------------------------
+    // --- the midboss ---------------------------------------------------
     array_push(_e, ev(770, wave_boss(sanctum_midboss_spawn)));
     array_push(_e, ev_gate(790));
 
-    // **And the hall opens.** One line, and it is the whole of the stage's
-    // second half: `bg_set_omen` eases `reveal` from nought to one, which
-    // carries the camera from nine hundred units up aimed at the floor down
-    // to flying height and level. Everything before this point is marble and
-    // the feet of the stacks; everything after it is the room.
-    //
-    // **Written just after the gate rather than at a chosen frame**, because
-    // the stage clock is held while a boss is on the field -- so this fires
-    // on the frame the Proctor is finished with, whenever that turns out to
-    // be, rather than at a time somebody guessed the fight would take. Same
-    // placement the grove's turn uses, for the same reason.
+    // The hall opens (the camera rises and levels out). Stage time is held
+    // while a boss is up, so this fires right after the Proctor is beaten.
     array_push(_e, ev(792, wave_bg_omen()));
 
     array_push(_e, ev(900, wave_line(EnemyKind.Sentry, 3,
@@ -173,15 +107,8 @@ function stage_sanctum_script() {
     return _e;
 }
 
-/// @desc Two rings standing in the field with nothing else going on.
-///
-///       **A wave shape rather than an attack**, because it is the stage
-///       introducing a rule and not a boss using one. They do not fire, they
-///       do not charge, and they expire on their own -- all they do is stand
-///       there being solid: eating the shots aimed through them, and hurting
-///       anybody who flies into the metal. Both are the whole of what a ring
-///       is, taught in a place where finding either out costs one life at
-///       most and usually nothing.
+/// @desc Two rings standing in the field for 15 seconds: they block shots and
+///       hurt to touch, and do nothing else.
 function wave_sanctum_gateposts() {
     return function(_g) {
         for (var _i = -1; _i <= 1; _i += 2) {
@@ -193,10 +120,7 @@ function wave_sanctum_gateposts() {
 }
 
 // ---------------------------------------------------------------------------
-// What the fodder does
-//
-// Stage one's rules at stage one's rates, in gold and bone. A wave that can
-// kill an attentive player is a wave that has taken the boss's job.
+// Fodder patterns (placeholders)
 // ---------------------------------------------------------------------------
 
 function sanctum_fodder_pellet(_e, _g, _t) {
@@ -231,27 +155,14 @@ function sanctum_fodder_sentry(_e, _g, _t) {
 }
 
 // ---------------------------------------------------------------------------
-// Rings, the way this fight puts them down
-//
-// Two helpers, because two shapes came up in nearly every attack: a ring that
-// rides the caster at a distance, and a ring that stands where it is put.
-// Everything else an attack writes by hand.
+// Ring helpers for this fight
 // ---------------------------------------------------------------------------
 
-/// @desc A ring orbiting the caster at `_dist`, starting at `_ang0`.
-///
-///       **It rides the boss rather than being repositioned by the attack.**
-///       `ring_attach` is the same seam a beam's origin uses, and it buys the
-///       thing that makes an orbit read: the ring keeps station through the
-///       boss's own drift, so what the player sees is furniture he is carrying
-///       rather than two objects that happen to be moving similarly.
-///
-///       `_shoot` is the ring's own pattern -- a function of (ring, run,
-///       frame), which is a boss attack one level down. **Named `shoot` and
-///       not `fire`**, because a struct member shadows a global inside a
-///       method and `fire` is the most-called function in the game: a member
-///       of that name would silently capture every plain shot the closure
-///       tried to make.
+/// @desc A ring orbiting the caster at `_dist`, starting at `_ang0` and
+///       turning `_rate` degrees a frame. It is attached to the boss, so it
+///       keeps station through the boss's movement. `_shoot(ring, run, frame)`
+///       is the ring's own pattern. The member is named `shoot`, not `fire`:
+///       inside a method a struct member shadows the global function.
 function mika_orbit_ring(_e, _dist, _ang0, _rate, _col, _shoot, _ttl = 0) {
     var _ring = ring_new(_e.x + lengthdir_x(_dist, _ang0),
                          _e.y + lengthdir_y(_dist, _ang0), _col, _ttl);
@@ -263,11 +174,9 @@ function mika_orbit_ring(_e, _dist, _ang0, _rate, _col, _shoot, _ttl = 0) {
         var _a = a0 + _t * rate;
         _ring.ox = lengthdir_x(dist, _a);
         _ring.oy = lengthdir_y(dist, _a);
-        // Through a local, the way `boss_end_phase` reads `on_phase_end`: a
-        // bare `shoot(...)` is a call to a *struct member*, which compiles and
-        // which `check_unknown_functions` cannot tell from a call to a
-        // function nobody wrote -- and that check is the one thing standing
-        // between a typo here and a modal error box under the harness.
+        // Called through a local: `check_unknown_functions` can't tell a bare
+        // call to a struct member from a call to a function that doesn't
+        // exist.
         var _fn = shoot;
         if (_fn != undefined) _fn(_ring, _run, _t);
     });
@@ -282,14 +191,9 @@ function mika_place_ring(_x, _y, _col, _shoot, _ttl = 0) {
     return _ring;
 }
 
-/// @desc A whole formation of orbiting rings, kept and validated.
-///
-///       **The references have to be kept and they have to be checked**, which
-///       is why this answers a struct rather than an array. Three of his
-///       attacks pair rings up with current afterwards, and a ring struct is
-///       reused out of the pool -- so a bare array of references is an array
-///       that may be pointing at somebody else's rings by the time it is read.
-///       `gen` beside each one is the whole answer; see `ring_valid`.
+/// @desc A formation of `_n` orbiting rings, returned as `{ring[], gen[]}` so
+///       each remembered ring can be checked with `ring_valid` (pooled rings
+///       are reused).
 function mika_formation(_e, _n, _dist, _rate, _col, _shoot, _ttl, _spin) {
     var _f = { ring: [], gen: [] };
     for (var _i = 0; _i < _n; _i++) {
@@ -312,20 +216,14 @@ function mika_link(_f, _a, _b, _frames) {
 }
 
 // ---------------------------------------------------------------------------
-// The Proctor
-//
-// **A lesser hand of the archive, and the stage's second lesson.** The
-// gateposts said a ring stops your shots; this one says a ring *moves*, and
-// that the thing behind it moves too.
+// The Proctor (midboss; placeholder)
 // ---------------------------------------------------------------------------
 
 function sanctum_midboss_def() {
     return {
         name: "THE PROCTOR",
         title: "one of the lesser hands",
-        // Stage one's stone sentry, borrowed -- the same decision the grove's
-        // midboss records. A placeholder that is obviously a placeholder beats
-        // a new one nobody drew.
+        // Placeholder art: stage one's sentry.
         sprite: spr_foe_sentry,
         eye: spr_eye_mika,
         col: BCOL_GOLD,
@@ -404,22 +302,16 @@ function proctor_walker(_ring, _g, _t) {
 // ---------------------------------------------------------------------------
 // Mika
 //
-// **Fifteen attacks, in the order a Touhou Extra boss runs them**: a non-spell
-// and then a spell, seven times over, and then an eighth spell with no
-// non-spell before it to finish. What was asked for, in the owner's words, is
-// that the seven non-spells are "similar variations of each other", the
-// basic breather attacks between the spells, and that every attack is
-// hand-crafted rather than a plain generic pattern -- complex, multi-phase
-// and built round Mika and his rings.
-//
-// The slots are named for that structure, `N1`..`N7` and `S1`..`S8`, and
-// `mika_slot_name` is the one place that turns a phase index into one.
+// Fifteen attacks (owner's brief): seven non-spells that are variations of
+// each other and act as breathers, each followed by a spell, then an eighth
+// spell to finish. Every one hand-crafted, complex and built round Mika and
+// his rings. Slots are named `N1`..`N7` and `S1`..`S8` (`mika_slot_name`).
 // ---------------------------------------------------------------------------
 
 #macro MIKA_NONSPELLS 7
 #macro MIKA_SPELLS 8
 
-// Every spell of his washes the same colour. See `mika_phases` for why.
+// The background wash all his spells currently use.
 #macro MIKA_SPELL_WASH BCOL_INDIGO
 
 function mika_def() {
@@ -430,168 +322,77 @@ function mika_def() {
         eye: spr_eye_mika,
         col: BCOL_GOLD,
         radius: 64,
-        // **The fallback, and here it is the right answer rather than the
-        // absence of one.** `SPELLBG_SIGIL` is two counter-rotating magic
-        // circles; the caster's whole fight is rings. See the note at the top
-        // of this file about why that nearly went wrong anyway.
         spell_bg: SPELLBG_SIGIL,
         final: true,
     };
 }
 
-/// @desc **The fifteen slots.** One row each, in fight order, and this is the
-///       only list anybody edits: `mika_phases` derives the rest.
+/// @desc The fifteen slots, one row each in fight order. This is the only
+///       list to edit; `mika_phases` derives the phase table from it.
 ///
-///       A row is a name, a hue, the health it is worth, a clock, the attack,
-///       and optionally a `move` -- the drafting table's row with `hp` added.
-///       **A name makes it a spell**, as it does there, and `test_mika_slots`
-///       holds the non-spell/spell order down so a name given to the wrong
-///       slot is caught rather than quietly turning a breather into a spell.
+///       A row is `{name, col, hp, time, attack, move?}`. A name makes it a
+///       spell. `hp` is the share of his health the slot is worth; thresholds
+///       and his total are summed from it, so retuning one slot moves nothing
+///       else.
 ///
-///       **Health is per slot, not a threshold.** Each attack says how much of
-///       the boss it is worth, and the thresholds and the total are summed
-///       from that. Hand-written `hp_end` values are the other way to do it
-///       and the wrong one for a table filled in over many sessions: tuning
-///       one attack's share would mean rewriting the threshold of every
-///       attack after it.
+///       Current state (keep this true):
+///           N1  written: the mill           S1  old placeholder, Gilded Aperture
+///           N2  written: the mill mirrored  S2  old placeholder, Ashiah's Circuit
+///           N3  draft: the quad             S3  old placeholder, Three Open Gates
+///           N4  draft: the quad mirrored    S4  unwritten
+///           N5  draft: the crown            S5  unwritten
+///           N6  draft: the crown mirrored   S6  unwritten
+///           N7  draft: the rush             S7  unwritten
+///                                           S8  old placeholder, Grand Orrery
 ///
-///       **Where a slot stands today**, which is the one thing this comment
-///       has to be kept true about. The old placeholders are the seven
-///       attacks this stage had before the rebuild, put in the slots nearest
-///       their old places with the health and clocks they had; the same seven
-///       are in `stage_sanctum_old` under their old names.
-///
-///           N1  WRITTEN, the mill    S1  old placeholder, Gilded Aperture
-///           N2  WRITTEN, the mill     S2  old placeholder, Ashiah's Circuit
-///               turned over
-///           N3  DRAFT, the quad --   S3  old placeholder, Three Open Gates
-///               the mill with four
-///               rings
-///           N4  DRAFT, the quad      S4  unwritten
-///               turned over
-///           N5  DRAFT, the crown --  S5  unwritten
-///               all six rings
-///           N6  DRAFT, the crown     S6  unwritten
-///               turned over
-///           N7  DRAFT, the rush --   S7  unwritten
-///               six rings reversing
-///           N7  unwritten            S7  unwritten
-///                                    S8  old placeholder, Grand Orrery
-///
-///       To write a slot: put the attack in a script of its own in the
-///       `Scripts/mika` folder -- one per spell, and one for the seven
-///       non-spells, since they are variations of each other -- point the row
-///       at it, and give it the health and clock it wants. Nothing else has
-///       to change.
+///       To write a slot: put the attack in its own script under the
+///       `Scripts/mika` folder (the non-spells share `mika_nonspells`), point
+///       the row at it, and give it a health share and a clock.
 function mika_slots() {
     return [
-        // N1 -- the mill. See `mika_nonspells`. **`Step` rather than a
-        // wander**: his sand settles and stays, so the field is an
-        // accumulation of a hundred volleys and a moving origin smears every
-        // figure in it. He holds still for two seconds, mills, hops, and
-        // mills again -- which is what Touhou's bosses do and for this
-        // reason. `Close` before it was the same complaint half-answered:
-        // a narrower wander is still a wander.
-        //
-        // **Its health is priced against being shot at through his own
-        // rings.** Two rings orbiting at `MIKA_MILL_DIST` each block a column
-        // 167 pixels wide whenever they are on the near side of him, which is
-        // about a quarter of the orbit to a player standing directly under him
-        // and a good deal more once they are dodging and chasing his hops. At
-        // 336 over a 24-second clock he could not be broken at all -- reported
-        // in those words -- because the player's damage was being priced as
-        // though he were a boss standing in the open. He is not; the rings are
-        // half the fight.
+        // N1 -- the mill (`mika_nonspells`). `Step`: he holds still while the
+        // rings throw and hops between bursts. Its health is priced for his
+        // rings blocking part of the player's fire.
         { name: "", col: BCOL_AMBER, hp: 260, time: 35 * FPS,
           move: BossMove.Step, attack: mika_n1_sandmill },
         // S1
         { name: "Gilded Aperture", col: BCOL_GOLD, hp: 392, time: 40 * FPS,
           move: BossMove.Fixed, attack: mika_gilded_aperture },
 
-        // N2 -- the mill turned over: the rings run the other way round him
-        // and the two storms trade hues. Same machinery, same numbers as N1,
-        // so it is priced the same. See `mika_nonspells`.
+        // N2 -- N1 mirrored.
         { name: "", col: BCOL_AMBER, hp: 260, time: 35 * FPS,
           move: BossMove.Step, attack: mika_n2_sandmill },
         // S2
         { name: "Ashiah's Circuit", col: BCOL_CYAN, hp: 476,
           time: 42 * FPS, move: BossMove.Fixed, attack: mika_ashiah_circuit },
 
-        // N3 -- the mill with four rings instead of two: the same grain,
-        // the same bead and the same rate, arranged four-fold instead of as
-        // two pairs. **A draft**: see the head of `mika_nonspells`' quad
-        // section for which of its numbers are guesses and why.
-        //
-        // **Priced off what actually reaches him, which was measured rather
-        // than guessed.** Four rings eat the player's fire far harder than
-        // two: fired headlessly from nine columns either side of his own over
-        // a twenty-second clock, **24% of the player's shots land through the
-        // pair and 16% through the quad** -- 0.69 of the uptime. Reported
-        // from play as the attack having stopped being breakable inside its
-        // clock, which is what a third of the damage does, and which costs
-        // the mark as well as the kill: the top rung is bought with score,
-        // and an attack that can only end on its timer pays no speed award.
-        //
-        // So his share is N1's scaled by that measurement -- 260 times 0.69
-        // -- and not a round number chosen to look considered. It buys back
-        // the same time to break, which is the thing that was wrong.
+        // N3 -- the quad (draft). Four rings block more of the player's fire:
+        // measured headlessly, 16% of shots reach him against 24% for the
+        // pair, so its health is N1's times 0.69.
         { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
           move: BossMove.Step, attack: mika_n3_sandquad },
         // S3
         { name: "Three Open Gates", col: BCOL_AMBER, hp: 448,
           time: 44 * FPS, attack: mika_three_gates },
 
-        // N4 -- the quad turned over, on the terms N2 turns N1 over: the
-        // rings run the other way round him and the two storms trade hues.
-        // Same machinery and same numbers as N3, so it is priced the same.
+        // N4 -- N3 mirrored.
         { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
           move: BossMove.Step, attack: mika_n4_sandquad },
         mika_unwritten_row(true, 4),     // S4
 
-        // N5 -- the crown: all six of his rings, out at `MIKA_ORBIT` where
-        // his formations live, turning more slowly than the mill. **A
-        // draft**: see the head of `mika_nonspells`' crown section.
-        //
-        // **Health measured, not argued**, on the quad's terms -- the same
-        // headless probe that priced N3, fired from nine columns either side
-        // of his own over a twenty-second clock. 24% of the player's shots
-        // land through the pair, 16% through the quad and **14% through the
-        // crown**: 0.60 of the uptime. Six rings out at three hundred block
-        // only a little harder than four at two hundred and thirty-five,
-        // because a ring further out casts a narrower shadow on the column
-        // under him and the two effects very nearly cancel.
-        //
-        // So the share is N1's scaled by the measurement, 260 times 0.60, and
-        // the time to break comes out at N1's.
+        // N5 -- the crown (draft). 14% of shots reach him through six rings,
+        // so its health is N1's times 0.60.
         { name: "", col: BCOL_AMBER, hp: 156, time: 35 * FPS,
           move: BossMove.Step, attack: mika_n5_sandcrown },
         mika_unwritten_row(true, 5),     // S5
 
-        // N6 -- the crown turned over, on the terms N2 turns N1 and N4 turns
-        // N3. Same machinery and same numbers as N5, so it is priced the same.
+        // N6 -- N5 mirrored.
         { name: "", col: BCOL_AMBER, hp: 156, time: 35 * FPS,
           move: BossMove.Step, attack: mika_n6_sandcrown },
         mika_unwritten_row(true, 6),     // S6
 
-        // N7 -- the rush: the crown's six rings, rocking between full speed
-        // one way and full speed the other, throwing fewer and faster grains.
-        // **The last breather and the one with no mirror** -- seven is odd, so
-        // instead of a partner it contains its own reverse. See the head of
-        // `mika_nonspells`' rush section.
-        //
-        // **A shorter clock than the other six.** Thirty seconds of something
-        // unsettled reads as urgency where thirty-five of it reads as a wait.
-        // That is a pacing call rather than anything the pattern required and
-        // it is one number to put back.
-        //
-        // **Health measured like the crown's, and scaled for the clock as
-        // well.** The same headless probe: 24% of the player's shots land
-        // through the pair and **14% through the rush** -- 0.60 of the uptime,
-        // which is the crown's number exactly, because a mill that rocks
-        // through most of a turn each way covers the same ground a mill that
-        // circles does. 260 times 0.60 times thirty over thirty-five is what
-        // is here, so it takes the same *share of its clock* to break as N1
-        // does of its own.
+        // N7 -- the rush (draft). A shorter clock; health is N1's times 0.60
+        // (the same blocking as the crown), scaled by 30/35 for the clock.
         { name: "", col: BCOL_AMBER, hp: 134, time: 30 * FPS,
           move: BossMove.Step, attack: mika_n7_sandrush },
         mika_unwritten_row(true, 7),     // S7
@@ -610,19 +411,9 @@ function mika_hp() {
     return _sum;
 }
 
-/// @desc The phase table the fight and the attack list both read, derived
-///       from `mika_slots`.
-///
-///       **Every spell of his washes indigo and none of them washes in its own
-///       colour**, which is two rules at once. One background per boss,
-///       because an arena is a *place* and a place that changes hue every
-///       forty seconds stops being one -- the spell's own colour already
-///       lives on its banner, its notch and its bullets. And the wash has to
-///       be the colour his rings are not: see the note at the top.
-///
-///       Built fresh on every call for the reason `ziggy_phases` is: a phase
-///       struct is mutable, and a table built once would be shared by every
-///       run that read it.
+/// @desc The phase table the fight and the attack list read, derived from
+///       `mika_slots`. Built fresh on every call, because phase structs are
+///       mutable.
 function mika_phases() {
     var _l = mika_slots();
     var _n = array_length(_l);
@@ -640,8 +431,8 @@ function mika_phases() {
             name: _s.name,
             col: _s.col,
             bg: _spell ? MIKA_SPELL_WASH : -1,
-            // Exactly zero on the last slot, because the sum is taken back
-            // off in the same order it was put on.
+            // Exactly zero on the last slot: the sum is taken back off in the
+            // order it was added.
             hp_end: _left / _total,
             time: _s.time,
             move: _s[$ "move"] ?? BossMove.Drift,
@@ -656,9 +447,8 @@ function mika_spawn(_g) {
                       mika_def());
 }
 
-/// @desc Which of the fifteen phase `_i` is: `N1`..`N7` for the non-spells,
-///       `S1`..`S8` for the spells. The inverse of the fight order, and the
-///       name a slot goes by in the screenshot scenes and in `CLAUDE.md`.
+/// @desc The slot name of phase `_i`: `N1`..`N7` for the non-spells,
+///       `S1`..`S8` for the spells. Used by the screenshot scenes.
 function mika_slot_name(_i) {
     if (_i >= 2 * MIKA_NONSPELLS) {
         return "S" + string(_i - MIKA_NONSPELLS + 1);
@@ -669,13 +459,9 @@ function mika_slot_name(_i) {
 // ---------------------------------------------------------------------------
 // Unwritten slots
 //
-// **A stub, and plainly one.** A slot nobody has written yet still has to be a
-// real attack -- the fight runs straight through it, the attack list offers
-// it, and `test_rings` holds every attack of his to putting a ring down -- so
-// it does the least that satisfies all three: a ring or two turning round him
-// and one slow pattern. The spells are called `Unwritten Spell 4` and so on,
-// so a stub says what it is in the banner and in the attack list; the
-// non-spells go unnamed, as every non-spell does.
+// A plain stub so the fight and the attack list run through every slot: a
+// ring or two turning round him and one slow pattern. Stub spells are named
+// `Unwritten Spell N`.
 // ---------------------------------------------------------------------------
 
 /// @desc The row for slot `N_k` or `S_k` while it is unwritten.
@@ -710,42 +496,22 @@ function mika_unwritten_spell(_e, _g, _t) {
 }
 
 // ---------------------------------------------------------------------------
-// The old placeholders, still standing in S1-S3 and S8
+// Old placeholders still in S1-S3 and S8
 //
-// The seven attacks this stage had before the rebuild. **Each is deleted when
-// its slot is written**, along with anything below that only it uses; the
-// frozen copies in `stage_sanctum_old` are what keeps them playable after
-// that. The notes on them are the originals.
+// Delete each one, and anything only it uses, when its slot is written. The
+// frozen copies in `stage_sanctum_old` keep them playable.
 // ---------------------------------------------------------------------------
 
-/// @desc **Gilded Aperture.** Six rings on one orbit round him, turning, and
-///       the gaps between them are the only line to the boss.
-///
-///       **The aperture is the *gap*, which is what the first version got
-///       wrong.** That one drew three enormous rings concentric on him, on the
-///       reasoning that each one the player got inside was one fewer band in
-///       the way -- an idea that reads well written down and which in practice
-///       is a boss who cannot be shot at all from anywhere sensible. Six rings
-///       of one size on a ring of their own leaves six windows about as wide
-///       as a ring, and they sweep: the answer is to find where the window is
-///       now and be under it, which is a *positional* question with an answer
-///       that is always somewhere.
-///
-///       It is `Fixed` for the reason `Seed & Bloom` is: the formation is
-///       measured from its own origin, and an origin wandering four hundred
-///       pixels would turn a thing to be lined up with into a thing to be
-///       chased.
-///
-///       The volleys are **tangential** -- they run round the orbit rather
-///       than out of it -- because radial ones would put a wall in every one
-///       of the windows the attack exists to open.
+/// @desc **Gilded Aperture.** Six rings on one orbit round him, turning; the
+///       gaps between them are the lines to the boss. `Fixed`, because the
+///       formation is measured from his position. Its volleys run round the
+///       orbit rather than out of it, so they don't close the gaps.
 function mika_gilded_aperture(_e, _g, _t) {
     if (_t == 0) {
         mika_formation(_e, MIKA_RING_N, MIKA_ORBIT, 0.55, MIKA_RING_COL,
                        mika_aperture_rim, 0, 1.0);
     }
-    // His own fire is slow, wide and aimed, so the player cannot simply park
-    // under a window and stay there. Nothing here is a wall: the walls turn.
+    // His own fire: slow, wide and aimed.
     if ((_t mod 96) == 46) {
         fire_fan_stack(_e.x, _e.y, 9, 2, 4.6, 1.0,
                        aim_at(_e.x, _e.y, _g.player.x, _g.player.y), 60,
@@ -753,32 +519,16 @@ function mika_gilded_aperture(_e, _g, _t) {
     }
 }
 
-/// @desc **Cyan, not amber.** The rings are the gold thing on this field and
-///       nothing else may be: a gold volley off a gold ring photographed as a
-///       haze of sparkles with the obstacles somewhere inside it, which is the
-///       ember-and-pellet finding for the third time in this file. Cyan is the
-///       arcane accent the whole interface already uses and it is the furthest
-///       thing from gold that still reads on indigo.
+/// @desc The aperture rings' volleys, in cyan so they stand apart from the
+///       gold rings.
 function mika_aperture_rim(_ring, _g, _t) {
     if ((_t mod 50) != 22) return;
     ring_fire_tangent(_ring, 5, 3.2, _t * 2.2, BSHAPE_MOTE, BCOL_CYAN, 1, 16);
 }
 
-/// @desc **Ashiah's Circuit.** Six rings on an orbit, strung together in pairs
-///       with current, turning -- a cage with doors in it.
-///
-///       The one attack in the fight whose danger is *not* on the rings. The
-///       player reads each bar off the two objects at its ends, which is a
-///       different kind of reading from anything else here -- and it is why
-///       the bolt is drawn off the same segment `ring_hits` tests, jittered
-///       only within the width it kills at.
-///
-///       **Three chords rather than six, and which three moves.** Stringing
-///       every neighbour would close the cage, and a closed cage round a boss
-///       is the unanswerable defect the aperture was already rewritten to get
-///       rid of. Linking alternate pairs leaves three doors; shifting the
-///       pairing every few seconds moves them, so standing in one is a lease
-///       rather than a solution.
+/// @desc **Ashiah's Circuit.** Six rings on an orbit, alternate pairs strung
+///       with lethal current (three bars, three open doors); the pairing
+///       shifts every few seconds so the doors move.
 function mika_ashiah_circuit(_e, _g, _t) {
     static circuit = { ring: [], gen: [] };
 
@@ -787,8 +537,7 @@ function mika_ashiah_circuit(_e, _g, _t) {
                                  mika_circuit_rim, 0, 1.2);
     }
 
-    // The pairing walks: (0,1)(2,3)(4,5), then (1,2)(3,4)(5,0). Two states, so
-    // every door becomes a bar and every bar becomes a door.
+    // The pairing alternates between (0,1)(2,3)(4,5) and (1,2)(3,4)(5,0).
     if ((_t mod 190) == 0) {
         var _off = ((_t div 190) mod 2);
         for (var _k = 0; _k < 3; _k++) {
@@ -808,17 +557,8 @@ function mika_circuit_rim(_ring, _g, _t) {
     ring_fire_rim(_ring, 5, 3.2, _t * 4.1, BSHAPE_ORB, BCOL_CYAN, 18);
 }
 
-/// @desc **Three Open Gates.** Three rings standing across the field, each
-///       with a beam through its middle, all three turning.
-///
-///       The verb this one adds is `ring_beam`: a laser anchored at a ring's
-///       *centre*, which follows it. Through the middle rather than off the
-///       rim, because the hole is what a ring is for -- a beam leaving the
-///       edge would be a gun somebody had bolted a hoop to.
-///
-///       The gates drift apart and back on their own, so the three beams are
-///       never the same three angles twice, and the rings themselves are still
-///       eating shots the whole time.
+/// @desc **Three Open Gates.** Three rings drifting across the field, each
+///       with a turning beam through its middle (`ring_beam`).
 function mika_three_gates(_e, _g, _t) {
     if ((_t mod 260) == 0) {
         for (var _i = 0; _i < 3; _i++) {
@@ -848,14 +588,9 @@ function mika_gate_beam(_ring, _g, _t) {
     }
 }
 
-/// @desc **Grand Orrery.** Everything he has, turning at once.
-///
-///       Six rings on two orbits, adjacent pairs strung with current in
-///       rotation, one band charged at a time, and volleys off every rim. It
-///       is the last attack, so it is the one that is allowed to be a sum
-///       rather than an idea -- and it is where the four verbs a ring has are
-///       on screen together, which is the only honest way to find out whether
-///       they read as four things or as one mess.
+/// @desc **Grand Orrery.** Six rings on two counter-rotating orbits, one
+///       adjacent pair strung with current at a time, one band charged at a
+///       time, and volleys off every rim.
 function mika_grand_orrery(_e, _g, _t) {
     static orrery = { ring: [], gen: [] };
 
@@ -873,16 +608,13 @@ function mika_grand_orrery(_e, _g, _t) {
         }
     }
 
-    // One pair strung at a time, walking round the six. The link is renewed
-    // rather than held, so a ring lost to a full pool takes one beat out of
-    // the rotation instead of the whole attack.
+    // One pair strung at a time, walking round the six.
     if ((_t mod 84) == 0) {
         var _k = (_t div 84) mod MIKA_RING_N;
         mika_link(orrery, _k, (_k + 1) mod MIKA_RING_N, 68);
     }
 
-    // ...and one band charged at a time, on a different period, so the two
-    // never lock into one rhythm.
+    // One band charged at a time, on a different period.
     if ((_t mod 130) == 60) {
         var _c = (_t div 130) mod MIKA_RING_N;
         if (ring_valid(orrery.ring[_c], orrery.gen[_c])) {

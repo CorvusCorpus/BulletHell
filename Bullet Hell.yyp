@@ -45,8 +45,6 @@
   },
   "name":"Bullet Hell",
   "resources":[
-    {"id":{"name":"spr_fx_shard","path":"sprites/spr_fx_shard/spr_fx_shard.yy",},},
-    {"id":{"name":"spr_fx_glint","path":"sprites/spr_fx_glint/spr_fx_glint.yy",},},
     {"id":{"name":"obj_boot","path":"objects/obj_boot/obj_boot.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},
     {"id":{"name":"obj_practice","path":"objects/obj_practice/obj_practice.yy",},},
@@ -161,7 +159,9 @@
     {"id":{"name":"spr_foe_sentry","path":"sprites/spr_foe_sentry/spr_foe_sentry.yy",},},
     {"id":{"name":"spr_foe_wisp","path":"sprites/spr_foe_wisp/spr_foe_wisp.yy",},},
     {"id":{"name":"spr_fx_bloom","path":"sprites/spr_fx_bloom/spr_fx_bloom.yy",},},
+    {"id":{"name":"spr_fx_glint","path":"sprites/spr_fx_glint/spr_fx_glint.yy",},},
     {"id":{"name":"spr_fx_ring","path":"sprites/spr_fx_ring/spr_fx_ring.yy",},},
+    {"id":{"name":"spr_fx_shard","path":"sprites/spr_fx_shard/spr_fx_shard.yy",},},
     {"id":{"name":"spr_fx_sigil","path":"sprites/spr_fx_sigil/spr_fx_sigil.yy",},},
     {"id":{"name":"spr_fx_spark","path":"sprites/spr_fx_spark/spr_fx_spark.yy",},},
     {"id":{"name":"spr_fx_wisp","path":"sprites/spr_fx_wisp/spr_fx_wisp.yy",},},

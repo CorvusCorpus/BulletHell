@@ -1,56 +1,18 @@
 #!/usr/bin/env python3
-"""Synthesise every sound effect in the game, and register them.
+"""Synthesise every sound effect in the game and register them.
 
-These are synthesised rather than sourced because it is the only way to get a
-complete set into the project in one pass without hunting licences -- not
-because generated audio is better than recorded audio. It is not. **Every one
-of these is a placeholder in the same sense `tools/make_boss.py` is**, and the
-contract a replacement has to keep is small: a mono 16-bit WAV of roughly the
-same length at roughly the same peak, dropped in `sounds/<name>/<name>.wav`
-with the duration in the `.yy` updated. Nothing in `audio_functions` knows or
-cares where a cue came from.
+Every cue is a placeholder. A replacement should be a mono 16-bit WAV of
+about the same length and loudness at `sounds/<name>/<name>.wav`, with the
+duration in its `.yy` updated; the gains in `audio_functions` were set
+against the levels made here.
 
-There is no music. This file is `sfx` and it means it -- a cue is at most a
-second and a half, dry, and mono.
+The cues are short and dry, and spread across frequency bands so they mask
+each other less. Each is normalised to a target loudness (see `finish`), and
+its noise is seeded from its name, so re-running writes identical WAVs.
+`main` exits non-zero if a cue doesn't decay (`check_envelopes`).
 
     python tools/make_sfx.py            # write every sound + the preview
     python tools/make_sfx.py --preview  # only the preview, touch no resource
-
-# What the set is built to
-
-**Short, and dry.** A tail is a voice that outlives its own event. At the rate
-this game fires, a shot cue with a 400ms tail is not a shot cue, it is a drone
--- and the drone is loudest exactly when the screen is fullest, which is when
-the player most needs to hear the one cue that matters. Nothing here reverbs,
-and the longest shot cue is 110ms.
-
-**Narrow, and in different bands.** Anything in this set can sound on the same
-frame as anything else, so two cues that share a band are two cues that mask
-each other. The shots live at 400-2500Hz, the graze sits above them at 3-5kHz
-where nothing else goes, the player's own shot is deliberately thinner than the
-enemy's, and the ceremony is the only thing allowed below 200Hz.
-
-**Levelled here, not at the call site.** Every cue is normalised and then
-scaled to a designed peak, so the gains in `audio_functions` mean what they
-say. A cue that is quiet because its waveform happens to be quiet is a cue
-whose mix cannot be reasoned about -- and it is the half a replacement set has
-to match, since the mixer's gains are tuned against these peaks.
-
-**Deterministic.** Every cue's noise comes from a seed derived from its own
-name, so re-running this writes byte-identical WAVs and produces no diff.
-
-# Where the design comes from
-
-Touhou's, in shape rather than in content. What that series gets right and
-what is borrowed: cues are tiny, they are *dry*, they are all clearly
-different from each other, and the enemy shot is the quietest thing in the
-game despite being the most frequent. What is not borrowed is any particular
-sound.
-
-**The one thing sound design cannot fix is how often a cue is asked for**, and
-that is not here. See `audio_functions`: a hundred bullets fired on one frame
-request one cue and it sounds once, which is a property of the API rather than
-a rule anybody has to remember.
 """
 import argparse
 import hashlib
@@ -66,12 +28,12 @@ import gm_new
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PREVIEW = os.path.join(ROOT, "tools", "_preview")
+os.makedirs(PREVIEW, exist_ok=True)  # git-ignored, so a fresh clone lacks it
 
 RATE = 44100
 FOLDER = "Sounds"
 
-# Headroom. Five cues can sound on one frame -- see `SFX_VOICES` -- so no
-# single one may use the whole of the master bus.
+# Peak ceiling, leaving headroom for up to `SFX_VOICES` cues on one frame.
 PEAK_CEILING = 0.92
 
 
@@ -95,11 +57,8 @@ def t_of(n):
 
 
 def env_ad(n, attack, decay, curve=3.0):
-    """Attack-decay, in seconds. `curve` is how sharply the decay falls.
-
-    Exponential rather than linear, because a linear decay to zero reads as a
-    sound being *switched off* at the end -- which is audible at these lengths
-    and is what makes a short cue sound like a clipped sample.
+    """Attack-decay, in seconds, with an exponential decay; `curve` is how
+    sharply it falls.
     """
     e = np.ones(n)
     a = min(n, n_of(attack))
@@ -113,7 +72,8 @@ def env_ad(n, attack, decay, curve=3.0):
 
 
 def env_pluck(n, decay=1.0, curve=5.0):
-    """Instant attack, exponential fall across the whole cue. A struck thing."""
+    """Instant attack, exponential fall across the whole cue. A struck
+    thing."""
     tail = np.linspace(0.0, 1.0, n)
     return np.exp(-curve * tail / max(1e-6, decay))
 
@@ -142,9 +102,7 @@ def sine(f0, n, f1=None, shape="exp"):
 
 
 def tri(f0, n, f1=None):
-    """A triangle. Softer than a square and richer than a sine -- what most of
-    the pitched cues here are made of, because a pure sine has no edge to it
-    and disappears the moment anything else is playing."""
+    """A triangle wave: softer than a square, richer than a sine."""
     p = sweep(f0, f1 if f1 is not None else f0, n) / (2 * np.pi)
     return 2 * np.abs(2 * (p - np.floor(p + 0.5))) - 1
 
@@ -159,8 +117,7 @@ def noise(n, gen):
 
 
 def biquad(x, b0, b1, b2, a1, a2):
-    """Direct form I. Written out rather than reached for, because scipy is not
-    installed on this machine and a filter is thirty lines."""
+    """Direct form I, written out so the tools don't need scipy."""
     y = np.empty_like(x)
     x1 = x2 = y1 = y2 = 0.0
     for i in range(x.shape[0]):
@@ -200,13 +157,8 @@ def bandpass(x, f, q=2.0):
 
 
 def moving_lowpass(x, f0, f1, q=0.9):
-    """A lowpass whose corner slides from `f0` to `f1` across the sound.
-
-    This is what makes a noise burst read as an *event* rather than as static:
-    a puff of air, a thing igniting, a wall of light coming on. Coefficients
-    are recomputed every 64 samples, which is far finer than the ear can
-    resolve at these lengths and about seven hundred times cheaper than every
-    sample.
+    """A lowpass whose corner slides from `f0` to `f1` across the sound. The
+    coefficients are recomputed every 64 samples.
     """
     n = x.shape[0]
     y = np.empty(n)
@@ -247,36 +199,18 @@ def at(x, delay, n=None):
 
 
 def soft_clip(x, drive=1.0):
-    """Saturation. Adds the harmonics that make a synthesised hit sound struck
-    rather than played, and guarantees the result is bounded on the way."""
+    """Saturation (tanh): adds harmonics, and bounds the result."""
     return np.tanh(x * drive) / math.tanh(drive) if drive > 0 else x
 
 
 def finish(x, level):
-    """Take the clicks off both ends, then normalise to a target *loudness*.
+    """Fade both ends, then normalise to a target loudness.
 
-    **`level` is an RMS target, not a peak, and that change is most of why the
-    first set was inaudible.** A 26ms click and a 1.7-second boom normalised to
-    the same peak are nowhere near the same loudness -- the click has one
-    sample up there and the boom has eighty thousand -- so a mix levelled on
-    peaks makes every short cue vanish. Measured, the hex's fan volleys were
-    arriving at -17.5 dBFS: not quiet by design, quiet by measurement error.
-    `loudness` is the RMS of the loudest 100ms window, which is crude next to a
-    real loudness model and is enormously closer than a peak.
-
-    **The peak guard is a ceiling, not a target.** A very peaky cue cannot have
-    both its loudness and its headroom, and when the two disagree the headroom
-    wins -- `main` prints both so the ones that got clamped are visible rather
-    than silently quieter than asked for.
-
-    The two ends want very different fades and giving them the same one was a
-    bug. At two milliseconds each, the fade-in was eating the attack of every
-    cue whose peak is at sample zero -- which is every plucked one -- and
-    `snd_enemy_hit` came out at 0.08 against a designed 0.26. A 26ms click is
-    *all* attack; blunting the first eight per cent of it is blunting the thing
-    itself. So the head gets 0.4ms, which is enough to kill the step and short
-    enough to be inaudible as an attack, and the tail keeps 3ms, where nothing
-    is happening anyway.
+    `level` is an RMS target (see `loudness`), not a peak, because a short cue
+    and a long one at the same peak are nowhere near equally loud. The peak is
+    capped at `PEAK_CEILING`, which wins when the two disagree; `main` marks
+    the cues that were capped. The head fade is 0.4ms, short enough to keep a
+    plucked cue's attack; the tail fade is 3ms.
     """
     head = min(n_of(0.0004), x.shape[0] // 2)
     tail = min(n_of(0.003), x.shape[0] // 2)
@@ -296,66 +230,36 @@ def finish(x, level):
 
 
 # ---------------------------------------------------------------------------
-# Resonance, and why the first set had none
+# Resonators
 #
-# **The first version of this file was reported as sounding like a match-three
-# game, which is the same complaint the bullets themselves once got**, and it
-# had the same root cause one medium over: a shape lit by a generic model
-# instead of built as a made object.
-#
-# Measured, the shot cues came out at crest factor 11.7 and tonality 0.05 --
-# which is the arithmetic definition of a click. Nearly all the energy in one
-# transient spike, spread flat across the spectrum, nothing ringing. That is
-# what "clacking" means numerically, and the cause was that *every filter in
-# the file was at Q around 1*. A non-resonant filter shapes noise and lets it
-# die; it never sings. There was no resonator anywhere in a set of sounds whose
-# entire subject is struck and charged objects.
-#
-# So the helpers below are the audio equivalent of `art_common`'s cut bodies:
-#
-#   - **`struck`** is a bank of *inharmonic* partials. Harmonic ratios sound
-#     like a plucked string; the arcane, struck-metal ratios below sound like
-#     something with mass being hit, which is what every bullet in this game is
-#     drawn as.
-#   - **`zap`** is a rich waveform swept downward through a *resonant* filter.
-#     The resonance is the whole point -- it is the difference between a puff
-#     of air and a projectile leaving.
-#   - **`soft_clip`** is used far harder than before, because saturation is
-#     what fills in the harmonics that make a synthesised hit sound struck
-#     rather than typed.
+# - `struck`: a bank of inharmonic partials, for something with mass being hit.
+# - `zap`: a rich waveform swept down through a resonant filter.
+# - `air`: noise through a resonant moving filter.
 # ---------------------------------------------------------------------------
 
-# Struck-metal partial ratios. Deliberately inharmonic: a bell, a strut, a
-# charged rune -- none of them ring in whole-number multiples, and the ear is
-# extremely good at telling that apart from a musical note.
+# Partial ratios for `struck`, deliberately inharmonic (whole-number ratios
+# sound like a musical note).
 ARCANE = (1.0, 2.41, 3.87, 5.62, 7.09)
 STONE = (1.0, 1.83, 2.67, 4.12)
 
 
 def saw(f0, n, f1=None):
-    """A sawtooth. The richest simple waveform there is, and the right input to
-    a resonant filter -- a sine has no harmonics for the resonance to find."""
+    """A sawtooth, optionally sweeping from `f0` to `f1`."""
     p = sweep(f0, f1 if f1 is not None else f0, n) / (2 * np.pi)
     return 2 * (p - np.floor(p + 0.5))
 
 
 def ringmod(a, b):
-    """Two tones multiplied. Produces sum and difference frequencies, which are
-    inharmonic by construction -- the cheapest way to make something sound
-    magical rather than mechanical."""
+    """Two tones multiplied, giving inharmonic sum and difference
+    frequencies."""
     n = max(a.shape[0], b.shape[0])
     return pad_to(a, n) * pad_to(b, n)
 
 
 def struck(f, n, ratios=ARCANE, amps=(1.0, 0.55, 0.32, 0.18, 0.10),
            decay=1.0, curve0=3.0, spread=1.9, detune=0.004):
-    """A bank of decaying partials -- a resonator being hit.
-
-    Higher partials decay faster, which is what real struck objects do and is
-    most of what makes this read as an *object* rather than as a chord. The
-    detune is small and deliberate: exactly-tuned partials beat against nothing
-    and sound synthetic, where a few cents of drift gives the slow shimmer a
-    real resonator has.
+    """A bank of decaying partials: a resonator being hit. Higher partials
+    decay faster, and each is detuned slightly so they shimmer.
     """
     out = np.zeros(n)
     for i, (r, a) in enumerate(zip(ratios, amps)):
@@ -365,11 +269,9 @@ def struck(f, n, ratios=ARCANE, amps=(1.0, 0.55, 0.32, 0.18, 0.10),
 
 
 def zap(f0, f1, n, q=7.0, cut=2.6, wave="saw", drive=1.6):
-    """A rich waveform swept down through a resonant lowpass.
-
-    The classic energy-release shape, and the one thing missing from every shot
-    cue in the first set. `cut` is where the filter sits relative to the
-    oscillator: above 1 it opens onto the harmonics and the sweep *sings*.
+    """A rich waveform swept down through a resonant lowpass. `cut` is the
+    filter's corner relative to the oscillator; above 1 it opens onto the
+    harmonics.
     """
     src = saw(f0, n, f1) if wave == "saw" else square(f0, n, f1, duty=0.42)
     out = moving_lowpass(src, f0 * cut, max(60.0, f1 * cut), q=q)
@@ -377,20 +279,13 @@ def zap(f0, f1, n, q=7.0, cut=2.6, wave="saw", drive=1.6):
 
 
 def air(n, gen, f0, f1, q=6.0, amount=1.0):
-    """Noise through a *resonant* moving filter -- a whistle rather than a
-    hiss. Q is the entire difference between the two."""
+    """Noise through a resonant moving filter: a whistle rather than a hiss."""
     return moving_lowpass(noise(n, gen), f0, f1, q=q) * amount
 
 
 def loudness(x):
     """RMS of the loudest 100ms window, or of the whole cue if it is shorter.
-
-    **This is what `finish` normalises to, and peak was the wrong measure.**
-    A 26ms click and a 1.7-second boom normalised to the same *peak* are
-    nowhere near the same loudness -- the click has one sample up there and the
-    boom has eighty thousand -- so a mix levelled on peaks makes every short
-    cue vanish. That is most of why the hex's fan volleys arrived at -17.5
-    dBFS: they were not quiet by design, they were quiet by measurement error.
+    What `finish` normalises to.
     """
     w = min(x.shape[0], n_of(0.100))
     if w >= x.shape[0]:
@@ -403,18 +298,15 @@ def loudness(x):
 # ---------------------------------------------------------------------------
 # The cues
 #
-# Each returns mono float samples. The peak each is finished at is its place in
-# the mix **as drawn**, before `audio_functions` applies its own gain -- the
-# two are deliberately separate, so a cue can be re-levelled without touching
-# the waveform and re-drawn without touching the mix.
+# Each returns mono float samples, finished at its own loudness before
+# `audio_functions` applies its gain.
 # ---------------------------------------------------------------------------
 
 def cue_shot_soft(g):
-    """A round bullet leaving -- orb, bead, sphere. The most frequent sound in
-    the game, so the *shortest*, but no longer the thinnest: a resonant
-    downward sweep with a struck body under it and a little inharmonic
-    sparkle on top. It has pitch, it rings for a moment, and it reads as
-    something charged being released rather than as a key being pressed."""
+    """The shot cue for round bullets and any shape `sfx_for_shape` doesn't
+    list: a resonant downward sweep over a struck body, with a little
+    inharmonic sparkle. The most frequent sound, so the shortest.
+    """
     n = n_of(0.130)
     core = zap(760, 165, n, q=8.0, cut=2.4, drive=1.9) * env_pluck(n, 0.85, 4.2)
     body = struck(196, n, ratios=ARCANE, decay=0.75, curve0=4.0) * 0.55
@@ -425,15 +317,9 @@ def cue_shot_soft(g):
 
 
 def cue_shot_sharp(g):
-    """A needle, a dart, a grain of rice -- and **the cue the hex's fan
-    volleys fire with**, which is what made getting it wrong so obvious.
-
-    The first version was a bandpassed noise tick at Q 1.6: crest factor 11.7,
-    tonality 0.05, and reported, accurately, as a clack. What a needle should
-    sound like is a *shing* -- a high inharmonic resonator struck hard and
-    swept, with enough ring to survive a screen that already has forty
-    bullets on it. It is the threat cue in `Demon Sealing Hex` and it has to
-    cut through the ward it is being fired into."""
+    """The shot cue for the thin shapes (see `sfx_for_shape`): a high
+    inharmonic resonator struck hard and swept.
+    """
     n = n_of(0.115)
     ring = struck(1240, n, ratios=ARCANE, amps=(1.0, 0.62, 0.40, 0.24, 0.14),
                   decay=0.62, curve0=4.2)
@@ -444,11 +330,9 @@ def cue_shot_sharp(g):
 
 
 def cue_shot_heavy(g):
-    """A rune, a crystal, a card -- the shapes drawn big. A struck stone with
-    real mass: low inharmonic partials on the `STONE` ratios, a sub, and a
-    resonant sweep for the release. The only shot cue allowed to ring past a
-    tenth of a second, because the patterns it belongs to are the ones with
-    fewer and larger bullets in them."""
+    """The shot cue for the big angular shapes (see `sfx_for_shape`): low
+    partials on the `STONE` ratios, a sub, and a resonant sweep.
+    """
     n = n_of(0.230)
     body = struck(146, n, ratios=STONE, amps=(1.0, 0.60, 0.34, 0.18),
                   decay=1.15, curve0=2.6)
@@ -459,21 +343,9 @@ def cue_shot_heavy(g):
 
 
 def cue_pshot(g):
-    """Szuix's own bolt, and **the cue with the most exacting slot in the
-    set**: it fires twenty volleys a second for the whole of a stage, so it
-    must be thin enough not to fatigue and placed where it masks nothing the
-    enemy is doing.
-
-    Measured, the set now sits at roughly 1.5kHz (the soft shot), 2.9kHz (this
-    one), 4.4kHz (the graze) and 5.3kHz (the sharp shot) -- four rungs with
-    real gaps between them. Two earlier attempts each landed on a neighbour:
-    a hard-driven `zap` up at 1.7kHz measured *less* tonal than the click it
-    replaced, and dropping the fundamental to fix that put the centroid at
-    2.2kHz, right on top of the enemy's round bullets.
-
-    Resonator-led rather than sweep-led, which is the opposite of the shot
-    cues: the ring is what makes it read as a bolt, and the sweep underneath
-    is only there to give it a direction."""
+    """Szuix's shot. It plays constantly, so it is thin: a resonator, with a
+    sweep underneath to give it direction.
+    """
     n = n_of(0.075)
     tip = struck(2080, n, ratios=(1.0, 2.41, 3.87, 5.62),
                  amps=(1.0, 0.50, 0.24, 0.11), decay=0.48, curve0=4.6)
@@ -482,16 +354,7 @@ def cue_pshot(g):
 
 
 def cue_graze(g):
-    """Passing a bullet. **Above everything else in the set, at 3-5kHz where
-    nothing else goes**, because it is the one cue that has to cut through a
-    full screen -- it is the game's only reward for nerve, and a reward nobody
-    can hear during the moment that earned it is not one.
-
-    That band is a claim the file has to keep rather than a note about intent.
-    Dropping the fundamental to 1960 for a richer ring pulled the centroid down
-    to 2.8kHz and straight into the shot cues' territory, which is the one
-    place this cue may not be -- so the fundamental is back up and the ring is
-    bought with partials instead."""
+    """Grazing a bullet: a high, bright ping."""
     n = n_of(0.150)
     ping = struck(3520, n, ratios=(1.0, 2.0, 3.01, 4.72),
                   amps=(1.0, 0.62, 0.36, 0.18), decay=0.95, curve0=3.0)
@@ -502,9 +365,9 @@ def cue_graze(g):
 
 
 def cue_item(g):
-    """A shard collected. A small bright bell -- a bomb can put fifty on the
-    field at once, so this is written to be pleasant thirty times in four
-    seconds rather than satisfying once."""
+    """A shard collected: a small bright bell, meant to bear repeating many
+    times in a few seconds.
+    """
     n = n_of(0.135)
     bell = struck(1046, n, ratios=(1.0, 2.76, 5.40), amps=(1.0, 0.42, 0.18),
                   decay=0.85, curve0=3.4)
@@ -513,11 +376,7 @@ def cue_item(g):
 
 
 def cue_enemy_hit(g):
-    """A bolt connecting. Fires up to twenty times a second against a boss, so
-    it is the shortest cue in the game -- but a *thud* rather than a tick now.
-    The first version was pure broadband noise at crest 13.4 and tonality 0.02,
-    which is a keyboard click; what a shot landing on stone should be is a
-    short damped resonance with a low centre."""
+    """A player shot landing: a short damped resonance with a low centre."""
     n = n_of(0.055)
     thud = struck(280, n, ratios=STONE, amps=(1.0, 0.48, 0.24, 0.12),
                   decay=0.30, curve0=6.0)
@@ -526,9 +385,9 @@ def cue_enemy_hit(g):
 
 
 def cue_enemy_die(g):
-    """A piece of fodder coming apart. These are objects rather than creatures
-    -- somebody's furniture, left running -- so what it says is *broken*: a
-    stone resonator struck hard and detuned, a swept crack, and a sub."""
+    """Fodder destroyed: a stone resonator struck hard and detuned, a swept
+    crack, and a sub.
+    """
     n = n_of(0.290)
     shell = struck(210, n, ratios=STONE, amps=(1.0, 0.66, 0.40, 0.22),
                    decay=0.85, curve0=3.0, detune=0.02)
@@ -539,16 +398,11 @@ def cue_enemy_die(g):
 
 
 def cue_hit(g):
-    """Szuix struck. Loud, low, and the longest thing in the game that is not
-    ceremony -- being hit costs a quarter of the bar and starts a scramble, and
-    the cue has to be unmistakable through whatever wall of pattern caused it.
-    A detuned low resonator under a falling sweep, with a bright sting on the
-    front so it registers before the low end has arrived."""
+    """Szuix hit: loud and low. A detuned low resonator under a falling sweep,
+    with a bright sting on the front so it registers first.
+    """
     n = n_of(0.480)
-    # **Punchy, then out of the way.** The first version's low resonator was
-    # still at 68% of peak when the file ended, so the cue *stopped* rather
-    # than decayed -- and a hit is the one moment the player has to go straight
-    # back to dodging, so it must not sit on the mix while they do it.
+    # Decays fast, so it doesn't sit on the mix while the player dodges.
     low = struck(82, n, ratios=STONE, amps=(1.0, 0.70, 0.40, 0.20),
                  decay=0.85, curve0=2.6, detune=0.03)
     fall = zap(520, 58, n, q=7.0, cut=2.2, drive=2.4) * env_pluck(n, 0.9, 3.0)
@@ -558,17 +412,10 @@ def cue_hit(g):
 
 
 def cue_bomb(g):
-    """The sigil. **The transient is at sample zero and that is the whole
-    design constraint**, because this is the only cue in the game that answers
-    a key the player has just pressed under pressure -- and the first version
-    opened with a rising swell, which put 250ms of near-silence between X and
-    anything happening. A bomb heard a quarter of a second late is a bomb the
-    player presses twice.
-
-    So it breaks first and blooms after: a low crack, then the sweep and the
-    ringing out over `BOMB_GROW` while the wave travels. Same shape as the
-    drawing -- `fx_flash_screen` and `fx_shake` land on the first frame and the
-    ring is what expands."""
+    """The sigil. The transient is at sample zero, because the cue answers a
+    key press: a low crack, then a sweep and ringing over `BOMB_GROW` while the
+    wave travels.
+    """
     n = n_of(0.950)
 
     m = n_of(0.620)
@@ -588,11 +435,9 @@ def cue_bomb(g):
 
 
 def cue_laser_charge(g):
-    """A beam's warning line. **A rise, and it has to read as one from its
-    first fifty milliseconds**, because the telegraph is the whole of what
-    makes a wall of light fair -- a player who has not worked out that
-    something is coming has not been warned. Resonant, so it *sings* upward
-    rather than merely getting higher."""
+    """A beam's warning line: a resonant rise that reads as rising from its
+    first fifty milliseconds.
+    """
     n = n_of(0.560)
     tone = mix(zap(150, 880, n, q=9.0, cut=2.0, drive=1.5) * 0.85,
                saw(225, n, 1320) * 0.30)
@@ -602,9 +447,9 @@ def cue_laser_charge(g):
 
 
 def cue_laser_fire(g):
-    """The beam arriving. A hard resonant front and a short lit body -- no
-    tail, because the beam stands there for a second and a half and a cue that
-    lasted as long would be a drone the player has to listen past."""
+    """A beam arriving: a hard resonant front and a short body, with no tail
+    (the beam itself lasts much longer than the cue).
+    """
     n = n_of(0.380)
     front = air(n, g, 6200, 800, q=4.0, amount=0.9) * env_ad(n, 0.001, 0.34, 3.8)
     body = mix(zap(340, 245, n, q=8.5, cut=2.3, drive=2.1) * 0.9,
@@ -614,10 +459,9 @@ def cue_laser_fire(g):
 
 
 def cue_ward_close(g):
-    """A seal finished and going live. Five traces land their last rune on the
-    same frame and the figure starts to turn -- so this resolves rather than
-    stops: a struck fifth on the arcane ratios, saying the shape is now a thing
-    rather than a drawing."""
+    """The Hex's seal closing and going live: a struck fifth on the `ARCANE`
+    ratios.
+    """
     n = n_of(0.620)
     a = struck(174.61, n, ratios=ARCANE, amps=(1.0, 0.62, 0.38, 0.22, 0.12),
                decay=1.3, curve0=2.2)
@@ -628,10 +472,7 @@ def cue_ward_close(g):
 
 
 def cue_ward_scatter(g):
-    """The red ward thrown outward. Stone coming apart rather than glass
-    breaking -- the beads keep going and are outrun rather than dodged, so this
-    is a low crack opening into a wash rather than a bright shatter that would
-    promise something sharper than what arrives."""
+    """The Hex's red ward thrown outward: a low crack opening into a wash."""
     n = n_of(0.720)
     m = n_of(0.34)
     crack = pad_to(soft_clip(mix(
@@ -643,42 +484,26 @@ def cue_ward_scatter(g):
 
 
 def cue_ward_pull(g):
-    """The blue ward collapsing to a point.
-
-    **This is a telegraph, not a reaction, and it is the only cue in the set
-    written to a frame count.** `HEX_IMPLODE` is 108 frames -- 1.80 seconds --
-    and the collapse's whole difficulty is that its only cue is the ward
-    beginning to move, which `HEX_IMPLODE_RAMP` deliberately makes gentle: a
-    quarter of a pixel a frame for the first fifth of a second, so a player
-    reading it correctly still finds out about the collapse from the collapse.
-
-    A rising, tightening tone that arrives at the top exactly as the ward
-    reaches the middle says the same thing a second and a half earlier, and
-    says it without spending a single pixel of the field. That is the trade the
-    ramp could not make: a visual cue big enough to read is a visual cue that
-    has already moved the ward.
-
-    So it is 1.80 seconds and it resolves onto `snd_ward_burst`. Change
-    `HEX_IMPLODE` and this wants changing with it -- which is why the number is
-    written here rather than left to be noticed."""
+    """The Hex's blue ward collapsing to a point: a rising, tightening tone
+    that resolves onto `snd_ward_burst`. It lasts `HEX_IMPLODE` frames,
+    hard-coded below as `108 / 60.0`, so change the two together.
+    """
     n = n_of(108 / 60.0)
     rise = mix(zap(74, 560, n, q=11.0, cut=2.1, drive=1.6) * 0.9,
                saw(111, n, 840) * 0.28,
                sine(55, n, 420) * 0.45)
     rise *= env_ad(n, 0.22, 1.62, curve=0.5)
 
-    # Air dragged inward with it: a resonant filter opening as the tone climbs,
-    # so the cue gets *brighter* as well as higher. Pitch alone reads as one
-    # thing moving; both together read as everything moving.
+    # Air dragged inward: a resonant filter opening as the tone climbs, so the
+    # cue brightens as it rises.
     drag = air(n, g, 240, 4400, q=7.0, amount=0.34) * env_ad(n, 0.30, 1.52, 0.65)
     return finish(soft_clip(mix(rise, drag), 1.5), 0.30)
 
 
 def cue_ward_burst(g):
-    """The seal detonating. What `cue_ward_pull` has been climbing toward, so
-    it lands on the downbeat and is the loudest thing in the attack -- seven
-    kinds of debris leave on this frame and the player is either outside the
-    ring or is not."""
+    """The Hex's seal detonating, at the top of `cue_ward_pull`'s climb: the
+    loudest cue in the attack.
+    """
     n = n_of(1.300)
     m = n_of(0.75)
     impact = pad_to(soft_clip(mix(
@@ -695,11 +520,9 @@ def cue_ward_burst(g):
 
 
 def cue_spell_declare(g):
-    """A spell being named. **The only cue in the game allowed to be
-    ceremonial**, because it is the only moment the game stops to say
-    something -- and it has `BOSS_SPELL_LEAD` to itself, with the boss unable
-    to fire and the eye card across the field. Struck arcane resonators over a
-    low swell: something old being woken up."""
+    """A spell being named, during `BOSS_SPELL_LEAD`: struck arcane resonators
+    over a low swell.
+    """
     n = n_of(1.250)
     swell = air(n, g, 90, 1500, q=2.2, amount=0.55) * env_swell(n, 0.34, 1.9)
 
@@ -718,9 +541,7 @@ def cue_spell_declare(g):
 
 
 def cue_spell_break(g):
-    """An attack broken. Rising, bright, and over quickly -- the player has
-    already been handed the next attack's pause and this is the punctuation on
-    the one they just beat, not an event of its own."""
+    """An attack broken: rising, bright and short."""
     n = n_of(0.680)
     out = np.zeros(n)
     for i, f in enumerate((523.25, 659.25, 783.99, 1046.5)):
@@ -733,11 +554,8 @@ def cue_spell_break(g):
 
 
 def cue_spell_survive(g):
-    """An attack that ran out its clock. **A third outcome, not a quieter
-    version of the second.** A spell survived ends the attack and awards no
-    capture, and telling somebody who was ground down for forty seconds the
-    same thing you tell somebody who broke it would be lying about the rules
-    they were playing under. Falling, dull, and short."""
+    """An attack that ran out its clock (no capture): falling, dull and
+    short."""
     n = n_of(0.540)
     out = np.zeros(n)
     for i, f in enumerate((392.0, 329.63, 261.63)):
@@ -751,10 +569,9 @@ def cue_spell_survive(g):
 
 
 def cue_capture(g):
-    """A spell captured -- broken with no hit and no bomb. It plays *over*
-    `snd_spell_break` rather than instead of it, which is why it is thin and
-    high: the break already said the attack ended, and this says the one extra
-    thing, in the only band the break leaves free."""
+    """A spell captured (broken with no hit and no sigil). It plays over
+    `snd_spell_break`, so it is thin and high.
+    """
     n = n_of(0.840)
     out = np.zeros(n)
     for i, f in enumerate((1567.98, 2093.0, 2637.02)):
@@ -766,9 +583,7 @@ def cue_capture(g):
 
 
 def cue_boss_appear(g):
-    """A boss arriving. Low, rising, and it resolves onto a hit -- the fight
-    has a name splash and an entry glide to cover, and what this has to do is
-    make the two seconds before the first attack feel like weight arriving."""
+    """A boss arriving: a low rise that resolves onto a hit."""
     n = n_of(1.100)
     rumble = air(n, g, 58, 520, q=2.4, amount=0.9) * env_swell(n, 0.62, 2.6)
     rise = mix(zap(52, 172, n, q=9.0, cut=2.0, drive=1.8) * 0.85,
@@ -787,18 +602,12 @@ def cue_boss_appear(g):
 
 
 def cue_boss_die(g):
-    """A boss beaten outright. The biggest thing in the set, and the only one
-    over a second and a half -- `win_pending` holds the result panel back for
-    170 frames precisely so this moment is not stepped on, and the cue is what
-    fills them.
+    """A boss beaten, filling the pause before the result panel
+    (`win_pending`).
 
-    **The impact is saturated and the tail is not, and running the whole mix
-    through `soft_clip` was the bug.** tanh at drive 1.6 compresses the front
-    and lifts everything behind it, so what came out held an RMS of 0.65 for
-    seven hundred milliseconds and reached 0.28 only at the very end -- a
-    sustained roar rather than a boom, and the one cue in the set whose
-    envelope did not decay. Saturation is for the hit; the resonators that
-    carry the tail want to be left alone."""
+    Only the impact is saturated: `soft_clip` over the whole mix lifts the
+    tail, so the cue stops decaying.
+    """
     n = n_of(1.750)
 
     m = n_of(0.950)
@@ -821,8 +630,7 @@ def cue_boss_die(g):
 
 
 def cue_player_down(g):
-    """The run lost. Falling, and it does not resolve -- the panel that follows
-    it is the resolution."""
+    """The run lost: falling, and unresolved."""
     n = n_of(1.200)
     fall = mix(zap(390, 42, n, q=8.0, cut=2.1, drive=1.9) * 0.9,
                struck(74, n, ratios=STONE, decay=1.5, curve0=1.8,
@@ -833,9 +641,9 @@ def cue_player_down(g):
 
 
 def cue_ui_move(g):
-    """The cursor moving. Held down, an arrow key repeats -- so this is short,
-    soft and slightly *below* the confirm, which is what keeps travelling
-    through a rack from sounding like a decision being made ten times."""
+    """The cursor moving: short, soft, and pitched below the confirm (it
+    repeats while a key is held).
+    """
     n = n_of(0.075)
     v = struck(620, n, ratios=(1.0, 2.41, 3.87), amps=(1.0, 0.35, 0.15),
                decay=0.42, curve0=5.5)
@@ -843,8 +651,7 @@ def cue_ui_move(g):
 
 
 def cue_ui_select(g):
-    """Confirm. Two notes rising: the only cue on these screens with an
-    interval in it, because an interval is what says a thing was *chosen*."""
+    """Confirm: two notes rising."""
     n = n_of(0.260)
     a = struck(660, n_of(0.13), ratios=ARCANE, amps=(1.0, 0.45, 0.22, 0.10, 0.05),
                decay=0.60, curve0=3.6)
@@ -864,10 +671,7 @@ def cue_ui_back(g):
 
 
 def cue_ui_deny(g):
-    """A locked stage, an attack list with nothing in it. **Not a rude noise.**
-    The rack refuses in order to advertise that there is more game coming, and
-    a cue that punished the player for looking would say the opposite. Low,
-    flat, and no interval -- a door that did not open."""
+    """A refusal, such as a locked stage: low and flat, with no interval."""
     n = n_of(0.250)
     v = mix(struck(118, n, ratios=STONE, amps=(1.0, 0.50, 0.24, 0.10),
                    decay=0.62, curve0=3.2, detune=0.03),
@@ -877,8 +681,7 @@ def cue_ui_deny(g):
 
 
 def cue_pause(g):
-    """The pause menu, opening or closing. One muted thunk -- the screen has
-    gone still and the cue's job is to say the game did that on purpose."""
+    """The pause menu opening or closing: one muted thunk."""
     n = n_of(0.170)
     v = struck(196, n, ratios=STONE, amps=(1.0, 0.44, 0.20, 0.09),
                decay=0.55, curve0=3.6)
@@ -888,9 +691,7 @@ def cue_pause(g):
     return finish(mix(v, pad_to(click, n)), 0.20)
 
 
-# The set. Order is the order the preview lays them out in, grouped by what
-# they belong to rather than alphabetically -- a sheet sorted by name puts the
-# player's shot next to the pause menu.
+# The set, in the order the preview lays them out (grouped by use).
 CUES = (
     ("snd_shot_soft", cue_shot_soft),
     ("snd_shot_sharp", cue_shot_sharp),
@@ -931,12 +732,9 @@ CUES = (
 # ---------------------------------------------------------------------------
 # The preview
 #
-# **Every generator writes one and this one writes two**, because a sound
-# cannot be reviewed by looking at it and a *set* of sounds cannot be reviewed
-# by listening to them one at a time. The WAV is the set in order with a beat
-# between each, which is the only way to hear whether two cues are too alike;
-# the PNG is every cue's envelope and spectrum on one sheet, which is the only
-# way to see that two of them are sitting in the same band.
+# A WAV of the whole set in order with a beat between cues (to hear whether
+# two are too alike), and a PNG of every cue's waveform and spectrum (to see
+# whether two share a band).
 # ---------------------------------------------------------------------------
 
 def write_preview_wav(built, path):
@@ -981,9 +779,8 @@ def write_preview_png(built, path):
         y0 = pad + (i // cols) * (ch + pad + 16)
         d.rectangle([x0, y0, x0 + cw, y0 + ch], fill=(24, 26, 42))
 
-        # The waveform, min/max per column so a 40ms cue and a 1.7s one are
-        # both legible -- drawn against a common time base so the *lengths*
-        # can be compared, which is half of what this sheet is for.
+        # The waveform, min/max per column, on a common time base so the
+        # lengths can be compared.
         span = max(s.shape[0] for _, s in built)
         wave_w = max(2, int(cw * samples.shape[0] / span))
         chunk = max(1, samples.shape[0] // wave_w)
@@ -996,9 +793,7 @@ def write_preview_png(built, path):
             lo = int(mid - float(np.min(seg)) * (ch // 2 - 6))
             d.line([(x0 + c, hi), (x0 + c, lo)], fill=(120, 200, 230))
 
-        # ...and the spectrum, as a strip under it. A cue that shares a band
-        # with its neighbour is a cue that masks it, and this is where that
-        # shows.
+        # The spectrum, as a strip under it.
         spec = np.abs(np.fft.rfft(samples * np.hanning(samples.shape[0])))
         freqs = np.fft.rfftfreq(samples.shape[0], 1.0 / RATE)
         keep = freqs <= 9000
@@ -1029,27 +824,9 @@ def write_preview_png(built, path):
 # ---------------------------------------------------------------------------
 
 def check_envelopes(built):
-    """Refuse a cue that does not decay.
-
-    **This has caught the same bug three times and it is always invisible.**
-    A cue whose level is still near its peak when the file ends does not sound
-    like a long sound -- it sounds like a sound that was *cut off*, and nothing
-    else here can see it: the peak is right, the duration is right, the
-    spectrum is right, and the waveform on the preview sheet looks like a
-    confident block rather than a mistake.
-
-    It found `snd_boss_die` holding an RMS of 0.65 for seven hundred
-    milliseconds, because `soft_clip` over a whole mix lifts everything behind
-    the transient it is compressing. It found `snd_boss_appear`'s arrival hit
-    running at full amplitude into the end of the file, because its `zap` had
-    simply been written without an envelope -- one missing term in one
-    expression, in a file where every other `zap` has one. And it found
-    `snd_hit` still at 68% of peak on its last window, which for the one cue
-    the player has to go straight back to dodging through is the worst place to
-    spend a mix.
-
-    The threshold is half the peak in the final 100ms window, which is loose on
-    purpose: this is looking for cues that were truncated, not grading taste.
+    """Report the cues that don't decay: those whose last 100ms window is
+    louder than half their loudest (cues under 300ms are skipped). Such a cue
+    sounds cut off, and neither its peak, its length nor its spectrum shows it.
     """
     bad = []
     for name, x in built:

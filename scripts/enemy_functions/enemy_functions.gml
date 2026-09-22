@@ -1,25 +1,15 @@
-/// @desc The fodder: what it is, how it moves, and what it leaves behind.
+/// @desc The enemy pool (fodder and bosses): spawning, movement helpers,
+///       damage, death and drawing.
 ///
-/// **Nothing in a wave is a creature.** The stage is full of animated objects
-/// -- a wisp, a grimoire, a cut gem, a stone sentry -- and that is a story
-/// decision as much as an art one: this is a game about an imp who is sick of
-/// being somebody's trash mob, so filling his stages with trash mobs that are
-/// people would say the opposite of what the game is about. What he cuts
-/// through is somebody's *furniture*.
-///
-/// An enemy carries its behaviour as a function on the struct, called once a
-/// frame with itself and the run. That is the same shape `puzzle_functions` in
-/// the Wordsearch project uses for a puzzle's solution: the data describes
-/// what happens, and the engine only knows how to run it.
+/// Wave enemies are animated objects (a wisp, a grimoire, a cut gem, a stone
+/// sentry), never creatures -- the owner's story decision. An enemy carries
+/// its behaviour as `act(self, g)`, called once a frame.
 
 function enemy_init() {
     global.enemies = [];
     global.enemy_n = 0;
-    // **What the fodder that has arrived is worth, dead and collected.** A
-    // running total rather than a count, because it is read as a *difference*
-    // between two moments -- see `stage_encounter_close`, which uses it to
-    // work out what one group of waves was worth without anything having to
-    // tell it what spawned.
+    // Running total of what every spawned piece of fodder is worth if killed
+    // and collected. Read as a difference by `stage_encounter_close`.
     global.enemy_worth = 0;
 }
 
@@ -93,12 +83,8 @@ function enemy_spawn(_kind, _x, _y, _hp, _act, _col = BCOL_CYAN,
     _e.mem = {};
     _e.red = _red; _e.blue = _blue; _e.gold = _gold;
     _e.boss = undefined;
-    // **Counted here rather than by the wave that asked for it.** A wave
-    // shape written next year is graded correctly without being told to
-    // report anything, which is the same bargain the delay marks and the
-    // near layer's keep-out window make: a thing that cannot be got wrong
-    // beats a thing that has to be got right. A boss is not fodder and pays
-    // out through its own phase table, so it is not counted.
+    // Counted here so any wave shape is graded without reporting anything.
+    // Bosses pay out through their phase tables instead.
     if (_kind != EnemyKind.Boss) {
         global.enemy_worth += TALLY_ENEMY + _gold * TALLY_ITEM;
     }
@@ -108,15 +94,8 @@ function enemy_spawn(_kind, _x, _y, _hp, _act, _col = BCOL_CYAN,
     return _e;
 }
 
-/// @desc How big a piece of fodder is, for both hitting it and being hit by
-///       it.
-///
-///       **These moved when the art did**, and they have to: the number is a
-///       promise about where the drawn shape is, and a 136-pixel sentry with a
-///       40-pixel radius is a sentry the player can stand inside. Every one of
-///       them is a little under half the sprite's width, which is the same
-///       bargain the bullets make -- generous to the player when they are
-///       shooting it and generous again when they are dodging it.
+/// @desc Hit radius for each kind, used both for shooting it and for touching
+///       it. Roughly half the sprite's width; update it if the art changes size.
 function enemy_radius(_kind) {
     switch (_kind) {
         case EnemyKind.Wisp:     return 30;
@@ -139,19 +118,11 @@ function enemy_sprite(_kind) {
 }
 
 // ---------------------------------------------------------------------------
-// Movement, as reusable pieces
-//
-// A wave's behaviour is nearly always "come in, do something for a while, go
-// away". These are the three parts of that, written so a stage can compose
-// them without every wave carrying a copy of the same easing.
+// Movement helpers for wave behaviours: come in, act, leave.
 // ---------------------------------------------------------------------------
 
-/// @desc Ease toward a point, arriving over `_frames`. Returns true once it
-///       has arrived, which is what a wave's `act` switches on.
-///
-///       **Eased, not linear.** An enemy that flies in at constant speed and
-///       stops dead has no weight; decelerating into the hold is most of what
-///       makes a wave look choreographed rather than spawned.
+/// @desc Ease toward a point by `_rate` of the remaining distance each frame.
+///       Returns true once within 3px.
 function enemy_glide(_e, _tx, _ty, _rate = 0.075) {
     _e.x += (_tx - _e.x) * _rate;
     _e.y += (_ty - _e.y) * _rate;
@@ -172,9 +143,8 @@ function enemy_weave(_e, _dir, _spd, _amp, _period) {
     _e.y += lengthdir_y(_spd, _dir) + lengthdir_y(_sway, _side);
 }
 
-/// @desc Send an enemy away. It stops firing, stops being worth points, and
-///       leaves -- which is how a wave ends when its time is up rather than
-///       when it is dead.
+/// @desc Send an enemy off in a straight line: it stops acting, can't be
+///       shot or touched, and is culled once off the field.
 function enemy_leave(_e, _dir = 270) {
     _e.leaving = true;
     _e.touch = false;
@@ -212,13 +182,9 @@ function enemy_step(_g) {
     }
 }
 
-/// @desc Player shots against enemies. Returns the tally earned.
-///
-///       O(shots x enemies) and unashamedly so: there are five hundred shots
-///       at the very most and rarely more than a dozen enemies, which is a few
-///       thousand distance checks -- against the four thousand the bullet pool
-///       already does every frame for one player. A spatial index here would
-///       be code to maintain in exchange for nothing measurable.
+/// @desc Player shots against enemies (swept, like bullets against the
+///       player). Returns the tally earned. O(shots x enemies), which is cheap
+///       at these counts.
 function enemy_take_shots(_g) {
     var _earned = 0;
     for (var _s = global.pshot_n - 1; _s >= 0; _s--) {
@@ -226,20 +192,9 @@ function enemy_take_shots(_g) {
         for (var _i = global.enemy_n - 1; _i >= 0; _i--) {
             var _e = global.enemies[_i];
             if (_e.leaving) continue;
-            // **A boss in ceremony takes no damage, and this is the line that
-            // says so.** `boss_vulnerable` has always described the rule --
-            // false through the arrival, the declaration and the pause between
-            // attacks -- and until now nothing read it outside the suites, so
-            // a player holding the shot button chipped the boss through every
-            // piece of it. In a fight that is a second and a half of free
-            // damage against the *next* attack's threshold, which is exactly
-            // what the rule exists to prevent; in attack practice it is three
-            // seconds against a bar deliberately set to where the attack
-            // begins, which would eat a sixth of the thing being practised.
-            //
-            // The shot passes through rather than being absorbed, on the same
-            // terms as `leaving` above: nothing happened, so nothing is drawn
-            // to say it did.
+            // A boss can't be damaged during its arrival, a spell
+            // declaration or the pause between attacks (`boss_vulnerable`).
+            // The shot passes through.
             if (_e.boss != undefined && !boss_vulnerable(_e)) continue;
             if (point_seg_dist(_e.x, _e.y, _sh.px, _sh.py, _sh.x, _sh.y) > _e.r) {
                 continue;
@@ -262,18 +217,8 @@ function enemy_take_shots(_g) {
     return _earned;
 }
 
-/// @desc The bomb's seals against enemies. Returns the tally earned.
-///
-///       **Written beside `enemy_take_shots` and not inside the player**,
-///       because everything it has to do -- find the enemy, spend its health,
-///       kill it, pay for it -- is this file's business and none of it is the
-///       player's. The player owns where a seal *is*; the pool owns what it
-///       hits.
-///
-///       Swept like a shot, against the segment the seal travelled rather
-///       than the point it ended on: a seal moves twenty-four pixels a frame
-///       and a wisp of fire that passes through a boss without touching it is
-///       the same bug the bullets' swept test exists for.
+/// @desc The bomb's seals against enemies, swept along each seal's path like
+///       a shot. Returns the tally earned.
 function enemy_take_seals(_p, _g) {
     var _earned = 0;
     var _seals = _p.seals;
@@ -306,9 +251,7 @@ function enemy_take_seals(_p, _g) {
 /// @desc What happens when something runs out of health.
 function enemy_die(_e, _g) {
     if (_e.boss != undefined) {
-        // A boss does not die here; it runs out of a *phase*. `boss_step`
-        // owns that, and it owns it because the phase table is the only thing
-        // that knows whether the fight is over.
+        // A boss ends phases instead; `boss_step` handles that.
         return 0;
     }
     var _col = global.bullet_colour[_e.col];
@@ -345,9 +288,7 @@ function enemy_clear_all() {
     global.enemy_n = 0;
 }
 
-/// @desc Send every fodder enemy away and give up their drops. What the end of
-///       a stage section does, so the boss arrives on a clean field without
-///       the player being robbed of the kills they were owed.
+/// @desc Kill every fodder enemy, dropping its items (`wave_sweep_field`).
 function enemy_sweep_fodder(_g) {
     for (var _i = global.enemy_n - 1; _i >= 0; _i--) {
         var _e = global.enemies[_i];
@@ -361,31 +302,13 @@ function enemy_sweep_fodder(_g) {
 // Drawing
 // ---------------------------------------------------------------------------
 
-/// @desc Draw every enemy on the field.
-///
-///       **Including the bosses, which is the fix for a boss that could be
-///       alive, lethal and invisible at the same time.** This used to skip
-///       anything carrying a `boss` struct on the grounds that "the boss draws
-///       itself", and the controller drew it -- through `boss_ref`, the run's
-///       reference to *the boss it is currently fighting*.
-///
-///       Those are not the same set. A boss enemy that `boss_ref` does not
-///       point at was drawn by nobody, and there are two ordinary ways to have
-///       one: the midboss keeps flying after `boss_ref` is released, so it
-///       departed invisibly rather than "leaving under its own power" as it is
-///       supposed to; and a boss left in the pool by a run that did not clean
-///       up after itself is invisible for the whole of the next one, while
-///       still firing and still solid to the touch.
-///
-///       Drawing straight out of the pool makes both impossible. The pool is
-///       what exists; the pool is what is drawn; and the controller's opinion
-///       about which boss is interesting has nothing to do with it.
+/// @desc Draw every enemy in the pool, bosses included. Bosses are drawn from
+///       the pool rather than through `boss_ref`, so a departing midboss (no
+///       longer referenced) is still drawn.
 function enemy_draw() {
     for (var _i = 0; _i < global.enemy_n; _i++) {
         var _e = global.enemies[_i];
         if (_e.boss != undefined) {
-            // A boss carries a sigil and an aura no piece of fodder has, so it
-            // has its own routine -- but it is reached from here.
             boss_draw(_e);
             continue;
         }
@@ -395,8 +318,7 @@ function enemy_draw() {
         var _fr = ((_e.t div 6) mod _n);
         var _col = global.bullet_colour[_e.col];
 
-        // A light under it, so fodder glows like everything else on the field
-        // and does not read as a sticker on the background.
+        // A glow under it.
         gpu_set_blendmode(bm_add);
         var _gs = (_e.r * 3.4) / sprite_get_width(spr_fx_bloom);
         draw_sprite_ext(spr_fx_bloom, 0, _e.x, _e.y, _gs, _gs, 0, _col, 0.32);
@@ -405,9 +327,8 @@ function enemy_draw() {
         draw_sprite_ext(_spr, _fr, _e.x, _e.y, _e.scale, _e.scale,
                         dsin(_e.t * 2) * 4, _col, _e.leaving ? 0.6 : 1);
 
-        // **Hit feedback is additive white on top, not a blend to white.** A
-        // blend loses the silhouette against a bright background at exactly
-        // the moment the player most wants to know they are hitting something.
+        // Hit flash: additive white on top (a blend to white would lose the
+        // silhouette on a bright background).
         if (_e.flash > 0) {
             gpu_set_blendmode(bm_add);
             draw_sprite_ext(_spr, _fr, _e.x, _e.y, _e.scale, _e.scale,

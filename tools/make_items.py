@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""The pickups: three cut stones, ray-traced and spun, and the two small
-effects that go with them.
+"""The pickups: three cut stones, ray-traced and spun, plus two small effects.
 
     spr_item_red    a ruby, round brilliant cut        life
     spr_item_blue   a sapphire, double-terminated      sigil
@@ -8,61 +7,33 @@ effects that go with them.
     spr_fx_glint    the twinkle a stone throws off now and then
     spr_fx_shard    a sliver of crystal, for the burst when one is caught
 
-**Each stone is a different cut, not the same shape in three colours**, so the
-three read apart by silhouette before they read apart by hue: a diamond ◆ for
-points, a tall hexagonal crystal for the sigil, a brilliant 💎 for life. Hue
-alone would leave a colour-blind player guessing, and at twenty pixels the
-silhouette is the first thing anybody reads.
+The owner asked for crystal or gemstone pickups in red, blue and yellow,
+small and partly see-through so they don't compete with the bullets. Each
+stone is a different cut, so they differ by silhouette as well as colour.
 
-How they are drawn
-------------------
+How they are drawn:
 
-**A real stone, traced.** Each cut is a convex solid written as the facet
-planes a gem cutter would name -- a table, bezels, stars, pavilion mains -- and
-every pixel fires a ray into it: a Fresnel reflection off the face it enters,
-then up to six bounces inside, refracting out wherever it can and reflecting
-where it cannot. That internal bouncing is where a gem's sparkle comes from and
-no flat shading imitates it: the same facet is dark in one frame and blazing in
-the next because the light it is carrying came in through a *different* face.
+- Each cut is a convex solid defined by its facet planes. Every pixel traces
+  a ray into it: a Fresnel reflection where it enters, then up to six
+  internal bounces, refracting out where it can. The internal bounces are
+  what make the facets sparkle as the stone turns.
+- Two environments: surface reflections see a black room with a few small
+  hard lamps (sharp glints only); light seen through the stone also gets a
+  broad soft light from above and behind (so the body glows).
+- The trace is in luminance, then mapped through a ramp from a deep jewel
+  tone through the hue to white. The ramp's floor stays well above black so
+  facets facing away still read as stone.
+- Alpha follows brightness (dark facets about half opaque, lit ones solid),
+  with a one-pixel rim lit on the lamp side so the outline holds on any
+  background.
+- Nothing like a bullet: shaded from one side, no white core, no dark
+  contour, translucent, turning, and drawn under the bullets. The brilliant,
+  the largest, is about 22px across.
 
-**Two environments, one for each half of the light.** What a facet reflects
-off its surface is a black room with a few small hard lamps in it, so the
-surface contributes only sharp glints and never a grey sheen; what is seen
-*through* the stone also gets a broad soft light from above and behind, so the
-body glows from inside. Traced against one ordinary environment the first set
-came back pale and grey, which is a stone photographed under an office light.
-
-**Traced in luminance and coloured by a gradient map.** The trace is neutral;
-its brightness is then run through a ramp from a deep jewel tone up through the
-hue to white. That keeps all the structure the optics produce and puts the
-palette under direct control, and the ramp's floor is held well above black so
-a facet turned away from the light still reads as stone rather than as a hole
--- the first pass let the dark facets go nearly black and translucent, and on a
-dark stage half of every stone vanished.
-
-**Semi-transparent in the body, solid at the edge.** The alpha follows the
-brightness -- dark facets are about half opaque, lit ones solid -- which is
-what glass does and what keeps a shower of these from being a sheet of colour
-over the field. The silhouette carries a one-pixel rim that is bright on the
-side facing the lamp and a mid tone on the far side, so the outline never
-depends on what is behind it.
-
-**What keeps them from reading as bullets** is the rendering itself. Every
-bullet is flat and emissive -- a white core, a saturated rim, a hard near-black
-contour, no light direction anywhere. These are the opposite on every count:
-shaded, lit from one side, no white core, no dark contour, translucent, and
-turning. They are also drawn *under* the bullets (`obj_game`'s Draw), and kept
-small: the brilliant is the largest at about twenty-two pixels across.
-
-The spin
---------
-
-**Twelve frames per symmetry period, not per turn.** The citrine is four-fold,
-so a quarter turn brings it back to the same picture; the sapphire is six-fold
-and the brilliant eight-fold. Twelve frames across that period is 7.5 degrees a
-frame at the coarsest, which is smooth, and the loop is exact because the lamps
-are fixed to the camera. How fast each one turns is `item_draw`'s business --
-see `ITEM_SPIN_*` in `constants`.
+Each sprite holds twelve frames of one symmetry period (a quarter turn for
+the citrine, a sixth for the sapphire, an eighth for the brilliant), so the
+spin loops exactly; `item_draw` sets the spin rate (`item_symmetry` must
+match `STONES`).
 
 Usage:
     python tools/make_items.py                # sprites + preview
@@ -137,11 +108,11 @@ def cut_quartz(r=1.0, body=1.3, term=0.95):
 
 def cut_brilliant(table=0.56, crown=34.5, star=22.0, ugird=42.0, pav=41.0,
                   lgird=43.5, g=0.03, girdle_n=32):
-    """The ruby: a round brilliant with its proper facets -- a table, eight
-    bezels and eight stars on the crown, sixteen upper and sixteen lower girdle
-    halves, eight pavilion mains -- at the textbook angles. At twenty pixels
-    they are not individually visible; what they buy is that the stone
-    sparkles in small pieces rather than flashing in large ones."""
+    """The ruby: a round brilliant with the standard facets (table; eight
+    bezels and eight stars on the crown; sixteen upper and sixteen lower girdle
+    halves; eight pavilion mains) at textbook angles, so it sparkles in small
+    pieces.
+    """
     th = g + (1 - table / math.cos(math.radians(22.5))) \
         * math.tan(math.radians(crown)) * 0.98
     planes = [_plane((0, 1, 0), (0, th, 0))]
@@ -170,9 +141,9 @@ def _lamp(d, power, width):
 
 
 def _sharp_lamps(seed=5):
-    """The small hard lamps: a key up and to the left, a rim behind on the
-    right, a low bounce, and a scatter of pinpoints for the stone to pick up
-    as it turns. Everything the *surface* of a stone reflects."""
+    """The small hard lamps the stone's surface reflects: a key light up-left,
+    a rim light behind-right, a low bounce, and a scatter of pinpoints.
+    """
     rng = np.random.default_rng(seed)
     lamps = [_lamp((-0.55, 0.70, 0.45), 10.0, 0.020),
              _lamp((0.70, 0.40, -0.60), 6.0, 0.010),
@@ -312,11 +283,10 @@ def gem_frames(planes, sym, tilt, scale_px, ior, absorb, stops, edge=0.0,
                mid=0.45, floor=0.18, pad=2, a0=0.42, ak=0.62):
     """Every frame of one stone, cropped to a canvas that fits all of them.
 
-    `scale_px` is how many screen pixels one unit of the cut spans; `edge`
-    lifts the facet boundaries a little, which the two simple cuts want and
-    the brilliant, with ninety facets, does not. Exposure is set from the
-    trace itself -- the median lit pixel lands at `mid` -- so the three stones
-    come out at the same value whatever their optics do.
+    `scale_px` is screen pixels per unit of the cut; `edge` lifts the facet
+    boundaries a little (for the two simple cuts). Exposure is normalised so
+    the median lit pixel lands at `mid`, so the three stones come out at
+    similar brightness.
     """
     probe = int(6 * scale_px) * SS
     scale = scale_px * SS
@@ -387,13 +357,9 @@ STONES = [
 # ---------------------------------------------------------------------------
 
 def make_glint(size=40):
-    """The twinkle: a lens star, drawn additively and tinted.
-
-    **Hairline rays, long and short, with a tiny hot centre** -- the flare a
-    point of light makes in a lens. The `mote` bullet is a four-pointed star
-    too, but a *fat* one with a body; this has almost no area at all, which
-    is what makes it read as light glancing off something rather than as a
-    thing. Two long rays on the axes, two short ones on the diagonals.
+    """The twinkle: a white lens star (long rays on the axes, short on the
+    diagonals, a tiny hot centre), drawn additively and tinted. Thin, so it
+    reads as light rather than as an object.
     """
     dx, dy, r = A.grid(size * SS, size * SS)
     ax, ay = np.abs(dx) / (size * SS / 2.0), np.abs(dy) / (size * SS / 2.0)
@@ -411,9 +377,9 @@ def make_glint(size=40):
 
 
 def make_shard(w=14, h=10):
-    """A sliver of crystal, pointing right, for the burst a caught stone
-    leaves: a long facet and a short one, the long one lit. White, and tinted
-    by the particle -- so one sprite serves all three stones."""
+    """A white sliver of crystal pointing right, tinted by the particle, for
+    the burst when a stone is caught.
+    """
     cv = A.Canvas(w, h)
     tip, tail = (w - 1.0, h * 0.5), (1.0, h * 0.5)
     top, bot = (w * 0.42, 1.0), (w * 0.30, h - 1.0)
@@ -447,9 +413,9 @@ def _bullet_row(names=("pellet", "orb", "rice", "crystal", "star")):
 
 
 def _preview(stones, glint, shard):
-    """Three bands: every frame of every stone at 6x on dark; the same on a
-    bright busy ground; and 1:1 beside real bullets, which is the only size
-    that matters."""
+    """Three bands: every frame of every stone at 6x on dark, the same on a
+    bright busy ground, and 1:1 beside real bullets.
+    """
     zoom = 6
     rows = []
     for name, frames in stones:

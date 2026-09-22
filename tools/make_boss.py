@@ -1,24 +1,14 @@
 #!/usr/bin/env python3
-"""Ziggy: the first boss, and the eye card his spells announce themselves with.
+"""Ziggy (the first boss) and his eye card. Placeholder art drawn from
+primitives.
 
-**This is the one generator making art that is expected to be replaced.** The
-brief says character art may be commissioned later, so what this guarantees is
-the *contract* -- the size, the frame count, the frame order, the origin, and
-that he is drawn facing the player -- rather than the drawing. Point
-`gm_new.sprite` at a painted PNG of the same dimensions and nothing else in the
-project changes. The same promise `tools/make_chars.py` makes in the Wordsearch
-project, for the same reason.
+Any replacement must keep the contract: the sprite's size, frame count, frame
+order and origin, and drawn facing the player (down the screen; Szuix is a
+back view facing up it). A painted PNG of the same dimensions can be dropped
+in through `gm_new.sprite` with nothing else changing.
 
-**He faces down the screen and Szuix faces up it.** The player sprite is a back
-view -- the commission is of him flying away from the camera -- so the boss has
-to be a front view or the two of them are looking the same way and the fight
-reads as a race. It is also why the eye card works at all: the eyes it shows in
-close-up are eyes the player has been looking at for five minutes.
-
-Ziggy is short, stocky and red, with black hair, pale curved horns, bat wings
-and a skull at his belt. He is Szuix's friend and rival, so he is drawn
-grinning rather than snarling -- the first fight in the game should not look
-like a murder.
+Ziggy: short, stocky and red, black hair, pale curved horns, bat wings, a
+skull at his belt, grinning.
 
 Usage:
     python tools/make_boss.py
@@ -69,8 +59,7 @@ def wing_mask(sign, spread):
     reach = W * SS * (0.20 + 0.26 * spread)
     rise = H * SS * (0.10 + 0.24 * spread)
 
-    # The leading arm, then the scalloped trailing edge back to the body --
-    # the scallops are the whole reason a bat wing reads as a bat wing.
+    # The leading arm, then the scalloped trailing edge back to the body.
     tip = (sx + sign * reach * 1.55, sy - rise * 1.15)
     knuckles = [
         (sx + sign * reach * 1.30, sy - rise * 0.10),
@@ -101,7 +90,7 @@ def wing_bones(sign, spread):
 
 
 def body_mask(bob):
-    """Torso, head, arms and legs, as one silhouette so they share a contour."""
+    """Torso, head, arms and legs as one silhouette, sharing a contour."""
     img, d = canvas()
     cx = W * SS * 0.5
     cy = H * SS * 0.50 + bob
@@ -119,7 +108,7 @@ def body_mask(bob):
                    cy + H * SS * 0.195,
                    cx + sign * W * SS * 0.055 + W * SS * 0.050,
                    cy + H * SS * 0.255], fill=255)
-    # Arms: out and a little down, hands open -- he is showing off.
+    # Arms: out and a little down, hands open.
     for sign in (-1, 1):
         d.line([(cx + sign * W * SS * 0.115, cy - H * SS * 0.020),
                 (cx + sign * W * SS * 0.215, cy + H * SS * 0.055),
@@ -129,10 +118,8 @@ def body_mask(bob):
                    cy - H * SS * 0.010 - W * SS * 0.040,
                    cx + sign * W * SS * 0.255 + W * SS * 0.040,
                    cy - H * SS * 0.010 + W * SS * 0.040], fill=255)
-    # Head, and the neck under it. **Held clear of the shoulders**: an ellipse
-    # overlapping the torso merges into one blob under the distance-field
-    # shading, and what that produces is a boss with no neck and no chin --
-    # which at 260 pixels is a red mass with a face painted on it.
+    # Head, and the neck under it, kept clear of the shoulders (overlapping
+    # ellipses merge into one blob under the distance-field shading).
     hx, hy = cx, cy - H * SS * 0.165
     d.ellipse([hx - W * SS * 0.100, hy - H * SS * 0.092,
                hx + W * SS * 0.100, hy + H * SS * 0.088], fill=255)
@@ -169,15 +156,9 @@ def tail_mask(bob, phase):
 
 
 def horns_mask(hx, hy):
-    """Two horns sweeping up and curling back in over the head.
-
-    **A quadratic through three named points, not an angle swept round a
-    circle.** The first version parameterised the curl as `cos(t * 2.1)`
-    against a growing radius, which is a formula whose shape nobody can
-    predict -- what it produced was a scatter of pale lumps across the top of
-    his skull that read as a crown of teeth. Three control points can be
-    reasoned about: where it leaves the head, how far out it goes, and where
-    the tip ends up.
+    """Two horns sweeping up and curling back over the head, each a quadratic
+    through three control points (where it leaves the head, how far out, where
+    the tip ends).
     """
     img, d = canvas()
     for sign in (-1, 1):
@@ -256,12 +237,12 @@ def face_layer(hx, hy, blink):
             cv.ellipse([cx - rx * 0.55, cy - ry * 0.66,
                         cx - rx * 0.10, cy - ry * 0.14],
                        fill=(255, 255, 255, 210))
-        # The brow: one angled stroke, and the whole of his expression.
+        # The brow: one angled stroke.
         cv.line([(cx - sign * rx * 1.5, cy - ry * 1.9),
                  (cx + sign * rx * 1.5, cy - ry * 2.9)],
                 fill=A.rgba(HAIR, 235), width=W * 0.011)
 
-    # The grin, with two fangs. Wide, because he is enjoying this.
+    # The grin, with two fangs.
     mw, mh = W * 0.062, H * 0.027
     my = ey + H * 0.042
     cv.pieslice([ex - mw, my - mh, ex + mw, my + mh], 8, 172,
@@ -303,8 +284,7 @@ def build_frame(i, frames):
     small = out.resize((W, H), Image.LANCZOS)
     small.alpha_composite(face_layer(hx, hy, blink))
 
-    # The contour and the rim, exactly as the player gets them, so the two
-    # characters sit in the same light.
+    # The same contour and rim treatment as the player sprite.
     solid = small.getchannel("A").point(lambda v: 255 if v > 110 else 0)
     ring = ImageChops.subtract(solid.filter(ImageFilter.MaxFilter(5)), solid)
     contour = Image.new("RGBA", small.size, (10, 6, 12, 0))
@@ -324,29 +304,14 @@ def build_frame(i, frames):
 # ---------------------------------------------------------------------------
 
 def eye_card(w=1280, h=420):
-    """The close-up that flashes when a spell is declared.
-
-    **A close-up of his whole face, not a pair of eyes on a field.** An early
-    draft floated two eyes over some rays, which is a graphic rather than a
-    portrait -- the reference cards this is modelled on push the camera into
-    the character's face until the head runs off all four edges, and the eyes
-    dominate because they are the brightest thing in it, not because they are
-    the only thing in it. Horns leaving the top of the frame and ears leaving
-    the sides are what say "this is a crop", and the crop is what says "close
-    up".
-
-    Drawn in card space rather than by scaling the sprite. At five times its
-    size the 260px sprite is mush, and a face wants different proportions in
-    close-up anyway: the sprite's head is a readable icon at forty pixels on a
-    moving field, and this is a portrait.
+    """The eye card shown when he declares a spell: a close-up of his face
+    cropped so the horns and ears run off the edges, drawn directly at card
+    size rather than by scaling the sprite.
     """
     cx, cy = w / 2.0, h / 2.0
 
-    # **The ground is opaque and the glow comes off the eyes alone.** An early
-    # version drew everything onto one transparent canvas and then took the
-    # glow from *that canvas's* alpha -- which by then was opaque everywhere,
-    # so it added gold to every pixel and the whole card came back the colour
-    # of the eyes. A glow is a property of the thing that is glowing.
+    # The glow is taken from the eyes' own layer (taking it from the whole
+    # card's alpha tinted everything).
     ground = A.Canvas(w, h, ss=2)
     ground.rect([0, 0, w, h], fill=A.rgba((14, 6, 9), 255))
     for i in range(30):
@@ -374,9 +339,8 @@ def eye_card(w=1280, h=420):
     fm = Image.new("L", (int(w * S), int(h * S)), 0)
     fd = ImageDraw.Draw(fm)
 
-    # The skull is deliberately taller than the card, so it crops top and
-    # bottom. `hcy` sits well below centre, which puts the eyes on the upper
-    # third of the head *and* in the middle of the card -- where each belongs.
+    # The skull is taller than the card, so it crops top and bottom; `hcy`
+    # puts the eyes in the middle of the card.
     hcx, hcy = cx, cy + h * 0.60
     hrx, hry = w * 0.215, h * 1.02
     fd.ellipse([px(hcx - hrx), px(hcy - hry), px(hcx + hrx), px(hcy + hry)],
@@ -435,11 +399,8 @@ def eye_card(w=1280, h=420):
         ey = cy + h * 0.02
         rx, ry = w * 0.100, h * 0.175
 
-        # **Built at the right-hand eye and mirrored for the left.** Building
-        # it at `ex` -- which is already the left-hand centre -- and *then*
-        # mirroring about the card reflects it back across to the right, so
-        # both lids land on top of each other and the left eye is a slit with
-        # no eye round it. Which is exactly what the first render showed.
+        # Built at the right-hand eye and mirrored for the left (building at
+        # `ex`, already the left centre, then mirroring put both on one side).
         rex = cx + w * 0.132
         lid = [(rex - rx, ey + ry * 0.12),
                (rex - rx * 0.42, ey - ry),
@@ -454,17 +415,15 @@ def eye_card(w=1280, h=420):
         eyes.ellipse([ex - rx * 0.12, ey - ry * 0.88,
                       ex + rx * 0.12, ey + ry * 0.88],
                      fill=(14, 7, 10, 255))
-        # The specular sits on the side the light comes from, which mirrors
-        # with the eye -- so the box has to be sorted, or PIL refuses one of
-        # the two.
+        # The specular is on the lit side, which mirrors with the eye, so the
+        # box is sorted (PIL rejects an inverted box).
         sx0 = ex - sign * rx * 0.44
         sx1 = ex - sign * rx * 0.12
         eyes.ellipse([min(sx0, sx1), ey - ry * 0.56,
                       max(sx0, sx1), ey - ry * 0.06],
                      fill=(255, 255, 255, 215))
 
-    # Brows, heavy and angled in. In the hair's colour, so they read as part of
-    # the hair rather than as a third material.
+    # Brows, heavy and angled in, in the hair's colour.
     brows = A.Canvas(w, h, ss=2)
     for sign in (-1, 1):
         ex = cx + sign * w * 0.132
@@ -476,8 +435,7 @@ def eye_card(w=1280, h=420):
                        (ex - sign * rx * 1.00, ey - ry * 1.02)],
                       fill=A.rgba((32, 24, 36), 255))
 
-    # The grin, low in the frame and running off the bottom. The crop is what
-    # makes this a close-up rather than a portrait of a small head.
+    # The grin, low in the frame and running off the bottom.
     mouth = A.Canvas(w, h, ss=2)
     mw, mh = w * 0.20, h * 0.20
     my = cy + h * 0.46
@@ -506,8 +464,7 @@ def eye_card(w=1280, h=420):
     out.alpha_composite(eye_img)
     out.alpha_composite(brows.finish())
 
-    # A vignette, so the card fades into whatever it is drawn over instead of
-    # ending in a hard rectangle across the middle of the screen.
+    # A vignette, so the card's edges fade.
     ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
     edge = np.minimum(np.minimum(xs, w - 1 - xs) / (w * 0.13),
                       np.minimum(ys, h - 1 - ys) / (h * 0.16))

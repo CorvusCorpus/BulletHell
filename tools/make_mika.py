@@ -1,38 +1,21 @@
 #!/usr/bin/env python3
-"""Mika: stage three's boss, cut from the artist's own reference sheet.
+"""Mika, stage three's boss, cut out of the owner's own reference sheet, plus
+his eye card and an idle GIF.
 
-**The game's owner drew this one**, which is the whole reason it can ship --
-see the note in `make_player.py` about what may and may not. Szuix came in as a
-55x45 pixel sheet; Mika comes in as a full-resolution reference sheet with a
-legend down one side, so the work here is *extraction* rather than drawing: key
-the flat background out, find the figure, scale him to a boss.
+The source is `tools/source/mika_ref.png` (the owner's drawing; reproduce it
+faithfully). The work is extraction: key out the flat background, find the
+figure, scale it, add a rim light, and animate it with a skinned rig (see
+"The rig"). The sprite keeps the boss contract: the same ink height as
+Ziggy, the origin on his body, facing the player.
 
-**The version this replaced was drawn from primitives and it was wrong four
-times over.** The plumes at his sides are a fur mantle from the shoulders, not
-tails; he has one tail; he has digitigrade legs and a tabard; and the ring
-markings are an interlace that crosses itself rather than a row of separate
-links. Every one of those was a reading of the sheet, and every one of them was
-a reading the sheet already answered. When the reference exists, use it.
+Extraction:
 
-**The animation is a skinned rig.** Szuix's six frames are drawn; there is one
-drawing of Mika, so he is given bones and every pixel is displaced by a blend
-of what they do -- see "The rig" below, and the two things that came before it
-and did not work. It is not a substitute for drawn poses, and the contract it
-fills is exactly what a drawn set would: the same ink height as the other boss,
-the origin on his body, facing the player.
-
-The extraction is two ideas:
-
-- **The background is keyed on the sheet's own corner pixel.** A tolerance and
-  a feather, so the anti-aliased edge comes out as partial alpha rather than as
-  a brown fringe -- the premultiplication trap `make_player.py` records,
-  arriving from the other direction.
-- **The figure is found by flood fill, not by cropping.** The legend runs down
-  the left of the sheet and his raised hand reaches back under it, so there is
-  no vertical line that separates the two. What does separate them is that he
-  is one connected mass and the legend is forty small ones: the fill runs on a
-  downscaled mask from a seed in his chest, and the component it reaches is
-  him.
+- The background is keyed on the sheet's corner pixel, with a tolerance and
+  a feathered band so edges come out as partial alpha.
+- The figure is found by flood fill from a seed in his chest (on a
+  downscaled mask), not by cropping: the legend down the left of the sheet
+  overlaps his raised hand horizontally, but he is one connected mass and
+  the legend is many small ones.
 
 Usage:
     python tools/make_mika.py
@@ -50,24 +33,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import art_common as A
 import gm_new
 
-# **Either name, because the sheet arrived under the other one.** A generator
-# that refuses a file sitting right beside it over a spelling is a generator
-# that wastes somebody's time for nothing.
+# The sheet is accepted under either name.
 SOURCE_NAMES = ("mika_ref.png", "mika_sheet.png")
 
-# **How big he is, measured off Ziggy rather than chosen.** Ziggy's sprite is a
-# 260x250 box and his *ink* is 198x208: most of a boss sprite is empty margin,
-# so matching the box put Mika -- whose cut-out is tight to his outline -- a
-# fifth larger than the other boss on the rack, and it was reported that way.
-# What has to agree between two characters is how much of the screen each one
-# covers, which is the ink. The sheet's own resolution is no guide at all; it is
-# a reference page, drawn as large as it needed to be.
+# His height in pixels, matched to Ziggy's ink height (208; Ziggy's sprite box
+# is 260x250 but his ink is 198x208), so both bosses cover the same screen
+# area.
 H = 208
 
-# **Twelve frames, which is not Ziggy's six.** `boss_draw` holds every frame for
-# seven game frames whatever the sprite says, so six is a seven-tenths-of-a-
-# second loop -- a wingbeat, and right for him. A hovering mage wants an idle
-# nearer a second and a half, and the only way to buy that is more frames.
+# Twelve frames: `boss_draw` holds each frame for seven game frames, so this
+# is an idle loop of about 1.4 seconds.
 FRAMES = 12
 CARD_W, CARD_H = 1280, 420
 
@@ -126,13 +101,8 @@ def key_background(img):
 
 
 def largest_mass(alpha, scale=8):
-    """The connected component the seed lands in, as a full-size mask.
-
-    **Run on a downscaled copy.** A flood fill over four million pixels in
-    Python is slow enough to notice and the answer does not need that
-    resolution: what is being separated is one figure from a column of small
-    labels, and at an eighth scale the figure is still hundreds of cells across
-    while a letter is three.
+    """The connected component the seed lands in, as a full-size mask. Run on a
+    downscaled copy for speed.
     """
     h, w = alpha.shape
     sh, sw = max(1, h // scale), max(1, w // scale)
@@ -194,17 +164,9 @@ def cut_out():
 
 
 def cut_figure(cut):
-    """...scaled to the height a boss is drawn at, and given a rim.
-
-    **The rim is not decoration and the sheet cannot supply it.** He is drawn
-    for a mid-brown page, where near-black fur reads as a shape; this stage is
-    near-black too, and a dark mass with no lit edge is a hole in the picture
-    rather than a character in it. Every solid thing in the grove ships as a
-    body and a rim for exactly this reason, and Ziggy and Szuix both get one.
-
-    It is cool rather than warm -- his fur is blue-black and the gold on him is
-    the only warm thing, so a warm rim would put a second one round his whole
-    outline and flatten the one contrast the design has.
+    """Scale the cut-out to boss height and add a cool rim light (the sheet was
+    drawn for a mid-brown page; his near-black fur needs a lit edge against
+    this stage's dark background).
     """
     scale = H / cut.height
     small = cut.resize((max(1, int(round(cut.width * scale))), H),
@@ -217,17 +179,10 @@ def cut_figure(cut):
 
 
 def torso_origin(img):
-    """Where his hit circle goes, as (x, y) in the sprite.
-
-    **Not the middle of the box.** The tail is nearly half the width of the
-    frame, so the box's centre lands somewhere between his hip and the base of
-    it -- and the origin is what `enemy_take_shots` measures against, so a
-    boss posed that way is one whose hitbox is a body-width to the side of his
-    body. `make_player.py` records the same finding about Szuix, whose wings
-    put the box's centre above his shoulders.
-
-    His head is found rather than guessed: the ears are the topmost ink, so the
-    alpha-weighted mean column of the top slice is the line he stands on.
+    """Where his origin (hit circle) goes, as (x, y) in the sprite. Not the
+    box's centre, which his tail pulls sideways: the column is the
+    alpha-weighted mean of the top slice (his ears, over his head), and the
+    height is 40% down (his chest).
     """
     a = np.asarray(img.getchannel("A"), dtype=np.float32)
     top = a[:max(1, int(a.shape[0] * 0.16))]
@@ -236,64 +191,32 @@ def torso_origin(img):
         return img.width // 2, img.height // 2
     xs = np.arange(img.width, dtype=np.float32)
     cx = float((xs * weight).sum() / weight.sum())
-    # Down from the head to the chest, which is where a shot should land.
+    # Down from the head to the chest.
     return int(round(cx)), int(round(img.height * 0.40))
 
 
 # ---------------------------------------------------------------------------
 # The rig
 #
-# **Skinned, not cut into layers, and that is the third attempt.** The first
-# ran the whole figure through a travelling horizontal shear -- correctly
-# reported as a piece of paper flapping in the wind, because a shear is one
-# deformation applied to a body with no joints. The second cut him into parts
-# and turned each about its own pivot, which is the textbook answer for a
-# single illustration and which produced a new defect every time a boundary
-# moved: his head splitting, an ear tip left behind, a shoulder coming away, a
-# foot travelling with the cape.
+# Skinned: each part is a bone (a region, a pivot and a swing angle), and
+# every pixel is displaced by the weighted average of what the bones would do
+# to it, with the weights blending smoothly between regions. A weighted
+# average of rigid motions is continuous, so there are no seams. (Cutting him
+# into separately rotated layers tore at every boundary, because his parts
+# run into each other with no narrow necks to hide a cut.) The cost is that
+# nothing can pass in front of anything else, so the swings stay small.
 #
-# **Every one of those is the same fault, and it is not a misplaced polygon --
-# it is the cut itself.** A hard boundary through solid fur shows the moment
-# the two sides move differently, and a figure like this has no narrow necks to
-# hide one in: his head runs into his ruff, his ruff into his shoulder, his leg
-# into his foot. Moving the seam moves the problem.
+# - Each bone lags the body by a fraction of a cycle (`lag`), for
+#   follow-through.
+# - Each bone pivots about its attachment point.
+# - The weights blend over a wide band (`RIG_BLEND`).
 #
-# So there are no layers. Each part is a *bone* -- a region, a pivot and an
-# angle -- and every pixel is displaced by the **weighted average** of what
-# those bones would do to it, with the weights blending smoothly from one to
-# the next. That is skinning, it is what every 2D rig in the industry does with
-# artwork it cannot redraw, and its whole point here is that a weighted average
-# of two rigid motions is continuous: there is nowhere left for a seam to be.
-#
-# What it costs is that nothing can pass in front of anything else, so the
-# bones have to keep to small angles and none of them may cross. At the four to
-# five degrees this idle uses, that is not a constraint anybody would notice.
-#
-# Three things still make it read as animation rather than as wobble:
-#
-# - **Every bone lags the one it hangs from.** The head follows the body, the
-#   ears follow the head, the tail follows the hips, each by a fraction of a
-#   cycle. Follow-through is what separates a rig from a set of independent
-#   sine waves and it costs one number per bone.
-# - **The pivot is the attachment point.** Turning about a part's middle drags
-#   its root about; turning about the root moves the tip, which is what a limb
-#   does.
-# - **The weights are wide.** A tight falloff is a soft-edged cut and behaves
-#   like one; a wide one means the ear's base is half ear and half head, which
-#   is what an ear's base actually is.
-#
-# The regions are authored, because a rig is authored -- and they are far more
-# forgiving than a cut was, since a polygon that is a little off now blends
-# instead of tearing. `MIKA_RIG_DEBUG=1` draws them over the art, which is the
-# only way to check them that has ever worked: read off a grid over the whole
-# figure they were wrong every time, because his head is centred at x 0.34 and
-# a box that includes a raised hand at one edge and a tail at the other makes
-# it look like 0.29.
+# `MIKA_RIG_DEBUG=1` draws the regions and pivots over the art; use it to
+# check them.
 # ---------------------------------------------------------------------------
 
-# Every polygon and pivot is in **normalised figure coordinates**: 0..1 across
-# the tight bounding box of the cut-out, so they survive the sheet being
-# re-exported at another size.
+# Polygons and pivots are in normalised figure coordinates: 0..1 across the
+# tight bounding box of the cut-out.
 BONES = [
     {
         "name": "tail",
@@ -315,8 +238,7 @@ BONES = [
         "lag": 0.12,
     },
     {
-        # **The other way round.** Two ears turning together are one shape with
-        # a notch in it; turning against each other they are two ears.
+        # The other way round from the left ear, so the ears move apart.
         "name": "ear_r",
         "poly": [(0.362, 0.130), (0.400, -0.05), (0.470, -0.05),
                  (0.545, 0.050), (0.570, 0.165), (0.520, 0.235),
@@ -352,13 +274,8 @@ BONES = [
         "lag": 0.07,
     },
     {
-        # **The fur at each ankle, and both of them on purpose.** An earlier rig
-        # had the right-hand one half inside the tail's region, so half of it
-        # swung and half did not -- reported as a fault, and then, once it was
-        # explained, asked for deliberately on both sides. Drapery is the part
-        # of a standing figure that should still be moving after the body has
-        # stopped, and two of them lagging by different amounts is most of what
-        # sells a heavy coat.
+        # The fur at each ankle; the owner asked for both hems to swing
+        # (lagging more than a limb does).
         "name": "hem_l",
         "poly": [(0.075, 0.690), (0.245, 0.665), (0.268, 0.795),
                  (0.235, 0.860), (0.090, 0.870), (0.050, 0.780)],
@@ -376,20 +293,16 @@ BONES = [
     },
 ]
 
-# The body does not turn. It bobs and breathes, and every bone rides that plus
-# its own lag -- which is what gives the figure one centre of gravity rather
-# than eight.
+# The body doesn't turn: it bobs and breathes, and every bone rides that plus
+# its own lag.
 BODY_BOB = 3.2           # pixels at the final size
 BODY_BREATHE = 0.012     # of its own height
 
-# **How far a bone's influence reaches past its own outline**, as a fraction of
-# the figure's height. This is the number that makes skinning skinning: at zero
-# it is a hard cut with all the tearing that implies, and wide it is a limb
-# whose base belongs partly to what it hangs off. Twenty pixels at this size.
+# How far a bone's influence reaches past its outline, as a fraction of the
+# figure's height (0 would be a hard cut).
 RIG_BLEND = 0.045
 
-# Room for a bone to swing into without clipping. The ears sit on the top edge
-# of the tight crop.
+# Padding for bones to swing into (the ears touch the top of the crop).
 PAD_FRAC = 0.07
 
 RIG_DEBUG = os.environ.get("MIKA_RIG_DEBUG") == "1"
@@ -407,12 +320,9 @@ def _bone_field(poly, size, pad, box, blur_px):
 
 
 def build_rig(figure):
-    """Bone weights over the padded figure, normalised so they sum to one.
-
-    **The body is a bone too, and it is the one that does nothing.** Giving it
-    a weight rather than treating "no bone" as a special case is what makes the
-    blend fall off to *stillness* at the edge of every region instead of to an
-    average of whatever else is nearby.
+    """Bone weights over the padded figure, normalised to sum to one. The body
+    is a bone that doesn't move, so the blend falls off to stillness outside
+    every region.
     """
     bw, bh = figure.size
     pad = int(round(bh * PAD_FRAC))
@@ -476,17 +386,9 @@ def _sample(src, sx, sy):
 
 
 def pose(rig, phase, blink=0.0):
-    """One frame: the whole figure warped by one blended displacement field.
-
-    **One field and one resample.** Every bone contributes what it would do to
-    a pixel, weighted; the sum is where that pixel came from. Nothing is cut,
-    composited or drawn twice, so there is no seam to place and no ghost to
-    avoid -- and the alpha channel comes through at full strength rather than
-    losing a few per cent at every boundary, which the layered version did.
-
-    Sampled **premultiplied**, the trap `make_player.py` records: a bilinear
-    filter mixes colour without reference to alpha, so a half-covered pixel
-    contributes its full colour and every edge haloes.
+    """One frame: the figure warped by a single blended displacement field and
+    resampled once (nothing is cut or composited). Sampled premultiplied, so
+    edges don't halo.
     """
     w, h = rig["size"]
     bw, bh = rig["box"]
@@ -509,10 +411,7 @@ def pose(rig, phase, blink=0.0):
         dx += wgt * ((ca * ox - sa * oy) - ox)
         dy += wgt * ((sa * ox + ca * oy) - oy)
 
-    # The whole figure bobs, and breathes from the feet up: a scale about the
-    # centre would have him growing out of the floor in both directions, which
-    # on a figure that is hovering is the one motion that says "this is an
-    # image being resized".
+    # The whole figure bobs, and breathes as a scale about the feet.
     bob = BODY_BOB * math.sin(2 * math.pi * phase)
     k = 1.0 + BODY_BREATHE * math.sin(2 * math.pi * (phase - 0.25))
     floor = pad + bh
@@ -532,23 +431,9 @@ def pose(rig, phase, blink=0.0):
     return frame
 
 def close_eyes(frame, amount, pad, box):
-    """Shut his eyes by `amount`, 0 open to 1 closed.
-
-    **The eyes are found by being blue, every frame, in the posed image.**
-    Nothing else on him is -- he is two colours and a pair of eyes -- so this
-    needs no authored region and, more usefully, it keeps working after the
-    head has been rotated and bobbed, because it is looking at the frame that
-    was actually drawn rather than at the drawing it came from.
-
-    **Only the eye's own pixels are painted.** Covering a rectangle would put
-    fur over the gold that rings each eye, which at this size is most of what
-    makes his face a face; masking to the blue means the lid can only ever
-    close over the thing a lid closes over.
-
-    The colour is sampled from the darkest part of the fur just above each eye,
-    so the lid is his own brow rather than a constant somebody picked -- and
-    picking the dark quartile is what stops it sampling the gold marking that
-    sits there.
+    """Shut his eyes by `amount` (0 open, 1 closed). The eyes are found in the
+    posed frame by being blue (nothing else on him is), and only those pixels
+    are painted, in a colour sampled from the dark fur just above each eye.
     """
     arr = np.asarray(frame, dtype=np.float32).copy()
     h, w, _ = arr.shape
@@ -590,11 +475,8 @@ def close_eyes(frame, amount, pad, box):
     return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
 
 
-# **A blink is three frames and it is not on the beat.** One frame of shut eyes
-# is a glitch and five is a doze; three -- half, closed, half -- is what reads
-# at eight frames a second. It is placed off the bob's own extremes so the two
-# cycles do not land together, which is the difference between a character with
-# two habits and a character with one.
+# A blink over three frames (half, closed, half), placed away from the bob's
+# extremes.
 BLINK = {8: 0.55, 9: 1.0, 10: 0.5}
 
 
@@ -603,24 +485,10 @@ BLINK = {8: 0.55, 9: 1.0, 10: 0.5}
 # ---------------------------------------------------------------------------
 
 def head_crop(cut):
-    """His head out of the full figure, and where his eyes are in it.
-
-    **Cropping the top third of the figure is not cropping his head**, and the
-    first card did exactly that: the tail rises nearly as high as his skull, so
-    the top slice of the frame contains a head on the left and a plume on the
-    right, and `getbbox` on it returns both. What came back was a card with his
-    face pushed into the left third and half the plate empty.
-
-    So the head is found rather than assumed. At the very top of the figure the
-    only ink is his ears, so their span is the head's span; the crop is a
-    window of that span, widened a little for the ruff.
-
-    **And the eyes are found by being blue.** Nothing else on him is -- he is
-    two colours and a pair of eyes -- so the centroid of strongly blue pixels
-    is the eye line to a few pixels, which is what the card has to put on its
-    own centre line. Placing the head by a fraction of its height instead is a
-    number that has to be retuned every time the crop changes, and it was
-    wrong the first time.
+    """His head from the full figure, and where his eyes are in it. The head's
+    horizontal span is taken from the ears (the topmost ink; a plain top slice
+    also catches the tail), and the eye line is the centroid of the strongly
+    blue pixels.
     """
     a = np.asarray(cut.getchannel("A"), dtype=np.float32)
     h, w = a.shape
@@ -650,14 +518,9 @@ def head_crop(cut):
 
 
 def eye_card(cut):
-    """The close-up a spell of his is declared with.
-
-    **A crop of the drawing rather than a second drawing.** Ziggy's card is
-    built in card space because his sprite is 260 pixels of primitives and
-    scaling that up is mush; Mika's source is a full-resolution sheet, so the
-    honest card is his own face at the size it was drawn. The rules are the
-    same as Ziggy's: the head runs off all four edges, the eyes are the
-    brightest thing in it, and the ground is opaque.
+    """His eye card: a crop of his own face at the resolution it was drawn,
+    centred on his eyes, over a dark ground with gold rays and rings, fading at
+    the edges.
     """
     cx, cy = CARD_W / 2.0, CARD_H / 2.0
     head, eye = head_crop(cut)
@@ -667,11 +530,9 @@ def eye_card(cut):
                         max(1, int(head.height * scale))), Image.LANCZOS)
     eye = (eye[0] * scale, eye[1] * scale)
 
-    # **The ground and the ornament on it are two layers, because PIL does not
-    # blend.** `ImageDraw` on an RGBA image *replaces* the pixel it writes, so
-    # a ring drawn straight onto the plate at low alpha punches a nearly
-    # transparent stroke through it, and the card comes back with a white line
-    # wherever a gold one was meant to be. Which is what the first one did.
+    # The ground and its ornament are separate layers, then composited:
+    # `ImageDraw` on RGBA replaces pixels rather than blending, so drawing
+    # translucent rings directly on the ground would punch holes in it.
     ground = A.Canvas(CARD_W, CARD_H, ss=2)
     ground.rect([0, 0, CARD_W, CARD_H], fill=A.rgba((7, 6, 11), 255))
     for i in range(30):
@@ -681,8 +542,7 @@ def eye_card(cut):
                        fill=A.rgba(A.mix((7, 6, 11), (34, 26, 12), 1 - t),
                                    255))
 
-    # Concentric rings rather than rays, because he is the ring caster and the
-    # card is the one place his motif can be the whole composition.
+    # Rays and concentric rings (his ring motif).
     deco = A.Canvas(CARD_W, CARD_H, ss=2)
     for i in range(24):
         a = math.radians(i * 15 + 7)
@@ -702,9 +562,7 @@ def eye_card(cut):
 
     out = ground.finish()
     out.alpha_composite(deco.finish())
-    # **Placed by his eyes, not by his box.** The card's centre line is what
-    # the banner and the timer are laid out round, so that is where the eyes
-    # go -- and it is the one landmark that stays put however the crop moves.
+    # Placed so his eyes are at the card's centre.
     out.alpha_composite(head, (int(cx - eye[0]), int(cy - eye[1])))
 
     ys, xs = np.mgrid[0:CARD_H, 0:CARD_W].astype(np.float32)
@@ -717,26 +575,11 @@ def eye_card(cut):
 
 
 def write_gif(frames, path, scale=2, ground=(28, 20, 48)):
-    """The idle as a shareable loop.
-
-    **Composited onto an opaque ground rather than shipped transparent.** GIF
-    has one bit of alpha, so a figure whose whole outline is a soft rim comes
-    out with a ragged fringe -- and the ground it is meant to be seen against
-    is dark anyway, so laying it on the console's own indigo is both truer to
-    the game and the thing that makes the format work.
-
-    **One palette for every frame, built from all of them.** Quantising each
-    frame on its own gives each a slightly different 256 colours, and what that
-    looks like is the whole image shimmering between frames -- a defect
-    introduced entirely by the export, on art that has none. No dithering
-    either: his flats stay flat, which also makes the file a third of the size.
-
-    The frame time is `boss_draw`'s own: it holds every frame for seven game
-    frames at 60Hz, which is 116.7ms. **GIF stores hundredths and PIL floors
-    rather than rounds**, so asking for 117 writes 110 -- six per cent fast --
-    and asking for 120 writes 120, which is three per cent slow and the nearest
-    the format can get. Neither is visible; the point is knowing which way it
-    went rather than assuming the number asked for is the number stored.
+    """The idle as a shareable GIF: composited onto an opaque ground (GIF has
+    1-bit alpha), one shared palette for all frames (per-frame palettes
+    shimmer), no dithering. The frame time is 120ms (`boss_draw` holds frames
+    for 116.7ms; GIF stores hundredths and PIL floors, so 117 would become
+    110).
     """
     shots = []
     for f in frames:

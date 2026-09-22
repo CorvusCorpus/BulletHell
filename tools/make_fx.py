@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""The system sprites: sparks, glows, rings, lasers, and the two marks
-that tell the player where they actually are.
+"""Effect and system sprites: bloom, spark, ring, laser textures, Szuix's shot
+and bomb flames, his sigil, the hitbox and focus ring, the boss sigil, and
+Ziggy's spell-background veins and horn.
 
-Everything here is drawn white or near-white and **tinted at draw time**, which
-is why there is one bloom and not fourteen. A tint is one multiply on a sprite
-the texture page already holds; a hue baked per colour would be fourteen copies
-of the same disc.
-
-The pickups are not here: they are cut stones, traced rather than drawn, and
-they have `tools/make_items.py` to themselves.
+Most are drawn white and tinted at draw time. The flames are the exception
+(colour baked in). Pickups are in `tools/make_items.py`.
 
 Usage:
     python tools/make_fx.py
@@ -38,11 +34,9 @@ def make_bloom(size=128):
 
 
 def make_spark(w=34, h=14):
-    """A streak. Oriented, so it points right and `fx_spark` can hand it a
-    direction directly."""
+    """A streak pointing right, so `fx_spark` can rotate it to its heading."""
     dx, dy, _ = A.grid(w, h)
-    # An ellipse in a stretched metric, brightest at the leading (right) end,
-    # so a spark reads as travelling rather than as a floating pill.
+    # An ellipse in a stretched metric, brightest at the leading (right) end.
     r = np.hypot(dx / (w / 2.0), dy / (h / 2.0))
     a = np.clip(1 - r, 0, 1) ** 1.5
     lead = np.clip(0.45 + 0.55 * (dx / (w / 2.0) * 0.5 + 0.5), 0, 1)
@@ -57,8 +51,7 @@ def make_ring(size=256, thick=0.055):
     edge = 0.86
     d = np.abs(r - edge)
     a = np.clip(1 - d / thick, 0, 1) ** 1.6
-    # A little haze inside the ring, so the wave looks like it is pushing air
-    # rather than being a wire hoop.
+    # A faint haze inside the ring.
     a = np.maximum(a, np.clip(1 - r / edge, 0, 1) ** 5 * 0.30)
     a = np.where(r >= 1.0, 0, a)
     body = np.zeros((size, size, 3), dtype=np.float32)
@@ -67,12 +60,9 @@ def make_ring(size=256, thick=0.055):
 
 
 def make_laser_body(w=64, h=48):
-    """A cross-section, uniform along its length, so it can be stretched to any
-    length without the texture stretching with it.
-
-    **The origin is middle-left**, so `draw_sprite_ext(x, y, len/w, wid/h, dir)`
-    lays the bar from (x, y) forward. Centring it would put half of every beam
-    behind the thing that cast it.
+    """A laser's cross-section, uniform along its length so it stretches to any
+    length. The origin is middle-left, so the beam extends forward from the
+    point it is drawn at.
     """
     ys = np.arange(h, dtype=np.float32)
     t = np.abs(ys - (h - 1) / 2.0) / ((h - 1) / 2.0)
@@ -93,11 +83,8 @@ def make_laser_node(size=48):
 # ---------------------------------------------------------------------------
 
 def _vnoise(xs, ys, grid):
-    """Smooth value noise, **periodic in both axes of `grid`**.
-
-    Periodic because the flames below are animated by scrolling through it:
-    a loop of `n` frames that scrolls exactly one period ends where it began,
-    so the flicker never jumps on the frame it wraps.
+    """Smooth value noise, periodic in both axes of `grid`, so a flame animated
+    by scrolling one full period loops seamlessly.
     """
     gh, gw = grid.shape
     x0 = np.floor(xs).astype(np.int64)
@@ -123,11 +110,8 @@ def _fbm(xs, ys, grids):
     return acc / tot
 
 
-# Szuix's fire, from the transparent edge of a tongue to the heart of the ball.
-# **Violet at the edges and white only at the heart**, which is what makes it
-# blue *fire* rather than a blue light: a flame is hottest in the middle and
-# coolest where it tears, and the cooling runs through his wings' violet on the
-# way out: cyan-white inside azure inside a violet lick.
+# Szuix's fire, from a tongue's transparent edge to the heart of the ball:
+# violet at the edges, azure through the body, cyan-white at the heart.
 FLAME_RAMP = [
     (0.00, (40, 10, 110)),
     (0.12, (96, 34, 236)),
@@ -150,23 +134,12 @@ def _flame_colour(rho):
 
 def make_flame(w, h, k, n, seed=3, head=0.72, radius=0.60, reach=0.70,
                rag0=0.30, rag1=1.25, heat=1.8, ss=3):
-    """One frame of a fireball in flight, pointing right.
-
-    **A ball, and then flame torn off the back of it.** The first shot was a
-    teardrop with a white stripe down it and read as a missile: smooth edges
-    say *machined*, and a point says *aimed*. Fire has neither. So this is the
-    way a fire shader does it -- a soft envelope, a ball at the front and a
-    taper behind, with turbulence **subtracted** from it. Where the envelope is
-    thick the noise only roughens the edge; toward the back, where it is thin
-    and the noise is allowed to eat more, it comes apart into separate licks.
-
-    The turbulence scrolls backward along the axis by exactly one period over
-    `n` frames, so the loop is seamless and the tongues peel off the ball the
-    way they would off anything moving through air. A little domain warp is
-    what makes them curl instead of streaking.
-
-    **Baked in colour and drawn white**, unlike every other effect here. A
-    tint multiplies the whole sprite, and a flame is three colours at once.
+    """One frame of a fireball pointing right: a soft envelope (a ball in
+    front, a taper behind) with turbulence subtracted from it, so the edge is
+    roughened near the ball and torn into separate licks toward the back. The
+    turbulence scrolls back one full period over `n` frames (seamless loop),
+    with a little domain warp so the licks curl. Colour is baked in (drawn
+    untinted), since a flame is several colours at once.
     """
     W, H = w * ss, h * ss
     ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
@@ -183,10 +156,8 @@ def make_flame(w, h, k, n, seed=3, head=0.72, radius=0.60, reach=0.70,
 
     # 0 at the ball, 1 at the furthest a tongue can reach.
     s = np.clip(-X / tail_len, 0, 1)
-    # **The envelope is drawn wider than the flame will end up**, because the
-    # turbulence only ever eats. Noise that could also add would put flame
-    # outside the shape, which the first try did: a fog of violet in the
-    # corners of the frame.
+    # The envelope is wider than the final flame, because the turbulence only
+    # ever subtracts.
     wdt = np.where(X > 0, np.sqrt(np.clip(R * R - X * X, 0, None)),
                    R * (1 - s) ** 0.55 * (1 + 0.5 * s))
     shape = np.clip(1 - np.abs(Y) / np.maximum(wdt, 1e-3), 0, 1)
@@ -198,28 +169,22 @@ def make_flame(w, h, k, n, seed=3, head=0.72, radius=0.60, reach=0.70,
     warp = _fbm(px * 0.7 + 3.1, py * 0.7 + 1.7, grids[:3]) - 0.5
     turb = _fbm(px + warp * 1.3, py + warp * 0.8, grids) * 0.7 \
         + _fbm(px * 1.9 + ph * 6.0 + 11.0, py * 1.9 + 5.0, grids[:4]) * 0.3
-    # Value-noise fbm huddles round a half. Stretched to use its whole range,
-    # or the tearing moves the edge by a pixel and nothing tears.
+    # Value-noise fbm clusters around 0.5; stretch it to use the whole range.
     turb = np.clip((turb - turb.mean()) / (turb.std() * 2.2), -1, 1)
 
     amp = rag0 + (rag1 - rag0) * s ** 0.8
     rho = np.clip((shape - (0.5 - 0.5 * turb) * amp)
                   / max(0.3, 1 - 0.15 * rag1), 0, 1)
 
-    # The heart never tears. It is what the eye tracks, and it is the part
-    # that sits on the collision point -- see the origin in `main`.
+    # The heart never tears (it sits on the collision point; see `main`).
     core = np.clip(1 - np.hypot(X / (R * 0.42), Y / (R * 0.34)), 0, 1)
     rho = np.maximum(rho, core ** 0.9)
 
-    # `heat` is how much of the body is white. **Low, and it was lower than it
-    # looks**: the first set ran the ramp straight off the density and came
-    # back a pale lavender lozenge, which is a light with a flame's outline.
-    # Raised to a power, most of the ball sits in the azure and only the heart
-    # reaches white -- which is also what a bullet's core is, so the shot must
-    # not spend more white than it has to.
+    # `heat` controls how much of the body reaches white: raised to a power so
+    # most of the ball is azure and only the heart is white.
     img = A.from_arrays(_flame_colour(rho ** heat),
                         np.clip(rho * 2.4, 0, 1) ** 1.1)
-    # A halo off its own alpha, so it glows rather than being a decal.
+    # A halo from its own alpha.
     halo = img.getchannel("A").filter(ImageFilter.GaussianBlur(ss * 2.4))
     glow = Image.new("RGBA", img.size, (64, 56, 236, 0))
     glow.putalpha(halo.point(lambda v: int(v * 0.36)))
@@ -228,17 +193,13 @@ def make_flame(w, h, k, n, seed=3, head=0.72, radius=0.60, reach=0.70,
 
 PSHOT_FRAMES = 8
 PSHOT_W, PSHOT_H = 96, 44
-# Where the centre of the ball is, as a fraction of the sprite's width. The
-# game draws a shot with its origin here -- see `main`.
+# Where the centre of the ball is, as a fraction of the sprite's width; the
+# sprite's origin (see `main`).
 FLAME_HEAD = 0.72
 
 
 def make_pshot_frames():
-    """Szuix's shot: a fireball of his own blue flame, eight frames of it.
-
-    **It points right**, like every oriented thing in this project, because
-    GameMaker's angle 0 is right -- see the note at the top of `make_bullets`.
-    """
+    """Szuix's shot: his blue fireball, pointing right, eight frames."""
     return [make_flame(PSHOT_W, PSHOT_H, k, PSHOT_FRAMES, head=FLAME_HEAD)
             for k in range(PSHOT_FRAMES)]
 
@@ -248,11 +209,8 @@ WISP_W, WISP_H = 208, 112
 
 
 def make_wisp_frames():
-    """The bomb's seals, and the tongues on the front of its sweep.
-
-    The shot's flame at twice the size, with more tail and more tearing --
-    drawn rather than scaled up, because a flame enlarged is a blur with a
-    flame's outline, and the licks are the whole of what says fire.
+    """The bomb's seals and the flames on its sweep: the shot's flame at twice
+    the size with more tail and tearing (drawn at that size, not scaled up).
     """
     return [make_flame(WISP_W, WISP_H, k, WISP_FRAMES, seed=17, head=0.70,
                        radius=0.56, reach=0.72, rag0=0.34, rag1=1.45,
@@ -268,13 +226,8 @@ SIGIL_SIZE = 1024
 
 
 def _glyph(c, x, y, ang, size, code, v, alpha, width):
-    """One letter of Szuix's script, standing on a circle and facing out.
-
-    **A script rather than scribble**, which is what separates a magic circle
-    somebody designed from one generated: every glyph is a stem and a small
-    set of strokes off it, so the ring reads as writing in one hand. A random
-    tangle of lines per glyph reads as noise, and the boss sigil's three
-    random strokes are exactly that at a size where it does not matter.
+    """One glyph of Szuix's script, standing on a circle and facing out: a stem
+    plus a few strokes, from a small consistent set.
     """
     ca, sa = math.cos(ang), math.sin(ang)
 
@@ -303,21 +256,10 @@ def _glyph(c, x, y, ang, size, code, v, alpha, width):
 
 
 def make_sigil_frames():
-    """Szuix's sigil: the circle the bomb draws on the field.
-
-    **Three frames, and they are layers rather than an animation.** The game
-    draws each at its own rotation and in its own colour -- the rings in his
-    wings' violet turning one way, the script in his eyes' cyan turning the
-    other, and the emblem at the heart in white -- because a magic circle that
-    turns as one rigid picture is a picture, and one whose rings disagree about
-    which way to go is a mechanism. Same argument as the boss sigil's
-    counter-rotating pair, at the size a bomb deserves.
-
-    **The vocabulary is the console's**: four-pointed sparks, and the house's
-    four-pointed star at the heart. The frame belongs to the player, and so
-    does this -- it is the same hand at the size of the field. What it does
-    not borrow is the gilt, which on the field would be a colour the bullets
-    use, or the crescent, which broke the figure's symmetry.
+    """Szuix's sigil, the circle the bomb draws, as three layers the game draws
+    at different rotations and colours: 0 the rings, ticks and octagram (his
+    violet), 1 the script, nodes and sparks (cyan), 2 the emblem at the heart
+    (white).
     """
     size = SIGIL_SIZE
     cx = cy = size / 2.0
@@ -343,15 +285,13 @@ def make_sigil_frames():
                 (FACE, FACE, FACE, 220 if long else 150), 2.0 if long else 1.2)
     ring(c0, 438, 2.6, LIT)
     ring(c0, 402, 1.4, FACE, 170)
-    # {8/3}: every third of eight points, which is the classic circle-of-power
-    # figure and the one that reads as woven rather than as two squares.
+    # {8/3}: an eight-pointed star joining every third point.
     pts = [polar(402, math.radians(-90 + i * 45)) for i in range(8)]
     for i in range(8):
         c0.line([pts[i], pts[(i + 3) % 8]], (FACE, FACE, FACE, 235), 2.6)
     ring(c0, 254, 2.8, LIT)
     ring(c0, 240, 1.2, FACE, 160)
-    # A chain of small links just inside the inner ring, so the ring reads as
-    # set with something rather than as a second line.
+    # A chain of small links just inside the inner ring.
     for i in range(24):
         r = 16.0
         mx, my = polar(222, math.radians(i * 15.0 + 7.5))
@@ -362,9 +302,7 @@ def make_sigil_frames():
 
     # ---- 1: the script, the nodes and the sparks ---------------------------
     c1 = A.Canvas(size, size, ss=ss)
-    # **One word, written eight times round**, so the inscription has the
-    # octagram's symmetry rather than fighting it. A different glyph in every
-    # slot is text; the same word at every point of the star is a circle.
+    # One word written eight times round, matching the octagram's symmetry.
     outer_word = [5, 34, 17, 42, 12]
     inner_word = [21, 10, 49, 6]
     n = 8 * len(outer_word)
@@ -394,8 +332,8 @@ def make_sigil_frames():
 
     # ---- 2: the emblem at the heart ----------------------------------------
     c2 = A.Canvas(size, size, ss=ss)
-    # The house's four-pointed star, large, as an outline with a faint fill,
-    # and its twin turned forty-five degrees inside it.
+    # The four-pointed star, large, as an outline with a faint fill, and a
+    # second one turned 45 degrees inside it.
     for r, waist, rot, a_fill, w in ((232, 0.20, 0, 46, 3.2),
                                      (150, 0.24, 45, 30, 2.2)):
         pts = []
@@ -405,9 +343,7 @@ def make_sigil_frames():
             pts.append(polar(rr, ang))
         c2.polygon(pts, fill=(LIT, LIT, LIT, a_fill))
         c2.line(pts + [pts[0]], (LIT, LIT, LIT, 245), w)
-    # The heart: a ring round a bright point. **Symmetrical, on purpose** --
-    # a crescent sat here for one pass and was the only thing in the circle
-    # without the octagram's symmetry, so the whole figure read as leaning.
+    # The heart: rings round a bright point (symmetric like the rest).
     for r, w, a in ((56, 3.0, 245), (40, 1.4, 170)):
         c2.ellipse([cx - r, cy - r, cx + r, cy + r],
                    outline=(LIT, LIT, LIT, a), width=w)
@@ -431,11 +367,8 @@ def _star4_at(c, x, y, r, v, alpha, ang, waist=0.18):
 
 
 def _alpha_only_glow(img, glow=0.55, radius=5.0):
-    """White ink, value in the alpha, and a soft glow baked round every line.
-
-    The glow is baked because the sigil is drawn additively in three colours
-    and every stroke has to *emit*: a hairline with no glow drawn over a lit
-    field reads as a scratch on the screen.
+    """White ink with the value in the alpha, and a soft glow baked round every
+    line (the sigil is drawn additively and every stroke should glow).
     """
     r, g, b, a = img.split()
     lum = Image.merge("RGB", (r, g, b)).convert("L")
@@ -450,11 +383,8 @@ def _alpha_only_glow(img, glow=0.55, radius=5.0):
 
 
 def make_hitbox(size=32):
-    """**The truth about where the player is.**
-
-    Drawn at exactly `PLAYER_R * 2` by the game, so what is shown is what is
-    tested. A ring rather than a disc: a solid dot at eight pixels across is a
-    smudge, and the ring's hole is what makes the centre findable.
+    """The hitbox marker, drawn by the game at exactly `PLAYER_R * 2`: a ring
+    with a dot, since the ring makes the centre easy to find.
     """
     _, _, r = A.grid(size * SS, size * SS)
     outer = np.clip(1 - np.abs(r - 0.78) / 0.20, 0, 1) ** 1.4
@@ -462,8 +392,7 @@ def make_hitbox(size=32):
     a = np.clip(outer + core, 0, 1)
     body = np.zeros((size * SS, size * SS, 3), dtype=np.float32)
     body[:] = (255, 255, 255)
-    # A pink cast on the ring only, so it can never be mistaken for a bullet's
-    # white core -- the one white thing on the field the player must not dodge.
+    # A pink cast on the ring, so it isn't mistaken for a bullet's white core.
     body[..., 1] -= (outer * 90)[...]
     body[..., 2] -= (outer * 40)[...]
     img = A.from_arrays(body, a)
@@ -471,8 +400,7 @@ def make_hitbox(size=32):
 
 
 def make_focus_ring(size=96):
-    """The reticle that appears while focused. Ticks rather than a plain
-    circle, so it reads as an instrument being brought to bear."""
+    """The ticked ring shown while focused."""
     cv = A.Canvas(size, size)
     c = size / 2.0
     cv.ellipse([c - size * 0.40, c - size * 0.40, c + size * 0.40, c + size * 0.40],
@@ -493,11 +421,8 @@ def make_focus_ring(size=96):
 # ---------------------------------------------------------------------------
 
 def make_sigil(size=320):
-    """The magic circle under a boss.
-
-    Drawn as *rings and runes* rather than as a picture, because it is tinted
-    to whoever is standing on it and stretched into an ellipse by the game --
-    anything representational would shear.
+    """The magic circle under a boss: rings, ticks, glyph marks and two
+    triangles, tinted per boss and stretched into an ellipse by the game.
     """
     cv = A.Canvas(size, size)
     c = size / 2.0
@@ -527,8 +452,7 @@ def make_sigil(size=320):
                                               gy + oy + 4)],
                     fill=(255, 255, 255, 165), width=1.3)
 
-    # A triangle and its inverse -- the one figure that says "circle of power"
-    # without needing to be read.
+    # A triangle and its inverse.
     for turn in (0, 60):
         pts = [(c + math.cos(math.radians(turn + i * 120)) * size * 0.28,
                 c + math.sin(math.radians(turn + i * 120)) * size * 0.28)
@@ -554,16 +478,9 @@ def make_sigil(size=320):
 # ---------------------------------------------------------------------------
 
 def make_spell_veins(size=1024, seed=9):
-    """A network of cracks radiating from the centre.
-
-    Ziggy's spell background is the inside of a furnace and this is the shell
-    of it: black rock fracturing outward from wherever he is standing, lit from
-    behind. **Radial rather than random**, because a random crack field is
-    scenery and a radial one has a *source* -- and the source is the boss, which
-    is the whole thing a spell background is trying to say.
-
-    The width tapers with distance from the centre, so the cracks read as
-    opening rather than as a spider's web drawn on glass.
+    """Cracks radiating from the centre, for Ziggy's spell background (drawn
+    centred on his station). Width tapers with distance, and branches fork only
+    near the start.
     """
     ss = 2
     S = size * ss
@@ -581,12 +498,11 @@ def make_spell_veins(size=1024, seed=9):
             x += math.cos(math.radians(ang)) * step
             y += math.sin(math.radians(ang)) * step
             pts.append((x, y))
-            # Taper: each segment a little thinner than the last, so the crack
-            # dies out instead of stopping.
+            # Each segment a little thinner than the last, so the crack dies
+            # out.
             w = max(1.0, wide * (1 - i / steps) ** 0.8)
             d.line([pts[-2], pts[-1]], fill=255, width=int(w * ss))
-            # Branches, and only near the start -- a crack that forks at its
-            # own tip reads as a plant.
+            # Branches, only near the start.
             if depth > 0 and i in (3, 7) and rnd.random() < 0.8:
                 crack(x, y, ang + rnd.choice([-1, 1]) * rnd.uniform(28, 55),
                       reach * 0.45, wide * 0.55, depth - 1)
@@ -598,16 +514,9 @@ def make_spell_veins(size=1024, seed=9):
               c + math.sin(math.radians(a)) * r0,
               a, S * rnd.uniform(0.30, 0.48), rnd.uniform(3.0, 7.0), 2)
 
-    # Two copies: the crack itself, and a wide bloom saying the rock either
-    # side of it is hot. Composited here rather than at draw time, so the game
-    # pays for one sprite instead of two.
-    # **The bloom is kept low, and the reason is the scale it is drawn at.**
-    # The game stretches this to 2600 pixels across, so a blur of sixteen here
-    # is a blur of forty on screen and its alpha covers most of the frame --
-    # photographed at 0.55 the spell background was an amber fog with the
-    # danmaku somewhere inside it, which is precisely the gold-on-gold failure
-    # the whole subtraction rule exists to prevent. The crack should be the
-    # bright thing and the space between cracks should be black.
+    # The crack plus a wide bloom, composited into one sprite. The bloom is
+    # kept faint because the game draws this about 2600px across, where a
+    # stronger bloom washes the field in amber.
     core = img.filter(ImageFilter.GaussianBlur(ss * 1.4))
     wide = img.filter(ImageFilter.GaussianBlur(ss * 16)).point(
         lambda v: int(min(255, v * 2.4)))
@@ -619,23 +528,11 @@ def make_spell_veins(size=1024, seed=9):
 
 
 def make_spell_horn(w=640, h=600, seed=4):
-    """One horn, growing from the bottom-left of its own canvas.
-
-    **A silhouette on a black background is nothing at all**, which is the trap
-    a "huge dark shape looming" always sets: the spell wash is near-black by
-    design, so a black shape drawn on it is invisible and a grey one is a grey
-    smear. What actually reads is the *rim* -- a bright contour with nothing
-    much behind it, which the eye completes into a mass.
-
-    **The root is at the foot and the tip curls up and to the right**, which is
-    the one thing about this that is easy to get backwards: the origin is the
-    root, the game pins that to a bottom corner of the screen, and the horn has
-    to grow *out of* that corner. The first version had the broad end at the
-    top and drew a horn hanging into the frame point-first.
-
-    Spine, then thickness along it, rather than an arc of a circle. A real horn
-    leaves the skull steeply and bends forward as it grows, so the curvature is
-    not constant -- and a constant-curvature horn reads as a croissant.
+    """One horn for Ziggy's spell background, growing from the bottom-left of
+    its canvas (its root is the origin, pinned to a bottom corner of the field)
+    and curling up and to the right. A spine with a width along it; curvature
+    increases along its length. Mostly a bright rim, since a dark shape is
+    invisible on the near-black wash.
     """
     ss = 2
     W, H = w * ss, h * ss
@@ -654,29 +551,23 @@ def make_spell_horn(w=640, h=600, seed=4):
         px, py = spine(t)
         qx, qy = spine(min(1.0, t + 0.02))
         ang = math.atan2(qy - py, qx - px)
-        # **Broad at the root.** The first attempt was a third this thick and
-        # came back as a bundle of parallel arcs: a horn is a cone that happens
-        # to bend, and with no obvious taper the banding across it is all that
-        # is left, which reads as rope.
+        # Broad at the root, tapering to the tip.
         half = W * 0.19 * (1 - t) ** 1.1 + W * 0.006
         nx, ny = math.cos(ang + math.pi / 2), math.sin(ang + math.pi / 2)
         inner.append((px - nx * half, py - ny * half))
         outer.append((px + nx * half, py + ny * half))
     d.polygon(inner + outer[::-1], fill=255)
 
-    # Growth rings, the way a real horn is laid down in bands.
+    # Growth rings.
     ridge = Image.new("L", (W, H), 0)
     rd = ImageDraw.Draw(ridge)
     for i in range(8):
         j = int((0.08 + i * 0.108) * n)
         rd.line([inner[j], outer[j]], fill=255, width=int(ss * 9))
 
-    # **Three layers, because a rim on its own is a wire.** The body is a dim
-    # wash saying there is a mass here at all; the rim is the contour facing up
-    # and out, where the fire below would catch it; the bands say the mass is
-    # horn rather than rock. Drawn additively over a near-black spell wash the
-    # body reads as the dull red of something barely lit, and the rim picks out
-    # its shape -- which together is the whole effect.
+    # Three layers: a dim body, a bright rim on the upper-outer contour, and
+    # the growth bands. Drawn additively over the near-black spell wash, the
+    # rim is what shows the shape.
     body = mask.filter(ImageFilter.GaussianBlur(ss * 7)).point(
         lambda v: int(v * 0.19))
     lit = ImageChops.subtract(mask, ImageChops.offset(mask, 24 * ss, 22 * ss))
@@ -690,8 +581,8 @@ def make_spell_horn(w=640, h=600, seed=4):
     return out.resize((w, h), Image.LANCZOS)
 
 
-# The point on the sprite the horn grows from, as a fraction of its size. The
-# game pins this to a bottom corner of the screen, so it has to be the root.
+# The horn's root as a fraction of the sprite's size: the sprite's origin,
+# which the game pins to a bottom corner of the field.
 HORN_ROOT = (0.06, 0.97)
 
 
@@ -717,13 +608,8 @@ def main():
                   folder="Sprites/fx")
     made.append(("spr_laser_body", body))
 
-    # **The origin sits on the ball, not in the middle of the sprite.** A shot
-    # is spawned clear of Szuix's head and travels head-first, so what the
-    # spawn point should mean is "where the fire is" -- with a centred origin
-    # half the sprite is drawn *ahead* of the point that hits, and a bolt that
-    # visibly leads its own collision is a bolt that appears to pass through
-    # the first thing it kills. Same argument as the flame bullet's origin in
-    # `make_bullets`.
+    # The shot's origin is on the ball, not the sprite's centre, so the drawn
+    # fire is where the collision point is.
     pshot = make_pshot_frames()
     gm_new.sprite("spr_pshot", pshot,
                   origin=(int(PSHOT_W * FLAME_HEAD), PSHOT_H // 2),
@@ -735,11 +621,10 @@ def main():
                   folder="Sprites/fx", fps=30.0)
     made.append(("spr_fx_wisp", wisp[0]))
     sigil = make_sigil_frames()
-    # Not on the contact sheet: at 1024 it would set the size of every cell.
+    # Not on the contact sheet (at 1024px it would set every cell's size).
     gm_new.sprite("spr_fx_sigil", sigil, origin="center", folder="Sprites/fx")
 
-    # The animated ones get sheets of their own: a flame judged from its first
-    # frame is a flame judged from a sixth of what it does.
+    # The animated ones get sheets of their own.
     A.preview([f.resize((f.width * 3, f.height * 3), Image.LANCZOS)
                for f in pshot], os.path.join(A.PREVIEW, "pshot.png"),
               cols=4, bg=(12, 12, 22))
@@ -757,9 +642,7 @@ def main():
     emit("spr_focus_ring", make_focus_ring(), folder="Sprites/ui")
     emit("spr_boss_sigil", make_sigil(), folder="Sprites/fx")
     emit("spr_spell_veins", make_spell_veins(), folder="Sprites/fx")
-    # Origin at the root of the horn, which is the corner of the screen it is
-    # pinned to -- so the game positions it by naming a corner rather than by
-    # working out where half of it is.
+    # Origin at the root of the horn (pinned to a corner of the field).
     horn = make_spell_horn()
     gm_new.sprite("spr_spell_horn", [horn],
                   origin=(int(horn.width * HORN_ROOT[0]),

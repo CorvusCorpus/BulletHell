@@ -1,25 +1,11 @@
-/// @desc The attack list: every attack of every boss on one stage, pick one.
-///
-/// **It hangs off the rack rather than replacing it**, so it never has to
-/// answer "which stage" -- the rack has already answered that, with its locks
-/// and its unbuilt cards and its layout that grows by itself when a stage is
-/// added. This screen reads `global.stage_def` exactly as `obj_game` does and
-/// lists what it finds. See `practice_functions`.
-///
-/// **One flat list with headings, not a boss picker and an attack picker.**
-/// Two cursors is two things to learn and a mode to be in the wrong one of.
-/// A stage has a midboss and a boss, and stage three has seventeen attacks
-/// between them -- more than one plate holds -- so the list scrolls, and that
-/// is still one cursor.
+/// @desc The attack list for attack practice: every attack of every boss on
+///       the stage chosen on the rack (`global.stage_def`), as one scrolling
+///       list with a heading per boss.
 
 stage = global.stage_def ?? stage_ziggy_def();
 bosses = practice_bosses(stage);
 
-// The list, built once. **Headings and attacks in one array**, because the
-// thing being drawn is one column and the thing being moved through is one
-// column; keeping them apart would mean two loops that have to agree about
-// where every row is, which is the arithmetic that puts a cursor next to the
-// wrong line.
+// Headings and attacks in one array of rows.
 rows = [];
 picks = [];        // which entries in `rows` the cursor may land on
 for (var _b = 0; _b < array_length(bosses); _b++) {
@@ -38,12 +24,7 @@ for (var _b = 0; _b < array_length(bosses); _b++) {
             spell: (_p.kind == AttackKind.Spell),
             col: _p.col,
             time: _p.time,
-            // What span of the bar this attack occupies. It is the one fact
-            // about an attack that is invisible from inside it and the first
-            // thing anybody tuning the table wants to see -- a phase given
-            // five per cent of a boss's health is over before its pattern has
-            // finished its first cycle, and the table is the only place that
-            // is legible.
+            // The span of the boss's health bar this attack occupies.
             hp_from: _from,
             hp_to: _p.hp_end,
         });
@@ -51,9 +32,7 @@ for (var _b = 0; _b < array_length(bosses); _b++) {
     }
 }
 
-// Land on whichever attack was practised last, so retrying a neighbouring one
-// is one keypress rather than a walk back down the list. Zero on the first
-// visit, and after `global.practice` has been cleared by anything else.
+// Start on the attack practised last, if any.
 pick = 0;
 var _was = global.practice;
 if (_was != undefined) {
@@ -66,17 +45,10 @@ cursor = pick;
 t = 0;
 enter_t = 0;
 
-// ---- where every row is ----------------------------------------------------
+// ---- row layout, shared by Step (scrolling) and Draw ----------------------
 //
-// **Measured once, here, and read by both Step and Draw.** The list scrolls
-// now -- stage three has seventeen attacks and the plate holds about eleven --
-// and a scroll is two events agreeing about row positions; working them out in
-// Draw alone, as the list used to, would leave Step unable to say where the
-// cursor is.
-//
-// `row_y` is each row's centre measured from the first row's. A heading after
-// the first stands a little further off the list above it than one row pitch,
-// which is what separates one boss's attacks from the next.
+// `row_y` is each row's centre relative to the first row's; headings after
+// the first get extra space above them.
 row_pitch = 52;
 row_head = 74;
 list_top = 220 + 66;              // the first row's centre, on screen
@@ -89,22 +61,16 @@ for (var _i = 0; _i < array_length(rows); _i++) {
 }
 list_span = (array_length(rows) > 0) ? row_y[array_length(rows) - 1] : 0;
 
-// How much of that span the plate can show. The plate stops where it always
-// did, 150 above the foot of the screen, and the last visible centre sits 40
-// inside it -- so a list that fits is drawn exactly as it was before any of
-// this existed.
+// How much of the list the plate can show (the plate ends 150px above the
+// bottom of the screen; the last visible row centre is 40px inside it).
 list_window = min(list_span, (GAME_H - 150 - 40) - list_top);
 
-// Opened already scrolled to the cursor, rather than easing down to it from
-// the top every time the screen is entered.
+// Start already scrolled to the cursor.
 scroll_want = (array_length(picks) > 0)
     ? practice_list_scroll(0, row_y[picks[pick]], list_span, list_window,
                            row_head + 26)
     : 0;
 scroll = scroll_want;
 
-// **The stage's own world behind it**, so the screen is about a place rather
-// than about a list. The fallback matters: `make_bg` is `undefined` on every
-// unbuilt stage, and a screen reached down some future path with one of those
-// selected would otherwise die before its first frame.
+// The stage's own background (unbuilt stages have no `make_bg`).
 bg = (stage.make_bg != undefined) ? stage.make_bg() : bg_brimstone();

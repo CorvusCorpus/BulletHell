@@ -1,60 +1,16 @@
 #!/usr/bin/env python3
-"""Generate every bullet sprite, and the table the engine reads them through.
+"""Generate every bullet sprite, and `scripts/bullet_table/bullet_table.gml`.
 
-**One sprite per shape, one frame per colour.** Eighteen shapes across fourteen
-hues is 252 combinations, and 252 GameMaker sprites would be 252 `.yy` files,
-252 entries in the `.yyp`, and a texture atlas nobody could reason about. So a
-shape is one sprite whose frames are its colours, and drawing a bullet is
-`draw_sprite_ext(spr, colour, ...)`. Animated shapes fold both axes into the
-one index: `frame = colour * frames + tick`, which `bullet_frame` in
-`danmaku_functions` is the only thing allowed to compute.
-
-**Oriented shapes point RIGHT at angle zero**, because GameMaker's `direction`
-0 is right and `image_angle` is measured the same way. Drawing them pointing up
--- which is how a Touhou sheet is usually laid out -- would mean every draw
-call carrying a `- 90`, and the one that forgets it is a bullet that is
-visually sideways while being mechanically correct, which is the worst kind of
-bug to look at.
-
-**This file is the single source of truth for a bullet's hit radius**, not just
-its picture, and it writes `scripts/bullet_table/bullet_table.gml` to say so.
-The radius and the sprite have to agree -- a 36px ball with an 11px radius is a
-promise about where the player may fly, and if the number lived in GML while
-the picture lived here the two would be edited apart within a week. The flame
-is the case that proves it: it is 66x42 of picture and 9.5 of hitbox, because
-the tail is not the bullet.
-
-
-The redesign
-------------
-
-**The first set of these read as sweets, and that was a failure of the
-rendering model rather than of the shapes.** Every bullet went through
-`orb_field` or `shade_shape`, both of which light a silhouette the way a
-photographer lights a bead -- a smooth radial ramp from a large white centre
-out to a hue, plus a specular kicked up and to the left. Those two moves are
-the entire visual grammar of a boiled sweet, and fourteen hues of it is a bag
-of jelly beans. Reported, accurately, as belonging in a match-three game rather
-than in a fantasy shooter.
-
-The new model is in `art_common` under "Cut bodies" and the argument is written
-out there. What it changes here is that **a shape is no longer a silhouette.**
-It is up to four masks -- what exists, what is engraved into it, which planes
-face the light, and where the small hot centre is -- because authored internal
-structure is the whole of the difference between a shape that looks generated
-and one that looks designed, and no shading model buys it.
-
-So every one of these is now a *cut* object: a gem with a table and facet
-breaks, a kunai with a collar and a spine, a talisman with a border and a
-glyph, a rune tile with a lit sigil on it. What survived the rewrite is the
-list of names, because eighteen `BSHAPE_*` macros are a contract with the
-content, and the hit radii, because a picture is allowed to change without the
-difficulty changing with it.
-
-**One name did not survive: `heart` is now `rune`.** A heart is the single most
-cute-coded shape in the genre and no amount of bevelling makes it read as
-somebody's warding sigil; it was also referenced by nothing outside the
-generated table, so the swap cost one line in a file this script writes anyway.
+- One sprite per shape, one frame per colour, so a bullet is drawn with
+  `draw_sprite_ext(spr, colour, ...)`. An animated shape folds both into one
+  index, `colour * frames + tick`, which `bullet_frame` in
+  `danmaku_functions` computes.
+- Oriented shapes point right at angle 0, like GameMaker's `direction`.
+- This file is the only source of a bullet's hit radius. The table is written
+  from the same catalogue as the pictures, so the two can't drift apart. (The
+  flame is 66x42 of picture and 9.5 of hitbox; its tail isn't the bullet.)
+- Each shape is a cut body (see "Cut bodies" in `art_common`): up to four
+  masks (body, groove, bevel, core) rather than a shaded silhouette.
 
 Usage:
     python tools/make_bullets.py          # -> sprites + bullet_table.gml
@@ -74,9 +30,8 @@ import gm_new
 
 SS = A.SS
 
-# The mask-drawing kit lives in `art_common` beside the shading it feeds,
-# because the shards in `make_fx` are cut bodies too and there is no second
-# right place for it.
+# The mask-drawing kit is in `art_common` (the shards in `make_fx` use it too).
+# Shapes are drawn in final pixels; `Cut` applies the supersample factor.
 Cut = A.Cut
 _ngon_pts = A.ngon_pts
 _star_pts = A.star_pts
@@ -84,40 +39,18 @@ _polar = A.polar
 
 
 # ---------------------------------------------------------------------------
-# Drawing the masks
+# The round family: one sealed bead at four sizes
 #
-# Everything below is in FINAL pixels -- `Cut` scales on the way in, so a shape
-# function never has to think about the supersample factor. Same bargain
-# `art_common.Canvas` makes, for the same reason.
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# The round family: four sizes of one sealed bead
-#
-# **They are the same construction at four sizes rather than four different
-# beads**, which is what makes a screen carrying all of them read as one
-# arsenal: a dark bezel, an engraved hoop, a lifted inner field, ticks struck
-# through the outer band, and a small hot core. It is `spr_boss_sigil`'s
-# language -- rings and marks -- at a fortieth of the size, which is the point:
-# a bullet a boss casts should look like something the boss's own circle
-# produced.
-#
-# **The first pass of this was a brilliant cut seen from above** -- a hexagonal
-# table with six facet breaks running out to the girdle -- and what six equal
-# panels round a hexagon actually draws is a football. The failure is
-# instructive and it is not about hexagons: any structure with the same order
-# of symmetry as the silhouette, repeated at the same scale all the way to the
-# edge, panels the shape instead of cutting it. What separates a bezel from a
-# panel is that the bezel is *concentric* and the marks in it are small.
-#
-# What scales with size is the amount of structure, never the width of the
-# bands -- see `edge_dist` for why.
+# A dark bezel, an engraved hoop, a lifted inner field, ticks through the
+# outer band and a small hot core (the rings-and-marks language of
+# `spr_boss_sigil`). Bigger sizes get more structure, not wider bands (see
+# `edge_dist`).
 # ---------------------------------------------------------------------------
 
 def sh_pellet(w, h, **_):
-    """Too small for a hoop, so it is the bezel alone: a cut hexagonal bead
-    with a hot centre. At twenty-four pixels the six straight edges are the
-    entire difference between a bead and a bubble."""
+    """Too small for a hoop: the bezel alone, a cut hexagonal bead with a hot
+    centre.
+    """
     c = Cut(w, h)
     c.ngon("body", c.cx, c.cy, 9.0, 6)
     c.ngon("core", c.cx, c.cy, 3.4, 6)
@@ -129,10 +62,8 @@ def _seal(c, r_body, r_ring, ring_w, ticks, tick_w, core_r, inner=None,
           alt=None):
     """A sealed bead: bezel, engraved hoop, lifted field, ticks, core.
 
-    The field inside the hoop is lifted to two thirds rather than to the full
-    `bevel`, because a hard step from a saturated bezel to a pale disc is a
-    fried egg -- what is wanted is enough of a value break for the hoop to read
-    as engraved and no more.
+    The field inside the hoop is lifted only part way (`v=160`), enough for the
+    hoop to read as engraved.
     """
     cx, cy = c.cx, c.cy
     c.disc("body", cx, cy, r_body)
@@ -141,10 +72,8 @@ def _seal(c, r_body, r_ring, ring_w, ticks, tick_w, core_r, inner=None,
 
     n, r0, r1 = ticks
     for i in range(n):
-        # **Alternating lengths where there are enough of them to count.**
-        # Twelve equal ticks evenly spaced round two concentric hoops is a
-        # clock face; long-short-long is a compass rose, which is the thing a
-        # boss's own sigil is drawn out of.
+        # With `alt`, every other tick starts further out, so the ticks
+        # alternate long and short.
         start = alt if (alt is not None and i % 2) else r0
         c.spoke("groove", cx, cy, i * 360.0 / n + 180.0 / n, start, r1, tick_w)
 
@@ -164,12 +93,8 @@ def sh_ball(w, h, **_):
 
 
 def sh_sphere(w, h, **_):
-    """The big one, and the only bullet in the set with room for a ward on it.
-
-    Twelve ticks struck through the outer band, plus a second hoop inside the
-    first. At the size this is fired at, a body with no incident in it is the
-    one thing that reads as unfinished -- and marks that stop well short of the
-    core are what keep the incident from becoming panelling.
+    """The largest bead: twelve alternating ticks through the outer band, and a
+    second hoop inside the first.
     """
     return _seal(Cut(w, h), 37.0, 24.0, 2.1, (12, 26.4, 35.2), 2.0, 9.0,
                  inner=(14.0, 1.8), alt=31.0)
@@ -180,8 +105,9 @@ def sh_sphere(w, h, **_):
 # ---------------------------------------------------------------------------
 
 def sh_ring(w, h, **_):
-    """A segmented seal: an annulus with a lit channel down it, cut through at
-    the diagonals so it reads as a *made* thing rather than as a washer."""
+    """A segmented seal: an annulus with a lit channel, cut through at the
+    diagonals.
+    """
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
     c.annulus("body", cx, cy, 20.0, 11.5)
@@ -193,13 +119,7 @@ def sh_ring(w, h, **_):
 
 
 def sh_bubble(w, h, **_):
-    """A containment circle: two concentric hoops braced by four spokes.
-
-    **Spokes rather than a wider wall.** The thing this has to say at seventy-
-    six pixels is that it is hollow and deliberate; a fat ring says neither,
-    and it is the only shape in the set whose interior the player may safely
-    stand in, so the interior has to be unmistakably interior.
-    """
+    """A containment circle: two concentric hoops braced by four spokes."""
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
     c.annulus("body", cx, cy, 34.0, 27.0)
@@ -218,11 +138,8 @@ def sh_bubble(w, h, **_):
 # ---------------------------------------------------------------------------
 # The oriented family
 #
-# Every one of these points RIGHT, and every one of them carries a blade of
-# light down its own axis rather than a highlight in a corner. **An axial core
-# is what says "travelling"** -- it is the only kind of bright mark that does
-# not move when the sprite rotates, so a fan of forty of them fanning out
-# reads as forty things going somewhere rather than as forty lit beads.
+# Every one points right, and its core is a blade of light along its own
+# axis.
 # ---------------------------------------------------------------------------
 
 def _blade(cx, cy, x_nose, x_tail, half):
@@ -231,10 +148,9 @@ def _blade(cx, cy, x_nose, x_tail, half):
 
 
 def sh_rice(w, h, **_):
-    """The small workhorse. A hexagonal lozenge, not an ellipse -- at thirty-
-    four pixels the straight edges are the entire difference between a shard of
-    something and a grain of rice, and there are six hundred of these on screen
-    at once."""
+    """The small workhorse: a hexagonal lozenge rather than an ellipse, so it
+    reads as a shard.
+    """
     c = Cut(w, h)
     cy = c.cy
     c.poly("body", [(32, cy), (23, cy - 7.5), (9, cy - 7.5),
@@ -245,16 +161,8 @@ def sh_rice(w, h, **_):
 
 
 def sh_oval(w, h, **_):
-    """A polished bead: a chamfered capsule with a table cut along it.
-
-    Same construction as the crystal below on a blunt body, which is
-    deliberate -- one cut repeated across the oriented shapes is a house style
-    where three different treatments would be a collection.
-
-    **The first version banded it instead**, with a pair of engraved shoulders
-    top and bottom, and what two short vertical marks either side of a bright
-    axis actually draws is the contact pad of a SIM card. Anything laid across
-    the travel direction on a shape this rectangular reads as machined.
+    """A polished bead: a chamfered capsule with a table cut along it (the
+    crystal's construction on a blunt body).
     """
     c = Cut(w, h)
     cy = c.cy
@@ -270,13 +178,7 @@ def sh_oval(w, h, **_):
 
 
 def sh_dart(w, h, **_):
-    """A kunai: point, barbed blade, collar, shaft.
-
-    **Four pieces rather than a triangle**, because a triangle at forty-six
-    pixels is a wedge of colour and the step where the blade meets the collar
-    is what the eye reads as a *made* weapon. The old one was drawn as a
-    chevron on a stick and photographed as clip art.
-    """
+    """A kunai: point, barbed blade, collar, shaft."""
     c = Cut(w, h)
     cy = c.cy
     c.poly("body", [(44, cy), (24, cy - 11.0), (15, cy), (24, cy + 11.0)])
@@ -293,13 +195,7 @@ def sh_dart(w, h, **_):
 
 
 def sh_needle(w, h, **_):
-    """A lance: spike, guard, haft.
-
-    The guard is three pixels of sprite and it is what stops this reading as a
-    sliver of light. **A needle with nothing behind its point has no scale** --
-    it could be six pixels long or sixty -- and the step at the guard is the
-    only thing in the silhouette that says which.
-    """
+    """A lance: spike, guard, haft (the guard gives it a sense of scale)."""
     c = Cut(w, h)
     cy = c.cy
     c.poly("body", [(61, cy), (23, cy - 5.7), (23, cy + 5.7)])
@@ -315,25 +211,8 @@ def sh_needle(w, h, **_):
 
 
 def sh_card(w, h, **_):
-    """An ofuda: a paper slip, swallowtailed at the back, with an incantation
-    burning along it.
-
-    **It was dark ink on a pale field for one pass and that was two mistakes.**
-    A near-white body with a thin coloured edge is a bullet whose hue lives in
-    two pixels, which is fourteen colours reduced to one. And a pale rectangle
-    with a dark frame, a clipped leading corner and three horizontal marks in
-    it is a *luggage tag* -- which is exactly what it photographed as, and no
-    amount of redrawing the marks was going to fix a silhouette that was the
-    problem.
-
-    So the silhouette changed instead: a pennant with a point at the front and
-    a V cut out of the tail, which is a shape nothing in an airport has. The
-    writing is one continuous zigzag stroke rather than ruled lines, because
-    three stacked bars at this size is a barcode for the same reason.
-
-    It carries an *inscription* where the `rune` tile carries one figure, and
-    that is the whole of what keeps two glyph-bearing shapes from reading as
-    one idea drawn twice.
+    """An ofuda: a paper slip with a point at the front and a V cut out of the
+    tail, with an incantation burning along it as one zigzag stroke.
     """
     c = Cut(w, h)
     cy = c.cy
@@ -351,12 +230,8 @@ def sh_card(w, h, **_):
 
 
 def sh_crystal(w, h, **_):
-    """A cut shard, five facets of it visible.
-
-    The case that proves the whole approach: a stone has no curvature at all,
-    and everything the eye reads as a stone is flat planes meeting at angles.
-    A silhouette shaded by depth makes a pillow out of it; a table, two ridges
-    and a groove along each make a stone.
+    """A cut shard, five facets of it visible: a table, two ridges and a groove
+    along each.
     """
     c = Cut(w, h)
     cy = c.cy
@@ -377,11 +252,8 @@ def sh_crystal(w, h, **_):
 # ---------------------------------------------------------------------------
 
 def sh_star(w, h, **_):
-    """A five-pointed spark with a ridge down every arm.
-
-    The ridge is the whole of it. A star shaded off its own depth is a star
-    *sticker*; a star with a lit spine running out to each tip and the valleys
-    between the arms cut dark is a star with facets.
+    """A five-pointed spark with a lit ridge down every arm and dark valleys
+    between them.
     """
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
@@ -395,11 +267,8 @@ def sh_star(w, h, **_):
 
 
 def sh_star6(w, h, **_):
-    """A hexagram, drawn as two triangles that visibly cross.
-
-    **The inner hexagon is engraved, and alternate arms are lit**, which is
-    what makes the two triangles read as woven rather than as one six-pointed
-    blob. A hexagram whose seam is invisible is a snowflake.
+    """A hexagram drawn as two triangles that visibly cross: the inner hexagon
+    is engraved and alternate arms are lit.
     """
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
@@ -419,16 +288,8 @@ def sh_star6(w, h, **_):
 
 
 def sh_rune(w, h, **_):
-    """A warding tile: a chamfered plate with a lit sigil struck into it.
-
-    **The glyph is the core, which is the opposite of the ofuda beside it.** A
-    talisman is paper somebody wrote on and a rune is a stone somebody charged,
-    so one has dark ink on a pale field and the other has a burning mark on a
-    coloured one -- and having both is what stops the two shapes reading as the
-    same idea at two angles.
-
-    This is the slot the heart used to be in. A heart cannot be restyled into
-    a warding sigil; it can only be replaced by one.
+    """A warding tile: a chamfered plate with a lit sigil struck into it (where
+    the card has an inscription, this has one figure).
     """
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
@@ -455,7 +316,7 @@ def sh_rune(w, h, **_):
 # ---------------------------------------------------------------------------
 
 def _tongue(x0, x1, cy, half0, half1, amp, freq, phase, n=26, taper=0.85):
-    """A tapered strip that sways along its length. Returns (outline, spine)."""
+    """A tapered strip swaying along its length. Returns (outline, spine)."""
     top, bot, spine = [], [], []
     for i in range(n + 1):
         t = i / n
@@ -469,25 +330,8 @@ def _tongue(x0, x1, cy, half0, half1, amp, freq, phase, n=26, taper=0.85):
 
 
 def sh_butterfly(w, h, frame=0, frames=4, **_):
-    """A moth. One swept wing a side, bitten along its trailing edge, with a
-    hindwing lobe behind it -- plus a head and two antennae.
-
-    **One wing per side and not four lobes**, which is the finding the previous
-    version arrived at and the one thing about it worth keeping: four lobes at
-    this size is a blob with sub-pixel notches in it.
-
-    **The notch is deep, and it is what makes two wings out of one.** Bitten
-    only a little, the forewing and the hindwing run into each other and the
-    whole side is a fan of straight lines with veins on it -- which reads as a
-    scallop shell.
-
-    **The first angular attempt at it drew a fighter jet**, and every part of
-    that was earned: a delta wing swept hard back, a long thin fuselage, a
-    bright line running the whole length of it and two pale streamers off the
-    front. So the wing is broad at its tip rather than pointed, the thorax
-    stops well short of both ends, the lit axis is short, and there are
-    antennae -- which are three pixels of sprite and the single cheapest thing
-    that says *insect* rather than *aircraft*.
+    """A moth: one swept wing a side, notched deeply along its trailing edge so
+    it reads as a forewing and a hindwing, plus a head and two antennae.
     """
     c = Cut(w, h)
     cy = c.cy
@@ -503,9 +347,8 @@ def sh_butterfly(w, h, frame=0, frames=4, **_):
                 (11, cy + sign * 4.5 * s),
                 (20, cy + sign * 2.6)]
         c.poly("body", wing)
-        # **The forewing is a lit plane and the hindwing is not**, which is
-        # what tells them apart at 1:1 -- where the notch between them is two
-        # pixels and the veins are one, and neither survives.
+        # The forewing is lit and the hindwing isn't, which is what tells them
+        # apart at 1:1.
         c.poly("bevel", wing[0:4] + [wing[4]])
         c.line("groove", [(39, cy + sign * 3.4), (29, cy + sign * 18.0 * s)],
                1.3)
@@ -520,25 +363,16 @@ def sh_butterfly(w, h, frame=0, frames=4, **_):
     return c
 
 
-# The flame's head, in final pixels. **Mirrored by `ORIGINS` rather than
-# guessed at twice**: the hitbox is the head and the sprite has to pivot about
-# it, so the two numbers cannot be allowed to be edited apart.
+# The flame's head, in final pixels. It is the hitbox, and `ORIGINS` puts the
+# sprite's origin on it.
 def _flame_head(w, h):
     return (w - h * 0.30 - 2.0, (h - 1) / 2.0)
 
 
 def sh_flame(w, h, frame=0, frames=4, **_):
-    """A wisp: a round hot head with a tail that undulates away behind it and
-    splits into two tongues at its end.
-
-    **Three things had to be true and the first version had none of them.**
-    The tail has to *leave the head*, so it starts at the head's own centre and
-    the head is laid over it -- drawn as a separate strip butted up against a
-    pointed head, the two disagree and what appears between them is a notch.
-    The forks have to branch from the back half; two short symmetric tongues
-    either side of the neck are fletching, and with a pointed head in front of
-    them the whole thing was an arrow. And the head has to be *round*: fire has
-    no leading edge, and a pointed one made this a dart with a flame decal.
+    """A wisp: a round hot head, and a tail that undulates away behind it with
+    three tongues forking off it. The tail starts at the head's centre and the
+    head is drawn over it, so there is no notch where they meet.
     """
     c = Cut(w, h)
     hx, cy = _flame_head(w, h)
@@ -562,9 +396,7 @@ def sh_flame(w, h, frame=0, frames=4, **_):
     c.line("groove", [(x, y - 3.8) for x, y in spine[3:18]], 1.2)
     c.line("groove", [(x, y + 3.4) for x, y in spine[4:20]], 1.1)
 
-    # **The core is axial, not a disc.** A round white centre in a round head
-    # is one of the four round bullets with a tail glued to it, and at speed
-    # that is what it reads as; a hot streak lying along the travel is fire.
+    # The core is a streak along the direction of travel, not a disc.
     c.line("core", [(hx + 6.5, cy)] + spine[:5], 5.0)
     c.line("core", [(hx + 2.0, cy)] + spine[:11], 2.4)
     c.blur("core", 0.40)
@@ -572,9 +404,9 @@ def sh_flame(w, h, frame=0, frames=4, **_):
 
 
 def sh_mote(w, h, frame=0, frames=4, **_):
-    """A four-point spark, which is the house motif -- the same figure is on
-    the console's divider rules and on its crest. It pulses rather than
-    spinning, because a spinning spark is a pinwheel."""
+    """A four-point spark, the same figure as the console's divider rules and
+    crest. It pulses over its frames (and spins by default; see `SPIN`).
+    """
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
     p = 0.84 + 0.16 * math.cos(2 * math.pi * frame / frames)
@@ -589,13 +421,9 @@ def sh_mote(w, h, frame=0, frames=4, **_):
 # ---------------------------------------------------------------------------
 # The catalogue
 #
-# w/h are the FINAL sprite size and include the margin the contour and the
-# bloom need; `hit` is the radius the engine collides with and is a property of
-# the drawn body, not of the canvas.
-#
-# **The hit radii are unchanged from the set this replaced.** A picture is
-# allowed to change without the difficulty changing with it, and a redesign
-# that quietly moved eighteen hitboxes would be impossible to review.
+# w/h are the final sprite size, including the margin the contour and bloom
+# need; `hit` is the collision radius, a property of the drawn body rather
+# than of the canvas.
 # ---------------------------------------------------------------------------
 
 SHAPES = [
@@ -620,30 +448,17 @@ SHAPES = [
     ("mote",      30, 30, 5.6,  False, 4, sh_mote,     dict(contour=1.0)),
 ]
 
-# How fast a shape turns on its own, in degrees per frame. `fire` reads it into
-# the bullet's `spin`, which the engine has always had and which nothing but two
-# hand-written patterns ever set.
-#
-# **The star-shaped ones turn and everything else does not**, which is the
-# genre's convention and is worth having as a default rather than as something
-# a pattern remembers: a spell that spun half its stars and not the other half
-# would read as a bug in the spell. The rates go down as the shape goes up in
-# size, because what the eye tracks is a *point* coming round and a big shape's
-# points cover more ground per degree.
-#
-# Nothing oriented may have one. There `angle` is the heading, so a spin would
-# aim the sprite somewhere the bullet is not going -- `test_bullet_table`
-# asserts it rather than trusting this table to stay right.
+# Default spin in degrees per frame; `fire` copies it into the bullet's `spin`.
+# Oriented shapes get none, because their `angle` is their heading
+# (`test_bullet_table` checks this).
 SPIN = {
     "star":  2.2,
     "star6": 1.5,
     "mote":  2.8,
 }
 
-# The flame's hitbox is its head, and the head is at the right-hand end. The
-# origin has to sit on the hitbox or the bullet pivots about its tail, which
-# looks like a bullet that swings when it turns. Anything not named here is
-# centred.
+# Origins other than the centre. The flame pivots on its head, which is its
+# hitbox.
 ORIGINS = {
     "flame": lambda w, h, pad: (int(round(_flame_head(w, h)[0])) + pad,
                                 h // 2 + pad),
@@ -651,11 +466,8 @@ ORIGINS = {
 
 
 def _shape_pad(opts):
-    """The empty canvas `cut_finish` will add round this shape.
-
-    Read here as well as there because the flame's origin is on its head and
-    the table records the sprite's real size -- both of which have to agree
-    with a number `cut_finish` works out on its own.
+    """The empty canvas `cut_finish` will add round this shape. The flame's
+    origin and the table's sprite sizes both depend on it.
     """
     return A.cut_pad(opts.get("contour", 2.0), opts.get("bloom_r", 2.2))
 
@@ -708,16 +520,11 @@ def main():
     A.preview(sheets, os.path.join(A.PREVIEW, "bullets_sheet.png"),
               cols=len(A.BULLET_HUES), bg=(18, 20, 30))
 
-    # ...and the same again over a bright, busy ground, because the whole point
-    # of the core-inside-rim rule is that a bullet reads against *both*, and a
-    # sheet on black only ever proves half of it.
+    # The same over a bright, busy ground.
     _bright_ground(sheets, len(A.BULLET_HUES)).save(
         os.path.join(A.PREVIEW, "bullets_bright.png"))
 
-    # ...and once more at four times the size, three hues per shape and every
-    # frame of the animated ones. **A bullet's structure is the thing being
-    # reviewed and it is two pixels wide**, so a sheet at 1:1 can say whether
-    # the set reads and cannot say whether any of it is drawn correctly.
+    # And at 4x: three hues per shape, every frame of the animated ones.
     _zoom_sheet()
 
     if not preview_only:
@@ -770,16 +577,10 @@ def _bright_ground(images, cols, pad=10):
     return sheet
 
 
-TABLE_HEADER = '''/// @desc The bullet catalogue -- GENERATED by tools/make_bullets.py.
-///
-/// **Do not edit this file.** A bullet's hit radius and its picture have to
-/// agree, and the picture is drawn in Python; a radius maintained by hand here
-/// would drift from the sprite it describes within a week. Change
-/// `tools/make_bullets.py` and re-run it.
-///
-/// A shape is one sprite whose frames are its colours. An animated shape folds
-/// both axes into the one index, and `bullet_frame` is the only thing allowed
-/// to compute it.
+TABLE_HEADER = '''/// @desc The bullet catalogue -- GENERATED by tools/make_bullets.py. Do not
+///       edit: each hit radius is defined there beside its picture. A shape
+///       is one sprite whose frames are its colours; `bullet_frame` computes
+///       the frame index.
 
 '''
 

@@ -1,46 +1,18 @@
 #!/usr/bin/env python3
 """The Archives of Bequeathed Memories: the surfaces of Mika's hall.
 
-**Stage one is a floor, stage two is a corridor, and this is a room.** The
-grove is billboards in fog -- a wood is negative space with objects standing
-in it, and nothing in it is a continuous surface. A library is the opposite:
-its defining feature is that it is *enclosed*, by two walls of shelving, a
-marble floor and a coffered ceiling, all of which recede to one point. That is
-architecture rather than scenery, and architecture is drawn as surfaces.
+Stage three is a room: two walls of shelving and a marble floor receding to
+one point, open to the night sky. `scripts/bg_sanctum` builds it in 3D from
+the materials made here, plus the things that stand in it and the sky.
 
-So what this file makes is not a set of props. It is the four materials the
-hall is built out of, each authored as one tile and laid down by
-`scripts/bg_sanctum` in three dimensions -- plus the handful of things that
-stand in it.
-
-Three decisions run through all of it:
-
-**Gold is a line, never a fill.** The reference images are warm gold over
-every surface, and a danmaku field cannot be: Mika fires gold, amber and bone,
-and his rings are baked gold at a hundred and sixty pixels. A gilded room
-whose gold is *area* puts the scenery at the same hue and the same value as
-the things that have to be dodged, which is the `Cinder Waltz` finding at
-architecture scale. What the reference is actually doing -- squint at it -- is
-a very dark ground with a small area of very bright gold on it, which is how
-gilt bookbinding works and is the rule the console is already built on. So the
-marble is near black and the inlay is a hairline; the shelves are near black
-and the rules along them are hairlines. Measured over the whole tile, each of
-these is under a tenth gold by area.
-
-**Every surface ships as a body and an emissive.** The body is the material
-and the emissive is the light on it, drawn additively in a second pass. That
-split is what lets a lamp in an alcove actually *glow* -- brighter than white,
-blooming over its own surround -- rather than being a pale patch painted onto
-a wall, and it is what lets the hall's light change without redrawing a single
-texture. It is the same decision `make_grove.py` records for the moonward rim,
-one step further: there the rim was a fixed light on a solid, here the light
-is a layer of its own.
-
-**A moulding is a bright line above a dark one.** Every projecting edge in
-here -- the cornice, the shelf boards, the plinth, the inlay -- is drawn as a
-lit top and a shadowed underside, because that pair is the whole of what the
-eye reads as relief. A single flat band of gold is a stripe painted on a wall;
-the same band with a dark line under it is a thing sticking out of it.
+- The marble and shelving are near black, with gold as hairline inlay and
+  mouldings rather than area, so the scenery doesn't share hue and value
+  with Mika's gold, amber and bone bullets.
+- Lights and figures ship with a second layer drawn additively: `_lit` for
+  a light (the orbs, the lamps, the chamber's windows) and `_rim` for the
+  light on a figure.
+- A projecting edge (cornice, shelf board, plinth, inlay) is a lit top over
+  a shadowed underside (`moulding`).
 
 Usage:
     python tools/make_sanctum.py
@@ -58,10 +30,8 @@ import gm_new
 
 SS = 2
 
-# The hall's palette. Deliberately *saturated* and deliberately dark -- the
-# grove's own correction, which is that value and chroma are different
-# budgets: a deep indigo at the same value as a neutral grey costs the danmaku
-# nothing and is the difference between a room and a photocopy of one.
+# The hall's palette: dark but saturated (a deep indigo at the value of a
+# neutral grey costs the bullets no contrast).
 VOID      = (7, 7, 11)
 STONE     = (21, 21, 29)
 STONE_LIT = (38, 38, 50)
@@ -82,11 +52,9 @@ CREST_RED = (94, 20, 24)
 # the dark disc set inside the crest's ring
 CREST_EYE = (15, 8, 10)
 NAVY      = (16, 17, 38)
-# The statues, as three stops of one material rather than one colour: what
-# reads as polished stone is the *distance* between its shaded and its lit
-# face, plus a specular that is narrower and cooler than either. Gold is the
-# same three stops with the distance opened further and the highlight wider,
-# which is the whole of what separates metal from stone at this size.
+# The statues, as three stops of one material: polished stone is the distance
+# between its shaded and lit faces, plus a narrower, cooler specular. Gold is
+# the same three stops opened further, with a wider highlight.
 CAT_DARK  = (9, 9, 13)
 CAT_LIT   = (54, 56, 70)
 CAT_SPEC  = (138, 152, 184)
@@ -94,19 +62,15 @@ AU_DARK   = (36, 26, 10)
 AU_LIT    = (206, 164, 74)
 AU_SPEC   = (255, 238, 182)
 
-# One bay of shelving, and one square of floor and of ceiling. Big enough that
-# a bay passing the lens at two metres is not a blur: the nearest wall quad
-# covers most of the field's height, so anything under a thousand pixels here
-# is visibly soft.
+# One bay of shelving, and one square of floor. The nearest wall quad covers
+# most of the field's height, so anything much smaller here is visibly soft.
 WALL_W, WALL_H = 512, 1024
 FLOOR_N = 512
 
-# **The chamber's half-width on screen, in design pixels, and it is shared
-# with `HALL_ROT_HW` in `scripts/constants`.** The painting's perspective is
-# computed from it -- how much a gallery ring is foreshortened depends on how
-# far above the eye it is *in the finished frame*, not on where it falls on
-# the canvas -- so a card drawn at one size and hung at another is a card
-# whose rings curve by the wrong amount. `test_hall_sky` checks the two agree.
+# The chamber's half-width on screen, in design pixels. The painting's
+# perspective is computed from it, so it must match the size the card is hung
+# at; `check_rotunda_scale_agrees` derives that from `HALL_ROT_HW`,
+# `HALL_ROT_Z` and the lens and checks the two agree.
 HALL_ROT_HW_SCREEN = 401.0
 
 
@@ -114,27 +78,13 @@ HALL_ROT_HW_SCREEN = 401.0
 # Helpers
 # ---------------------------------------------------------------------------
 def canvas(w, h, col=(0, 0, 0)):
-    """A drawing surface for colour, and nothing else.
+    """A drawing surface for colour only (RGB).
 
-    **`ImageDraw.Draw(im, "RGBA")` replaces the destination pixel, alpha
-    included -- it does not composite.** A fold painted down a banner at alpha
-    46 does not darken the cloth, it sets the cloth's alpha *to* 46: a hole in
-    the shape of the fold. A value ramp painted down an opaque wall makes the
-    wall translucent. Measured on the first pass, 46 per cent of the area
-    inside the banner's own cloth came out below alpha 250, and on screen that
-    is a tabard with the bookshelf showing through it.
-
-    Nothing in the tooling could see it. The sprite is a perfectly valid PNG,
-    `check_sprites_not_blank` finds plenty of ink, and the defect only exists
-    once the thing is drawn over something else -- so it was reported off a
-    screenshot, which is what `tools/shot.py` is for.
-
-    The fix is not to be careful with alpha: it is to have no alpha to be
-    careful with. Colour is drawn on an **RGB** surface, where the same
-    translucent call blends exactly as intended because there is no alpha
-    channel to overwrite, and the silhouette is carried separately as a mask.
-    A hole is then not something to avoid -- it is something that cannot be
-    expressed.
+    `ImageDraw.Draw(im, "RGBA")` replaces the destination pixel, alpha
+    included, rather than compositing, so a translucent fold painted on an RGBA
+    sprite punches a hole in it. Colour is drawn on an RGB surface, where
+    translucent calls blend as intended, and the silhouette is carried
+    separately as a mask.
     """
     im = Image.new("RGB", (w * SS, h * SS), col[:3])
     return im, ImageDraw.Draw(im, "RGBA")
@@ -167,14 +117,11 @@ def cut(im, mk, w, h):
 class Tee:
     """Draw to the colour surface and to the silhouette at the same time.
 
-    Every call is forwarded twice: once to the RGB canvas exactly as written,
-    and once to the mask with its fill and outline forced opaque. So the
-    silhouette is the union of every mark the prop makes, at full strength,
-    and a translucent fold contributes its *shape* to the outline while
-    contributing only its shading to the colour.
-
-    This is the half of the alpha fix that props need and tiles do not: a
-    wall tile is material edge to edge, where a Bastet has an outside.
+    Every call is forwarded twice: to the RGB canvas as written, and to the
+    mask with its fill and outline forced opaque. So the silhouette is the
+    union of every mark the prop makes, and a translucent fold contributes its
+    shape to the outline but only its shading to the colour. Props need this; a
+    tile is material edge to edge.
     """
 
     def __init__(self, dc, dm):
@@ -201,12 +148,7 @@ def rgba(c, a=255):
 
 
 def moulding(d, x0, y0, x1, y1, lit=GILT, shade=GILT_DARK, t=1):
-    """A projecting band: a lit top edge and a shadowed underside.
-
-    **The pair is the point.** One flat band of gold is a stripe painted on a
-    wall; the same band with a dark line under it is a thing standing out of
-    one, and every cornice, shelf board and plinth in this hall is that pair.
-    """
+    """A projecting band: a lit top edge over a shadowed underside."""
     s = SS
     d.rectangle([x0, y0, x1, y1], fill=rgba(shade, 255))
     d.rectangle([x0, y0, x1, y0 + t * s], fill=rgba(lit, 255))
@@ -214,15 +156,8 @@ def moulding(d, x0, y0, x1, y1, lit=GILT, shade=GILT_DARK, t=1):
 
 
 def spline(pts, n=16, closed=True):
-    """Catmull-Rom through the control points.
-
-    **Architecture is straight and an animal is not.** Every other outline in
-    this file is masonry, where a polygon through its own corners is the
-    shape; a cat's back is one continuous curve from the nape to the rump and
-    a polygon through it is a chain of flats, which at any size reads as
-    faceted. Densifying does not help -- more points on a straight segment are
-    still straight. A spline is what turns the control points into the curve
-    they describe.
+    """Catmull-Rom through the control points, for curved outlines such as a
+    cat's back (a polygon through the same points reads as faceted).
     """
     p = list(pts)
     m = len(p)
@@ -246,11 +181,8 @@ def spline(pts, n=16, closed=True):
 
 
 def bow(p0, p1, sag, n=16):
-    """A quadratic arc from `p0` to `p1`, sagging by `sag` in the middle.
-
-    What a ring round a tube shows in profile: the near half of it, which is
-    a curve bellying toward the viewer and therefore downward on the page. A
-    straight line between the same two points is a ring seen from nowhere.
+    """A quadratic arc from `p0` to `p1`, sagging by `sag` in the middle: the
+    near half of a ring round a tube, seen in profile.
     """
     mx, my = (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2 + sag
     out = []
@@ -289,11 +221,9 @@ def veining(d, w, h, seed, n=48, col=MARBLE_LT):
 
 
 def glyph_run(d, cx, y0, y1, w, seed, col=GILT, alpha=200):
-    """A cartouche of invented hieroglyphs.
-
-    **Marks, not letters.** At the size a pilaster is ever read these are four
-    pixels tall; what has to survive is the *rhythm* of a column of small
-    bright shapes, which is what says "this stone is written on".
+    """A cartouche of invented hieroglyphs: marks rather than letters, since at
+    the size a pilaster is read only the rhythm of small bright shapes
+    survives.
     """
     r = np.random.default_rng(seed)
     s = SS
@@ -340,36 +270,20 @@ def glyph_run(d, cx, y0, y1, w, seed, col=GILT, alpha=200):
 
 
 # ---------------------------------------------------------------------------
-# The wall: one bay of shelving
+# The wall: one bay of shelving, drawn flat
 #
-# **Three bays, as three frames of one sprite, and the hall picks between them
-# by a hash of which bay it is.** A wall that repeats every tile is wallpaper
-# however good the tile is; three in rotation with the choice hashed off the
-# bay index is a rhythm the eye cannot lock on to, and it costs two extra
-# frames rather than three times the geometry.
-#
-# **Half a pilaster at each edge.** Tiled, the two halves meet and make a
-# whole one on the join, so the seam falls down the middle of a column where
-# there is nothing to line up -- rather than at the edge of a shelf, where a
-# mismatch of one pixel reads as a crack.
+# Only the preview sheet draws a whole bay now; the hall builds its walls in
+# 3D from the materials further down (`books` is shared with them). Half a
+# pilaster at each edge, so tiled bays make whole pilasters on the joins.
 # ---------------------------------------------------------------------------
-# **Back to nearly the drawn values.** These were doubled when the books sat
-# at the *back* of a 120-unit recess, where four multiplications stood between
-# a spine and the screen -- and they stayed doubled after the books came
-# forward to the front of the shelf, where none of that applies. What that
-# produced was a wall of bright saturated colour: reported, accurately, as
-# having gone cartoonish. A library at night is dark bindings with a little
-# gilt on them.
+# Book bindings: dark, with a little gilt.
 BOOK_COLS = [(46, 20, 22), (22, 28, 52), (40, 33, 20), (17, 34, 31),
              (52, 40, 22), (28, 18, 36), (36, 24, 26), (20, 22, 30)]
 
 
 def books(d, x0, x1, y0, y1, seed):
-    """One shelf of spines.
-
-    Nothing in here is a rectangle of one colour: a spine gets a value, two or
-    three gilt bands, sometimes a label block, and sometimes it leans. A shelf
-    of upright even blocks reads as a bar chart.
+    """One shelf of spines: each gets a value, two or three gilt bands,
+    sometimes a label block, and sometimes a lean.
     """
     r = np.random.default_rng(seed)
     s = SS
@@ -420,9 +334,8 @@ def wall_bay(kind):
     ix0, ix1 = pil, W - pil           # the bay's interior
 
     # --- the ground: a value ramp down the wall -------------------------
-    # A hall this tall is lit from the lamps on the shelves, so the cornice
-    # goes into the dark. Drawn before anything else so every moulding sits
-    # in it rather than on it.
+    # The cornice goes into the dark. Drawn first, so every moulding sits in
+    # it.
     for y in range(0, H, 2 * s):
         t = y / H
         k = 0.22 + 0.78 * (1.0 - abs(t - 0.62) / 0.62) ** 1.5
@@ -431,9 +344,9 @@ def wall_bay(kind):
     # --- the interior ----------------------------------------------------
     top, bot = H * 0.115, H * 0.845
     if kind == 2:
-        # The alcove. A deep recess with an arched head, a plinth and an orb
-        # on it -- and the orb is the one genuinely bright thing on the wall,
-        # which is why it lives in the emissive rather than here.
+        # The alcove: a deep recess with an arched head, a plinth and an orb
+        # on it. The orb is the one bright thing on the wall, so it is in the
+        # emissive.
         d.rectangle([ix0, top, ix1, bot], fill=(4, 4, 7, 255))
         d.pieslice([ix0, top - (ix1 - ix0) * 0.5, ix1, top + (ix1 - ix0) * 0.5],
                    180, 360, fill=(4, 4, 7, 255))
@@ -549,9 +462,8 @@ def floor_tile():
     s = SS
     veining(d, N, N, 11, n=54)
 
-    # the inlay. A hairline of gold with a dark line inside it: the same
-    # moulding rule, laid flat -- which is what makes it read as let *into*
-    # the stone rather than painted on top of it.
+    # the inlay: a hairline of gold with a dark line inside it, so it reads
+    # as let into the stone
     def inlay(box, w=2.0, a=225):
         d.rectangle(box, outline=rgba(GILT, a), width=int(w * s))
         d.rectangle([box[0] + w * s, box[1] + w * s,
@@ -610,36 +522,15 @@ def floor_tile():
 # ---------------------------------------------------------------------------
 # ...and the rest of the pavement
 #
-# **A floor of one tile repeated is a floor with nothing in it.** The marble
-# above is a good square of stone and four of them across the nave is a grid,
-# which is what it was reported as: the same thing four times, left to right,
-# for the length of the hall. A grid has no *centre* -- and a hall with a
-# processional way down it is the one kind of room whose floor is entirely
-# about where its middle is.
-#
-# So the pavement is three courses rather than one, and they are three
-# different pieces of art at three different scales: a runner down the middle
-# that the player flies along, an ornamented border either side of it, and the
-# marble field out at the walls where the furniture stands. `bg_sanctum` sinks
-# the runner below the other two and faces the step in gilt, so the two lines
-# where the courses meet converge on the vanishing point -- which is the
-# cheapest perspective cue there is and the one a floor of repeated tiles
-# cannot have at all.
-#
-# **Both of these are periodic along the hall and neither is periodic across
-# it.** A bay abuts the next bay, so the long axis has to join seamlessly --
-# which is `fbm_field`'s `wrap_y` rule one project over, in the one dimension
-# that needs it here. Across, each has its own margins, because a course with
-# no edge of its own is a course that has to be given one by whatever is
-# beside it.
+# Three courses: a runner down the middle that the player flies along, an
+# ornamented border either side of it, and the marble field out at the walls.
+# `bg_sanctum` sinks the runner below the other two and faces the step in
+# gilt, so the joins converge on the vanishing point. Both tiles here are
+# periodic along the hall and not across it.
 # ---------------------------------------------------------------------------
 def _coil(d, x0, x1, y0, y1, n, col=GILT, a=190, t=1.4):
-    """A running spiral: the frieze that is actually Egyptian.
-
-    A Greek key is the reflex and it is the wrong country. What runs along a
-    New Kingdom ceiling is a coil -- a row of round spirals joined by a wave,
-    which is also the one border pattern that still reads as *turning* when it
-    is four pixels wide and most of it has gone.
+    """A running spiral frieze: round spirals joined by a wave (the Egyptian
+    border, rather than a Greek key).
     """
     s = SS
     w = x1 - x0
@@ -653,10 +544,8 @@ def _coil(d, x0, x1, y0, y1, n, col=GILT, a=190, t=1.4):
         d.ellipse([cx - r * 0.42, cy - r * 0.42, cx + r * 0.42,
                    cy + r * 0.42], outline=rgba(col, int(a * 0.8)),
                   width=max(1, int(t * s * 0.7)))
-        # **The wave joining this coil to the next, sampled rather than
-        # cornered.** Four points and a straight line between them draws a
-        # zigzag with rings threaded on it, which is a chain and not a coil;
-        # the frieze only reads as one turning line if the join curves.
+        # The wave joining this coil to the next, sampled as a curve
+        # (straight joins read as a chain).
         sgn = 1 if (i % 2 == 0) else -1
         pts = []
         for k in range(21):
@@ -698,21 +587,16 @@ def _winged_disc(d, cx, cy, size, col=GILT, a=215):
 
 
 def runner_tile(w=384, h=512):
-    """The processional runner: obsidian, and read along the hall.
-
-    **It is one tile across and many along**, which is the whole difference
-    between this and the marble. A field of squares has no direction; a runner
-    has exactly one, and everything on it -- the coils, the cartouches, the
-    rules down its edges -- is laid out along the way the player is flying.
+    """The processional runner: obsidian, one tile across and many along, with
+    everything on it laid out along the direction of flight.
     """
     im, d = canvas(w, h, OBSIDIAN)
     W, H = w * SS, h * SS
     s = SS
     veining(d, W, H, 23, n=20, col=(26, 27, 38))
 
-    # **The rules run the whole length, unbroken.** They are the two lines the
-    # eye follows to the vanishing point, and a rule interrupted by a motif is
-    # a rule that has stopped being a line and started being a row of dashes.
+    # The rules run the whole length unbroken: they are the lines the eye
+    # follows to the vanishing point.
     for x in (16 * s, W - 16 * s):
         d.rectangle([x - 2.2 * s, 0, x + 2.2 * s, H], fill=rgba(GILT, 225))
     # the dark line inboard of the bright one: the moulding rule, laid flat,
@@ -726,10 +610,9 @@ def runner_tile(w=384, h=512):
     _coil(d, 52 * s, 98 * s, 0, H, 8)
     _coil(d, W - 98 * s, W - 52 * s, 0, H, 8)
 
-    # **The chain down the middle, and it is periodic in h.** A cartouche at a
-    # quarter and at three quarters lies wholly inside the tile; the disc is
-    # drawn at both ends, so what lands on the joint between two bays is one
-    # motif rather than a seam.
+    # The chain down the middle, periodic in h: cartouches at a quarter and
+    # three quarters, and the disc at both ends, so the joint between bays
+    # lands on one motif.
     cx = W * 0.5
     d.rectangle([cx - 0.9 * s, 0, cx + 0.9 * s, H], fill=rgba(GILT_DIM, 110))
     _cartouche(d, cx, H * 0.25, 44 * s, 78 * s, 41)
@@ -747,12 +630,8 @@ def runner_tile(w=384, h=512):
 
 
 def border_course(w=96, h=288):
-    """The band between the runner and the marble, and the bay's threshold.
-
-    **One piece of art, used along the hall and across it.** A frieze that
-    tiles along its own length does not care which way it is laid, and having
-    one band rather than two is what keeps the pavement's two joints reading
-    as the same moulding turned through a right angle.
+    """The band between the runner and the marble, and the bay's threshold: one
+    frieze, used along the hall and across it.
     """
     im, d = canvas(w, h, STONE)
     W, H = w * SS, h * SS
@@ -763,9 +642,7 @@ def border_course(w=96, h=288):
     d.rectangle([11 * s, 0, 12 * s, H], fill=(0, 0, 0, 160))
     d.rectangle([W - 12 * s, 0, W - 11 * s, H], fill=(0, 0, 0, 160))
 
-    # **A lotus frieze: an open flower and a closed bud, taking turns.** The
-    # pair is the point -- a row of one shape is a texture, and a row of two
-    # shapes alternating is an ornament somebody laid out.
+    # A lotus frieze: an open flower and a closed bud, alternating.
     n = 8
     step = H / n
     cx = W * 0.5
@@ -795,39 +672,14 @@ def border_course(w=96, h=288):
 # ---------------------------------------------------------------------------
 # The sky
 #
-# **The hall has no roof, and that is the whole of what makes it read as a
-# room rather than as a corridor.** The first build capped it with a coffered
-# ceiling two and a half bays above the floor, with a starfield painted
-# *inside the coffers* -- which is a picture of a sky on the underside of a
-# lid, and a lid is exactly what a tunnel has. Everything in the frame was
-# bounded: floor, two walls, ceiling, four edges, and the eye had nowhere to
-# go.
-#
-# So the ceiling is gone and what is over the nave is the night. That costs
-# three pieces of art and buys the thing no amount of detail on a ceiling tile
-# could: **somewhere for the distance to be.** The orrery hangs in it, the
-# shafts of light fall out of it, and the wall tops now silhouette against
-# something instead of meeting a plane.
-#
-# All three are drawn white and tinted at draw time, for the reason
-# `make_ui.py` and `make_grove.py` both record: the sky's colour belongs to
-# the stage, and a stage whose sky turns has to be a tint and not a
-# regeneration.
+# The hall has no roof: over the nave is the night, with the orrery hanging
+# in it. All of it is drawn white and tinted at draw time.
 # ---------------------------------------------------------------------------
 def star_point(kind, n=48):
-    """One star: a hot point inside its own small bloom.
-
-    **Three magnitudes, not one sprite scaled.** A star enlarged is a blurry
-    disc, and a disc is a planet -- what says *star* is that the point at the
-    middle is very small and very bright and the halo around it is very faint.
-    That ratio cannot survive a scale, so the bright ones are drawn bright:
-    the tightest core, the widest halo, and a four-point spike which is the
-    one piece of pure convention in here. Nothing in the sky actually has
-    diffraction spikes; every picture of a bright star does.
-
-    Drawn white with the shape in the alpha, because these are added rather
-    than laid down -- so the vertex colour is free to say what colour the star
-    is and how far above the horizon it has had to shine through.
+    """One star: a very small, very bright point inside a faint bloom, at three
+    magnitudes (a scaled-up star reads as a disc); the brightest get a
+    four-point spike. White with the shape in the alpha, since stars are drawn
+    additively and coloured by their vertex tint.
     """
     N = n * SS
     _, _, r = A.grid(N, N)
@@ -849,18 +701,8 @@ def star_point(kind, n=48):
 
 
 def nebula(seed, n=256):
-    """A patch of the deep sky: cloud, with a hole or two in it.
-
-    **A starfield of points on black is a screensaver.** What makes a night
-    sky read as *deep* is that the darkness is not uniform -- there is
-    something behind the stars, unevenly, and the eye reads its edges as being
-    further away than the points in front of it. These are eight or nine soft
-    patches, added at a few per cent each, and between them they are most of
-    why the sky has a colour at all.
-
-    Two noise fields multiplied rather than one: a single fbm at this scale is
-    a smooth blob, and what a nebula has is *structure at two scales* -- a
-    mass, with filaments and gaps torn through it.
+    """A patch of the deep sky: two noise fields multiplied, for a mass with
+    filaments and gaps. Several are added faintly so the dark isn't uniform.
     """
     N = n * SS
     big = np.asarray(A.fbm_field(N, N, seed, octaves=4, base=3),
@@ -878,24 +720,11 @@ def nebula(seed, n=256):
 
 
 def zodiac_band(w=512, h=56):
-    """The graduated band an armillary's rings are made of.
-
-    **Gold is contrast, not hue.** The first version of this was a pale ground
-    with dark divisions cut into it -- arithmetically a limb, and at nine
-    thousand units it averages to a flat mid-tone which the tint then turns
-    into a flat mid-brown. Reported as reading like thin wood rather than
-    ornate gold, which is exactly what an even texture in a warm hue is.
-
-    What says metal is a *section*: a dark shadowed edge, a body rising to a
-    hot specular line well off centre, a fall to a mid tone, and a second,
-    cooler line where light bounces back up off whatever is underneath. That
-    profile across four pixels of screen is worth more than any amount of
-    detail along the band, because it is the thing that changes as the ring
-    turns.
-
-    The divisions are cut into the *body* only and stop short of the
-    specular, so the highlight runs unbroken down the whole limb. A graduation
-    that crosses the highlight breaks the one line that is doing the work.
+    """The graduated band an armillary's rings are made of, drawn as a metal
+    section: a dark shadowed edge, a body rising to a hot specular line off
+    centre, a fall to a mid tone, and a cooler bounce line. The divisions are
+    cut into the body only and stop short of the specular, so the highlight
+    runs unbroken.
     """
     W, H = w * SS, h * SS
     # the cross-section, as a value ramp down the band's width
@@ -906,8 +735,7 @@ def zodiac_band(w=512, h=56):
                      [0.16, 0.30, 0.72, 0.97, 1.00, 0.74, 0.50, 0.34, 0.58,
                       0.40, 0.14]).astype(np.float32)
     base = np.repeat(prof[:, None], W, axis=1)
-    # a slow swell along the limb, so it is a cast object rather than an
-    # extrusion: metal is never the same brightness for five hundred pixels
+    # a slow swell along the limb, so its brightness isn't constant
     x = np.linspace(0, 1, W, dtype=np.float32)
     base = base * (0.90 + 0.10 * np.cos(x * math.pi * 6.0))[None, :]
     rgb = np.dstack([base * 255, base * 251, base * 242])
@@ -931,9 +759,7 @@ def zodiac_band(w=512, h=56):
             d.rectangle([px, H * 0.51, px + 1.2 * s, H * 0.63],
                         fill=(0, 0, 0, 120))
 
-    # a bead-and-reel at the shadowed edge, which is the ornament the whole
-    # band was said to be missing: a rhythm of small round lights against the
-    # dark, read as turned moulding rather than as marks on a flat strip
+    # a bead-and-reel at the shadowed edge
     for i in range(n * 2):
         px = W * (i + 0.5) / (n * 2)
         rr = H * 0.055
@@ -951,44 +777,15 @@ def zodiac_band(w=512, h=56):
 # The chamber at the end of the hall
 # ---------------------------------------------------------------------------
 def rotunda(w=1152, h=376):
-    """The great round room the corridor is flying towards, as one painting.
+    """The great round room the corridor flies toward, as one painting hung at
+    a fixed depth (two quads), so the nave ends in a destination rather than in
+    stars.
 
-    **The sky needed a floor.** With the roof off, the hall's own perspective
-    ran out at the vanishing point and everything past it was stars -- so the
-    nave did not read as a room open to the night, it read as a corridor
-    trailing off into space. What was missing is what every real view of a
-    horizon has: something the ground *becomes*.
-
-    It is painted rather than built, and that is the point of it. A second
-    room in three dimensions at the end of an endless hall is a room the
-    flight would have to either reach or visibly never reach; a backdrop at a
-    fixed depth is a *destination*, which is what `bg_grove`'s moon is and
-    what this is. It costs two quads.
-
-    **Only the far wall is drawn, and that is not a saving.** The chamber's
-    near rim is a third of the way closer than its centre, which puts it
-    inside the bays the hall is already drawing -- so it would be behind the
-    shelving whether it were painted or not. What is left is the half of a
-    cylinder facing us, which is the half that reads as a room.
-
-    **It is wide and short, because that is the shape of the hole it fills.**
-    The first version was drawn on a square-ish canvas and hung over the whole
-    wedge: its galleries swept up past the orrery and read as a set of pale
-    arcs across the sky rather than as a building under one. The band actually
-    available is from the vanishing point up to the orrery's skirt -- 260
-    pixels of a 992-pixel field -- so the card is three times as wide as it is
-    tall and every tier is inside that.
-
-    **The near arc of a ring above your eye is its *upper* half**, which is
-    the one piece of this easy to get backwards. A point on the near side of
-    the ring is closer, so its height above the eye subtends a larger angle --
-    it lands higher up the screen. Drawn the other way round the galleries
-    read as bowls rather than as rings seen from below.
-
-    **And it is dark.** Every value in here is under a tenth of white before
-    the tint touches it: this is a thing seen through twelve thousand units of
-    the same haze the far bays dissolve into, and the lamps are the only part
-    of it allowed to be a light.
+    Only the far half of the cylinder is drawn; the near rim would fall inside
+    bays the hall already draws. The card is wide and short, to fit between the
+    vanishing point and the orrery's skirt. The near arc of a ring above the
+    eye is its upper half (drawn the other way, the galleries read as bowls).
+    Every value except the lamps is kept under a tenth of white before tinting.
     """
     im, dc = canvas(w, h, (0, 0, 0))
     mk, dm = mask(w, h)
@@ -999,8 +796,7 @@ def rotunda(w=1152, h=376):
     cx = W * 0.5
     # Where the hall's own horizon falls on the card -- see `HALL_ROT_Y0`.
     horiz = H * 0.877
-    # Card pixels per design pixel, so the projection below is the real one
-    # rather than a curve somebody liked the look of.
+    # Card pixels per design pixel, so the projection below is the real one.
     sc = W / (2.0 * HALL_ROT_HW_SCREEN)
     FOCAL = 894.8
     RHO = 0.42             # the chamber's radius over its distance
@@ -1014,9 +810,8 @@ def rotunda(w=1152, h=376):
 
     TH = [(-90 + 180.0 * i / 96) for i in range(97)]
 
-    # --- the floor, which is the whole reason this exists -----------------
-    # It runs from the chamber's far edge down off the bottom of the card, so
-    # there is ground under everything rather than sky.
+    # --- the floor --------------------------------------------------------
+    # It runs from the chamber's far edge down off the bottom of the card.
     floor = [proj(t, -6) for t in TH]
     d.polygon(floor + [(W, H), (0, H)], fill=(16, 17, 22, 255))
     for yy, val in ((-9, 24), (-14, 33), (-21, 44)):
@@ -1029,13 +824,7 @@ def rotunda(w=1152, h=376):
                    fill=(46, 38, 24, 255))
 
     # --- the wall, in tiers of gallery ------------------------------------
-    # **Four tiers, not eight, and every mark on them is drawn at the size it
-    # will be seen at.** The wedge this shows through is about two hundred and
-    # eighty pixels wide where it is widest, so eight tiers put a parapet
-    # every twenty-nine pixels with a one-pixel line on it and a row of
-    # one-pixel windows under that -- which at the distance it is actually
-    # read from is a grey smear with stripes in it. What survives out here is
-    # big shapes and lights, so that is what it is made of.
+    # Big shapes and lights only: finer detail smears at this distance.
     TIERS = 4
     ys = [8 + 60.0 * k for k in range(TIERS + 1)]
     for k in range(TIERS):
@@ -1071,12 +860,9 @@ def rotunda(w=1152, h=376):
                    (b[0] + hw * 0.7, b[1]), (b[0] - hw * 0.7, b[1])],
                   fill=(8, 8, 12, 255))
 
-    # --- the portal, dead ahead and low, which is the part that is seen ---
-    # The wedge is narrowest at the vanishing point, so whatever is directly
-    # ahead and low down is what the player actually gets. **The arch is dark
-    # and what is inside it is the light** -- the first one filled its whole
-    # opening with a pale grey and read as a featureless dome sitting on the
-    # floor, which is the brightest thing in the frame doing the least.
+    # --- the portal, dead ahead and low -----------------------------------
+    # The part of the wedge the player sees most. The arch is dark and the
+    # light is inside it.
     pw = FOCAL * RHO * math.sin(math.radians(9.5)) / (1 + RHO) * sc
     pb = proj(0, -4)[1]
     ph = pw * 2.5
@@ -1126,10 +912,9 @@ def rotunda(w=1152, h=376):
                    fill=(168, 140, 92, 255))
 
     body = cut(im, mk, w, h)
-    # **The bottom dissolves.** The hall's own floor runs out a few thousand
-    # units short of this, so there is a thin band under the horizon where
-    # neither the marble nor the chamber is drawn -- and a hard edge across it
-    # is the ruled line the whole open roof was built to avoid.
+    # The bottom dissolves: in the thin band under the horizon neither the
+    # hall's floor nor the chamber is drawn, and a hard edge there would be a
+    # ruled line.
     a = np.asarray(body.split()[3]).astype(np.float32)
     ramp = np.clip((np.arange(h)[:, None] - h * 0.90) / (h * 0.08), 0, 1)
     body.putalpha(Image.fromarray(
@@ -1145,17 +930,10 @@ def rotunda(w=1152, h=376):
 # ---------------------------------------------------------------------------
 # The things that stand in it
 # ---------------------------------------------------------------------------
-# Her outline, in figure coordinates and **facing +u**, which is to say
-# across the nave rather than down it. `hall_bastet` mirrors the card on the
-# far side, so a pair of them look at each other over the floor.
-#
-# The proportions are a seated Egyptian cat's rather than a cat's: the neck
-# is a column a third of the standing height, the forelegs are straight, and
-# the haunch is one large rounded mass behind them. That S, from the ear tip
-# down the back to the base, is the whole read -- which is why a profile
-# works at this size where the frontal one could not. A cat seen head-on is a
-# triangle with two ears on it, and at eighty pixels a triangle with two ears
-# on it is a mask.
+# The Bastet's outline, in figure coordinates and facing +u (across the
+# nave). `hall_bastet` mirrors the card on the far side, so a pair face each
+# other. The proportions are a seated Egyptian cat's: a tall column of a
+# neck, straight forelegs, and one large rounded haunch.
 BASTET_OUTLINE = [
     (0.724, 0.100), (0.760, 0.046),
     (0.806, 0.002), (0.828, 0.014),                   # near ear, tip
@@ -1183,11 +961,7 @@ BASTET_OUTLINE = [
 ]
 
 
-# **The far ear, which is the one piece of her that is behind something
-# else.** Drawn as a second ear beside the first it is a cat seen from the
-# front: what a profile shows is the tip and nothing more, and its base has
-# to die *inside* the skull -- a base that stops short leaves a notch between
-# the two where neither ear is, which is what it did.
+# The far ear: only its tip shows, and its base ends inside the skull.
 BASTET_FAR_EAR = [
     (0.660, 0.136), (0.688, 0.078), (0.720, 0.034), (0.748, 0.022),
     (0.784, 0.060), (0.816, 0.100), (0.752, 0.132),
@@ -1201,52 +975,27 @@ BASTET_COLLAR = [
 ]
 
 
-# Where the light on her falls from: above, and out of the nave. Mirroring
-# the card mirrors this with it, so the pair either side of the hall are lit
-# from the middle of the room -- which is where the orbs in the alcoves are,
-# and the one lighting that survives being flipped.
+# The light's direction: above, and out of the nave. Mirroring the card
+# mirrors it, so both statues are lit from the middle of the room.
 BASTET_LIGHT = (0.50, -0.70, 0.51)
 
 
 def bastet(w=384, h=768):
     """A seated Bastet, in profile, as one card.
 
-    **In profile, and that is a fact about the projection rather than about
-    the drawing.** `hall_bastet` hangs her on a quad in the plane `z = const`,
-    which faces back down the hall -- so what the card shows is whatever faces
-    *across* the nave. A frontal cat on it is a statue whose nose points down
-    the hall at the player, which is nothing an avenue of them was ever carved
-    to do; a profile one looks across the floor at its opposite number, which
-    is. The quad is the same either way and the mirroring is one flag -- see
-    `hall_bastet`.
+    In profile because `hall_bastet` hangs her on a quad facing down the hall,
+    so the card shows what faces across the nave, and a pair look at each
+    other.
 
-    **Nothing in here is flat fill, and that is most of what was wrong.** The
-    frontal one was: a black silhouette, a black neck, a gold bucket of a
-    pectoral and two round eyes, which reads as a cartoon whatever the
-    outline is doing -- a shape with one value in it has no form in it, and
-    two bright discs on a dark shape is a face with its lights on. So she is
-    built as a **height field** -- a dome per mass, haunch and ribs and chest
-    and neck and skull -- and lit through the gradient of it by one lamp. The
-    haunch bulges, the neck is a column, the chest catches the light and the
-    flank falls away, and none of that is drawn.
+    She is built as a height field, a dome per mass (haunch, ribs, chest, neck,
+    skull), lit through its gradient by one lamp. The ornament goes into the
+    same field: the collar's bands are raised and the eye, mouth and ear's
+    conch are cut in, so the lamp shades them with the body. Gold is a mask
+    over that one field, with a wider gap between shaded and lit and a broader
+    highlight.
 
-    **And the ornament goes into the same field rather than onto the picture
-    afterwards.** A collar band painted over a shaded body carries the body's
-    own light wherever it lies, so it reads as a decal at any colour -- which
-    is what "tacked on and flat" means, and no amount of gold fixes it. Put
-    the band into the height field and the lamp that carves the haunch carves
-    the band: a lit top, a shaded underside, a specular running along it.
-    That is `moulding`'s own rule -- a bright line above a dark one -- got as
-    geometry rather than as two drawn lines, which is why it also works on
-    the things that go the other way. The eye, the mouth and the ear's conch
-    are cut *downward* into the same field, because they are cut into her.
-
-    The gold is then a mask over that one field rather than a second drawing:
-    the same normals, a wider gap between shaded and lit, a broader
-    highlight. So the collar cannot disagree with the neck it sits on.
-
-    Returns the figure and its moonward rim, on `make_grove.py`'s contract --
-    a body and the light on it, tinted at draw time.
+    Returns the figure and its moonward rim: a body and the light on it, tinted
+    at draw time.
     """
     W, H = w * SS, h * SS
     size = (W, H)
@@ -1304,11 +1053,8 @@ def bastet(w=384, h=768):
         (lobe(0.950, 0.190, 0.032, 0.019, -0.16), 0.40),     # the muzzle
         (lobe(0.800, 0.052, 0.040, 0.050, -0.04), 0.42),     # the near ear
     ]
-    # **The masses are joined with a smooth union, not with `max`.** Two
-    # domes combined by `max` meet at the curve where they cross, and that
-    # curve is a crease -- which at the muzzle read as a knob stuck on the
-    # front of the face rather than as part of it. This rounds every junction
-    # by `k`, so the surface swells into a join the way carved stone does.
+    # The masses are joined with a smooth union rather than `max`, which
+    # would leave a crease where two domes cross.
     k = 0.07
     for m, amp in lobes:
         b = np.sqrt(np.clip(A.depth_field(m), 0, 1)) * amp
@@ -1350,8 +1096,7 @@ def bastet(w=384, h=768):
     dr.ellipse(hoop, outline=198, width=int(2.6 * s))
     dg.ellipse(hoop, outline=255, width=int(2.6 * s))
 
-    # the eye: cut in, with a lid standing over it. Stone, not gold -- a
-    # bright eye at this size is a lamp, which is what the frontal one was.
+    # the eye: cut in, with a lid standing over it, in stone rather than gold
     dr.polygon([pt(p) for p in spline(
         [(0.852, 0.150), (0.878, 0.140), (0.904, 0.148), (0.878, 0.157)])],
         fill=58)
@@ -1367,10 +1112,8 @@ def bastet(w=384, h=768):
             fill=56, width=int(1.6 * s), joint="curve")
     dr.line([pt(p) for p in ((0.972, 0.196), (0.952, 0.200))],
             fill=84, width=int(1.4 * s))
-    # **The ear is a bowl, not a flap.** A triangle of one value has no depth
-    # in it whichever way it is shaded, and two of them side by side read as
-    # cardboard -- so the conch is cut well in and its two edges stand round
-    # it, which is the one thing that makes an ear jut.
+    # the ear is a bowl: the conch is cut well in and its two edges stand
+    # round it
     dr.polygon([pt(p) for p in spline(
         [(0.762, 0.084), (0.784, 0.046), (0.806, 0.022), (0.826, 0.052),
          (0.834, 0.080), (0.798, 0.092)])], fill=20)
@@ -1380,8 +1123,7 @@ def bastet(w=384, h=768):
     dr.line([pt(p) for p in spline(
         [(0.816, 0.014), (0.840, 0.052), (0.860, 0.086)], closed=False)],
         fill=206, width=int(2.8 * s), joint="curve")
-    # the far ear gets no hollow: what is visible of it is its tip, and a
-    # bowl drawn on a tip is a mark with nothing to be a bowl in
+    # the far ear gets no hollow; only its tip shows
 
     # the tail, lying round the near side of the base
     ridge(spline([(0.098, 0.842), (0.126, 0.882), (0.250, 0.901),
@@ -1409,8 +1151,8 @@ def bastet(w=384, h=768):
                       np.float32) / 255.0
 
     # --- light it --------------------------------------------------------
-    # **The height is in units of the figure's own width**, so the normal is
-    # the same shape whatever the canvas is.
+    # The height is in units of the figure's own width, so the normals don't
+    # depend on the canvas size.
     gy, gx = np.gradient(hgt * fw * 0.176)
     nx, ny, nz = -gx, -gy, np.ones_like(hgt)
     ln = np.sqrt(nx * nx + ny * ny + nz * nz)
@@ -1452,13 +1194,9 @@ def bastet(w=384, h=768):
 
 
 def _densify(pts, step):
-    """Insert samples until no two are further apart than `step`.
-
-    **A stroke drawn as discs is only continuous if they overlap.** The
-    highlight pass runs at 40 per cent of the body's width, so the spacing
-    that was comfortably dense for the body left it as a row of beads -- which
-    is exactly the hand-made-in-Paint look it was added to remove. Spacing is
-    a property of the *narrowest* pass, not of the path.
+    """Insert samples until no two are further apart than `step`. A stroke
+    drawn as discs is only continuous if they overlap, so the spacing must suit
+    the narrowest pass (the highlight, at 40% of the body's width).
     """
     out = []
     for i in range(len(pts) - 1):
@@ -1473,13 +1211,8 @@ def _densify(pts, step):
 
 
 def _ribbon(d, pts, col, a, w, taper=0.0):
-    """A stroke along a path, optionally thinning toward both ends.
-
-    `ImageDraw.line` mitres its joins, which on a tight curl spits a spike out
-    of every vertex. A disc per sample has neither that nor a flat cap, and
-    `taper` is what turns a uniform marker stroke into something drawn: a
-    swelling belly and fine terminals is most of the difference between a
-    glyph and a scribble.
+    """A stroke along a path, as a disc per sample (`ImageDraw.line` mitres its
+    joins into spikes on tight curls). `taper` thins it toward both ends.
     """
     pts = _densify(pts, w * 0.30)
     n = max(1, len(pts) - 1)
@@ -1491,14 +1224,8 @@ def _ribbon(d, pts, col, a, w, taper=0.0):
 
 
 def _ribbon_grad(d, pts, col, a, w0, w1, gamma=1.0):
-    """A stroke whose weight runs from `w0` to `w1` along its length.
-
-    **A terminal is where a stroke ends, not where it stops.** `taper` pinched
-    both ends of whatever path it was given, which is right for a free-ended
-    flourish and wrong for one that runs into something: the crest's tails
-    have a fine point at the outside and full weight where they meet the ring,
-    and a symmetric taper cannot say that. The weight has to be a gradient
-    along the whole run.
+    """A stroke whose weight runs from `w0` to `w1` along its length, for a
+    stroke that ends on something: fine at the free end, full where it joins.
     """
     pts = _densify(pts, min(w0, w1) * 0.30)
     n = max(1, len(pts) - 1)
@@ -1519,13 +1246,8 @@ def _relief_grad(d, pts, w0, w1, gamma=1.0):
 
 
 def _ribbon_relief(d, pts, w, taper=0.0, col=None, hot=None):
-    """The same stroke as struck metal: a shadow under it, the body, and a
-    fine highlight along its upper-left.
-
-    **Three passes, because one flat colour is what reads as MS Paint.** Gold
-    laid on cloth is raised -- it catches the light on one side and drops a
-    shadow on the other -- and two offset copies at a third of the stroke's
-    width is the whole of saying so.
+    """The same stroke as struck metal: a shadow under it, the body, and a fine
+    highlight along its upper left.
     """
     col = GILT if col is None else col
     hot = GILT_HOT if hot is None else hot
@@ -1537,14 +1259,9 @@ def _ribbon_relief(d, pts, w, taper=0.0, col=None, hot=None):
 
 
 def _eye_of_horus(d, cx, cy, s, col, a, px=1):
-    """The wedjat, drawn as its six real parts.
-
-    **It has a fixed anatomy and the first version invented one.** A wedjat is
-    a brow, an almond eye with a round pupil, the vertical `teardrop` falling
-    from under the inner corner, and the long spiral tail sweeping out from
-    the outer one -- six marks in a fixed arrangement that anybody who has
-    seen one reads instantly and reads as *wrong* when the parts are in the
-    wrong places. What was here before was a couple of arcs and a circle.
+    """The wedjat, drawn as its parts: a brow, an almond eye with a round
+    pupil, the vertical teardrop under the inner corner, and the long spiral
+    tail from the outer one.
     """
     w = s * 0.085
 
@@ -1605,11 +1322,8 @@ def _eye_of_horus(d, cx, cy, s, col, a, px=1):
 
 
 def _spline(pts, n=190):
-    """A Catmull-Rom pass through the control points.
-
-    The crest is one continuous ribbon and its curvature reverses twice, which
-    is exactly what a spline through hand-placed points is for and exactly
-    what a sum of sines is not.
+    """A Catmull-Rom pass through the control points (the crest's ribbon
+    reverses its curvature twice).
     """
     P = [pts[0]] + list(pts) + [pts[-1]]
     segs = len(P) - 3
@@ -1631,22 +1345,12 @@ def _spline(pts, n=190):
 
 
 def _crest(d, cx, cy, s, col, a):
-    """Ashiah's crest.
+    """Ashiah's crest: one ribbon, a tall S with a closed ring at its middle.
 
-    **One ribbon, not three marks.** A tall S with a closed ring at its
-    middle: a curl opening to the left at the head, sweeping right and down
-    *into* the ring, and out of the ring a second curve going the other way,
-    down and left, then right, finishing in a hook that opens upward. The
-    stroke changes hand twice, which is the whole character of it.
-
-    Two things the earlier passes got wrong and this fixes. The tails ended in
-    open space near the ring rather than **on** it, so the glyph read as a
-    circle with two detached flourishes beside it. And the weight was uniform
-    with a pinch at each free end -- so the tails were the same thickness
-    where they met the ring as half way along, which is what made it look
-    drawn with a marker. The weight now runs from a fine point at each outer
-    terminal to full where it meets the ring, which is how a drawn stroke
-    behaves and is most of what "regal" means here.
+    A curl opening left at the head sweeps right and down into the ring; out of
+    the ring a second curve goes down and left, then right, ending in a hook
+    that opens upward. Both tails end on the ring, and their weight runs from a
+    fine point at the outer end to full where they meet it.
     """
     w = s * 0.082
     R = s * 0.38
@@ -1724,10 +1428,7 @@ def banner(kind, w=224, h=704):
         _eye_of_horus(d, W * 0.5, H * 0.385, W * 0.32, GILT, 245, s)
     d.line([(W * 0.16, H * 0.685), (W * 0.84, H * 0.685)],
            fill=rgba(GILT_DIM, 205), width=int(2.0 * s))
-    # **Lozenges, not rings.** A row of five small gilt ellipses is, at the
-    # size a banner is ever read down a hall, the string "0 0 0 0 0" -- which
-    # was exactly how it photographed. A diamond has no digit it can be
-    # mistaken for.
+    # Lozenges rather than rings (a row of small ellipses reads as zeros).
     for i in range(5):
         gx = W * (0.26 + i * 0.12)
         gy = H * 0.742
@@ -1743,12 +1444,8 @@ def banner(kind, w=224, h=704):
 
 
 def desk(kind, w=352, h=320):
-    """A reading desk with an hourglass or an armillary on it.
-
-    **The armillary is small and warm.** It is a gold circle, and this stage's
-    whole mechanic is gold circles a hundred and sixty pixels across; one drawn
-    big and bright on a desk is scenery in the shape of the one object that
-    must never be mistaken for scenery.
+    """A reading desk with an hourglass or an armillary on it. The armillary is
+    small and warm, so it can't be mistaken for one of Mika's rings.
     """
     im, dc = canvas(w, h, (14, 13, 18))
     mk, dm = mask(w, h)
@@ -1817,12 +1514,8 @@ def desk(kind, w=352, h=320):
 
 
 def orb_lamp(n=96):
-    """The standing light: a caged orb on a gilt stem.
-
-    **Its own object rather than a patch on the wall texture**, because this
-    is the hall's actual light source: it has to sit at a real position so the
-    shelving is lit *by* it and so its bloom is a thing in the world that
-    passes the camera rather than a smear that slides with the wall.
+    """The standing light: a caged orb on a gilt stem. A real object at a real
+    position, so the shelving is lit by it and its bloom passes the camera.
     """
     im, dc = canvas(n, n * 3, (11, 11, 15))
     mk, dm = mask(n, n * 3)
@@ -1868,27 +1561,14 @@ def orb_lamp(n=96):
 # ---------------------------------------------------------------------------
 # Materials
 #
-# **The wall stopped being a picture of a bookcase and became a bookcase**, so
-# what this section makes is no longer one big tile but the handful of
-# *materials* the joinery is built out of: stone, book spines, and a gilded
-# pilaster face. `scripts/bg_sanctum` cuts them up into boards, reveals,
-# cornices and plinths.
-#
-# That is the whole difference between the first version of this wall and this
-# one. A flat quad with a bookcase painted on it has no parallax, no occlusion
-# and no light of its own: the shelf boards cannot catch the lamp, the
-# pilasters cannot pass in front of the shelving as the camera goes by, and
-# the alcove is a dark rectangle with a circle painted in it rather than a
-# hole with something standing in it.
+# The walls are 3D joinery, so this section makes the materials they are cut
+# from: stone, book spines, a gilded pilaster face and the rest.
+# `scripts/bg_sanctum` cuts them into boards, reveals, cornices and plinths.
 # ---------------------------------------------------------------------------
 def stone_tile(n=128):
-    """The material everything structural is cut from.
-
-    Deliberately almost featureless. It is going to be seen at a dozen
-    different scales on boards, reveals, cornices and plinths, and anything
-    with a legible pattern in it would repeat visibly on the large pieces and
-    turn to noise on the small ones. What it carries is grain and a little
-    mottle, so a flat surface is not a flat colour.
+    """The material everything structural is cut from: nearly featureless
+    (grain and a little mottle), because it is seen at many scales and a
+    pattern would repeat visibly.
     """
     im, d = canvas(n, n, STONE)
     N = n * SS
@@ -1905,20 +1585,9 @@ def stone_tile(n=128):
 
 
 def pale_tile(n=64):
-    """A near-white tile, for anything whose colour comes from its tint.
-
-    **The dark stone cannot be tinted gold.** A vertex colour *multiplies* its
-    texture, so gilt at (188, 146, 60) over stone at (21, 21, 29) resolves to
-    about (15, 12, 5) -- which is black, and which is what every gilt fillet,
-    every shelf edge and every lamp cage in the first build of the joinery
-    actually was. The gold that could be seen in that frame was painted into
-    the floor and pilaster *textures*; none of the gold geometry was visible
-    at all.
-
-    Nothing reports that. The geometry is correct, the tint is correct, the
-    multiply is correct, and the result is a perfectly valid very dark object.
-    So anything whose colour is supposed to come from its vertex tint is
-    textured with this instead, and the tint then means what it says.
+    """A near-white tile, for anything whose colour comes from its tint. A
+    vertex colour multiplies its texture, so gilt over the dark stone comes out
+    black; anything tinted gold is textured with this instead.
     """
     im, d = canvas(n, n, (238, 238, 242))
     N = n * SS
@@ -1935,13 +1604,8 @@ def pale_tile(n=64):
 
 
 def plinth_face(n=160):
-    """The face of a plinth: a recessed panel in a gilt border.
-
-    **A flat tint is what made the furniture read as primitive.** A tapered
-    box with one colour on it is a tapered box however good the taper is; what
-    says "carved" is that the face has a *frame*, a recess inside it and a
-    mark in the recess -- three planes of information where there was one.
-    Every plinth, desk side and pedestal in the hall takes this.
+    """The face of a plinth: a recessed panel in a gilt border, with a mark in
+    the recess. Every plinth, desk side and pedestal in the hall takes this.
     """
     im, d = canvas(n, n, STONE)
     N = n * SS
@@ -1968,18 +1632,8 @@ def plinth_face(n=160):
 
 
 def board_edge(w=64, h=32):
-    """The front edge of a shelf board.
-
-    **The profile is in the texture, not in a tint.** The flat bay tile drew
-    this with `moulding`: a one-pixel lit top over a dark face over a shadow,
-    about 2.8 per cent of the shelf gap tall. The 3D version replaced it with
-    a single quad tinted the *lit* colour over its whole height and twice as
-    thick -- so every board went from a hairline of light on a dark ledge to a
-    pale bar, and the shelving read as blocky however dark everything around
-    it was.
-
-    A board is mostly in shadow. What catches the lamp is its arris, and that
-    is one row of this tile.
+    """The front edge of a shelf board: mostly shadow, with one lit row for the
+    arris.
     """
     im, d = canvas(w, h, (36, 33, 32))
     W, H = w * SS, h * SS
@@ -1992,16 +1646,9 @@ def board_edge(w=64, h=32):
 
 
 def dado_band(w=256, h=128):
-    """The foundation the bookcases stand on.
-
-    **A run of ornament, not a slab.** The flat bay tile drew this as a dark
-    ground between two gilt mouldings with a row of oval inlays along it, and
-    the 3D plinth replaced all of that with one untextured face and a single
-    fillet -- which is the whole of why the foundation went from refined to
-    blocky. None of the geometry was wrong; there was simply nothing on it.
-
-    Periodic in x, because the plinth is one quad running the length of a bay
-    and the tile repeats along it.
+    """The foundation the bookcases stand on: a dark ground between two gilt
+    mouldings, with a row of oval inlays. Periodic in x, since the plinth is
+    one quad per bay and the tile repeats along it.
     """
     im, d = canvas(w, h, (13, 13, 18))
     W, H = w * SS, h * SS
@@ -2071,12 +1718,8 @@ def desk_face(w=192, h=128):
 
 
 def books_tile(seed, w=256, h=168):
-    """One shelf's worth of spines, tiling left to right.
-
-    **Periodic in x**, because a shelf is now a quad whose texture repeats
-    along its own length rather than a slice of one big picture -- so the last
-    spine has to meet the first. The run is laid out twice and the middle is
-    kept, which is the trick `shade_wrapped` uses one project over.
+    """One shelf's worth of spines, periodic in x (a shelf is a quad whose
+    texture repeats along it): the run is laid out twice and the middle kept.
     """
     im, d = canvas(w * 2, h, (7, 7, 10))
     W, H = w * 2 * SS, h * SS
@@ -2103,13 +1746,8 @@ def pilaster_face(w=96, h=1024):
 
 
 def orb(n=192):
-    """The light in the alcove: a caged sphere, and its light.
-
-    **A real object in a real recess.** It used to be a circle painted on the
-    flat wall, which is the one thing in the hall a screenshot made look
-    obviously wrong -- a glowing sphere with no depth behind it and no light
-    falling on anything around it. Now the recess is a hole, this stands in
-    it, and the stone either side is lit by where it actually is.
+    """The light in the alcove: a caged sphere and its light, standing in a
+    real recess.
     """
     im, dc = canvas(n, n, (10, 11, 16))
     mk, dm = mask(n, n)
@@ -2139,29 +1777,15 @@ def orb(n=192):
 
 
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
 # The statue's third dimension
 #
-# **A card is a card from above, whatever is painted on it.** The Bastet was
-# one quad in the plane `z = const`, which is right looking down the hall and
-# wrong everywhere else: phase A looks at the floor from nine hundred units
-# up, and from there an upright card is a sheet of paper leaning back over a
-# plinth that is plainly a solid box. It was reported exactly that way.
-# Nothing about the drawing fixes it, because the defect is that there is no
-# depth to have.
-#
-# So `bg_sanctum` sweeps her into a solid, and what it sweeps is **measured
-# off the shipped PNG rather than restated in GML**. The card's silhouette
-# and the solid's cross-section have to be the same shape or the figure has
-# two outlines; reading the alpha channel of the very image that gets drawn
-# is the one construction where they cannot drift. That is `grove_table`'s
-# argument -- a number describing a picture, kept in the same language as the
-# picture -- and `bullet_table`'s before it.
-#
-# The one thing a profile cannot supply is how *wide* she is, so that is
-# authored: a half-depth per height, as a fraction of the card's own width,
-# so it follows the figure at any size. A seated cat is narrow at the ears,
-# widest across the haunch, and stands on a base oval wider than she is.
+# `bg_sanctum` sweeps the Bastet into a solid (a flat card reads as paper
+# from above). The sweep's cross-section is measured off the shipped PNG's
+# alpha rather than restated in GML, so the card and the solid share one
+# outline. The one thing a profile can't give is width, so that is authored:
+# a half-depth per height, as a fraction of the card's width. A seated cat is
+# narrow at the ears, widest across the haunch, and stands on a base wider
+# than she is.
 BASTET_DEPTH = [
     (0.000, 0.052), (0.090, 0.086), (0.170, 0.106), (0.262, 0.088),
     (0.360, 0.126), (0.500, 0.150), (0.660, 0.176), (0.840, 0.170),
@@ -2170,21 +1794,14 @@ BASTET_DEPTH = [
 BASTET_SLICES = 34
 
 BASTET_TABLE_GML = '''/// @desc The Gilded Sanctum's measured numbers -- GENERATED by
-///       tools/make_sanctum.py. **Do not edit.**
+///       tools/make_sanctum.py. Do not edit.
 ///
-/// **How wide the Bastet is at each height, so that she can be a solid.**
-/// She is drawn once, in profile, by a Python script and swept into three
-/// dimensions by GML -- and the two have to agree about her outline, or the
-/// figure has two of them. So the outline is read off the alpha channel of
-/// the sprite that actually ships, row by row, and written out here: the
-/// same argument `grove_table` makes about where a branch is, and
-/// `bullet_table` about how big a bullet is.
-///
-/// Each row is `[v, u0, u1, d]` in the sprite's own box, 0..1 from its
-/// top-left: the height, the back and the front of her at that height, and
-/// her half-depth across. That last one is authored rather than measured,
-/// because a profile cannot say how wide a thing is; it is a fraction of the
-/// card's *width*, so it follows the figure however large it is drawn.
+/// How wide the Bastet is at each height, so `bg_sanctum` can sweep her into
+/// a solid. Her outline is read row by row off the shipped sprite's alpha, so
+/// the card and the solid agree. Each row is `[v, u0, u1, d]` in the sprite's
+/// own box, 0..1 from its top-left: the height, the back and the front of her
+/// at that height, and her half-depth. The half-depth is authored (a profile
+/// can't say how wide a thing is), as a fraction of the card's width.
 
 function sanctum_table_init() {
     global.bastet_slice = [
@@ -2193,12 +1810,8 @@ function sanctum_table_init() {
 }
 
 /// @desc Her cross-section at height `_v`, as `[centre, half-length,
-///       half-depth]` in the sprite's own box.
-///
-///       Interpolated, because the sweep asks for heights between two
-///       measured rows -- its normals come off finite differences, which
-///       means every vertex is sampled three times at three slightly
-///       different places.
+///       half-depth]` in the sprite's own box, interpolated between the
+///       measured rows.
 function bastet_at(_v) {
     var _t = global.bastet_slice;
     var _n = array_length(_t);
@@ -2228,14 +1841,9 @@ def _bastet_depth_at(v):
 
 
 def bastet_slices(img, n=BASTET_SLICES):
-    """Read her outline off the shipped alpha, one row per slice.
-
-    **A row with no ink in it is answered by the nearest row that has some**,
-    rather than by a slice of zero length. The crop leaves a few pixels of
-    margin at each end and the ear tips taper away to nothing, so the first
-    and last rows genuinely are empty -- and pinching the sweep to a point up
-    there and down there is a spike over her head and a funnel under her base
-    rather than a statue.
+    """Read her outline off the shipped alpha, one row per slice. A row with no
+    ink takes the nearest row that has some, rather than a zero-length slice
+    (which would put a spike over her head and a funnel under the base).
     """
     a = np.asarray(img.split()[3])
     h, w = a.shape
@@ -2274,22 +1882,9 @@ def main():
     gm_new.folder("Sprites/sanctum")
     f = "Sprites/sanctum"
 
-    # **The flat bay tiles are gone.** They were 512x1024 x3 x2, which is a
-    # lot of texture page for a picture of a bookcase -- and the bookcase is
-    # built out of materials now. `wall_bay` is kept because `books` and the
-    # bay's proportions came out of it and the preview is still worth having,
-    # but nothing in the game draws it.
-    # **And the ceiling with them.** The hall has no roof any more -- see
-    # "The sky" above -- so the coffered tile and its painted-on stars are a
-    # picture of something that is not there. Deleted rather than left
-    # unreferenced, because a sprite nothing draws is a sprite somebody has to
-    # work out the status of later; the atlas it frees is the whole of the
-    # cost of the starfield that replaced it.
-    # **And the shafts of light with it.** They fell from the coffers, and
-    # with no coffers to fall from they were two columns of haze arriving out
-    # of nowhere -- greying the one part of the frame the roof was opened to
-    # show. What lights the hall is the orbs in the wall and the braziers on
-    # the parapet, both of which are objects that are there.
+    # Sprites from earlier versions of the hall, deleted if present: the flat
+    # wall bays, the ceiling, and the light shafts and their pools. The bays
+    # are still drawn for the preview sheet.
     for stale in ("spr_hall_wall", "spr_hall_wall_lit", "spr_hall_ceil",
                   "spr_hall_shaft", "spr_hall_pool"):
         gm_new.delete(stale, "sprites")
@@ -2361,11 +1956,7 @@ def main():
               labels=["floor", "bastet", "banner: crest",
                       "banner: eye", "desk: glass", "desk: armillary",
                       "lamp"])
-    # **The three courses side by side, at the proportions they are laid
-    # at.** A pavement is read across the nave, so a sheet that shows one
-    # tile at a time says nothing about the thing that was actually wrong
-    # with the old floor -- which was the relation between the courses and
-    # not any one of them.
+    # The three courses side by side, at the proportions they are laid at.
     A.preview([runner_tile(), border_course(), floor_tile()],
               os.path.join(A.PREVIEW, "sanctum_floor.png"), cols=3,
               bg=(8, 8, 12),

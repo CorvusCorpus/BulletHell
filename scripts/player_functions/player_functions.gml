@@ -1,15 +1,8 @@
 /// @desc Szuix: movement, focus, the shot, the special, and getting hit.
 ///
-/// **The player is a struct, not an object**, and `player_step` takes its
-/// input as a struct rather than reading the keyboard. Both are for the same
-/// reason: a suite has to be able to put a player at a coordinate, hand it
-/// eight frames of "hold left and shoot", and assert on where it ended up and
-/// what it fired. A player that read `keyboard_check` could only be tested by
-/// somebody holding a key down.
-///
-/// `input_gather` is the one function here that touches a device, and it is
-/// called from `obj_game`'s Step -- which is where real time and real input
-/// legitimately enter the game.
+/// The player is a struct, and `player_step` takes its input as a struct, so
+/// tests can drive it. `input_gather` is the only function that reads a
+/// device; `obj_game`'s Step calls it.
 
 /// @desc A fresh player at the bottom-centre of the field.
 function player_new() {
@@ -27,45 +20,28 @@ function player_new() {
         bomb_y: 0,
         shot_t: 0,        // frames until the next volley
 
-        // **The seals, allocated once and never again.** The same bargain
-        // every other pool in the game makes: a bomb reuses these structs, so
-        // casting one allocates nothing. `live` is the whole of what says
-        // which are in the air -- see `player_seals_step`.
+        // The bomb's seals, allocated once and reused; `live` marks the ones
+        // in the air.
         seals: player_seals_new(),
 
-        // How long the grace now running was when it started, so the dial
-        // round him has something to be a fraction *of*. See
-        // `player_draw_grace`.
+        // The length of the grace now running, so the grace dial has a whole
+        // to show a fraction of (`player_draw_grace`).
         grace_max: 1,
         grace_show: 0,    // the dial's own fade in and out; purely visual
 
         card_t: 0,        // > 0 while his close-up is on screen
         fire_glow: 0,     // eases up while the shot is held: the muzzles
 
-        // Purely visual. `lean` is where the sprite is banking, and it eases
-        // toward where the player is actually going, so a hard left-right
-        // reversal reads as a turn rather than as a teleport.
+        // Visual only: the sprite's bank, eased toward the direction of
+        // travel.
         lean: 0,
         anim: 0,
         entry: 0,         // > 0 while flying in at the start of a stage
 
-        // **Nothing in play ever sets this.** It is the harness's flag: a
-        // posed player does not dodge, so it cannot be asked to survive.
-        //
-        // It is not a convenience. A hit sweeps a 190-pixel circle of bullets
-        // off the field -- see `player_hit`, and the reason is sound -- so a
-        // posed player being hit does not merely spend health, it *punches a
-        // hole in the thing being photographed*. Every picture of `Demon
-        // Sealing Hex` taken at less than full life had a bite out of the ward
-        // whose whole claim is where its gaps are, and nothing said so: the
-        // seal is redrawn twice a cycle, so the evidence was gone by the next
-        // movement. What finally reported it was a scene running long enough
-        // for the fourth hit to kill the player outright.
-        //
-        // Distinct from `iframe` rather than expressed with it, because
-        // `iframe` *flickers* -- it is the game telling the player they are
-        // briefly safe, and a screenshot of a half-transparent Szuix is a
-        // screenshot of a state nobody is posing for.
+        // Harness-only: a posed player can't be hit, so a hit's bullet clear
+        // doesn't cut a hole in the pattern being photographed. Separate from
+        // `iframe`, which also makes the sprite flicker. Nothing in play sets
+        // it.
         untouchable: false,
 
         graze_n: 0,
@@ -97,21 +73,14 @@ function input_gather() {
     };
 }
 
-/// @desc Input with nothing held. What a suite hands a player it is not
-///       driving, and what the game hands it during the intro fly-in.
+/// @desc Input with nothing held.
 function input_idle() {
     return { left: false, right: false, up: false, down: false,
              shoot: false, bomb: false, focus: false };
 }
 
-/// @desc Where the player is standing across the field: -1 at the left wall,
-///       0 on the centre line, +1 at the right.
-///
-///       **A fraction rather than a coordinate**, because the two things that
-///       read it -- the grove's camera today, and whatever wants a "which
-///       side is he on" later -- want the answer in the field's own terms and
-///       not in pixels. It survived the field becoming a rectangle once
-///       already; this is the same seam one level up. See `GROVE_LEAN`.
+/// @desc Where the player is across the field: -1 at the left wall, 0 on the
+///       centre line, +1 at the right. The grove's camera lean reads this.
 function player_field_aim(_p) {
     return clamp((_p.x - FIELD_CX) / (FIELD_W / 2), -1, 1);
 }
@@ -121,36 +90,28 @@ function player_invulnerable(_p) {
     return _p.untouchable || _p.iframe > 0 || _p.bomb_t > 0 || _p.entry > 0;
 }
 
-/// @desc Frames of grace left, whichever kind is running.
-///
-///       **The longer of the two, not the sum**, because they overlap: a bomb
-///       cast two frames after a hit does not give the player four and a half
-///       seconds, it gives them whichever runs out last.
+/// @desc Frames of grace left: the longer of the hit grace and the bomb
+///       grace (they overlap rather than add).
 function player_grace_left(_p) {
     return max(_p.iframe, _p.bomb_t);
 }
 
-/// @desc Start a grace of `_frames`, keeping whatever is already running if it
-///       is longer. The dial reads `grace_max`, so it has to be set wherever
-///       the grace itself is.
+/// @desc Start a grace of `_frames`, keeping the one running if it is longer.
+///       Sets `grace_max` for the dial.
 function player_grace_begin(_p, _frames) {
     _p.grace_max = max(player_grace_left(_p), _frames);
 }
 
-/// @desc One frame. `_g` is the controller, for the things a player does that
-///       the run has to know about -- banking a tally, starting a bomb.
+/// @desc One frame of the player. `_g` is the run, for tallying and bombs.
 function player_step(_p, _in, _g) {
-    // The two clocks that run whatever else he is doing, including while he
-    // is still flying in: the close-up, and the dial's own fade.
+    // These run even while flying in.
     if (_p.card_t > 0) _p.card_t--;
     var _grace = player_grace_left(_p);
     _p.grace_show += (((_grace > 0 && _p.entry <= 0) ? 1 : 0)
                       - _p.grace_show) * 0.22;
 
     if (_p.entry > 0) {
-        // Flying in. The player has no control and cannot be hit, which is
-        // what lets a stage open on a moving background instead of on a
-        // stationary sprite waiting for the first enemy.
+        // Flying in: no control, can't be hit.
         _p.entry--;
         _p.y -= 2.6;
         _p.anim++;
@@ -163,11 +124,7 @@ function player_step(_p, _in, _g) {
     var _dx = (_in.right ? 1 : 0) - (_in.left ? 1 : 0);
     var _dy = (_in.down ? 1 : 0) - (_in.up ? 1 : 0);
 
-    // **Diagonals are normalised.** Without this, moving diagonally is forty
-    // per cent faster than moving straight, and every player who notices ends
-    // up travelling everywhere at 45 degrees. It is a one-line fix and it is
-    // the difference between movement that feels designed and movement that
-    // feels like an oversight.
+    // Diagonals are normalised to the same speed as straight movement.
     if (_dx != 0 && _dy != 0) {
         _spd *= 0.70710678;
     }
@@ -182,10 +139,8 @@ function player_step(_p, _in, _g) {
 
     if (_p.iframe > 0) _p.iframe--;
 
-    // The special. **Checked before the shot and before anything can hit**, so
-    // a bomb pressed on the frame a bullet arrives beats the bullet -- which
-    // is the single most argued-about frame in the genre and the only
-    // defensible way round it. A player who reacted in time should live.
+    // The special is checked before the shot and before collision, so a bomb
+    // pressed on the frame a bullet arrives beats the bullet.
     if (_in.bomb && _p.bomb_t <= 0 && _p.mp >= MP_PER_BOMB) {
         player_bomb(_p, _g);
     }
@@ -193,11 +148,7 @@ function player_step(_p, _in, _g) {
         _p.bomb_t--;
         player_bomb_sweep(_p);
     }
-    // **The seals are stepped outside that branch**, because they outlive
-    // nothing else about the bomb but must not be cut short by it: the last
-    // one bursts before the grace ends, and a seal frozen in the air on the
-    // frame the grace ran out would be a bullet-sweeping thing that stopped
-    // sweeping.
+    // Seals are stepped outside that branch so they are never cut short.
     player_seals_step(_p);
 
     // The shot.
@@ -209,17 +160,8 @@ function player_step(_p, _in, _g) {
     _p.fire_glow += ((_in.shoot ? 1 : 0) - _p.fire_glow) * 0.35;
 }
 
-/// @desc One volley. Two barrels either side of centre, converging slightly.
-///
-///       **The bolts leave from in front of him, not from inside him.**
-///       `spr_szuix` is 122x102 with its origin on his chest, so it reaches 56
-///       pixels above the point the player is at -- and the first version of
-///       this spawned at `_p.y - 20`, which is halfway up his ribs. Every shot
-///       was therefore born underneath his own sprite and only became visible
-///       once it had cleared his horns, which read as a character who
-///       *leaks* bolts rather than one who throws them. `PSHOT_MUZZLE` is that
-///       distance, and it is a little past the top of the sprite so the whole
-///       bolt is on screen the frame it appears.
+/// @desc One volley: two barrels either side of centre, converging slightly,
+///       born `PSHOT_MUZZLE` above the player so they clear his sprite.
 function player_fire(_p) {
     var _spread = _p.focus ? PSHOT_SPREAD_FOCUS : PSHOT_SPREAD;
     var _off = _p.focus ? PSHOT_OFFSET * 0.5 : PSHOT_OFFSET;
@@ -229,22 +171,13 @@ function player_fire(_p) {
     pshot_fire(_p.x + _off, _p.y - PSHOT_MUZZLE, PSHOT_SPD, 90 - _spread,
                PSHOT_DMG);
     fx_spark(_p.x, _p.y - PSHOT_MUZZLE + 6, 90, 1.4, COL_SZUIX_LIT, 8, 18);
-    // One cue for the volley, not one per barrel. The two bolts leave on the
-    // same frame from twenty pixels apart, which is one sound by any measure
-    // the ear applies -- and asking twice would only make it louder, since
-    // `sfx_step` reads the count as size. See `audio_functions`.
+    // One cue for the volley (the vote count sets the cue's size).
     sfx(Sfx.PShot);
 }
 
 /// @desc Cast the special: spend the meter, take the grace, start the sweep.
-///
-///       **The first frame is the whole of the response, and it is loud.**
-///       This is the one key in the game pressed under pressure, so the flash,
-///       the shake, the shockwave and the close-up all land on the frame X
-///       goes down -- the sigil, the theft and the seals are the sentence that
-///       follows, and none of them is what tells the player the bomb happened.
-///       Same constraint `cue_bomb` is written to: the transient is at sample
-///       zero.
+///       All the immediate feedback (flash, shake, rings, close-up, cue) lands
+///       on this frame.
 function player_bomb(_p, _g) {
     _p.mp -= MP_PER_BOMB;
     player_grace_begin(_p, BOMB_INVULN);
@@ -257,12 +190,6 @@ function player_bomb(_p, _g) {
         _p.seals[_i].live = false;
     }
 
-    // **Violet rather than white, and softer than it was.** The wash used to
-    // be a near-white 0.55 that took the field with it for a third of a
-    // second -- which is a cost worth paying when the flash is all there is,
-    // and is simply in the way now that there is a sigil and a close-up to
-    // look at. It is his own colour, so the screen says whose spell it is
-    // before the card has arrived.
     fx_flash_screen(COL_SIGIL, 0.34);
     fx_shake(15);
     fx_flash_at(_p.x, _p.y, COL_RUNE, 1.1);
@@ -274,20 +201,10 @@ function player_bomb(_p, _g) {
     if (_g != undefined) _g.tally += 0;   // the bomb is not worth points
 }
 
-/// @desc One bullet the sweep has just erased, turned into a mote of stolen
-///       magic streaming back to the sigil's heart.
-///
-///       **Bound to the cast point rather than to the player**, because the
-///       circle is anchored where it was cast and he is free to fly out of it
-///       -- a mote that chased him would leave the figure it came out of.
-///
-///       It *accelerates* inward: `drag` above one is a particle that gets
-///       faster, and the pull of something being taken reads as ease-in. A
-///       decelerating mote reads as debris settling.
+/// @desc The `_each` callback for the bomb's sweep: every other erased bullet
+///       (at most 70 a call) leaves a spark that accelerates into the cast
+///       point. Bound as a method with `cx`/`cy`, the cast point.
 function bomb_mote(_x, _y, _col, _n) {
-    // Every other bullet, and never more than this many in a frame: a full
-    // screen swept is a thousand of them, and the pool would be nothing but
-    // motes for the rest of the bomb.
     if ((_n mod 2) != 0 || _n > 70) return;
     var _d = point_distance(_x, _y, cx, cy);
     if (_d < 30) return;
@@ -299,17 +216,9 @@ function bomb_mote(_x, _y, _col, _n) {
     _m.drag = _acc;
 }
 
-/// @desc The sweep, one frame of it.
-///
-///       **It grows rather than clearing everything at once.** A bomb that
-///       emptied the screen on its first frame would be a screenshot of an
-///       empty screen; growing it over `BOMB_GROW` frames means the player
-///       watches the wave reach the bullets, and the bullets it reaches turn
-///       into score on the way -- which is what makes bombing under pressure
-///       feel like a rescue rather than an admission.
-///
-///       The seals leave `BOMB_SEAL_AT` frames in, which is after the sweep
-///       has finished and after the last of what it stole has arrived.
+/// @desc One frame of the sweep: a circle growing from the cast point to
+///       `BOMB_CLEAR_R` over `BOMB_GROW` frames. Launches the seals at
+///       `BOMB_SEAL_AT`.
 function player_bomb_sweep(_p) {
     var _elapsed = BOMB_INVULN - _p.bomb_t;
     if (_elapsed == BOMB_SEAL_AT) player_seals_launch(_p);
@@ -321,16 +230,12 @@ function player_bomb_sweep(_p) {
 }
 
 // ---------------------------------------------------------------------------
-// The seals
+// The seals: after the sweep, `BOMB_SEALS` wisps leave the cast point in a
+// pinwheel, then hunt the nearest enemy and burst on it, clearing bullets
+// along the way and where they land, and dealing `BOMB_SEAL_DMG`.
 // ---------------------------------------------------------------------------
-//
-// **What the sigil took, thrown back.** Six wisps of his fire leave the heart
-// of the circle in a pinwheel, spread while they turn, then hunt whatever is
-// nearest and burst on it -- clearing what they fly through and a good circle
-// of what they land in. It is Fantasy Seal's shape, and the reason it suits an
-// imp who steals magic is that the thing he throws is what he has just taken.
 
-/// @desc Put the seals in the air, in a rosette round the sigil's heart.
+/// @desc Put the seals in the air, evenly round the cast point.
 function player_seals_launch(_p) {
     for (var _i = 0; _i < array_length(_p.seals); _i++) {
         var _s = _p.seals[_i];
@@ -339,9 +244,6 @@ function player_seals_launch(_p) {
         _s.y = _p.bomb_y;
         _s.px = _s.x;
         _s.py = _s.y;
-        // One up the middle, the rest evenly round it -- the same fairness
-        // habit `fire_fan` keeps, for the opposite reason: this one is a
-        // display and a gap on the centre line would read as a miscount.
         _s.dir = 90 + _i * (360 / BOMB_SEALS);
         _s.spd = BOMB_SEAL_SPD0;
         _s.t = 0;
@@ -353,8 +255,7 @@ function player_seals_launch(_p) {
     sfx(Sfx.WardScatter);
 }
 
-/// @desc How many seals are in the air. For the suites, and for anything that
-///       ever wants to know whether the bomb is still answering.
+/// @desc How many seals are in the air.
 function player_seals_live(_p) {
     var _n = 0;
     for (var _i = 0; _i < array_length(_p.seals); _i++) {
@@ -363,22 +264,15 @@ function player_seals_live(_p) {
     return _n;
 }
 
-/// @desc The nearest thing a seal is allowed to hunt, or `undefined`.
-///
-///       **Chosen again every frame rather than remembered.** A pool entry is
-///       reused once its enemy dies, so a stored reference is a reference to
-///       whatever took that slot next -- and re-picking costs six distance
-///       checks against a handful of enemies, against a bug that would only
-///       ever show up in the one frame after a kill.
+/// @desc The nearest enemy a seal may hunt, or `undefined`. Chosen again every
+///       frame rather than remembered, because enemy structs are reused. A
+///       boss that can't currently be hurt is skipped.
 function seal_target(_s) {
     var _best = undefined;
     var _bd = 999999;
     for (var _i = 0; _i < global.enemy_n; _i++) {
         var _e = global.enemies[_i];
         if (_e.leaving) continue;
-        // A boss in ceremony cannot be hurt, so it cannot be hunted either --
-        // a seal that curved into an untouchable boss and burst for nothing
-        // would read as the bomb failing. Same line `enemy_take_shots` draws.
         if (_e.boss != undefined && !boss_vulnerable(_e)) continue;
         if (_e.y < FIELD_Y0 - 10) continue;          // not on yet
         var _d = point_distance(_s.x, _s.y, _e.x, _e.y);
@@ -401,8 +295,7 @@ function player_seals_step(_p) {
         _s.py = _s.y;
 
         if (_s.t <= BOMB_SEAL_CURL) {
-            // The pinwheel: they all turn the same way, so the six of them
-            // open as one figure rather than as six unrelated shots.
+            // The pinwheel: all turning the same way as they spread.
             var _f = 1 - _s.t / BOMB_SEAL_CURL;
             _s.dir += 7.0 * _f;
             _s.spd = lerp(BOMB_SEAL_SPD0, 13, 1 - _f);
@@ -414,9 +307,8 @@ function player_seals_step(_p) {
                                 -BOMB_SEAL_TURN, BOMB_SEAL_TURN);
                 _s.spd = min(BOMB_SEAL_SPD, _s.spd + 1.1);
             } else {
-                // Nothing to hunt: carry on up the field and burst there,
-                // which keeps the display where the enemies would have been
-                // rather than trailing off the bottom of the screen.
+                // Nothing to hunt: head for a spot up the field and burst
+                // there.
                 var _rx = FIELD_CX + lengthdir_x(300, _s.k * (360 / BOMB_SEALS));
                 var _ry = FIELD_Y0 + FIELD_H * 0.34
                         + lengthdir_y(150, _s.k * (360 / BOMB_SEALS));
@@ -429,14 +321,12 @@ function player_seals_step(_p) {
         _s.x += lengthdir_x(_s.spd, _s.dir);
         _s.y += lengthdir_y(_s.spd, _s.dir);
 
-        // **The wake clears but does not pay.** `bullet_clear_circle` drops a
-        // shard for the first bullet of every call, so a per-frame sweep with
-        // `_to_items` on would mint one a frame per seal -- five hundred over
-        // a bomb. The burst pays instead; see `player_seal_burst`.
+        // The wake clears without dropping items: `bullet_clear_circle` drops
+        // a shard for the first bullet of every call, which here would be one
+        // a frame per seal. The burst pays instead.
         bullet_clear_circle(_s.x, _s.y, BOMB_SEAL_WAKE, false);
 
-        // The trail: two motes a frame, alternating between the fire's two
-        // colours, dropped behind rather than emitted forward.
+        // The trail: two motes a frame, alternating colours.
         for (var _k = 0; _k < 2; _k++) {
             fx_spark(_s.x + random_range(-7, 7), _s.y + random_range(-7, 7),
                      _s.dir + 180 + random_range(-28, 28),
@@ -453,7 +343,8 @@ function player_seals_step(_p) {
     }
 }
 
-/// @desc One seal going off, wherever it is.
+/// @desc One seal going off where it is: clears a circle of bullets (dropping
+///       items) and throws flame tongues from `spr_fx_wisp`.
 function player_seal_burst(_s) {
     if (!_s.live) return;
     _s.live = false;
@@ -463,9 +354,6 @@ function player_seal_burst(_s) {
     fx_ring(_s.x, _s.y, 16, BOMB_SEAL_BLAST * 1.15, 26, COL_SIGIL, 1.0);
     fx_ring(_s.x, _s.y, 8, BOMB_SEAL_BLAST * 0.55, 16, c_white, 0.8);
     fx_burst(_s.x, _s.y, 14, 4, 13, COL_RUNE, 26, 26);
-    // Tongues of the same fire the seal was made of, thrown outward. They are
-    // the `spr_fx_wisp` frames the seal itself is drawn with, which is what
-    // makes a burst read as *that thing* coming apart.
     for (var _k = 0; _k < 9; _k++) {
         fx_spark(_s.x, _s.y, _k * 40 + random_range(-14, 14),
                  random_range(6, 11), c_white, 18, 150, spr_fx_wisp);
@@ -474,7 +362,7 @@ function player_seal_burst(_s) {
     sfx(Sfx.WardBurst);
 }
 
-/// @desc Take a hit. Returns true if it landed, so the caller can react.
+/// @desc Take a hit. Returns true if it landed.
 function player_hit(_p) {
     if (player_invulnerable(_p) || !_p.alive) return false;
 
@@ -489,38 +377,28 @@ function player_hit(_p) {
     fx_burst(_p.x, _p.y, 26, 3, 11, COL_LIFE, 34, 18);
     sfx(Sfx.Hit);
 
-    // **A hit scatters shards.** Touhou drops your power on death and this is
-    // the same idea turned round: losing a quarter of the bar puts a handful
-    // of recoverable points on the field, so the moment after a hit is a
-    // scramble rather than only a loss. They are gold, not red -- being hit
-    // must not hand back the health it just took.
+    // A hit scatters gold point shards to scramble for (not health).
     for (var _i = 0; _i < PLAYER_HIT_SHARDS; _i++) {
         item_spawn(_p.x, _p.y, ItemKind.Tally,
                    lengthdir_x(random_range(2, 7), random(360)),
                    -random_range(3, 8));
     }
 
-    // Clear what is on top of the player, or the iframes run out inside the
-    // same wall of bullets and the player dies twice to one mistake.
+    // Clear what is on top of the player, so the grace doesn't run out inside
+    // the same wall of bullets.
     bullet_clear_circle(_p.x, _p.y, 190, false);
 
     if (_p.hp <= 0) {
         _p.hp = 0;
         _p.alive = false;
-        // **Both, and in this order.** The hit is what happened and the death
-        // is what it meant, and they are different lengths in different bands
-        // -- so they layer rather than mask, and the frame the run ends on
-        // sounds like an ending instead of like one more hit. `sfx_step`
-        // spends its budget in priority order and `PlayerDown` outranks
-        // everything, so the pair survives even on a frame where the field is
-        // also popping.
+        // Played as well as the hit cue; `PlayerDown` has the top priority.
         sfx(Sfx.PlayerDown);
     }
     return true;
 }
 
-/// @desc Collision against everything dangerous, and grazing.
-///       Returns true if the player was hit this frame.
+/// @desc Collision against bullets, lasers, rings and enemy bodies, then
+///       grazing. Returns true if the player was hit this frame.
 function player_collide(_p, _g) {
     if (!_p.alive) return false;
 
@@ -535,10 +413,7 @@ function player_collide(_p, _g) {
             player_hit(_p);
             return true;
         }
-        // A ring's metal, and the current strung between two of them. The
-        // metal bites whenever it is solid -- charging widens it rather than
-        // switching it on -- and the arc is on a laser's terms: only ever
-        // while it is live, never during the warning that announced it.
+        // A ring's metal and any live arc between rings.
         if (ring_any_hit(_p.x, _p.y, PLAYER_R)) {
             player_hit(_p);
             return true;
@@ -549,23 +424,13 @@ function player_collide(_p, _g) {
         }
     }
 
-    // **Grazing is live during invulnerability and that is deliberate.** The
-    // three seconds after a hit are the only time a player is free to sit
-    // inside a pattern, and letting those seconds pay is what turns being hit
-    // into a chance to claw points back rather than three seconds of nothing.
-    // **A laser pays too, and until now it did not.** Sliding along a beam is
-    // the most deliberate risk this game asks anybody to take -- a bullet
-    // passes whether the player is brave or not, where a wall of light is
-    // something they have to choose to stay beside -- and it was the one piece
-    // of nerve the score said nothing about. It pays on a cooldown rather than
-    // once, because a laser is still there a second later; see `laser_graze`.
+    // Grazing still pays during invulnerability. Bullets pay once each;
+    // lasers and ring bands pay on a cooldown.
     var _gz = bullet_graze(_p.x, _p.y, GRAZE_R)
             + laser_graze(_p.x, _p.y, PLAYER_R)
             + ring_graze(_p.x, _p.y, PLAYER_R);
     if (_gz > 0) {
         _p.graze_n += _gz;
-        // `sfx_many` rather than a call per bullet: this already knows how
-        // many were passed, and the count is what sets the cue's size.
         sfx_many(Sfx.Graze, _gz);
         if (_g != undefined) _g.tally += _gz * TALLY_GRAZE;
         for (var _k = 0; _k < min(_gz, 3); _k++) {
@@ -580,18 +445,8 @@ function player_collide(_p, _g) {
 // Drawing
 // ---------------------------------------------------------------------------
 
-/// @desc A heartbeat: two pulses and a rest, over `LOW_HP_BEAT` frames.
-///
-///       **A rhythm rather than a flash.** A warning that blinks evenly is
-///       one the eye stops seeing inside a minute -- the periphery is built
-///       to ignore steady repetition and to catch a change in it. Two beats
-///       and a gap is the one pattern nobody has to be taught.
-///       **Wide pulses rather than sharp ones.** The first version peaked
-///       inside four frames, which is a *flash* -- reported as too bright and
-///       distracting, and rightly: a hard onset in the corner of the eye is
-///       the same signal a bullet arriving makes, and the one thing a warning
-///       must not do is imitate the thing it is warning about. Swelling over
-///       about ten frames reads as breathing instead.
+/// @desc The low-life heartbeat, 0..1: two soft pulses and a rest per
+///       `LOW_HP_BEAT` frames.
 function player_heartbeat(_t) {
     var _ph = frac(_t / LOW_HP_BEAT);
     // Two gaussians, the second smaller, plus the first again a cycle on so
@@ -602,14 +457,14 @@ function player_heartbeat(_t) {
     return clamp(max(_a, _b), 0, 1);
 }
 
-/// @desc Draw Szuix, his shots, and the two things that say what state he is
-///       in: the hitbox while focused, and the flicker while invulnerable.
+/// @desc Draw Szuix: a glow under him, muzzle flames while shooting, the
+///       sprite (flickering while invulnerable), a red pulse at one hit from
+///       death, a cyan blaze as he casts, and the focus rings.
 function player_draw(_p) {
     if (!_p.alive) return;
 
-    // The flicker. Fast enough to be unmistakable, and never fully off -- a
-    // player sprite that vanishes for two frames is a player who has lost
-    // track of where they are, which is the opposite of what iframes are for.
+    // The flicker never goes fully off, so the player doesn't lose track of
+    // him.
     var _a = 1.0;
     if (_p.iframe > 0) _a = 0.45 + 0.35 * dsin(_p.iframe * 34);
 
@@ -617,12 +472,8 @@ function player_draw(_p) {
     var _fr = (_p.anim div 5) mod _frames;
     var _beat = (_p.hp <= HP_PER_HIT) ? player_heartbeat(_p.anim) : 0;
 
-    // **A pool of light under him, and it is not decoration.** Szuix is a dark
-    // blue sprite and the stages he flies over are dark; photographed on the
-    // brimstone stage he very nearly disappeared, which for the one thing on
-    // screen the player must never lose track of is a bug rather than a mood.
-    // A halo underneath is the genre's own answer -- it separates him from the
-    // ground without touching the silhouette the commission drew.
+    // A pool of light under him, so the dark sprite stays visible over dark
+    // stages.
     gpu_set_blendmode(bm_add);
     var _hs = 190 / sprite_get_width(spr_fx_bloom);
     draw_sprite_ext(spr_fx_bloom, 0, _p.x, _p.y, _hs, _hs, 0,
@@ -630,16 +481,12 @@ function player_draw(_p) {
                         ? merge_colour(COL_SZUIX, COL_LIFE, _beat * 0.55)
                         : COL_SZUIX,
                     (_p.focus ? 0.30 : 0.40) + _beat * 0.10);
-    // ...and the exhaust, which is what says which way he is going.
+    // The exhaust.
     var _ts = 96 / sprite_get_width(spr_fx_bloom);
     draw_sprite_ext(spr_fx_bloom, 0, _p.x, _p.y + 30, _ts, _ts * 1.6, 0,
                     COL_SZUIX_LIT, _p.focus ? 0.34 : 0.55);
 
-    // **Where the fire is coming from.** A flame sits at each muzzle while the
-    // shot is held, so the stream is something he is *doing* rather than
-    // something appearing above his head. It eases in and out with the
-    // button, because a muzzle that snapped on and off at twenty volleys a
-    // second is a strobe.
+    // A flame at each muzzle while the shot is held, eased in and out.
     if (_p.fire_glow > 0.02 && _p.entry <= 0) {
         var _off = _p.focus ? PSHOT_OFFSET * 0.5 : PSHOT_OFFSET;
         var _my = _p.y - PSHOT_MUZZLE + 10;
@@ -658,17 +505,8 @@ function player_draw(_p) {
     draw_sprite_ext(spr_szuix, _fr, _p.x, _p.y, 1, 1, -_p.lean * 7,
                     c_white, _a);
 
-    // **One hit from death, he beats.** His own silhouette lit red, twice a
-    // beat, over the sprite -- which is a warning in pixels that are already
-    // his rather than a thing added to the screen, so it cannot hide a bullet
-    // and cannot be mistaken for one. The console's life meter pulses on the
-    // same threshold; this is that fact where the player is looking.
-    //
-    // **Kept low.** At its first setting it took him to a flat pink twice a
-    // second, which is a state nobody can dodge inside -- the warning was
-    // competing with the pattern it is supposed to help read. A quarter of
-    // that is a red glow along his edge that the periphery catches and the
-    // eye never has to stop on.
+    // One hit from death: a red glow on his own outline (`spr_szuix_aura`),
+    // additive and kept faint.
     if (_beat > 0.01) {
         gpu_set_blendmode(bm_add);
         draw_sprite_ext(spr_szuix_aura, _fr, _p.x, _p.y, 1, 1, -_p.lean * 7,
@@ -676,8 +514,7 @@ function player_draw(_p) {
         gpu_set_blendmode(bm_normal);
     }
 
-    // The blaze as he casts: the same halo in his own cyan, once, fading over
-    // the first half-second of the bomb.
+    // A cyan blaze on his outline over the first half-second of a bomb.
     var _cast = (_p.bomb_t > 0) ? max(0, 1 - (BOMB_INVULN - _p.bomb_t) / 30) : 0;
     if (_cast > 0.01) {
         gpu_set_blendmode(bm_add);
@@ -698,27 +535,10 @@ function player_draw(_p) {
     }
 }
 
-/// @desc How much of the grace is left, drawn round him as a dial.
-///
-///       **Wordsearch's combo ring, on the one number this game never told
-///       anybody.** Being invulnerable is a state with an end, and until now
-///       the only thing that said so was a flicker that looks the same on its
-///       first frame as on its last -- so the moment it ran out arrived
-///       without warning, which for the three seconds after a hit is the
-///       moment the player is most likely to be somewhere they could not
-///       otherwise be.
-///
-///       A faint circle for the whole grace and a bright arc for what is left
-///       of it, sweeping clockwise from noon so the arc retreats to where it
-///       started. The **head** of the arc carries the bloom, because the head
-///       is the only part that moves and motion is what the eye tracks.
-///
-///       Two more readings of the same number for whoever is not watching the
-///       arc: the ring **tightens** as it empties, and inside `GRACE_URGENT`
-///       it flickers and warms toward the colour of being hit.
-///
-///       Thin, additive and never filled. It is drawn over the field the
-///       player is reading, and a disc this size would be a hole in it.
+/// @desc The grace dial round the player: a faint full circle and a bright
+///       arc for the share of grace left, sweeping back to noon, with a bloom
+///       on its head. It tightens as it empties and flickers toward the hit
+///       colour inside `GRACE_URGENT`. Additive, never filled.
 function player_draw_grace(_p) {
     if (!_p.alive || _p.grace_show <= 0.01 || _p.untouchable) return;
 
@@ -735,14 +555,12 @@ function player_draw_grace(_p) {
 
     gpu_set_blendmode(bm_add);
 
-    // The whole grace, so what is missing reads as missing.
+    // The whole grace, faintly.
     draw_arc_band(_p.x, _p.y, _rad - 1.5, _rad + 1.5, 0, 360, _col,
                   0.12 * _p.grace_show, 0.12 * _p.grace_show, 60);
 
     if (_frac > 0.001) {
-        // A soft halo and a bright core, the two-pass treatment every other
-        // light in this game gets, so it reads as the same world rather than
-        // as a ring laid over it.
+        // What is left: a soft halo and a bright core.
         draw_arc_band(_p.x, _p.y, _rad - 7, _rad + 7, 90, _to, _col,
                       0.05 * _a, 0.24 * _a, _steps);
         draw_arc_band(_p.x, _p.y, _rad - 2, _rad + 2, 90, _to, _lit,
@@ -755,45 +573,18 @@ function player_draw_grace(_p) {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc The hitbox, and only the hitbox.
-///
-///       **Drawn after the bullets, which is why it is a function of its own.**
-///       Four pixels behind a wall of danmaku is four pixels the player cannot
-///       find, and the one moment they most need to find it is the moment the
-///       screen is fullest.
-///
-///       **It appears only while focused, and it is the truth.** Its radius is
-///       `PLAYER_R` and the sprite is drawn at exactly that size, so what the
-///       player is shown is what the game tests. Anything else here would be a
-///       lie the game told sixty times a second.
+/// @desc The hitbox, shown only while focused, drawn at exactly `PLAYER_R`.
+///       Its own function because it is drawn after the bullets.
 function player_draw_hitbox(_p) {
     if (!_p.alive || !_p.focus || _p.entry > 0) return;
     var _hs = (PLAYER_R * 2) / sprite_get_width(spr_hitbox);
     draw_sprite_ext(spr_hitbox, 0, _p.x, _p.y, _hs, _hs, 0, c_white, 1);
 }
 
-/// @desc The player's own shots. Additive, because they are light and because
-///       it keeps them from ever being mistaken for something that can hurt.
-///
-///       **Two passes: a bloom under the bolt and the bolt over it.** The
-///       bloom is what gives a shot presence without making the sprite itself
-///       any larger -- a bolt big enough to be felt at 1:1 would be a bolt
-///       wide enough to hide a bullet behind, and the player fires two of them
-///       every few frames. Light spreading past the shape costs nothing to
-///       dodge round and reads as twice the shot.
-///       **The bolt is a fireball and it burns**, which is the one thing the
-///       old one could not do: it was a single frame tinted `COL_SZUIX_LIT`,
-///       and a tint multiplies -- so the white core the sprite was drawn with
-///       came out the same flat periwinkle as its rim and what reached the
-///       screen was a smooth pointed lozenge. Reported as looking like
-///       missiles rather than fire, which is exactly what a symmetric taper
-///       with no internal structure is.
-///
-///       Now the colour is *in* the sprite -- violet at the torn edges, azure
-///       through the body, white only at the heart -- and it is drawn
-///       `c_white` so none of that is multiplied away. Eight frames of
-///       turbulence loop through it, each shot starting at its own phase, so
-///       a stream of them flickers instead of pulsing as one object.
+/// @desc The player's shots, additive: a bloom under each, then the flame
+///       sprite. `spr_pshot` has its colours baked in and is drawn `c_white`
+///       (a tint would multiply the white core away); each shot starts at its
+///       own animation phase.
 function pshot_draw() {
     gpu_set_blendmode(bm_add);
     var _gs = 74 / sprite_get_width(spr_fx_bloom);
@@ -811,18 +602,10 @@ function pshot_draw() {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc The special: the sigil, the front of the sweep, the heart, and the
-///       seals.
-///
-///       **The circle is the sweep**, which is the whole reason it is drawn at
-///       all: its rim is exactly where bullets are being erased this frame, so
-///       a player watching it knows what has been taken and what has not. It
-///       is anchored where the bomb was cast rather than to him, because that
-///       is where the sweep is anchored -- a circle that followed him would be
-///       drawing a boundary that is not the one being enforced.
-///
-///       Everything here is additive and nothing is filled: it is drawn over
-///       a field that still has bullets outside it.
+/// @desc The special's visuals: the sigil (its rim is exactly where the sweep
+///       is erasing bullets, anchored at the cast point), the flaming front of
+///       the sweep, the heart that fills and lets go, and the seals. All
+///       additive.
 function player_draw_bomb(_p) {
     if (_p.bomb_t <= 0) return;
     var _e = BOMB_INVULN - _p.bomb_t;         // frames since the cast
@@ -836,12 +619,12 @@ function player_draw_bomb(_p) {
     var _fade = min(1, _e / 6.0)
               * (1 - clamp((_e - 74) / (BOMB_SIGIL_OUT - 74.0), 0, 1));
     if (_fade > 0.01) {
-        // The rim follows the sweep exactly while it grows, then drifts out
-        // a little as it dissolves.
+        // The rim follows the sweep while it grows, then drifts out a little
+        // as it dissolves...
         var _grow = min(1, _e / BOMB_GROW);
         var _rad = BOMB_CLEAR_R * _grow
                  * (1 + 0.08 * clamp((_e - 74) / 42.0, 0, 1));
-        // ...and draws a breath in just before the seals leave.
+        // ...and draws in slightly just before the seals leave.
         _rad *= 1 - 0.035 * clamp((_e - 26) / (BOMB_SEAL_AT - 26.0), 0, 1)
                 * clamp((BOMB_SEAL_AT + 8 - _e) / 8.0, 0, 1);
         // The sprite's outer ring sits 494 of its 512 half-pixels out.
@@ -849,9 +632,7 @@ function player_draw_bomb(_p) {
         // A flare on the frame the heart lets go.
         var _pulse = 1 + 0.5 * max(0, 1 - abs(_e - BOMB_SEAL_AT) / 10.0);
 
-        // The rings, turning one way; the script, turning the other and
-        // arriving a few frames later; the emblem last and slowest. Three
-        // rates is what makes it read as a mechanism rather than a picture.
+        // Three layers turning at three rates: rings, script, emblem.
         var _spin = _e * 0.55 + (1 - _grow) * 60;
         draw_sprite_ext(spr_fx_sigil, 0, _bx, _by, _sc, _sc, _spin,
                         COL_SIGIL, 0.85 * _fade * _pulse);
@@ -859,15 +640,12 @@ function player_draw_bomb(_p) {
         draw_sprite_ext(spr_fx_sigil, 1, _bx, _by, _sc * _in1, _sc * _in1,
                         -_e * 0.95, COL_RUNE, 0.9 * _fade * _in1 * _pulse);
         var _in2 = min(1, max(0, _e - 10) / 12.0);
-        // The emblem overshoots and settles, which is the one piece of motion
-        // that makes a thing land rather than appear -- the same easing the
-        // boss's name splash uses.
+        // The emblem overshoots and settles.
         var _os = _sc * _in2 * (1 + 0.16 * (1 - _in2));
         draw_sprite_ext(spr_fx_sigil, 2, _bx, _by, _os, _os, _e * 0.22,
                         merge_colour(COL_SIGIL, c_white, 0.55),
                         0.9 * _fade * _in2 * _pulse);
-        // The ground inside it, barely: a circle this size with nothing in it
-        // reads as a wire hoop.
+        // A faint glow inside the circle.
         var _gs = _rad * 1.5 / sprite_get_width(spr_fx_bloom);
         draw_sprite_ext(spr_fx_bloom, 0, _bx, _by, _gs, _gs, 0, COL_SIGIL,
                         0.14 * _fade);
@@ -883,10 +661,8 @@ function player_draw_bomb(_p) {
                         0.85 * _out);
         draw_sprite_ext(spr_fx_ring, 0, _bx, _by, _rs * 0.94, _rs * 0.94, 0,
                         c_white, 0.45 * _out);
-        // **The rim is on fire.** Thirty-two tongues of his own flame laid
-        // round the circumference, heads outward, each on its own frame of the
-        // loop -- so the wave that is erasing the pattern is made of the same
-        // thing his shot is made of, rather than being a white ring.
+        // 32 flame tongues round the rim, heads outward, each on its own
+        // animation frame.
         var _wn = sprite_get_number(spr_fx_wisp);
         var _ws = (0.5 + 0.45 * _t) * _out;
         for (var _i = 0; _i < 32; _i++) {
@@ -899,16 +675,15 @@ function player_draw_bomb(_p) {
     }
 
     // ---- the heart ------------------------------------------------------------
-    // It fills as the stolen magic arrives and flares when it lets go.
+    // Fills as the stolen motes arrive and flares when the seals leave.
     var _gather = clamp((_e - 4) / max(1, BOMB_SEAL_AT - 4.0), 0, 1);
     var _after = max(0, 1 - max(0, _e - BOMB_SEAL_AT) / 26.0);
     var _heart = (_e < BOMB_SEAL_AT) ? _gather : _after;
     if (_heart > 0.01) {
         var _pop = 1 + 1.6 * max(0, 1 - abs(_e - BOMB_SEAL_AT) / 8.0);
         var _bw = sprite_get_width(spr_fx_bloom);
-        // Drawn here rather than through `draw_bloom`, which sets the blend
-        // mode itself and would hand the rest of this routine back in
-        // `bm_normal` -- the trap the note at the top of `fx_draw` is about.
+        // Drawn directly rather than with `draw_bloom`, which resets the blend
+        // mode.
         var _core = [[(240 + 200 * _gather) * _pop, COL_SIGIL, 0.22],
                      [(90 + 120 * _gather) * _pop, COL_RUNE, 0.55],
                      [(40 + 60 * _gather) * _pop, c_white, 0.65]];
@@ -930,8 +705,7 @@ function player_draw_bomb(_p) {
                         190 / sprite_get_width(spr_fx_bloom),
                         190 / sprite_get_width(spr_fx_bloom), 0,
                         COL_SIGIL, 0.45 * _in);
-        // Each one carries a turning copy of the emblem at its heart, so a
-        // seal is recognisably a piece of the circle that threw it.
+        // A turning copy of the sigil's emblem at each seal's heart.
         var _es = 0.15 * _in * (sprite_get_width(spr_fx_sigil) / 1024.0);
         draw_sprite_ext(spr_fx_sigil, _sn - 1, _s.x, _s.y, _es, _es,
                         _s.t * 4.5, COL_SIGIL, 0.75 * _in);
@@ -946,12 +720,8 @@ function player_draw_bomb(_p) {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc His close-up, on the GUI layer, while the sigil is going off.
-///
-///       **The same card a boss's spell gets**, through the same function --
-///       see `draw_eye_card`. It is the one piece of the bomb that says whose
-///       spell this is rather than what it does, which is exactly the job the
-///       card does for a boss.
+/// @desc His close-up on the GUI layer while the special goes off, through the
+///       same `draw_eye_card` a boss's spell uses.
 function player_draw_card(_p) {
     if (_p.card_t <= 0) return;
     draw_eye_card(spr_eye_szuix, _p.card_t / PLAYER_CARD_TIME);

@@ -1,47 +1,17 @@
-/// @desc Rings: large objects on the field that stop the player's fire.
+/// @desc Rings: furniture a boss puts down, used by Mika's fight
+///       (`stage_sanctum`).
 ///
-/// **This is the first thing in the game that is neither a bullet nor an
-/// enemy.** A bullet is something to dodge, an enemy is something to shoot,
-/// and a ring is neither: it is furniture the boss puts down, it cannot be
-/// destroyed, and what it does is *change where the player is allowed to
-/// stand and where they are allowed to shoot from*. Mika's whole fight is
-/// built out of them -- see `stage_sanctum` -- and nothing else in the game
-/// uses one yet, which is why the pool lives here rather than in his file:
-/// there is nothing about a ring that is about him.
+/// A ring can't be destroyed. What it does is a field on the struct:
+/// - Block: player shots crossing its band are absorbed (enemy bullets and the
+///   bomb's seals are not). The hole in the middle does not block.
+/// - Kill: the band hurts to touch once the ring has formed. Charging it
+///   (after a visible warning) widens the lethal band to the whole cuff.
+/// - Arc: two rings can be linked by a lethal line of current.
+/// - Fire: `act(ring, run, frame)` runs every frame like a boss attack.
 ///
-/// **It blocks along its band and not across its middle, and that is the
-/// whole design.** An indestructible shield in front of a boss would be the
-/// defect `BossMove` exists to fix -- an attack that cannot be answered, only
-/// waited out. A *ring* has a hole in it, so the answer is always there and it
-/// is a positional one: line up through the middle, or go round. The player is
-/// never told to stop shooting; they are told where to stand to keep shooting.
-///
-/// Four things a ring can do, and every one of them is a field:
-///
-/// - **Block.** Player shots that cross the metal are absorbed. Enemy bullets
-///   are not, because they are his; and the bomb's seals are not either, which
-///   is what stops a walled boss making the one panic button in the game
-///   useless.
-/// - **Kill.** The metal hurts to touch, always, from the frame it finishes
-///   forming. A ring can also be *charged*, after a visible warning, which
-///   widens the lethal band to the whole cuff and lights it -- so charging is
-///   an escalation of a danger that is already there rather than the only
-///   time there is one. It used to be the only time, and a player who flew
-///   into a cold ring passed through it; see `RING_KILL_FRAC`.
-/// - **Arc.** Two rings can be strung together with a line of current, which
-///   is a lethal segment between two moving points -- a wall the player reads
-///   off the two objects at its ends rather than off the wall itself.
-/// - **Fire.** A ring carries an `act`, called every frame exactly as a boss's
-///   attack is, so it can lay down bullets from its own rim or open a beam
-///   through its own middle. `ring_fire_rim` and `ring_beam` are the two verbs
-///   that turned out to be worth naming.
-///
-/// **The pool is the bullet pool's shape at a twentieth of the size**: one
-/// flat array, swap-remove, structs kept rather than freed, and a refusal
-/// rather than a resize past `RING_MAX`. There are never more than a handful,
-/// so none of that is for speed -- it is so that a ring behaves the way
-/// everything else on this field behaves, including being emptied by
-/// `run_clear_field` and by the end of an attack.
+/// Every ring is `RING_R`; there is no per-ring radius (owner's rule). The pool
+/// works like the bullet pool: flat array, swap-remove, reused structs, and a
+/// refusal past `RING_MAX`.
 
 // ---------------------------------------------------------------------------
 // The pool
@@ -50,29 +20,18 @@
 function ring_init() {
     global.rings = [];
     global.ring_n = 0;
-    // **A serial, so a stale reference can be told from a live one.** A ring
-    // struct is reused out of the pool, so an attack that remembers one and
-    // reads it two seconds later may be reading whatever took that slot. The
-    // Hex's note about a seal's target is the same trap; there the answer was
-    // to re-pick every frame, and here it cannot be, because an attack that
-    // spawned three rings means *those* three. So a ring is stamped and
-    // `ring_valid` compares the stamp.
+    // Each ring gets a serial (`gen`), because pooled structs are reused: a
+    // remembered ring is checked with `ring_valid`.
     global.ring_seq = 0;
 }
 
 function ring_blank() {
     return {
         x: 0, y: 0, vx: 0, vy: 0,
-        // Where it was last frame. **Not the same as `vx`/`vy`**, which is
-        // only the one way a ring can move: an orbiting ring is carried by
-        // its `src` and its offset instead, and both of those move it without
-        // either number changing. This is the whole truth about how fast the
-        // metal is actually travelling -- see `ring_vel_x`.
+        // Last frame's position. A ring carried by its `src` moves without
+        // `vx`/`vy` changing, so this is its true travel (`ring_vel_x`).
         px: 0, py: 0,
-        // **No radius.** Every ring is `RING_R` -- see the macro. A field here
-        // would be a way for one attack to make a ring that behaves like a
-        // different object, and the whole of what the player has to learn is
-        // one shape.
+        // No radius field: every ring is `RING_R`.
         ang: 0, spin: 0,
         col: BCOL_GOLD,
         gen: 0,
@@ -135,10 +94,8 @@ function ring_kill_at(_i) {
     global.ring_n = _last;
 }
 
-/// @desc Empty the field of rings. What the end of an attack does, on the same
-///       terms as `bullet_clear_all` -- a ring left over from the last attack
-///       is a bug rather than a challenge, and unlike a bullet it would never
-///       leave the field on its own.
+/// @desc Remove every ring. Called at the end of an attack (rings never
+///       leave on their own) and by `run_clear_field`.
 function ring_clear_all() {
     var _n = global.ring_n;
     for (var _i = 0; _i < _n; _i++) global.rings[_i].alive = false;
@@ -146,12 +103,8 @@ function ring_clear_all() {
     return _n;
 }
 
-/// @desc Is this the same ring it was when the reference was taken?
-///
-///       **Both halves are load-bearing.** `alive` catches one that has been
-///       swept, and `gen` catches the far nastier case: the slot being handed
-///       straight back out to the next ring, which is live, in the right pool,
-///       and not the one the caller meant.
+/// @desc Is this still the ring the reference was taken from? `alive` catches
+///       a swept ring; `gen` catches its slot being reused by a new ring.
 function ring_valid(_ring, _gen) {
     return _ring != undefined && _ring.alive && _ring.gen == _gen;
 }
@@ -160,15 +113,8 @@ function ring_valid(_ring, _gen) {
 // Putting one down
 // ---------------------------------------------------------------------------
 
-/// @desc A ring at a point, in a colour. `undefined` past the cap.
-///
-///       **There is no size argument**, and that is the point -- see `RING_R`.
-///
-///       It arrives over `RING_FORM` frames -- growing, translucent, and
-///       harmless in both directions: it does not block and it cannot kill.
-///       Same rule and same reason as `BULLET_DELAY_DEFAULT`: a thing that
-///       appears fully formed on top of the player is a thing they could not
-///       have answered.
+/// @desc A ring at a point, in a colour; `undefined` past the cap. It forms
+///       over `RING_FORM` frames, during which it neither blocks nor kills.
 function ring_new(_x, _y, _col = BCOL_GOLD, _ttl = 0) {
     var _g = ring_alloc();
     if (_g == undefined) return undefined;
@@ -180,10 +126,8 @@ function ring_new(_x, _y, _col = BCOL_GOLD, _ttl = 0) {
     return _g;
 }
 
-/// @desc Ride something with an `x` and a `y` -- the caster, usually -- at a
-///       fixed offset. The same seam a beam uses for its origin, and for the
-///       same reason: a ring the boss carries has to drift with him or it
-///       reads as scenery he happens to be standing near.
+/// @desc Ride something with an `x` and a `y` (usually the caster) at a
+///       fixed offset.
 function ring_attach(_ring, _src, _ox = 0, _oy = 0) {
     if (_ring == undefined) return;
     _ring.src = _src;
@@ -191,13 +135,8 @@ function ring_attach(_ring, _src, _ox = 0, _oy = 0) {
     _ring.oy = _oy;
 }
 
-/// @desc Charge the band: `_warn` frames of a visible build, then `_hot`
-///       frames in which the metal kills.
-///
-///       **Never call it with `_warn` of zero.** A ring that electrifies on
-///       the frame the player is standing in it is a coin toss, which is the
-///       argument `laser_beam` makes for taking its warning as an ordinary
-///       argument rather than as an option.
+/// @desc Charge the band: `_warn` frames of visible build-up, then `_hot`
+///       frames at full lethal width. Always give a non-zero warning.
 function ring_charge(_ring, _warn, _hot) {
     if (_ring == undefined) return;
     _ring.warn = _warn;
@@ -205,11 +144,8 @@ function ring_charge(_ring, _warn, _hot) {
     sfx(Sfx.LaserCharge);
 }
 
-/// @desc String current between two rings for `_frames`.
-///
-///       Held as a reference *and* the serial that went with it, so a ring
-///       that dies mid-arc takes its arc with it rather than leaving a lethal
-///       line to whatever reuses the slot.
+/// @desc String current between two rings for `_frames`. The far ring's `gen`
+///       is kept, so the arc dies with it.
 function ring_link(_a, _b, _frames) {
     if (_a == undefined || _b == undefined) return;
     _a.arc = _b;
@@ -217,8 +153,8 @@ function ring_link(_a, _b, _frames) {
     _a.arc_t = _frames;
 }
 
-/// @desc Start a ring leaving. It stops blocking and stops killing at once;
-///       the fade is only the picture catching up.
+/// @desc Start a ring leaving. It stops blocking and killing at once; the
+///       fade is only visual.
 function ring_dismiss(_ring, _frames = RING_FADE) {
     if (_ring == undefined || _ring.fade >= 0) return;
     _ring.fade = _frames;
@@ -228,42 +164,23 @@ function ring_dismiss(_ring, _frames = RING_FADE) {
 }
 
 // ---------------------------------------------------------------------------
-// What a ring is, geometrically
+// Geometry
 // ---------------------------------------------------------------------------
 
-/// @desc Half the thickness of the metal, in pixels.
-///
-///       **It takes no argument, because every ring is the same size.** What
-///       it is a fraction *of* is quoted in `make_rings.py`, so the band that
-///       is drawn and the band that blocks a shot are the same shape by
-///       construction -- the property `capsule_half` buys the meters and
-///       `laser_draw_curve` buys a curve.
+/// @desc Half the thickness of the metal, in pixels (the same for every
+///       ring).
 function ring_band_half() {
     return RING_BAND_HALF;
 }
 
-/// @desc Is the metal there this frame? False while it is arriving and while
-///       it is going.
+/// @desc Is the metal there this frame? False while forming and while leaving.
 function ring_solid(_ring) {
     return _ring.alive && _ring.form <= 0 && _ring.fade < 0;
 }
 
-/// @desc Is the band *charged* -- lit, and killing at its full width?
-///
-///       **This is no longer the question "can it kill"**; solid metal kills
-///       whatever this answers, and what a charge adds is width and light. It
-///       is still false during the warning, and that is still the rule it was
-///       written for: what the build-up announces is the escalation, so the
-///       escalation may not land before the build-up ends.
-///
-///       **`warn` has to be tested and the first version did not test it.**
-///       `ring_charge` sets both counters at once, because the warning and
-///       what follows it are one instruction; so `hot > 0` is true from the
-///       frame the charge is *requested*, and a ring read that way was hot for
-///       the whole of the build-up it was drawing to say it had not started
-///       yet. Nothing about it would look wrong -- the picture is right, the
-///       cue is right, the timing is right. `test_rings` is what found it, on
-///       its first run.
+/// @desc Is the band charged (lit, and lethal at full width)? `warn` must be
+///       tested: `ring_charge` sets `warn` and `hot` together, so `hot > 0`
+///       alone would be true during the warning.
 function ring_is_hot(_ring) {
     return _ring.warn <= 0 && _ring.hot > 0 && ring_solid(_ring);
 }
@@ -284,8 +201,7 @@ function ring_rim_y(_ring, _dir) {
     return _ring.y + lengthdir_y(RING_R, _dir);
 }
 
-/// @desc How far the metal moved this frame, however it is being moved --
-///       under its own `vx`/`vy`, or carried round by the boss it rides.
+/// @desc How far the ring moved this frame, however it is being moved.
 function ring_vel_x(_ring) {
     return _ring.x - _ring.px;
 }
@@ -294,22 +210,10 @@ function ring_vel_y(_ring) {
     return _ring.y - _ring.py;
 }
 
-/// @desc Where the point at `_dir` round the band will be in `_frames` frames,
-///       if the ring goes on travelling as it is now.
-///
-///       **This is what a bullet fired off a moving ring has to be aimed
-///       at.** Every bullet in this game is born as a mark that holds still
-///       for its delay and only then goes live -- and a ring that is orbiting
-///       its caster covers six pixels a frame, so over those frames the metal
-///       slides on and the *hole* arrives where the mark is sitting. What that
-///       reaches a player as is sand coming out of the middle of the ring
-///       about half the time, which is exactly how it was reported. Firing
-///       from where the metal is going to be puts the grain on the band on the
-///       frame it becomes a grain; the mark leads the ring by a few pixels
-///       until then, which reads as the mill throwing it.
-///
-///       A ring that is not moving leads by nothing, so nothing that stands
-///       still is affected by any of this.
+/// @desc Where the point at `_dir` on the band will be in `_frames` frames if
+///       the ring keeps moving as it is. Fire from here with a delay of
+///       `_frames`: a bullet's warning mark holds still, so firing at the
+///       current rim of a moving ring puts the bullet inside the hole.
 function ring_rim_at_x(_ring, _dir, _frames) {
     return _ring.x + ring_vel_x(_ring) * _frames + lengthdir_x(RING_R, _dir);
 }
@@ -318,29 +222,17 @@ function ring_rim_at_y(_ring, _dir, _frames) {
     return _ring.y + ring_vel_y(_ring) * _frames + lengthdir_y(RING_R, _dir);
 }
 
-/// @desc How far a point is from the band -- zero on the metal, rising both
-///       inward and outward.
-///
-///       **Split out because a hit and a graze are the same measurement at two
-///       radii**, exactly as `laser_spine_dist` is. A ring that killed along
-///       one line and paid along a slightly different one is a disagreement no
-///       screenshot and no assertion about either half could ever show.
+/// @desc How far a point is from the band (zero on the metal). Hits and
+///       grazes use the same measurement at different widths.
 function ring_band_dist(_ring, _x, _y) {
     return abs(point_distance(_ring.x, _ring.y, _x, _y) - RING_R);
 }
 
 /// @desc Does the segment from (`_x0`,`_y0`) to (`_x1`,`_y1`) cross the band?
-///
-///       **Swept, and it has to be.** A player shot travels `PSHOT_SPD` --
-///       thirty-six pixels a frame -- against a band that is twenty-three at a
-///       200-pixel ring, so a point test would miss two shots in three and the
-///       ring would read as leaking. Same defect and same fix as
-///       `bullet_hit_index`.
-///
-///       The distance from the centre along a segment runs from its closest
-///       approach to whichever end is furthest, and takes every value between,
-///       so the segment meets the annulus exactly when that interval overlaps
-///       the band. Two distance calls and a compare, with no root-finding.
+///       Swept, because player shots move further per frame than the band is
+///       thick. The distance from the centre along a segment covers every value
+///       between its closest approach and its furthest end, so the segment
+///       meets the annulus exactly when that interval overlaps the band.
 function ring_seg_crosses(_ring, _x0, _y0, _x1, _y1) {
     var _half = RING_BAND_HALF;
     var _lo = point_seg_dist(_ring.x, _ring.y, _x0, _y0, _x1, _y1);
@@ -358,8 +250,8 @@ function ring_step(_g) {
     for (var _i = global.ring_n - 1; _i >= 0; _i--) {
         var _r = global.rings[_i];
 
-        // Kept before anything moves it, so `ring_vel_x` is this frame's
-        // travel by the time the ring's own `act` runs and fires anything.
+        // Recorded before moving, so `ring_vel_x` is this frame's travel when
+        // the ring's `act` runs.
         _r.px = _r.x;
         _r.py = _r.y;
 
@@ -377,9 +269,7 @@ function ring_step(_g) {
         if (_r.graze_t > 0) _r.graze_t--;
         if (_r.arc_t > 0) _r.arc_t--;
 
-        // The charge: the warning runs down, and the frame it reaches zero the
-        // band goes live. `hot` is set at the same time as `warn`, so a ring
-        // that is never charged never touches either.
+        // The charge: the warning counts down, then the band is hot.
         if (_r.warn > 0) {
             _r.warn--;
             if (_r.warn == 0 && _r.hot > 0) {
@@ -390,10 +280,7 @@ function ring_step(_g) {
             _r.hot--;
         }
 
-        // **The behaviour runs while the ring is arriving.** A ring that could
-        // not fire until it had finished forming would open every attack with
-        // a silent half-second, and the pattern is what the player is reading
-        // the ring's arrival *for*.
+        // The behaviour runs while the ring is still forming, too.
         if (_r.act != undefined && _r.fade < 0) _r.act(_r, _g, _r.t);
 
         _r.t++;
@@ -410,9 +297,7 @@ function ring_step(_g) {
             }
         }
 
-        // Culled on geometry like everything else, and generously: a ring is
-        // large, and one whose near edge is still on screen is still in the
-        // way.
+        // Culled once it is entirely off the field.
         var _out = RING_R + CULL_MARGIN;
         if (_r.x < FIELD_X0 - _out || _r.x > FIELD_X1 + _out
             || _r.y < FIELD_Y0 - _out || _r.y > FIELD_Y1 + _out) {
@@ -425,17 +310,10 @@ function ring_step(_g) {
 // Blocking
 // ---------------------------------------------------------------------------
 
-/// @desc Absorb every player shot that crosses a ring's metal. Answers how
-///       many were stopped.
-///
-///       **Called before `enemy_take_shots` and that ordering is the whole
-///       mechanic**: a shot eaten here never reaches the boss behind it. Run
-///       the other way round and a ring would be scenery with a spark effect.
-///
-///       The spark is put *on the band* rather than where the shot happened to
-///       be when the frame ended, because at thirty-six pixels a frame those
-///       are not the same place -- and a shot visibly dying a ring's width
-///       past the ring is a shot the player thinks got through.
+/// @desc Absorb every player shot that crosses a ring's metal; returns how
+///       many. Must run before `enemy_take_shots`, so an absorbed shot never
+///       reaches the boss (`check_rings_block_before_enemies`). The spark is
+///       placed on the band, not at the shot's end position.
 function ring_block_shots() {
     var _stopped = 0;
     for (var _s = global.pshot_n - 1; _s >= 0; _s--) {
@@ -464,47 +342,28 @@ function ring_block_shots() {
 // Hurting
 // ---------------------------------------------------------------------------
 
-/// @desc How wide this ring's band kills, in pixels either side of the metal's
-///       centre line.
-///
-///       Cold, a little under the drawn metal, on the genre's rule: a laser is
-///       drawn wider than it kills because the glow either side is light
-///       rather than beam, and a ring is drawn with a bevel and a chain on it
-///       for the same reason. A player who believes the black of the cuff is
-///       the hitbox is a player who is right.
-///
-///       Charged, the whole cuff -- see `RING_HOT_KILL_FRAC`. **It takes the
-///       ring now and it did not use to**, because there is a cold width to
-///       tell apart from a hot one; there is still no size argument, since
-///       every ring is `RING_R`.
+/// @desc How far either side of the band's centre line it kills: less than
+///       the drawn metal when cold, the whole drawn cuff when charged, never
+///       wider.
 function ring_kill_half(_ring) {
     return RING_BAND_HALF
            * (ring_is_hot(_ring) ? RING_HOT_KILL_FRAC : RING_KILL_FRAC);
 }
 
-/// @desc Half the width the current kills at.
-///
-///       Split out for the reason `laser_hit_half` is: the drawing and the
-///       collision have to be the same number, and the *jitter* on the drawn
-///       bolt is bounded by it -- see `ring_draw_arcs`.
+/// @desc Half the width an arc kills at. The drawn bolt's jitter stays
+///       inside it (`ring_draw_arcs`).
 function ring_arc_half() {
     return RING_ARC_WID * 0.34;
 }
 
-/// @desc Where the arc between two rings runs. Answers `undefined` if it does
-///       not.
+/// @desc The ends of a ring's live arc, or `undefined`.
 function ring_arc_ends(_ring) {
     if (!ring_arc_live(_ring)) return undefined;
     return { x0: _ring.x, y0: _ring.y, x1: _ring.arc.x, y1: _ring.arc.y };
 }
 
-/// @desc Is this ring touching a circle -- by its metal or by its arc?
-///
-///       **The metal, not only a charged band.** `ring_solid` is the whole of
-///       the condition: a ring that is still forming cannot hurt anybody and
-///       neither can one that is leaving, which is the arrival telegraph a
-///       bullet's delay mark is, one object up. Everything between those is
-///       metal hanging in the air.
+/// @desc Is this ring touching a circle, by its metal (whenever solid) or by
+///       its arc?
 function ring_hits(_ring, _x, _y, _rad) {
     if (ring_solid(_ring)
         && ring_band_dist(_ring, _x, _y) < _rad + ring_kill_half(_ring)) {
@@ -527,17 +386,9 @@ function ring_any_hit(_x, _y, _rad) {
     return false;
 }
 
-/// @desc Count a graze against every live ring being ridden, and start its
-///       cooldown. Answers how many paid.
-///
-///       **On a cooldown, exactly as a laser is.** A bullet passes and is
-///       gone, so a flag is the whole truth about it; a band stands there for
-///       as long as the ring does, and a flag would pay somebody who brushed
-///       it for one frame what it pays somebody who rode round it. The band is
-///       `ring_kill_half` plus `GRAZE_R`, off the same measurement the kill
-///       uses, so what the player learnt from the bullets still holds here --
-///       and it follows the kill from cold metal to charged without being
-///       told, because it asks the same function.
+/// @desc Pay a graze for every ring (band or arc) the player is riding, on a
+///       `RING_GRAZE_CD` cooldown per ring; returns how many paid. The band is
+///       the kill width plus `GRAZE_R`.
 function ring_graze(_x, _y, _rad) {
     var _n = 0;
     for (var _i = 0; _i < global.ring_n; _i++) {
@@ -563,22 +414,12 @@ function ring_graze(_x, _y, _rad) {
 }
 
 // ---------------------------------------------------------------------------
-// What a ring fires
-//
-// **A ring's `act` is a boss attack one level down**, with the same signature
-// and the same habits: a function of the frame count, written as a `switch` on
-// `_t mod period`. What is named here is only the two things that turned out
-// to be awkward to write by hand every time -- a volley off the rim, and a
-// beam through the middle.
+// Firing from a ring
 // ---------------------------------------------------------------------------
 
 /// @desc `_n` bullets evenly round the band, each travelling straight out.
-///
-///       **Fired from the metal rather than from the centre**, which is the
-///       whole visual: the ring is what is shooting, so the bullets have to
-///       leave it rather than pass through it. Firing them from the middle
-///       looks identical for one frame and then wrong for ever after, because
-///       the delay marks appear inside the hole.
+///       Fired from the metal (led for movement over the delay), not the
+///       centre, so the warning marks don't appear in the hole.
 function ring_fire_rim(_ring, _n, _spd, _dir0, _shape, _col,
                        _delay = BULLET_DELAY_DEFAULT) {
     for (var _i = 0; _i < _n; _i++) {
@@ -589,9 +430,8 @@ function ring_fire_rim(_ring, _n, _spd, _dir0, _shape, _col,
     }
 }
 
-/// @desc The same, but every bullet runs *round* the band rather than out of
-///       it -- a tangential volley, which is what a ring that has been spun up
-///       throws off.
+/// @desc As `ring_fire_rim`, but each bullet travels along the band's tangent
+///       (`_sign` picks the direction round).
 function ring_fire_tangent(_ring, _n, _spd, _dir0, _shape, _col, _sign = 1,
                            _delay = BULLET_DELAY_DEFAULT) {
     for (var _i = 0; _i < _n; _i++) {
@@ -602,12 +442,7 @@ function ring_fire_tangent(_ring, _n, _spd, _dir0, _shape, _col, _sign = 1,
     }
 }
 
-/// @desc A beam through the ring's middle, which follows the ring.
-///
-///       Anchored at the centre and not at the rim, because that is what the
-///       hole is for: a ring with a beam coming out of it is a portal, and a
-///       ring with a beam coming off its edge is a gun somebody bolted a hoop
-///       to.
+/// @desc A beam from the ring's centre that follows the ring (`src`).
 function ring_beam(_ring, _dir, _len, _wid, _col, _warn, _hot, _fade = 18) {
     var _l = laser_beam(_ring.x, _ring.y, _dir, _len, _wid, _col, _warn, _hot,
                         _fade);
@@ -618,24 +453,17 @@ function ring_beam(_ring, _dir, _len, _wid, _col, _warn, _hot, _fade = 18) {
 // ---------------------------------------------------------------------------
 // Drawing
 //
-// **Rings are drawn before the bullets and that is what makes an opaque object
-// this size affordable.** The near parallax layer is capped at `BG_NEAR_ALPHA`
-// and kept out of the middle of the screen because it draws *over* live
-// danmaku; a ring draws under all of it, so no arrangement of rings can hide a
-// bullet. What they can hide is the boss, which is the point.
+// Rings are drawn under the bullets, so they can be opaque without hiding
+// one.
 // ---------------------------------------------------------------------------
 
-/// @desc How bright and how big a ring is drawn this frame. Split out for the
-///       reason `laser_visual` is: the shape of a ring's life is the part a
-///       suite can check.
+/// @desc Scale, alpha and charge glow for a ring this frame. The charge
+///       pulses during the warning and is full while hot.
 function ring_visual(_ring) {
     if (_ring.fade >= 0) {
         var _f = _ring.fade / max(1, RING_FADE);
         return { scale: 1 + (1 - _f) * 0.14, alpha: _f, charge: 0 };
     }
-    // Charge: a build through the warning, full while hot, and it is a
-    // *pulse* rather than a ramp, because a steady brightening is the one
-    // signal the periphery is built to stop noticing.
     var _c = 0;
     if (_ring.warn > 0 && _ring.hot > 0) {
         var _p = 1 - _ring.warn / max(1, RING_WARN);
@@ -663,9 +491,8 @@ function ring_draw() {
         draw_sprite_ext(spr_ring, 0, _r.x, _r.y, _k, _k, _r.ang, c_white,
                         _v.alpha);
 
-        // The charge, additive over the metal, in the attack's own hue -- so
-        // the marking is what lights up and the black cuff underneath does
-        // not move. See `make_rings.py` on why the sprite's colour is baked.
+        // The charge: the same sprite again, additively, in the ring's hue.
+        // (The sprite's own colours are baked in.)
         if (_v.charge > 0.01) {
             gpu_set_blendmode(bm_add);
             draw_sprite_ext(spr_ring, 0, _r.x, _r.y, _k, _k, _r.ang, _col,
@@ -680,21 +507,10 @@ function ring_draw() {
     ring_draw_arcs();
 }
 
-/// @desc The current strung between two rings.
-///
-///       **Drawn as a jagged run of bars off the same segment the collision
-///       reads, and the jitter is bounded by the width that kills.** A bolt
-///       has to wander or it is a rod, and every pixel it wanders is a pixel
-///       where the picture and the hitbox disagree -- so the wander is capped
-///       under `ring_arc_half`, which means the drawn line never leaves the
-///       lethal band it is drawn to represent. The first version let it stray
-///       twenty-six pixels off a segment that kills within nine, on a player
-///       whose hitbox is four: a bolt that visibly missed and killed anyway,
-///       which is the least readable death this genre has.
-///
-///       The wander is a hash of the node index, the frame and the ring's own
-///       serial rather than `random`, so one arc is one bolt however many
-///       times a frame it is drawn.
+/// @desc The current strung between two rings: a jagged run of bars along
+///       the same segment the collision uses. The jitter is capped inside the
+///       lethal width and comes from a hash of the node, frame and ring
+///       serial, not `random`.
 function ring_draw_arcs() {
     gpu_set_blendmode(bm_add);
     for (var _i = 0; _i < global.ring_n; _i++) {
@@ -708,7 +524,7 @@ function ring_draw_arcs() {
         var _dir = point_direction(_a.x0, _a.y0, _a.x1, _a.y1);
         var _nx = lengthdir_x(1, _dir + 90);
         var _ny = lengthdir_y(1, _dir + 90);
-        // Inside the band that kills, so a bolt that visibly misses did.
+        // Inside the band that kills.
         var _amp = min(ring_arc_half() * 0.9, _len * 0.03);
 
         var _px = _a.x0;

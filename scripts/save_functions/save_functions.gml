@@ -1,25 +1,10 @@
-/// @desc Progress: which stages have been cleared, and how well.
+/// @desc Progress: which stages have been cleared, and how well. One result
+///       per stage; a clear is permanent.
 ///
-/// **Progress is permanent and a stage is played in isolation.** That is the
-/// Cuphead shape rather than the Touhou one -- there is no run that starts at
-/// stage one, so there is nothing to lose by failing and nothing to save
-/// mid-stage. What is stored is a set of *results*, one per stage, and a
-/// stage that has been cleared stays cleared.
-///
-/// **Saving cannot be allowed to destroy a save.** `file_text_open_write`
-/// truncates its target the instant it opens, so every save has a window in
-/// which the live file is empty and the new contents are not there yet --
-/// and anything that kills the process inside that window leaves a half-
-/// written file. A crash does it, a force-quit does it, and so does
-/// `tools/shot.py`, which runs the game under a timeout and kills it.
-///
-/// Worse, reading answers `undefined` for both "there is no file" and "the
-/// file is corrupt", and every caller reads that as "nothing saved yet" -- so
-/// one interrupted write silently takes every stage clear with it, and the
-/// only symptom is progress that was there yesterday and is not there today.
-/// This is lifted wholesale from the Wordsearch project, where it happened.
-///
-/// So a save is built beside the live file and swapped in.
+/// Saves are atomic: the new file is written beside the live one and then
+/// swapped in, because `file_text_open_write` truncates immediately and a
+/// process killed mid-write (a crash, or `tools/shot.py`'s timeout) would
+/// otherwise leave a half-written save that loads as "no progress".
 
 #macro SAVE_VERSION 1
 #macro SAVE_FILE "progress.json"
@@ -31,10 +16,8 @@ function progress_init() {
     };
 }
 
-/// @desc Write a struct as JSON, atomically.
-///
-///       Full file first, then delete, then rename. Whenever the process dies
-///       there is always at least one *complete* file on disk.
+/// @desc Write a struct as JSON, atomically: full temp file, delete, rename,
+///       so there is always at least one complete file on disk.
 function save_write_json(_name, _data) {
     var _tmp = _name + ".tmp";
     var _f = file_text_open_write(_tmp);
@@ -46,13 +29,9 @@ function save_write_json(_name, _data) {
 }
 
 /// @desc Read a struct back, preferring the live file and falling back to the
-///       temp one -- which is the *newer* save, not a scrap, since it is only
-///       ever left behind by a rename that did not happen.
-///
-///       A live file that exists and does not parse is renamed to `.bad`
-///       rather than left where the next write would replace it. The game
-///       carries on as though there were no save, because refusing to start is
-///       worse, but the bytes survive for anyone who wants them.
+///       temp file (left behind only when the rename didn't happen, so it is
+///       the newer save). A live file that doesn't parse is renamed to `.bad`
+///       so the next write can't destroy it, and the game carries on unsaved.
 function save_read_json(_name) {
     var _order = [_name, _name + ".tmp"];
     for (var _i = 0; _i < 2; _i++) {
@@ -92,11 +71,8 @@ function progress_load() {
     var _data = save_read_json(SAVE_FILE);
     if (_data == undefined) return;
 
-    // **A file from a future version is left alone rather than migrated.**
-    // The one thing worse than losing a save is a downgrade quietly
-    // overwriting one it did not understand. Wordsearch has this same guard
-    // and a note that it only half works there, because its writer has no
-    // matching check; this one does -- `progress_save` refuses too.
+    // A save from a newer version is left untouched: `progress_save` refuses
+    // to write while `progress_readonly` is set.
     if (!is_struct(_data) || (_data[$ "version"] ?? 0) > SAVE_VERSION) {
         global.progress_readonly = true;
         return;
@@ -111,9 +87,8 @@ function progress_save() {
     save_write_json(SAVE_FILE, global.progress);
 }
 
-/// @desc What is known about one stage. Never `undefined` -- an unplayed stage
-///       answers a blank record, so every caller can read the fields without
-///       asking whether it exists first.
+/// @desc One stage's record; an unplayed stage returns a blank record rather
+///       than `undefined`.
 function progress_stage(_id) {
     var _rec = global.progress.stages[$ _id];
     if (_rec == undefined) {
@@ -126,17 +101,11 @@ function stage_is_cleared(_id) {
     return progress_stage(_id).cleared;
 }
 
-/// @desc File a result. **Keeps the best of each field independently**, so a
-///       later sloppy clear cannot take away a no-hit that was earned, and a
-///       high-scoring run cannot take away a higher capture count. A record
-///       that could go backwards is a record players learn not to trust.
+/// @desc File a clear, keeping the best of each field independently.
 function progress_record(_id, _tally, _no_hit, _captured) {
-    // **An empty id is a run that is not a stage**, and it files nothing.
-    // Practice, the drafting table and the review card all carry one, and so
-    // does the old draft of stage three -- which, unlike the other three, is a
-    // whole run with a boss at the end, so it genuinely arrives here. Filed,
-    // it would be a cleared stage called "" in the player's save, counted by
-    // `progress_cleared_count` against a roster it is not on.
+    // Runs that aren't stages (practice, drafting table, review card, the old
+    // stage three) have an empty id and file nothing. The old stage three is
+    // a full run with a boss, so it does reach this line.
     if (_id == "") return;
     var _old = progress_stage(_id);
     global.progress.stages[$ _id] = {
@@ -148,7 +117,7 @@ function progress_record(_id, _tally, _no_hit, _captured) {
     progress_save();
 }
 
-/// @desc How many stages are cleared. What the title screen counts.
+/// @desc How many stages are cleared.
 function progress_cleared_count() {
     var _n = 0;
     var _names = variable_struct_get_names(global.progress.stages);
@@ -158,13 +127,8 @@ function progress_cleared_count() {
     return _n;
 }
 
-/// @desc Is this stage playable yet?
-///
-///       **Unlocking is by count, not by chain.** A stage needs N clears
-///       behind it rather than one *particular* stage, so a player stuck on
-///       one boss can go and beat a different one -- which is the whole reason
-///       for choosing this progression over Touhou's, and a strict chain would
-///       give it straight back.
+/// @desc Is this stage playable yet? Unlocking is by number of clears
+///       (`needs`), not by clearing a particular stage.
 function stage_is_unlocked(_def) {
     return progress_cleared_count() >= _def.needs;
 }

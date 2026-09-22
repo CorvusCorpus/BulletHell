@@ -1,42 +1,20 @@
 #!/usr/bin/env python3
-"""The Hollow Grove: a forest that is flown *through* rather than over.
+"""The Hollow Grove's scenery: a forest flown through rather than over.
 
-**This stage is not a parallax stack and none of its art tiles.** Stage one is
-a floor seen from above, so its world is three sprites the size of the field
-scrolling down the screen; the grove is a corridor seen from inside, so its
-world is a handful of *billboards* that the camera passes. Everything here is
-therefore a prop drawn at a size and a position the game works out at run time
-from a depth -- see `scripts/bg_corridor` for the projection and
-`scripts/bg_grove` for what is arranged in it.
+This stage isn't a parallax stack. Its world is billboards the camera
+passes, drawn at a size and position worked out from a depth at run time
+(`scripts/bg_corridor` does the projection, `scripts/bg_grove` the
+arrangement). So nothing here is `spr_bg_*`, the prefix `check_bg_seams`
+and `check_bg_keepout` measure; the prefix is `spr_scn_`.
 
-That difference is why nothing in this file is `spr_bg_*`. `check_bg_seams`
-and `check_bg_keepout` in `tools/check_project.py` measure every sprite under
-that prefix, and both of them are asking questions about a *scrolling tile*:
-does its last row match its first, and does it keep out of the middle of a
-layer that is drawn over the field. Neither question means anything about a
-tree. The prefix here is `spr_scn_` -- scenery -- and the rules those checks
-enforce are enforced for this stage where they can be: the corridor's
-foreground is additive by construction, so it cannot hide a bullet at any
-alpha (see `grove_draw_front`).
+Everything is luminance, tinted at draw time, because the moon turns to
+blood halfway through the stage and everything changes colour with it.
+Each solid thing ships as two sprites:
 
-Everything is drawn as **luminance and tinted at draw time**, which is the same
-decision `tools/make_ui.py` records and it is load-bearing twice over here. The
-grove is lit by one moon, and half way through the stage that moon turns to
-blood -- so every tree, every hanging charm, every fern and the mist between
-them has to change colour together. A painted-in hue would mean a second copy
-of the entire stage.
-
-Each solid thing therefore ships as two sprites:
-
-`spr_scn_thing`      the body, white, with its own internal value structure.
-                     Tinted dark at draw time; it is a silhouette in fog.
-`spr_scn_thing_rim`  the moonward edge, white, drawn **additively** in
-                     whatever the moon currently is.
-
-**A dark mass with no rim is a hole in the picture** -- the same finding
-`A.rim_light` exists for -- and splitting the rim out rather than baking it in
-is what lets the body be night-blue while the light on it is bone-white, and
-then crimson, without redrawing anything.
+`spr_scn_thing`      the body, white, with its own internal value structure;
+                     tinted dark at draw time.
+`spr_scn_thing_rim`  the moonward edge, white, drawn additively in the
+                     moon's current colour.
 
 Usage:
     python tools/make_grove.py
@@ -56,43 +34,26 @@ import gm_new
 # ---------------------------------------------------------------------------
 # Sizes
 #
-# **A billboard is authored at the size it is biggest on screen, not bigger.**
-# The corridor scales a tree up to about 1.6 times this at its closest, which
-# is a whisker of softening on a shape that is a near-black silhouette in fog;
-# authoring it at the closest size instead would put five frames of 1200x1900
-# on a texture page for two seconds of screen time each.
+# A billboard is authored at about the size it is largest on screen; the
+# corridor scales a tree up to about 1.6 times this at its closest.
 # ---------------------------------------------------------------------------
 
 TREE_W, TREE_H = 480, 780
 TREE_N = 6
 
-# **The rim ships at half the body's resolution and nothing has to know.** It
-# is a blurred edge a few pixels wide -- there is no detail in it a half-scale
-# copy could lose -- and it saves as much texture page as the bodies cost. The
-# draw side derives the factor from the two sprites' own widths rather than
-# being told it, so the two cannot be edited apart.
+# The rims ship at half the body's resolution (a blurred edge has no detail
+# to lose). The draw side derives the factor from the two sprites' widths.
 RIM_DIV = 2
 
-# **The trunk of a tree the camera goes past, rather than a whole tree seen
-# from across a clearing.** The wood was six frames of complete tree and it
-# photographed as a hedge: at any distance where a whole tree fits in the
-# frame, nothing in the picture is *near*, and a forest you are flying through
-# is mostly the thing you are about to hit. A trunk is drawn as a fragment --
-# it leaves the top of its own frame, so the tree it belongs to is always
-# bigger than the screen.
+# The trunk of a tree the camera passes, drawn as a fragment that leaves the
+# top of its frame, so the tree is always bigger than the screen.
 TRUNK_W, TRUNK_H = 460, 1020
 
-# **Eight, and they are eight different trees rather than eight seeds.** Four
-# near-identical heavy columns read as one sprite pasted over and over, which
-# is what they were: the generator varied a lean and a width and every frame
-# came out a slightly different post. What tells two trunks apart at a glance
-# is the *silhouette* -- whether it forks, whether it leans and recovers,
-# whether it is squat or slender, where its boughs leave -- so the frames are
-# a list of those and the randomness is what fills each one in.
+# Eight trunks with different silhouettes (see `TRUNK_KINDS`); the
+# randomness fills each one in.
 TRUNK_N = 8
 
-# Ivy. The one green thing in the wood, and the reason the palette is not two
-# colours.
+# Ivy, the one green thing in the wood.
 LEAF_W, LEAF_H = 230, 180
 LEAF_N = 5
 
@@ -102,43 +63,19 @@ CHARM_N = 7
 BUSH_W, BUSH_H = 380, 210
 BUSH_N = 4
 
-# **The understorey, and it is its own art rather than the ferns at a bigger
-# size.** The verge is a whole layer of the picture -- it fills the periphery
-# of the frame and it stands along the horizon -- and a layer built out of one
-# other layer's sprites scaled up is a layer the eye reads as the same thing
-# twice. That was tried and it was reported in exactly those words: the same
-# sprite thrown at things over and over.
-#
-# So six of them, and they are six different *plants* rather than six seeds of
-# one: a bramble mound, a bracken clump, a fallen log, a stand of saplings, a
-# grass tussock and a mass of dock. Which is the `TRUNK_KINDS` argument again
-# -- what tells two of anything apart across a screen is the silhouette, and
-# a generator that varies a width and a lean produces one plant at six widths.
-#
-# **All six are solid.** The existing fern is a scribble of fronds with a
-# small clump at its foot, which is right for something a metre from the lens
-# and wrong for a mass at the edge of a wood: drawn at any distance a lacy
-# silhouette is a smear. Every one of these starts from a base of overlapping
-# ellipses, so whatever is drawn over the top of it, there is a body under it.
+# The understorey along the verge: six different plants (a bramble mound, a
+# bracken clump, a fallen log, a stand of saplings, a grass tussock and a mass
+# of dock), each built on a solid base so it reads at a distance.
 BRUSH_W, BRUSH_H = 460, 300
 BRUSH_N = 6
 
-# The hedgerow along the foot of the far wood. One band, tiled, drawn *over*
-# the floor -- see `grove_draw_scrub`.
-#
-# **Twice the field's width, and that is about how small it is drawn.** Every
-# other band here is laid across the frame at about its own size, so one tile
-# very nearly fills the screen and the repeat is invisible. This one stands at
-# the horizon at a fraction of its height -- a hedge is sixty pixels, not
-# three hundred -- and a band scaled to a third is a band that repeats three
-# times across the field, which is a rhythm the eye finds in about two
-# seconds. Authoring it wide is what buys the small size back.
+# The hedgerow along the foot of the far wood: one band, tiled, drawn over
+# the floor (see `grove_draw_scrub`). Authored at twice the field's width
+# because it is drawn small, which keeps the repeat wide.
 SCRUB_W, SCRUB_H = A.FIELD_W * 2, 160
 
-# The forest floor. **One tile, periodic in both axes**, laid down the
-# corridor in bands -- see `grove_draw_floor`. It is square because it is
-# tiled sideways as well as forward, which is the whole difference between a
-# floor and a set of stripes.
+# The forest floor: one square tile, periodic in both axes, laid down the
+# corridor in bands (see `grove_draw_floor`).
 FLOOR = 512
 
 MOON = 512
@@ -155,12 +92,8 @@ SS = 2          # the supersample for the big silhouettes; see the note below
 # ---------------------------------------------------------------------------
 
 def tapered(d, pts, widths, fill=255):
-    """A polyline drawn as a ribbon that narrows along its length.
-
-    **A branch is a taper, not a line of constant width**, and PIL has no
-    stroke with a width per point -- so the ribbon is built as one polygon
-    from the two offset edges. Round joints are then unnecessary: consecutive
-    quads share their end points exactly, so the seam is not a seam.
+    """A polyline drawn as a ribbon that narrows along its length, built as one
+    polygon from the two offset edges (PIL has no per-point stroke width).
     """
     n = len(pts)
     if n < 2:
@@ -182,11 +115,9 @@ def tapered(d, pts, widths, fill=255):
 
 
 def sweep(d, x, y, ang, turn, length, w0, w1, steps=6):
-    """A stroke that curves at a constant rate. Returns its points.
-
-    `limb` wobbles, because a branch is grown; this does not, because the
-    things it draws -- an antler's beam and its tines -- are *bone*, and bone
-    is smooth. A wobbled antler reads as a stick.
+    """A stroke that curves at a constant rate. Returns its points. Unlike
+    `limb` it doesn't wobble, for smooth things like an antler's beam and
+    tines.
     """
     pts, ws = [], []
     a = ang
@@ -204,12 +135,8 @@ def limb(d, rng, x, y, ang, length, width, depth, hangs, taper=0.42,
          segs=4, wobble=13.0):
     """One branch and everything that grows off it. Recursive.
 
-    `hangs` collects the tips a charm could be tied to. **The hang points are
-    worked out here and written into `scripts/grove_table`**, for the same
-    reason a bullet's hit radius is: the branch and the thing hanging off it
-    are one fact, and a number describing a picture that lives in a different
-    language from the picture is a number that will be edited apart from it
-    within a week.
+    `hangs` collects the tips a charm could be tied to; they are written into
+    `scripts/grove_table`, so the hang points always match the drawn branches.
     """
     pts = [(x, y)]
     widths = [width]
@@ -225,9 +152,8 @@ def limb(d, rng, x, y, ang, length, width, depth, hangs, taper=0.42,
     tapered(d, pts, widths)
 
     if depth <= 0:
-        # A tip. Only the ones reaching sideways and downward are worth
-        # hanging anything from -- a charm tied to a branch pointing straight
-        # up hangs back across the branch it is tied to.
+        # A tip. Only the ones reaching sideways and downward can hold a
+        # charm; one tied to a branch pointing up hangs back across it.
         if abs(math.cos(math.radians(a))) > 0.35 and width < 13:
             hangs.append((x, y))
         return
@@ -244,22 +170,10 @@ def limb(d, rng, x, y, ang, length, width, depth, hangs, taper=0.42,
 
 
 def soft_border(mask, sides="lrt", frac=0.055):
-    """Fade a mask to nothing at the sprite's own edge.
-
-    **A billboard's edge is a hard clip**, so a branch that reaches the border
-    is not a branch that ran out -- it is a branch sliced flat along a
-    perfectly straight vertical line, which at any depth in a forest of
-    silhouettes reads as a rectangle. It is the same defect `cut_pad` was
-    written for one file over, and it has the same two possible answers: leave
-    a margin, or window the edge.
-
-    The window is the one that cannot be got wrong. A margin is arithmetic --
-    every branch length, every lean and every recursion depth staying inside a
-    budget -- and the first version of this tree missed it on four frames out
-    of six.
-
-    The bottom is never windowed: that is where the tree meets the ground, and
-    a root fading out before it lands is a tree hovering.
+    """Fade a mask to nothing at the sprite's own edge, on the `sides` given
+    (left, right, top). A billboard's edge is a hard clip, so a branch reaching
+    the border would otherwise be sliced along a straight line. The bottom is
+    never windowed: that is where a tree meets the ground.
     """
     a = np.asarray(mask, dtype=np.float32)
     h, w = a.shape
@@ -277,11 +191,7 @@ def soft_border(mask, sides="lrt", frac=0.055):
 
 def tree_mask(seed):
     """One crooked tree, as a mask at SS, plus its hang points in final px.
-
-    Bare and gnarled rather than leafy. The reference for this stage is a
-    forest somebody has hung things in, and things hang off *branches* -- a
-    canopy would hide every one of them, and a canopy at night is a black
-    blob with nothing in it to read.
+    Bare and gnarled rather than leafy, so the charms hanging from it show.
     """
     rng = np.random.default_rng(seed)
     w, h = TREE_W * SS, TREE_H * SS
@@ -292,19 +202,9 @@ def tree_mask(seed):
     base_x = TREE_W * 0.5 * SS
     base_y = h - 2 * SS
 
-    # The trunk.
-    #
-    # **It leans, and then it changes its mind**, which is the whole of what
-    # separates a witch-forest tree from a telegraph pole. The first version
-    # of this had one lean per tree and a little wobble on top, and six of
-    # them side by side read as six upright poles with a slight list --
-    # accurate, characterless, and exactly the "drawn by a script" the
-    # brimstone rock was rebuilt to escape. What is here instead is an elbow:
-    # the lean is applied one way below a node picked at random and the other
-    # way above it, so the trunk goes out and comes back.
-    #
-    # The width is authored at the base and taken down hard, because these are
-    # a heavy root and a thin crown.
+    # The trunk. It leans one way below a random node and the other way above
+    # it, so it goes out and comes back. Wide at the base, thinning hard
+    # toward the crown.
     trunk_h = h * rng.uniform(0.44, 0.58)
     lean = rng.uniform(0.26, 0.52) * (1 if rng.random() < 0.5 else -1)
     n = 9
@@ -315,9 +215,7 @@ def tree_mask(seed):
     step = trunk_h / (n - 1)
     for i in range(n):
         t = i / (n - 1)
-        # A burl or two: the width does not fall off smoothly, it swells where
-        # a bough was lost. One cosine is enough to stop the taper reading as
-        # a cone.
+        # A burl or two, so the taper doesn't read as a cone.
         burl = 1.0 + 0.16 * math.cos(t * 7.0 + seed % 7)
         pts.append((x, y))
         widths.append(wid * (1.0 - 0.70 * t ** 0.80) * burl)
@@ -325,10 +223,7 @@ def tree_mask(seed):
         x += lean * step * (1 if i < elbow else -1) + rng.normal(0, 11 * SS)
     tapered(d, pts, widths)
 
-    # Root flare. Wedges going *down and out* into the ground, which is what
-    # stops a trunk reading as a post pushed into a floor -- and which the
-    # first version did not draw at all, because it handed `limb` an angle
-    # measured the wrong way round and half the roots went up the trunk.
+    # Root flare: wedges going down and out into the ground.
     for k in range(int(rng.integers(5, 8))):
         side = 1 if (k % 2 == 0) else -1
         rl = rng.uniform(0.10, 0.22) * w * side
@@ -340,13 +235,9 @@ def tree_mask(seed):
                  (rx + rl, base_y + 6 * SS)],
                 [rw, rw * 0.62, rw * 0.20])
 
-    # The crown. Boughs off the upper half of the trunk, and a pair off the
-    # very top, so the silhouette spreads rather than forking once.
-    #
-    # **They reach out before they reach up.** A bough leaving the trunk at
-    # thirty degrees off vertical draws a fir; the trees in this wood hold
-    # their arms out, so the spread starts nearer sixty and the ones low on
-    # the trunk are allowed to droop past horizontal.
+    # The crown: boughs off the upper half of the trunk and a pair off the
+    # top. They leave nearer sixty degrees off vertical than thirty, and low
+    # ones may droop past horizontal, so the tree holds its arms out.
     top_x, top_y = pts[-1]
     for k in range(int(rng.integers(5, 8))):
         i = int(rng.integers(2, n))
@@ -361,11 +252,8 @@ def tree_mask(seed):
         limb(d, rng, top_x, top_y, -90 + side * rng.uniform(10, 34),
              rng.uniform(0.16, 0.26) * h, widths[-1] * 0.86, 2, hangs)
 
-    # Hanging vines. Thin, drooping, and never structural -- they are what
-    # makes the silhouette read as *overgrown* rather than as dead. Started a
-    # little back along the branch rather than at its very tip, because a
-    # vine hung off the last pixel of a two-pixel twig reads as a stroke
-    # floating in mid-air.
+    # Hanging vines: thin, drooping, and started a little back from a branch's
+    # tip rather than at it.
     for _ in range(int(rng.integers(3, 6))):
         if not hangs:
             break
@@ -396,15 +284,8 @@ def tree_mask(seed):
 # ---------------------------------------------------------------------------
 
 def bark(w, h, seed):
-    """The value field a trunk is textured with, 0..1.
-
-    Two scales, because one reads as film noise and two as a surface -- the
-    same finding the brimstone rock is built on, turned on its side. **Bark
-    runs up**, so the field is generated short and stretched vertically: a
-    noise field squashed in y has features elongated in y, which is a
-    striation. Generated wide and stretched sideways -- which is the mistake
-    the first version of this made -- it has features elongated in x, and what
-    that draws is a tree with tide marks across it.
+    """The value field a trunk is textured with, 0..1: noise at two scales,
+    generated short and stretched vertically so its features run up the trunk.
     """
     def band(rows, base, s):
         return np.asarray(
@@ -417,11 +298,8 @@ def bark(w, h, seed):
 
 
 def body_from_mask(mask, seed, floor=0.35, gradient=0.0):
-    """A white body carrying its own value structure, at final size.
-
-    White because it is **tinted at draw time** -- see the note at the top of
-    this file. The structure lives in the value, so a body multiplied by a
-    near-black night colour is a near-black tree that still has bark on it.
+    """A white body carrying its own value structure, at final size. White
+    because it is tinted at draw time; the structure is in the value.
     """
     small = mask.resize((mask.width // SS, mask.height // SS), Image.LANCZOS)
     a = np.asarray(small, dtype=np.float32) / 255.0
@@ -438,13 +316,9 @@ def body_from_mask(mask, seed, floor=0.35, gradient=0.0):
 
 
 def edge_light(mask, dx, dy, blur, strength):
-    """Light one *side* of a silhouette.
-
-    `A.rim_light` drops the mask straight down, because the brimstone stage is
-    lit from underneath by its own cracks. This forest is lit by a single moon
-    sitting on the horizon in the middle of the screen, so the lit edge of a
-    tree is the edge facing the middle -- which is a shift in x, and mirrored
-    per side by the draw call rather than by a second sprite.
+    """Light one side of a silhouette: the side facing the middle of the
+    screen, where the moon is. A shift in x (`A.rim_light` shifts in y),
+    mirrored per side by the draw call rather than by a second sprite.
     """
     moved = ImageChops.offset(mask, int(dx), int(dy))
     edge = ImageChops.subtract(mask, moved)
@@ -477,19 +351,13 @@ def make_trees():
 
 
 def bough_from(img):
-    """A tree turned into a bough: its root and the foot of its trunk faded out.
+    """A tree turned into a bough: its root and the foot of its trunk faded
+    out.
 
-    **A bough is the tree sprite hung upside down, and a tree sprite ends in
-    a ruled line** -- its root, where it meets the ground. The right way up
-    that line is buried in a mound of litter; upside down it is a trunk sawn
-    off flat in the middle of the sky, and a bough hanging in front of the
-    moon was exactly that: reported as branches visibly cut off half way up
-    the disc. There is nothing to bury it in overhead, so it is not drawn.
-    The crown hangs out of darkness, which is what a branch seen from under
-    a canopy does.
-
-    The fade covers the root flare and the lower trunk and stops below the
-    lowest bough -- `tree_mask` starts those two ninths of the way up.
+    A bough is the tree sprite hung upside down, and the trunk's foot would
+    otherwise end in a straight cut in the sky. The fade covers the root flare
+    and lower trunk and stops below the lowest bough (`tree_mask` starts those
+    two ninths of the way up).
     """
     a = np.asarray(img, dtype=np.float32).copy()
     h = a.shape[0]
@@ -499,11 +367,10 @@ def bough_from(img):
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGBA")
 
 
-# Eight silhouettes, and every column of this table is a thing the eye can see
-# from across the screen. `lean` is how far it goes over, `bend` whether it
-# comes back, `wid` its base width as a share of the frame, `boughs` how many
-# leave it, `fork` whether it splits into two near the top, and `burl` how
-# lumpy the taper is.
+# Eight silhouettes. `lean` is how far it goes over, `bend` whether it comes
+# back, `wid` its base width as a share of the frame, `boughs` how many leave
+# it, `fork` whether it splits into two near the top, and `burl` how lumpy the
+# taper is.
 TRUNK_KINDS = (
     # lean  bend   wid   boughs  fork  burl
     (0.02, False, 0.46, 3, False, 0.06),   # heavy and near-straight
@@ -518,12 +385,8 @@ TRUNK_KINDS = (
 
 
 def trunk_mask(seed, kind):
-    """A trunk that fills the frame and leaves the top of it.
-
-    **The silhouette is doing something different from `tree_mask`'s.** A whole
-    tree is read by its crown; a trunk passing the camera is read by its
-    *edges* -- how it swells, where a bough leaves it, whether it forks --
-    because at that size the crown is off screen entirely.
+    """A trunk that fills the frame and leaves the top of it, read by its
+    edges: how it swells, where a bough leaves it, whether it forks.
     """
     lean, bend, widf, boughs, fork, burlk = kind
     rng = np.random.default_rng(seed)
@@ -542,10 +405,8 @@ def trunk_mask(seed, kind):
     x, y = base_x, base_y
     for i in range(n):
         t = i / (n - 1)
-        # Swelling rather than tapering: over the height of one frame a trunk
-        # this wide barely narrows, and what the eye reads instead is the
-        # irregularity. Two cosines out of phase give it a waist and a
-        # shoulder without either being placed by hand.
+        # Swelling rather than tapering: two cosines out of phase give it a
+        # waist and a shoulder.
         k = (1.0 - 0.26 * t) * (1.0 + burlk * math.cos(t * 5.5 + seed % 5)
                                 + burlk * 0.5 * math.cos(t * 11.0 + seed % 3))
         pts.append((x, y))
@@ -556,8 +417,6 @@ def trunk_mask(seed, kind):
     tapered(d, pts, widths)
 
     # A fork: the trunk splits and both halves leave the top of the frame.
-    # **The one variation that changes the whole silhouette**, which is why two
-    # of the eight have it.
     if fork:
         i = int(n * rng.uniform(0.45, 0.62))
         fx, fy = pts[i]
@@ -572,9 +431,7 @@ def trunk_mask(seed, kind):
                 fw.append(widths[i] * 0.66 * (1 - len(fw) / 9))
             tapered(d, fp, fw)
 
-    # Root flare, wide and shallow -- at this size it is a third of what says
-    # "this is standing in the ground", and the ground is right at the bottom
-    # of the frame.
+    # Root flare, wide and shallow.
     for k in range(int(rng.integers(6, 9))):
         rside = 1 if (k % 2 == 0) else -1
         rl = rng.uniform(0.16, 0.36) * w * rside
@@ -586,9 +443,8 @@ def trunk_mask(seed, kind):
                  (rx + rl, base_y + 8 * SS)],
                 [rw, rw * 0.66, rw * 0.24])
 
-    # Boughs, and **every one of them leaves the frame**. A bough that ended
-    # inside the picture would put a branch tip the size of a bullet in the
-    # foreground, which is the one thing scenery may never look like.
+    # Boughs, every one leaving the frame, so no branch tip the size of a
+    # bullet ends in the foreground.
     for k in range(boughs):
         t = rng.uniform(0.22, 0.94)
         i = int(t * (n - 1))
@@ -616,12 +472,8 @@ def make_trunks():
 
 
 def leaf_cluster(d, rng, w, h):
-    """A clump of ivy on a stem.
-
-    Six to fourteen leaves off a curving runner, each a simple pointed oval.
-    **Drawn as a mass rather than as leaves**: at the size these are seen the
-    individual leaf is two pixels, and what has to read is a ragged green
-    patch with a stem going into it.
+    """A clump of ivy on a stem: pointed-oval leaves off a curving runner,
+    drawn as a mass.
     """
     sx, sy = w * 0.06, h * 0.5
     run = [(sx, sy)]
@@ -642,8 +494,7 @@ def leaf_cluster(d, rng, w, h):
         lw = ll * rng.uniform(0.52, 0.78)
         cx = bx + math.cos(math.radians(ang)) * ll * 0.55
         cy = by + math.sin(math.radians(ang)) * ll * 0.55
-        # A pointed oval: an ellipse plus a triangle for the tip, which is the
-        # cheapest thing that stops a leaf reading as a pebble.
+        # A pointed oval: an ellipse plus a triangle for the tip.
         d.ellipse([cx - lw * 0.5, cy - ll * 0.4, cx + lw * 0.5, cy + ll * 0.4],
                   fill=255)
         tipx = cx + math.cos(math.radians(ang)) * ll * 0.55
@@ -672,11 +523,9 @@ def make_leaves():
 # ---------------------------------------------------------------------------
 # What is hanging in them
 #
-# **The charms are the one place in this stage allowed a second hue.** The
-# forest is one colour and a moon; a hex burning on a cord is the only thing in
-# it somebody *made*, and it is what says this wood belongs to somebody. Each
-# ships as a body and a `lit` layer, and the lit layer is drawn additively --
-# so what glows is the carving, never the wood it is carved into.
+# The charms are the only thing in the stage with a second hue. Each ships as
+# a body and a `lit` layer; the lit layer is drawn additively, so the carving
+# glows and the wood doesn't.
 # ---------------------------------------------------------------------------
 
 def charm_cord(d, x0, y0, x1, y1, w=3.0):
@@ -691,10 +540,8 @@ def charm_plaque(d, lit, cx, top, rng):
            (cx + r * 0.88, top + r * 0.9), (cx, top + r * 1.9),
            (cx - r * 0.88, top + r * 0.9)]
     d.polygon(pts, fill=255)
-    # The rune. Three strokes, struck rather than drawn -- a closed glyph at
-    # this size fills in and reads as a blob, which is what the first pass of
-    # it did anyway because the strokes were as wide as the gaps between
-    # them. Thin, and spread over a plaque half again as big.
+    # The rune: three thin strokes, spread over a large plaque so the glyph
+    # doesn't fill in.
     ld = ImageDraw.Draw(lit)
     ld.line([(cx, top + r * 0.30), (cx, top + r * 1.56)], fill=255,
             width=int(3.5 * SS))
@@ -707,14 +554,8 @@ def charm_plaque(d, lit, cx, top, rng):
 def charm_bones(d, lit, cx, top, rng):
     """A bundle of long bones tied crosswise."""
     charm_cord(d, cx, 0, cx, top)
-    # **Long, and knuckled at both ends.** The first pass drew four short
-    # struts with big balls on them and what that is a picture of is a
-    # molecule. A long bone is mostly shaft: the shaft went up by half and
-    # the knuckles came down by a third, and it reads immediately.
-    # Three, not four, and shorter than the frame is wide. At four they
-    # radiated evenly from one point, which is a picture of a jack; at the
-    # length they were, the outer two were sliced off by the sprite's own
-    # edge, which on a billboard is a hard vertical cut through a bone.
+    # Three long bones, knuckled at both ends and shorter than the frame is
+    # wide.
     for k, ang in enumerate((-52, 4, 54)):
         L = 86 * SS * (1.0 - 0.12 * (k % 2))
         ax = math.cos(math.radians(ang + 90)) * L
@@ -747,7 +588,7 @@ def charm_ring(d, lit, cx, top, rng):
     ld = ImageDraw.Draw(lit)
     br = 11 * SS
     ld.ellipse([cx - br, cy - br, cx + br, cy + br], fill=255)
-    # Three teeth on cords under it. Movement without motion.
+    # Three teeth on cords under it.
     for k, ox in enumerate((-26, 2, 28)):
         x = cx + ox * SS
         y0 = cy + r * 0.86
@@ -764,21 +605,16 @@ def charm_skull(d, lit, cx, top, rng):
     h = 44 * SS
     cy = top + h * 0.7
     d.ellipse([cx - w, cy - h * 0.72, cx + w, cy + h * 0.55], fill=255)
-    # Muzzle. Narrow -- a wide one reads as a jaw and the whole thing becomes
-    # a face rather than a skull.
+    # Muzzle, narrow (a wide one reads as a jaw).
     d.polygon([(cx - w * 0.34, cy + h * 0.26), (cx + w * 0.34, cy + h * 0.26),
                (cx + w * 0.21, cy + h * 1.52), (cx - w * 0.21, cy + h * 1.52)],
               fill=255)
-    # Horns, because a skull with horns reads as a skull at twenty pixels and
-    # a skull without them reads as a stone. Long enough to leave the head's
-    # own outline -- at the length they started they read as ears.
+    # Horns, long enough to leave the head's outline (short ones read as ears).
     for sgn in (-1, 1):
         limb(d, rng, cx + sgn * w * 0.72, cy - h * 0.40,
              -90 + sgn * 46, 92 * SS, 11 * SS, 1, [], taper=0.55, segs=4,
              wobble=7.0)
-    # **Sockets, not headlamps.** At half again this size the two of them
-    # were the brightest thing in the charm and it read as a face looking at
-    # you rather than as a skull hanging in a tree.
+    # Small sockets, so the eyes don't read as a face looking out.
     ld = ImageDraw.Draw(lit)
     for sgn in (-1, 1):
         ex = cx + sgn * w * 0.42
@@ -830,10 +666,8 @@ def charm_lantern(d, lit, cx, top, rng):
     d.line([(cx - w, cy), (cx + w, cy)], fill=255, width=int(4 * SS))
     d.ellipse([cx - w * 0.8, cy + h * 0.66, cx + w * 0.8, cy + h * 1.0],
               fill=255)
-    # **Small, so the cage is still a cage.** At the size this started, the
-    # light filled the ribs and the charm was a white ball on a string --
-    # which is what a bullet is, and a piece of scenery may never be one. The
-    # bloom at draw time does the reaching; the drawn core does not have to.
+    # A small light, so the cage still reads as a cage; the bloom at draw time
+    # does the reaching.
     ld = ImageDraw.Draw(lit)
     ld.ellipse([cx - w * 0.30, cy - h * 0.20, cx + w * 0.30, cy + h * 0.20],
                fill=255)
@@ -854,9 +688,8 @@ def make_charms():
         fn(d, lit, w * 0.5, h * 0.20, rng)
 
         body, small = body_from_mask(mask, 7100 + i, floor=0.55)
-        # The body carries the lit parts too, or the carving is a hole in the
-        # charm whenever the accent is faint. It is the *additive* pass that
-        # makes them burn.
+        # The body carries the lit parts too, so the carving isn't a hole when
+        # the accent is faint; the additive pass is what makes them burn.
         bodies.append(body)
 
         glow = lit.resize((CHARM_W, CHARM_H), Image.LANCZOS)
@@ -873,11 +706,8 @@ def make_charms():
 # ---------------------------------------------------------------------------
 
 def make_bushes():
-    """Low fern masses that pass close to the camera along the path.
-
-    **Most of the sense of speed lives down here**, because a thing near the
-    bottom of the screen is close, and a close thing crosses the frame in a
-    handful of frames. The trees say where you are; the ferns say how fast.
+    """Low fern masses that pass close to the camera along the path, which is
+    where most of the sense of speed comes from.
     """
     bodies, rims = [], []
     for i in range(BUSH_N):
@@ -886,10 +716,7 @@ def make_bushes():
         mask = Image.new("L", (w, h), 0)
         d = ImageDraw.Draw(mask)
         base_y = h - 2 * SS
-        # **A clump, then the fronds off it.** Without the mass at the foot
-        # these were a handful of scratches with holes between them -- read at
-        # speed, that is not undergrowth, it is a scribble. The clump is what
-        # the eye gets; the fronds are what tells it what the clump is.
+        # A clump first, then the fronds off it.
         for _ in range(int(rng.integers(6, 10))):
             cx = rng.uniform(0.10, 0.90) * w
             cw = rng.uniform(0.10, 0.20) * w
@@ -929,26 +756,14 @@ def make_bushes():
 # ---------------------------------------------------------------------------
 # The understorey
 #
-# **Six plants, and every one of them is a mass before it is anything else.**
-# See `BRUSH_N` for why they are not the fern at a larger size.
+# Six plants, each a solid mass before anything else (see `BRUSH_N`).
 # ---------------------------------------------------------------------------
 
 def _clump_base(d, rng, w, h, n=10, lo=0.20, hi=0.80, low=0.14, high=0.34):
-    """The body a plant is standing on.
-
-    Overlapping ellipses along the foot of the frame, drawn below the bottom
-    edge so that the mass is solid all the way down to it. **This is what
-    stops undergrowth reading as a scribble**: at the size these are seen the
-    individual stroke is a pixel or two, and what the eye gets is whether
-    there is anything there.
-
-    **The spread is held well inside the frame, and `soft_border` is not
-    enough on its own.** That window fades the last few per cent of the canvas
-    to nothing, which turns a hard cut into a soft one -- and a soft cut
-    through the middle of a solid mass is still a cut. The first pass ran the
-    centres out to 0.95 with half-widths of up to 0.19, so three of the six
-    plants were sliced flat down one side. A window fixes a branch that
-    overshoots; it cannot fix a body that was never going to fit.
+    """The body a plant stands on: overlapping ellipses along the foot of the
+    frame, drawn below the bottom edge so the mass is solid down to it. The
+    spread is kept well inside the frame, since `soft_border` only softens a
+    cut and can't fix a body that doesn't fit.
     """
     base = h * 1.02
     for _ in range(n):
@@ -959,13 +774,8 @@ def _clump_base(d, rng, w, h, n=10, lo=0.20, hi=0.80, low=0.14, high=0.34):
 
 
 def _brush_bramble(d, rng, w, h):
-    """A low thicket with canes arching well clear of it.
-
-    **The dome has to be lower than the canes are long**, which the first pass
-    got backwards: a mound reaching 0.6 of the frame with canes of 0.34 to
-    0.62 on it is a mound with everything hidden inside it, and what came back
-    was a smooth blob indistinguishable from the dock. A bramble is a tangle
-    over a mass, and the tangle is the half the eye is being asked to read.
+    """A low thicket with canes arching well clear of it (the dome is lower
+    than the canes are long, so the tangle shows).
     """
     _clump_base(d, rng, w, h, n=13, low=0.18, high=0.40)
     for _ in range(24):
@@ -979,11 +789,8 @@ def _brush_bramble(d, rng, w, h):
 
 
 def _brush_bracken(d, rng, w, h):
-    """Broad fronds off a low base -- the fern's big cousin.
-
-    Drawn as paired triangles off a spine rather than as leaflets on a line,
-    because a frond that is a stroke is a stroke: what makes bracken read is
-    that each frond is a *shape* with area in it.
+    """Broad fronds off a low base, drawn as paired triangles off a spine so
+    each frond has area.
     """
     _clump_base(d, rng, w, h, n=9, low=0.14, high=0.28)
     for _ in range(12):
@@ -1000,18 +807,10 @@ def _brush_bracken(d, rng, w, h):
 
 
 def _brush_log(d, rng, w, h):
-    """A fallen trunk with things growing on it.
-
-    **The one wide, low silhouette in the set**, and it is there for that
-    reason before any other: five upright plants at six sizes are still five
-    upright plants, and a horizontal mass among them is what makes the verge
-    read as a wood floor rather than as a hedge.
+    """A fallen trunk with things growing on it: the one wide, low silhouette
+    in the set.
     """
-    # **Thin, and tapered.** At a quarter of the frame's height with litter
-    # banked to its middle it was one lumpy mass -- a loaf rather than a log,
-    # which is what happens when the thing and the thing it is lying in are
-    # the same size. A log is a cylinder: what says so is that it is long, low
-    # and thicker at one end than the other.
+    # Thin and tapered, so it reads as a log rather than a mound.
     y = h * 0.74
     r = h * 0.155
     d.polygon([(w * 0.18, y - r), (w * 0.82, y - r * 0.74),
@@ -1086,11 +885,8 @@ def make_brush():
         w, h = BRUSH_W * SS, BRUSH_H * SS
         mask = Image.new("L", (w, h), 0)
         fn(ImageDraw.Draw(mask), rng, w, h)
-        # **A wider window than the trees get.** What overshoots here is a
-        # bramble cane, which is a thin stroke travelling a long way sideways
-        # -- so the window has to be wide enough to fade one out rather than
-        # to cut it off, and a thin stroke is exactly what a wide window can
-        # afford to lose.
+        # A wider window than the trees get, so a long bramble cane fades out
+        # rather than being cut off.
         mask = soft_border(mask, sides="lrt", frac=0.07)
         body, _ = body_from_mask(mask, 8900 + i, floor=0.32, gradient=0.44)
         bodies.append(body)
@@ -1104,15 +900,8 @@ def make_brush():
 # ---------------------------------------------------------------------------
 
 def _bush_mass(d, rng, cx, base, bw, bh):
-    """One bush in a hedgerow: a cumulus of leaf masses with a leafy fringe.
-
-    **Lobes of several sizes, not one dome.** A single ellipse is a hill; a
-    cluster of overlapping ellipses whose tops disagree is a bush, because
-    what the eye reads a plant's silhouette off is that it is made of smaller
-    rounded masses, each of which is made of smaller ones again. Two levels
-    of that is enough at the size this is seen, and the fringe of small
-    circles along the top is the third -- the leaves, which is what stops the
-    outline being smooth enough to read as a rock.
+    """One bush in a hedgerow: overlapping leaf masses of several sizes, with a
+    fringe of small circles along the top so the outline isn't smooth.
     """
     lobes = []
     for _ in range(int(rng.integers(5, 10))):
@@ -1138,38 +927,11 @@ def _bush_mass(d, rng, cx, base, bw, bh):
 def _scrub_draw(d, w, h):
     """A hedgerow along the foot of the far wood.
 
-    **Its crown is the whole of the job, and the first version of this art
-    did not have one.** That version was fifty-odd narrow domes, most of them
-    low, with thin canes and sapling stems over the top: solid in its body --
-    ninety-four per cent coverage through its lower half -- and nearly flat
-    across its top, because narrow domes that mostly agree about their height
-    sum to a level edge, and a cane two pixels wide at the size this is drawn
-    is a stick. Drawn across the foot of the moon, what read was a straight
-    edge with sticks on it: very nearly the ruled line the layer exists to
-    break, one layer further forward.
-
-    So it is built the way a hedgerow is. A low mat underneath, so a gap
-    between two bushes is thin hedge and not a hole. Then bushes -- a few
-    dozen per tile, each a cluster of lobes with a leafy fringe, and each a
-    *different height*, from barely clearing the mat to most of the band --
-    because a hedge at a distance is read off the rhythm of its crowns. And a
-    few saplings standing out of it with leafy heads rather than bare stems.
-
-    **The mat has a floor now, and not having one put the ruled line back.**
-    This band exists to cover the join between the ground and the far wood,
-    and covering it is a property of the art's *thinnest* stretch rather than
-    of its average: the mat was seventy scattered ellipses topping out
-    anywhere from 0.64 to 0.83 of the canvas, so between two of them the
-    hedge was a sixth of its own height and its crown fell below the horizon
-    it was drawn to hide. Reported as the border peeking out from behind it,
-    and the arithmetic agrees -- with the wave and the dip both set to zero
-    the worst stretch cleared the line by one pixel. What makes a hole here is
-    a *gap in the coverage*, so the answer is more ellipses, wider, and over a
-    shorter height range: at this count and width the mat is many times
-    covered everywhere and its crown undulates between 0.34 and 0.50 instead
-    of falling away. `check_scrub_covers_horizon` does the arithmetic against
-    the shipped PNG, because "the thinnest stretch of a hedge" is not
-    something any assertion about the drawing could see.
+    A low mat of many overlapping ellipses, so the coverage has no gap: its
+    crown must stay above the horizon everywhere, which
+    `check_scrub_covers_horizon` measures on the shipped PNG. Over it, a few
+    dozen bushes of different heights, whose crowns give the hedge its rhythm,
+    and a few saplings with leafy heads.
     """
     for i in range(3):
         off = i * w
@@ -1181,20 +943,15 @@ def _scrub_draw(d, w, h):
             cw = rng.uniform(0.020, 0.042) * w
             ch = rng.uniform(0.54, 0.70) * h
             d.ellipse([cx - cw, base - ch, cx + cw, base + ch * 0.3], fill=255)
-        # The bushes. **Spaced along the band rather than scattered**, so the
-        # crowns have a rhythm with gaps in it -- scattered at random they
-        # pile up in places and leave the mat bare in others, which is the
-        # clumping `grove_side` was written against, one layer further out.
+        # The bushes, spaced along the band rather than scattered, so the
+        # crowns have a rhythm and the mat isn't left bare in places.
         n = 34
         for k in range(n):
             cx = (k + rng.uniform(0.15, 0.85)) * w / n + off
             bw = rng.uniform(0.028, 0.062) * w
-            # Capped at 0.86 so the tallest crown and its fringe clear
-            # the top of the canvas -- a sprite's edge is a hard clip.
-            # **Floored at 0.68 so a bush still reads above the mat**: the mat
-            # tops out at half the canvas now, and a bush shorter than that is
-            # a bush nobody can see, which spends the crown's rhythm on
-            # nothing.
+            # Capped at 0.86 so the tallest crown and its fringe clear the
+            # top of the canvas; floored at 0.68 so every bush stands above
+            # the mat.
             bh = (0.68 + 0.18 * rng.random() ** 1.3) * h
             _bush_mass(d, rng, cx, base, bw, bh)
         # A handful of saplings above the line, with heads.
@@ -1215,13 +972,8 @@ def _scrub_draw(d, w, h):
 
 
 def make_scrub():
-    """The band, and the moonlight on its crown.
-
-    **Its foot dissolves and its crown does not**, which is one alpha ramp and
-    two different jobs. The crown is a silhouette against the sky and has to
-    be hard, or it is fog; the foot is where it meets the litter, and a hard
-    line there is the cardboard-cutout edge `grove_draw_mound` exists to
-    remove one layer further in.
+    """The band, and the moonlight on its crown. Its foot dissolves into the
+    litter and its crown stays hard against the sky.
     """
     mask = wrapped(SCRUB_W, SCRUB_H, _scrub_draw)
     arr = np.asarray(mask, dtype=np.float32) / 255.0
@@ -1241,9 +993,8 @@ def make_scrub():
                    0, 1)[:, None]
     band = A.from_arrays(body, arr * foot)
 
-    # The moonward crown. `rim_sprite` works in supersampled units and this
-    # mask is already at final size, so the edge is taken here rather than
-    # through it -- one of the two places in this file where that is true.
+    # The moonward crown. This mask is already at final size, so the edge is
+    # taken here rather than through `rim_sprite` (which works at SS).
     edge = edge_light(mask, -6, 5, 2.6, 1.5)
     rim = Image.new("RGBA", (w, h), (255, 255, 255, 0))
     rim.putalpha(edge)
@@ -1256,15 +1007,9 @@ def make_scrub():
 # ---------------------------------------------------------------------------
 
 def fbm2(n, seed, octaves=5, base=4):
-    """Value noise periodic in **both** axes, as a 0..1 array `n` square.
-
-    `A.fbm_field` repeats the noise grid's first row at its bottom, which makes
-    it periodic in y and is all a scrolling parallax layer needs. A floor tiled
-    down a corridor is laid sideways as well, so the same trick has to be
-    applied to the first *column* too -- and it has to be the grid that is made
-    periodic rather than the upsampled field, for the reason that function's
-    own docstring records: making the interpolation periodic is not the same as
-    making the thing being interpolated periodic.
+    """Value noise periodic in both axes, as a 0..1 array `n` square: the noise
+    grid's first row and first column are repeated at the far edges before
+    upsampling (`A.fbm_field` only does rows).
     """
     rng = np.random.default_rng(seed)
     acc = np.zeros((n, n), dtype=np.float32)
@@ -1285,22 +1030,17 @@ def fbm2(n, seed, octaves=5, base=4):
 
 
 def _floor_marks(d, n, rng):
-    """Litter, roots and stones, drawn nine times so everything wraps.
-
-    Anything that crosses an edge of the tile has to arrive back at the
-    opposite edge, and the cheapest way to be sure of that is to draw the whole
-    lot at every offset of plus and minus one tile and keep the middle. It is
-    `wrapped` in two dimensions, and the cost is that nothing may be more than
-    a tile across -- which nothing on a forest floor is.
+    """Litter, roots and stones, drawn at every offset of plus and minus one
+    tile and cropped to the middle, so anything crossing an edge arrives back
+    at the opposite one. Nothing may be more than a tile across.
     """
     state = rng.bit_generator.state
     for oy in (-n, 0, n):
         for ox in (-n, 0, n):
             rng.bit_generator.state = state
 
-            # Roots. Long, low ribbons crossing the tile -- the one element
-            # here with a *direction*, and the reason the floor does not read
-            # as gravel.
+            # Roots: long, low ribbons crossing the tile, the one element with
+            # a direction.
             for _ in range(5):
                 x = rng.uniform(0, n) + ox
                 y = rng.uniform(0, n) + oy
@@ -1327,9 +1067,8 @@ def _floor_marks(d, n, rng):
                     d.ellipse([lx - lw, ly - lh, lx + lw, ly + lh],
                               fill=int(rng.uniform(170, 255)))
 
-            # Twigs: thin, dark, and the only thing here that is *below* the
-            # base value. A floor made entirely of things lighter than the
-            # earth reads as a scattering on a surface rather than as one.
+            # Twigs: thin and dark, the only thing below the earth's base
+            # value.
             for _ in range(22):
                 x = rng.uniform(0, n) + ox
                 y = rng.uniform(0, n) + oy
@@ -1349,23 +1088,16 @@ def _floor_marks(d, n, rng):
 
 
 def make_floor():
-    """The forest floor, in luminance.
-
-    **The ground was the last thing in this stage still being drawn as a
-    formula**, and it was reported the way a formula always is: a flat expanse
-    with props tossed on it. A ground plane shaded per screen row can only
-    ever produce horizontal bands, because a row *is* a depth -- so however
-    carefully the bands are tuned, what they draw is a set of stripes across
-    the screen, which the eye reads as water. The fix is not a better formula.
-    It is a texture with things in it that have positions.
+    """The forest floor, in luminance: a texture with things placed in it,
+    since a ground plane shaded per screen row can only produce horizontal
+    bands.
     """
     n = FLOOR
     earth = fbm2(n, 4321, octaves=5, base=3)
     fine = fbm2(n, 8765, octaves=4, base=14)
     base = 0.40 + 0.30 * earth + 0.16 * fine
 
-    # Moss, in patches. Thresholded so it has edges: moss grows in a place and
-    # stops, where a smooth blend of two greens is a stain.
+    # Moss in patches, thresholded so it has edges.
     moss = np.clip((fbm2(n, 2468, octaves=4, base=4) - 0.50) * 4.2, 0, 1)
     base = base * (1 - moss * 0.45) + moss * 0.78
 
@@ -1393,28 +1125,18 @@ def make_floor():
 # ---------------------------------------------------------------------------
 
 def make_moon():
-    """A full moon, in luminance. **Never white and never flat.**
-
-    It is the brightest thing in the stage and it sits behind the middle of the
-    playfield, which makes it the one piece of scenery a bullet has to read
-    against. So it is drawn as a *disc with structure* rather than as a lamp:
-    maria at half value, a limb that darkens toward the edge, and craters. The
-    draw side then holds the whole thing well under white -- but a flat pale
-    disc would have had to be held so far under to keep the field legible that
-    it would have stopped reading as a moon.
+    """A full moon, in luminance: a disc with structure (maria at half value, a
+    limb that darkens toward the edge, and craters) rather than a flat lamp.
     """
     n = MOON
     dx, dy, r = A.grid(n, n)
     disc = np.clip((0.985 - r) * (n * 0.5) / 3.0, 0, 1)
 
-    # Limb darkening. A real one goes as roughly the cosine of the angle from
-    # the centre; what matters here is that the edge is *not* a hard bright
-    # line, because a hard bright circle is a UI element.
+    # Limb darkening, so the edge isn't a hard bright line.
     lam = np.clip(1.0 - r ** 2, 0, 1) ** 0.42
     val = 0.62 + 0.38 * lam
 
-    # The maria: large dark blotches. Thresholded noise rather than painted,
-    # and deliberately soft -- crisp seas read as a texture map.
+    # The maria: large, soft dark blotches of thresholded noise.
     sea = np.asarray(A.fbm_field(n, n, 555, octaves=4, base=3),
                      dtype=np.float32) / 255.0
     val *= 1.0 - 0.30 * np.clip((sea - 0.46) * 3.4, 0, 1)
@@ -1441,16 +1163,10 @@ def make_moon():
 
     body = np.repeat(np.asarray(img, dtype=np.float32)[..., None], 3, axis=2)
 
-    # **Black wherever the disc is not, and this is not tidiness.** A PNG keeps
-    # its colour channels in fully transparent pixels, and a luminance field
-    # generated across the whole canvas is bright in every one of them -- so
-    # this sprite was a bright grey square with a disc-shaped alpha channel.
-    # Under any blend that does not weight the source by its alpha, and
-    # GameMaker's `bm_subtract` is one, what draws is the *square*. It shipped
-    # as a grey rectangle gliding across the sky during the eclipse.
-    #
-    # Thresholded rather than premultiplied, so the disc's own soft edge keeps
-    # its colour instead of being dimmed by its alpha twice.
+    # Black wherever the disc is not: a PNG keeps colour in fully transparent
+    # pixels, and a blend that ignores source alpha (such as `bm_subtract`)
+    # would draw the whole square. Thresholded rather than premultiplied, so
+    # the disc's soft edge isn't dimmed by its alpha twice.
     body = body * (disc > 0.004)[..., None]
     return A.from_arrays(body, disc)
 
@@ -1458,22 +1174,15 @@ def make_moon():
 # ---------------------------------------------------------------------------
 # The bands: a far treeline, a canopy overhead, and mist
 #
-# **These three are periodic in x, not in y**, which is the whole difference
-# between this stage and stage one. Nothing here scrolls down the screen; the
-# distant world slides *sideways* as the camera bores through it, so a band is
-# drawn three times at -W, 0 and +W and cropped to the middle.
+# Periodic in x rather than y, because the distant world slides sideways
+# rather than down: a band is drawn three times at -W, 0 and +W and cropped
+# to the middle.
 # ---------------------------------------------------------------------------
 
 def wrapped(w, h, draw_fn):
-    """Draw a band three times side by side and keep the middle copy.
-
-    **The middle one, not the sum of the three.** Folding the thirds together
-    -- which is what the first version did -- puts three copies of every tree
-    in the same tile and saturates the mask; what is wanted is one copy whose
-    neighbours have been drawn so that anything crossing an edge arrives from
-    the other side. Cropping the middle third of three identical draws is
-    exactly that, and it is the x-axis counterpart of `shade_wrapped` in
-    `make_bg.py`.
+    """Draw a band three times side by side and keep the middle copy, so
+    anything crossing an edge arrives from the other side (the x-axis
+    counterpart of `shade_wrapped` in `make_bg.py`).
     """
     big = Image.new("L", (w * SS * 3, h * SS), 0)
     d = ImageDraw.Draw(big)
@@ -1483,25 +1192,12 @@ def wrapped(w, h, draw_fn):
 
 
 def _treeline_draw(d, w, h):
-    """The far wall of wood, as a row of whole trees.
+    """The far wall of wood, as a row of whole trees behind the moon.
 
-    **It sits directly behind the moon, so it is the one piece of the wood
-    that is always looked at, and it was the messiest thing in it.** The
-    first version was thirty trunks and forty-six separate branch systems,
-    all rising from the ground independently of each other: the trunks
-    tapered to a third of their width and simply stopped in mid-air, and the
-    branches were a second, unrelated thicket laid over the top. In front of
-    the moon that read as a tangle -- reported as looking piled on rather than
-    designed -- with posts visibly cut off half way up the disc.
-
-    What is drawn instead is a *tree*, twenty-two times: a trunk that carries
-    its own width up to a fork, and two or three limbs out of the fork that
-    carry on from it, dividing twice and tapering to nothing. Nothing ends
-    bluntly, because everything is the continuation of something. The trunks
-    are spaced one to a stratum of the tile, so the gaps between crowns are
-    even enough for the moon to show *between trees* rather than through a
-    mesh, and the wobble is half what it was, because a branch that curves
-    is a branch and a branch that zig-zags is a scribble.
+    Each tree is a trunk carrying its width up to a fork, and two or three
+    limbs dividing twice and tapering to nothing, so nothing ends bluntly. One
+    trunk per stratum of the tile, so the moon shows between trees rather than
+    through a mesh.
     """
     n = 22
     for i in range(3):
@@ -1532,17 +1228,11 @@ def _treeline_draw(d, w, h):
 
 
 def make_treeline():
-    """The wall of wood at the far end of the corridor.
-
-    It is one band and it stands on the horizon. What it is doing is closing
-    the picture: without it the ground meets the sky along a ruled line, and a
-    ruled line at the vanishing point is the single most generated-looking
-    thing a corridor can have.
+    """The wall of wood at the far end of the corridor: one band standing on
+    the horizon, so the ground doesn't meet the sky along a ruled line.
     """
     mask = wrapped(TREELINE_W, TREELINE_H, _treeline_draw)
-    # **The top of the band is a clip like any other edge**, and the tallest
-    # crowns reach it -- so it is windowed, and a tip that reaches the top
-    # fades out rather than being sliced along a ruled line across the sky.
+    # The tallest crowns reach the top of the band, so it is windowed there.
     mask = soft_border(mask, sides="t", frac=0.10)
     arr = np.asarray(mask, dtype=np.float32) / 255.0
     # The feet of it go into the haze rather than ending on a line.
@@ -1555,17 +1245,9 @@ def _canopy_draw(d, w, h):
     for i in range(3):
         off = i * w
         rng = np.random.default_rng(4141)
-        # Heavy boughs first, so the top of the frame is closed rather than
-        # fringed. A canopy of thin branches is a curtain of string.
-        # **Boughs that reach across, and fork.** These used to be vertical
-        # wedges that ended at a third of their width half way down the band
-        # -- boughs sawn off in mid-air -- and tapered to a point instead they
-        # became a row of black icicles, which is a different wrong. A bough
-        # overhead is a limb reaching *sideways* out of the dark and dividing
-        # as it goes, so these leave the top edge at thirty-five to sixty-five
-        # degrees off vertical and are `limb`s rather than wedges: thick where
-        # they come in, forking twice, and ending in the same fine tips as
-        # everything else in the wood.
+        # Heavy boughs first, so the top of the frame is closed: `limb`s
+        # reaching sideways out of the top edge at thirty-five to sixty-five
+        # degrees off vertical, forking twice.
         for _ in range(10):
             x = rng.uniform(0, w) + off
             side = 1 if rng.random() < 0.5 else -1
@@ -1573,12 +1255,8 @@ def _canopy_draw(d, w, h):
                  rng.uniform(0.50, 0.80) * h,
                  rng.uniform(30, 54) * SS, 2, [], taper=0.62, segs=5,
                  wobble=7.0)
-        # **Half as many branches, reaching sideways, and ending well short of
-        # the bottom.** Thirty of them hung straight down to within a few
-        # rows of the band's edge, and the band's edge is a line across the
-        # lower third of the moon: what that drew was a curtain of string with
-        # its hem cut off in front of the one thing everybody looks at. What
-        # makes a canopy read is the boughs; the twigs are a fringe on them.
+        # Branches reaching sideways and ending well short of the band's
+        # bottom edge.
         for _ in range(15):
             x = rng.uniform(0, w) + off
             limb(d, rng, x, -10 * SS, 90 + rng.normal(0, 44),
@@ -1588,23 +1266,14 @@ def _canopy_draw(d, w, h):
 
 
 def make_canopy():
-    """Branches reaching in over the top of the frame.
-
-    **A corridor with no ceiling is a road.** The grove has to feel closed in,
-    and the cheapest way to say so is one band of black at the top of the sky
-    with the moon under it -- which also stops the moon sitting in an empty
-    rectangle, which is what it did for the first three screenshots.
+    """Branches reaching in over the top of the frame, so the corridor has a
+    ceiling and the moon doesn't sit in an empty sky.
     """
     mask = wrapped(CANOPY_W, CANOPY_H, _canopy_draw)
     arr = np.asarray(mask, dtype=np.float32) / 255.0
-    # **Reaching zero at the last row, not merely getting small.** The band's
-    # own bottom edge is a straight horizontal line across the whole field,
-    # and a straight horizontal line is the one artefact a picture of a wood
-    # cannot have. A ramp that ends at 0.35 leaves it visible.
-    # **Over the lower half, and eased.** It was `linspace ** 0.35`, which
-    # holds above half until the last tenth of the band and then drops -- so
-    # every twig that reached down that far ended in a fade a few rows long,
-    # and a fade a few rows long is a cut.
+    # The alpha reaches zero at the last row (the band's bottom edge would
+    # otherwise be a straight line across the field), easing out over the
+    # lower half.
     t = np.clip((np.linspace(0.0, 1.0, CANOPY_H, dtype=np.float32) - 0.40)
                 / 0.55, 0.0, 1.0)
     ramp = (1.0 - t * t * (3.0 - 2.0 * t))[:, None]
@@ -1613,28 +1282,16 @@ def make_canopy():
 
 
 def make_mist():
-    """A soft band of fog, periodic in x.
-
-    Drawn **additively** wherever it is used, which is why it is white and why
-    nothing in the game ever asks it to be opaque: mist in a moonlit wood is
-    light being scattered toward you, and light cannot hide a bullet.
+    """A soft band of fog, periodic in x. White, because it is always drawn
+    additively, so it can't hide a bullet.
     """
-    # **Periodic in x, and the way it is got there is the one that works.**
-    # `fbm_field` wraps in *y* -- it repeats the noise grid's first row at its
-    # bottom before upsampling, so the thing being interpolated is periodic.
-    # There is no x-wrapping flag and there does not need to be one: a field
-    # generated transposed and turned back is periodic in the other axis. The
-    # tempting alternative -- cross-fading the field with a rolled copy of
-    # itself -- is the mistake `fbm_field`'s own docstring records, because it
-    # makes the *weight* periodic and leaves the fields to disagree at the
-    # join.
+    # Periodic in x: `fbm_field` wraps in y, so the field is generated
+    # transposed and turned back.
     f = np.asarray(A.fbm_field(MIST_H, MIST_W, 606, octaves=4, base=3,
                                wrap_y=True), dtype=np.float32).T / 255.0
 
-    # Clipped before the power: `sin(pi)` comes back a hair *negative* in
-    # float32, and a negative base to a fractional power is NaN -- which
-    # propagates through the alpha and casts to whatever `uint8` makes of
-    # it. One row of garbage along the bottom of the band.
+    # Clipped before the power: `sin(pi)` comes back slightly negative in
+    # float32, and a negative base to a fractional power is NaN.
     win = np.clip(np.sin(np.linspace(0, math.pi, MIST_H,
                                      dtype=np.float32)), 0, 1) ** 1.4
     alpha = np.clip((f - 0.30) * 1.7, 0, 1) * win[:, None]
@@ -1647,31 +1304,18 @@ def make_mist():
 # ---------------------------------------------------------------------------
 
 def make_antler():
-    """An antler, for the corners of the grove's spell background.
-
-    Ziggy's forge puts his horns in the bottom corners and the reason it works
-    is not that they are horns -- it is that a contour rising out of the frame
-    is completed by the eye into a mass that is too big to be in the picture.
-    The grove's caster wears a stag's skull, so hers are antlers.
+    """An antler, for the bottom corners of the grove's spell background: a
+    contour rising out of the frame, like Ziggy's horns.
     """
     w, h = ANTLER_W * SS, ANTLER_H * SS
     mask = Image.new("L", (w, h), 0)
     d = ImageDraw.Draw(mask)
 
-    # **Hand-placed, and after three goes at generating it that is the right
-    # answer.** Two versions used `limb` and one used a curved sweep with the
-    # tines forked off it by angle, and all three came back as a bundle of
-    # sticks -- because an antler is not a procedural shape. It is a specific
-    # silhouette that everybody already knows: one heavy beam that leans, and
-    # brow, bez and trez tines leaving the *same* side of it, each shorter
-    # than the last, none of them forking again. Six polylines is the whole
-    # of it, and it is the one place in this file where writing the shape
-    # down beats growing it.
-    #
-    # Every number is a fraction of the frame, so the antler survives the
-    # frame being resized -- and the beam ends short of the top edge because
-    # `soft_border` is not applied here: this one is drawn rising *out* of the
-    # bottom corner of the field, so its own bottom is meant to be cut.
+    # Hand-placed: one heavy beam that leans, and brow, bez and trez tines
+    # leaving the same side of it, each shorter than the last. Every number is
+    # a fraction of the frame. The beam ends short of the top edge because no
+    # `soft_border` is applied; the antler rises out of a bottom corner of the
+    # field, so its own bottom is meant to be cut.
     def stroke(pts, w0, w1):
         px = [(x * w, y * h) for x, y in pts]
         n = len(px)
@@ -1698,19 +1342,12 @@ def make_antler():
 
 TABLE = """\
 /// @desc The Hollow Grove's scenery numbers -- GENERATED by
-///       tools/make_grove.py. **Do not edit.**
+///       tools/make_grove.py. Do not edit.
 ///
-/// **Where a charm can be tied.** A tree is drawn by a Python script and hung
-/// with things by GML, and the two have to agree about where its branches
-/// are -- so the branch tips are worked out where the branches are drawn and
-/// written out here, exactly as `bullet_table` carries a bullet's hit radius
-/// beside the sprite it belongs to. A hang point that lived in GML would be a
-/// number describing a picture in a different language from the picture, and
-/// it would be wrong the first time a tree was redrawn.
-///
-/// Each entry is one tree frame's list of `[u, v]` in the sprite's own box,
-/// 0..1 from its top-left. Some frames have fewer than others; a tree with no
-/// branch reaching sideways has nowhere to hang anything.
+/// Where a charm can be tied: the branch tips are found where the trees are
+/// drawn and written out here, as `bullet_table` does for hit radii. Each
+/// entry is one tree frame's list of `[u, v]` in the sprite's own box, 0..1
+/// from its top-left. A frame may have none.
 
 function grove_table_init() {
     global.grove_hang = [
@@ -1814,10 +1451,7 @@ def main():
 
     write_table(hangs)
 
-    # The previews. **Every one of these is shown over a dark ground and a
-    # light one**, because a silhouette that reads on black and vanishes on
-    # the moon is half a sprite -- the same reason `make_bullets.py` writes
-    # its sheet twice.
+    # The previews, each over a dark ground and a light one.
     shown, labels = [], []
     for i, img in enumerate(trees):
         shown.append(img.resize((TREE_W // 3, TREE_H // 3), Image.LANCZOS))

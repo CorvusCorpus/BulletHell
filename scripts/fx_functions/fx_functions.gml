@@ -1,17 +1,8 @@
-/// @desc Particles, floating text, screen shake and flashes.
+/// @desc Particles, expanding rings, floating text, screen shake and flashes.
 ///
-/// **Everything here is decoration and nothing here may affect the rules.**
-/// That is what lets the whole file be skipped by the self-test and by the
-/// headless simulation the boss tuning runs on: a suite steps a pattern for
-/// nine hundred frames and never draws a pixel, so a particle system that a
-/// rule read back from would be a rule that behaves differently when nobody is
-/// looking.
-///
-/// Particles are the same flat pool the bullets use, for the same reason and
-/// with the same swap-remove. They are capped, and past the cap the *oldest*
-/// is taken rather than the new one refused -- a bullet that fails to spawn is
-/// a pattern with a hole in it, and a spark that fails to spawn is nothing, so
-/// the two pools want opposite answers when they fill.
+/// Decoration only: no gameplay code reads any of this back. Particles are a
+/// flat pool like the bullets, but when full they overwrite the oldest
+/// particle instead of refusing the new one.
 
 function fx_init() {
     global.fx = [];
@@ -46,7 +37,7 @@ function fx_blank() {
 function fx_alloc() {
     var _i = global.fx_n;
     if (_i >= PARTICLE_MAX) {
-        // Full: overwrite the oldest. See the file docstring.
+        // Full: overwrite the one closest to expiring.
         _i = 0;
         for (var _j = 1; _j < global.fx_n; _j++) {
             if (global.fx[_j].life < global.fx[_i].life) _i = _j;
@@ -95,8 +86,8 @@ function fx_burst(_x, _y, _n, _spd0, _spd1, _col, _life, _size) {
     }
 }
 
-/// @desc What a bullet leaves when it is swept. Small and cheap: this runs
-///       four thousand times when a spell is cleared.
+/// @desc The pop a bullet leaves when swept. Kept cheap: a clear can call it
+///       thousands of times in one frame.
 function fx_bullet_pop(_x, _y, _col) {
     var _c = global.bullet_colour[_col];
     var _p = fx_alloc();
@@ -110,8 +101,7 @@ function fx_bullet_pop(_x, _y, _col) {
     _p.spr = spr_fx_bloom;
 }
 
-/// @desc An expanding ring. The shockwave of a bomb, a spell declaration, a
-///       boss dying.
+/// @desc An expanding ring (shockwaves). At most 48 at once.
 function fx_ring(_x, _y, _r0, _r1, _life, _col, _thick = 1.0) {
     var _i = global.bloom_n;
     if (_i >= 48) return;
@@ -128,7 +118,7 @@ function fx_ring(_x, _y, _r0, _r1, _life, _col, _thick = 1.0) {
     _b.col = _col; _b.thick = _thick;
 }
 
-/// @desc A local flash of light, and a nudge to the screen.
+/// @desc A local flash of light.
 function fx_flash_at(_x, _y, _col, _power) {
     var _p = fx_alloc();
     _p.x = _x; _p.y = _y;
@@ -141,15 +131,13 @@ function fx_flash_at(_x, _y, _col, _power) {
     _p.spr = spr_fx_bloom;
 }
 
-/// @desc Wash the whole screen. Used sparingly: a bomb, a spell landing, a hit.
+/// @desc Wash the whole screen with a colour (decays each frame).
 function fx_flash_screen(_col, _amount) {
     global.flash_col = _col;
     global.flash_a = max(global.flash_a, _amount);
 }
 
-/// @desc Shake. **Additive and capped**, so ten small events do not add up to
-///       an earthquake -- which is exactly what happens on a cleared spell,
-///       where four thousand bullets pop on the same frame.
+/// @desc Add screen shake, capped at 28.
 function fx_shake(_amount) {
     global.shake = min(28, global.shake + _amount);
 }
@@ -229,7 +217,7 @@ function fx_step() {
     if (global.flash_a < 0.01) global.flash_a = 0;
 }
 
-/// @desc Throw everything away. A room change, or a suite starting.
+/// @desc Clear every effect.
 function fx_clear() {
     global.fx_n = 0;
     global.floater_n = 0;
@@ -265,21 +253,9 @@ function fx_draw() {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc Floating text, drawn in the GUI layer so it is never scaled by a
-///       camera and never lost behind a bullet.
-/// @desc The floating text, drawn on the GUI layer so it does not shake.
-///
-///       **Held inside the field.** These carry world positions -- a score
-///       popping off a killed enemy, a bomb's caption -- but they are drawn in
-///       the GUI event, which is *after* `field_draw_frame` has painted out
-///       everything that is not the field. So they are the one thing in the
-///       game that can put world content in the HUD margin, and a "+250"
-///       drifting up past the score readout is exactly the kind of leak the
-///       boundary exists to stop.
-///
-///       Clamped rather than culled: a score that vanished because the enemy
-///       died near the edge would be a reward the player was told about only
-///       sometimes.
+/// @desc The floating text, drawn on the GUI layer (so it doesn't shake).
+///       Drawn after the field's mask, so positions are clamped inside the
+///       field or the text would spill into the HUD margin.
 function fx_draw_text() {
     draw_set_halign(fa_center);
     draw_set_valign(fa_middle);
@@ -297,8 +273,7 @@ function fx_draw_text() {
     draw_set_alpha(1);
 }
 
-/// @desc The full-screen wash. Drawn last of everything, over the HUD, because
-///       a flash that the HUD sat on top of would read as the HUD lighting up.
+/// @desc The full-screen wash, drawn last (over the HUD too).
 function fx_draw_flash() {
     if (global.flash_a <= 0) return;
     gpu_set_blendmode(bm_add);

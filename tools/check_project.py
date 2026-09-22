@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Static integrity checks for the Bullet Hell GameMaker project.
-
-GameMaker is the only real compiler for this project, but a lot of the ways a
-hand-edit can break things are visible without one: malformed .yy JSON, event
-files that no longer match the object's eventList, resources missing from the
-.yyp, and GML that references an asset name that does not exist.
+"""Static checks GameMaker doesn't do: resource registration and `.yy` shape,
+object events, undefined macros and functions, call arity, legacy globals,
+blank sprite frames, metrics shared with the generators, and guards for
+specific past bugs.
 
 Usage:  python tools/check_project.py
 Exits non-zero if anything looks wrong.
@@ -86,16 +84,10 @@ def check_yyp_resources(yyp):
 def check_resource_folders(yyp):
     """Every resource's parent folder must be one the .yyp declares.
 
-    GameMaker's folders are virtual — nothing exists on disk for them, only the
-    Folders list in the .yyp — so a resource pointing at a folder that was never
-    declared, or declared at different case, looks perfectly fine everywhere
-    until the linker refuses to load the project with
-
-        Cannot find folder path 'folders/Objects/Effects.yy'.
-
-    Folder paths are case sensitive to the linker: this project has an *objects*
-    folder at folders/Objects/items.yy and a *sprites* one at
-    folders/Sprites/Items.yy, and mixing the two up is the easy mistake.
+    GameMaker's folders are virtual (only the Folders list in the .yyp), so a
+    resource pointing at an undeclared folder, or one declared at different
+    case, looks fine until GameMaker refuses to load the project with "Cannot
+    find folder path". Folder paths are case sensitive.
     """
     declared = {f.get("folderPath") for f in yyp.get("Folders", [])}
 
@@ -137,16 +129,10 @@ LEGACY_GLOBALS = ("score", "health", "lives")
 def check_legacy_globals():
     """Flag any use of GameMaker's legacy built-in globals as a variable name.
 
-    `score`, `health` and `lives` are built-in *globals* that GameMaker still
-    carries from GM8. An instance variable of one of those names splits in two:
-    `inst.score = 5` writes an instance variable, and a bare `score` inside
-    that object's own events reads the built-in global. The two never see each
-    other, and nothing reports it -- the value simply does not arrive.
-
-    This is not hypothetical. obj_game kept a `score`, `play_functions` added
-    to it through an instance reference, and the HUD drew the bare name, which
-    was always zero. It compiled, it ran, no warning anywhere, and the number
-    on screen never moved. The screenshot harness is what caught it.
+    `score`, `health` and `lives` are built-in globals kept from GM8. An
+    instance variable with one of those names splits in two: `inst.score = 5`
+    writes an instance variable, while a bare `score` in that object's own
+    events reads the global. Nothing reports it; the value just never arrives.
     """
     comment = re.compile(r"//[^\n]*")
     assign = re.compile(
@@ -213,25 +199,14 @@ GML_COMMENT = re.compile(r"//[^\n]*")
 GML_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 
 def check_macro_references():
-    """Every SHOUTING_IDENTIFIER in the GML must be a macro that exists.
+    """Every SHOUTING_SNAKE identifier in the GML must be a macro that exists.
 
-    **GameMaker does not refuse an undefined one.** A bare identifier it has
-    never seen is compiled as a variable read, so `PLATE_W` in a draw function
-    builds cleanly and then throws at run time -- and a run-time throw in this
-    project means a modal error box, which under `tools/shot.py` and
-    `tools/test.py` is not a failure but a *hang*: both run the game under a
-    timeout and kill it, and what comes back is "the game did not exit within
-    120s" with no hint of the cause.
-
-    That is the entire reason this exists. It cost a build to work out that a
-    layout constant had been used before it was written, and the compiler had
-    nothing to say about it.
-
-    SHOUTING_SNAKE is a safe thing to key on here because GameMaker's own
-    built-ins are lower-case almost without exception -- `c_white`, `fa_left`,
-    `bm_add`, `vk_escape`, `pr_trianglestrip` -- so an upper-case identifier in
-    this codebase is a project macro or a mistake. The handful of upper-case
-    built-ins that do exist are listed below rather than guessed at.
+    GameMaker compiles an undefined identifier as a variable read, so the build
+    is clean and the game throws at run time, which under `tools/test.py` and
+    `tools/shot.py` is a modal dialog and so a hang until the timeout.
+    GameMaker's own built-ins are almost all lower-case, so an upper-case
+    identifier here is a project macro or a mistake; the few upper-case
+    built-ins are listed below.
     """
     builtin = {"NaN"}
 
@@ -257,9 +232,8 @@ def check_macro_references():
         fail("no #macro declarations found — has constants.gml moved?")
         return
 
-    # An enum member is written `TileKind.Normal`, so the shouty pattern never
-    # sees one -- but an enum *name* in SHOUTING_SNAKE would be caught, and the
-    # members are collected above so that a bare one is not reported either.
+    # Enum members are written `Enum.Member`, which this pattern never
+    # matches; they are collected above so a bare one isn't reported either.
     shouty = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b")
     strip_str = re.compile(r'"(?:[^"\\]|\\.)*"')
 
@@ -278,18 +252,10 @@ def check_macro_references():
 def check_sprite_texture_pages():
     """No sprite may be larger than the texture page it has to fit on.
 
-    GameMaker does not refuse an oversized sprite. It **halves it** and carries
-    on, logging one line among hundreds:
-
-        Warning : resource spr_bg_near_... rescaled from 2100,1080 to 1050,540
-
-    The game then runs, looks nearly right, and every one of those sprites is
-    at half resolution being scaled back up. The three background layers here
-    shipped that way for a while and the symptom was "the background looks a
-    bit murky", which is not a symptom anyone traces to a texture page.
-
-    The page also carries a border per sprite, so the usable width is a little
-    under the nominal size.
+    GameMaker doesn't refuse an oversized sprite: it halves it, logs one
+    warning ("rescaled from 2100,1080 to 1050,540"), and the game runs with the
+    sprite at half resolution. The page also carries a border per sprite, so
+    the usable width is a little under the nominal size.
     """
     pages = {}
     for opt in glob.glob(os.path.join(ROOT, "options", "*", "options_*.yy")):
@@ -308,8 +274,7 @@ def check_sprite_texture_pages():
     if not pages:
         return
 
-    # Only the platforms this project actually builds. The mobile pages are
-    # deliberately left at 2048 and are not a reason to shrink desktop art.
+    # Only the platforms this project builds; the mobile pages stay at 2048.
     desktop = {p: s for p, s in pages.items() if p in ("windows", "linux", "mac")}
     if not desktop:
         return
@@ -333,29 +298,10 @@ def check_sprite_texture_pages():
 def check_run_clears_the_field():
     """`obj_game`'s Create must call `run_clear_field`.
 
-    **Every pool in this game is a global**, allocated once in `obj_boot` and
-    reused for the life of the process. That is the right shape for a pool, and
-    it is exactly why entering `room_game` says nothing at all about what is on
-    the field -- unless something says it.
-
-    For a while nothing did. The clearing lived in `game_reset_stage`, the
-    pause menu's restart, so that one route started clean and every other route
-    inherited the previous run's field. Finish a stage, take the result screen
-    back to the rack, pick a stage: the run opened with the last attempt's
-    bullets, lasers, items and enemies still in the pools -- including the
-    boss, who carried on stepping his phase table and firing patterns into a
-    fight that had not begun.
-
-    It reached the player as two bugs that sounded unrelated: "Ziggy's patterns
-    keep firing at the start of the level", and "I take random damage from
-    invisible bullets". One cause, and neither reachable down the path that
-    happened to be correct.
-
-    `test_run_starts_clean` proves `run_clear_field` empties everything. It
-    cannot prove anybody *calls* it, and the bug was not in the clearing -- it
-    was in the calling. So that is what this checks, and it is the same shape
-    of rule as `check_font_accessors_called`: narrow and absolute, about one
-    function that exists to be called from one place.
+    Every pool is a global that outlives a room, so a run that doesn't clear
+    them starts with the previous run's bullets, lasers, items and enemies,
+    including a boss still firing. `test_run_starts_clean` proves
+    `run_clear_field` empties everything; this checks that it is called.
     """
     create = os.path.join(ROOT, "objects", "obj_game", "Create_0.gml")
     if not os.path.exists(create):
@@ -371,60 +317,22 @@ def check_run_clears_the_field():
              "included")
 
 
-# Sprites whose frames are a **catalogue** rather than an animation, where an
-# empty entry is a deliberate answer rather than damage. Each carries its
-# reason: an allow-list without one is a place to put anything inconvenient.
+# Sprites whose frames are a catalogue rather than an animation, where an
+# empty frame is intentional. Each entry gives its reason.
 BLANK_FRAMES_OK = {
-    # The light on each of seven charms, one frame per charm. Two of them have
-    # none: a bundle of bones and a stick with feathers, whose own generator
-    # docstring says "no light in it at all". Drawing an empty frame additively
-    # is a no-op, which is exactly the intended behaviour.
     "spr_scn_charm_lit": "two charms have no glowing part; see make_grove.py",
 }
 
 
 def check_sprites_not_blank():
-    """No sprite may be entirely transparent.
+    """No sprite frame may be entirely transparent.
 
-    **Everything in `sprites/` is generated, and a generated sprite can be
-    silently un-generated.** With the project open in the GameMaker IDE, its
-    cached copy of a sprite is written back over the one a `make_*` script just
-    produced -- reverting the `.yy` to the previous dimensions and, in the
-    cases seen so far, leaving every frame blank. Nothing on screen says so.
-    The build is clean, because a sprite of the wrong size full of nothing is a
-    perfectly valid sprite.
-
-    It was first caught on the fonts, because `check_font_ink_ratio` happens to
-    look at the ink in a `W`. That check exists for a completely different
-    reason and only covers three sprites, and the next time it happened it took
-    `spr_bul_butterfly`, `spr_bul_flame` and `spr_bul_mote` -- fifty-six blank
-    frames each -- and the only thing that noticed was a player saying the
-    animated bullets had gone.
-
-    So the rule is general: if a sprite has a frame with no ink in it, something
-    has eaten it. Re-run the generator that owns it, with the IDE closed.
-
-    **Every frame, and it used to be three.** The old version sampled first,
-    middle and last and passed the sprite if *any* of them had ink, on the
-    stated grounds that a sprite inked in some frames and blank in others was
-    not a failure mode this project produces. It is: the IDE wrote its cached
-    six frames back over a freshly generated twelve and left the second half
-    empty, so Mika vanished for seven tenths of every second of play and the
-    check reported the project sound. What reached a person was "his sprite is
-    appearing and disappearing".
-
-    Exhaustive costs 0.9 seconds over the 1129 frames this project ships, which
-    is not a budget worth defending against a bug that has now happened three
-    times.
-
-    **Some sprites are a catalogue rather than an animation, and an empty entry
-    in a catalogue is an answer.** `spr_scn_charm_lit` is the light on each of
-    seven charms, drawn frame-per-charm; two of them are a bundle of bones and
-    a stick with feathers on it, and `charm_fetish`'s own docstring says "no
-    light in it at all". The first exhaustive run reported those as damage,
-    which they are not. `BLANK_FRAMES_OK` is the exemption and it carries the
-    reason, because an allow-list without one becomes a place to put anything
-    inconvenient.
+    With the project open in the GameMaker IDE, its cached copy of a sprite can
+    be written back over one a `make_*` script just produced, reverting the
+    `.yy` and leaving some or all frames blank, with a clean build. Every frame
+    is checked. The fix is to re-run the generator that owns the sprite with
+    the IDE closed. `BLANK_FRAMES_OK` lists the sprites whose empty frames are
+    intentional.
     """
     try:
         from PIL import Image
@@ -475,17 +383,9 @@ def check_sprites_not_blank():
 def check_enum_references():
     """Every `SomeEnum.Member` in the project must name a member that exists.
 
-    GameMaker reports this only at compile time —
-
-        enum reference 'Teleporting' does not exist in 'TurnState'
-
-    — which makes it exactly the class of mistake this script exists to catch,
-    since nothing here can compile first. It bites hardest when an enum member
-    and the code using it are added in separate edits and only one of them
-    lands, which is precisely how it went wrong.
-
-    Only identifiers actually declared as enums are checked, so `global.money`
-    and `obj_manager.state` are never mistaken for one.
+    GameMaker reports this only at compile time. Only identifiers declared as
+    enums are checked, so a struct field reached through a dot is never
+    mistaken for one.
     """
     enums = {}
     declare = re.compile(r"\benum\s+(\w+)\s*\{([^}]*)\}", re.S)
@@ -524,11 +424,8 @@ def check_enum_references():
 
 
 def read_macro_number(name, default=None):
-    """One #macro's value from constants.gml, integer or decimal.
-
-    `read_macros` is deliberately integers-only -- a layout constant that has
-    quietly become a float is usually a mistake. A *fraction* is not, so this
-    is the one that reads them.
+    """One #macro's value from constants.gml, integer or decimal (`read_macros`
+    reads integers only).
     """
     path = os.path.join(ROOT, "scripts", "constants", "constants.gml")
     with open(path, encoding="utf-8-sig") as fh:
@@ -601,9 +498,7 @@ def check_scripts_registered():
     """Every script .gml on disk must have the .yy that registers it.
 
     `check_yyp_resources` walks `.yy` files, so a script folder holding only a
-    `.gml` is invisible to it -- which is exactly the state `scripts/board_draw`
-    was in when a build of it passed cleanly and every call to `draw_board`
-    compiled into a call to nothing.
+    `.gml` is invisible to it, and calls into it compile into calls to nothing.
     """
     for gml in sorted(glob.glob(os.path.join(ROOT, "scripts", "*", "*.gml"))):
         yy = gml[:-4] + ".yy"
@@ -616,14 +511,9 @@ def check_scripts_registered():
 def check_brace_balance():
     """Every .gml file must have as many { as }.
 
-    A missing brace is a compile error and nothing else here would notice —
-    the JSON stays valid, the event list still matches, every asset name still
-    resolves. It earns its place because scripted edits to these files are how
-    this project is usually changed, and a regex that eats one line too many
-    takes the closing brace of a function with it.
-
-    Strings and comments are stripped first, so a brace inside a description
-    or a commented-out block does not count.
+    A missing brace is a compile error nothing else here notices, and scripted
+    edits (a regex that eats one line too many) are how it happens. Strings and
+    comments are stripped first, so a brace inside either doesn't count.
     """
     for gml in sorted(glob.glob(os.path.join(ROOT, "**", "*.gml"), recursive=True)):
         with open(gml, encoding="utf-8-sig") as fh:
@@ -678,19 +568,11 @@ def collect_record_shapes(node, shapes):
 def check_record_shapes():
     """Records of the same kind in one file must all carry the same fields.
 
-    A hand-written record with a misspelled field is valid JSON, resolves every
-    asset, and balances every brace — and GameMaker refuses to open the project:
-
-        room_beginning.yy(36,236): Error: Field "isDnd": expected.
-
-    Nothing else here would notice, which is the same argument the brace check
-    makes. It bites on exactly the fields whose casing is inconsistent between
-    record kinds: a room instance is "isDnd" while an object event is "isDnD",
-    and copying one spelling to the other place is the easy mistake.
-
-    Comparing against sibling records rather than a schema is what keeps this
-    free: the file already contains a dozen correct examples of whatever is
-    being added, and GameMaker's own format is whatever it wrote last.
+    A misspelled field is valid JSON, but GameMaker refuses to open the project
+    (`Field "isDnd": expected`). The casing differs between record kinds (a
+    room instance has "isDnd", an object event "isDnD"), so copying one to the
+    other is the easy mistake. Records are compared against their siblings in
+    the same file rather than against a schema.
     """
     for path in [os.path.join(ROOT, PROJECT + ".yyp"),
                  os.path.join(ROOT, PROJECT + ".resource_order")] + [
@@ -771,22 +653,11 @@ def check_room_creation_code():
 def check_room_instances():
     """Every room instance must be in both its layer and instanceCreationOrder.
 
-    GameMaker creates the instances instanceCreationOrder names. An instance
-    written into a layer and left out of that list **does not exist in game** —
-    the project opens, the room editor draws it exactly where you put it, and it
-    is simply never created. Nothing else here would notice: the JSON parses,
-    the object resolves, the record has every field its siblings have.
-
-    That is the same shape as an object's eventList and its .gml files, and it
-    has now gone wrong the same way: eight braziers and an item placed into
-    room_beginning's Entities layer, none of them in the creation order, and the
-    only symptom was an empty-looking room. gm_edit.add_room_instance writes both
-    lists so it cannot recur; this is what says so when something else does it.
-
-    Creation code is checked here too, because it is a third place the same
-    instance appears: hasCreationCode true wants an
-    InstanceCreationCode_<name>.gml beside the room, and a file with no instance
-    to attach to is dead weight GameMaker ignores in silence.
+    GameMaker only creates the instances instanceCreationOrder names; one that
+    is only in a layer shows in the room editor and never exists in game.
+    `gm_new.room` writes both lists. Creation code is checked too:
+    hasCreationCode wants an InstanceCreationCode_<name>.gml beside the room,
+    and a file with no instance to attach to is ignored silently.
     """
     for yy_path in sorted(glob.glob(os.path.join(ROOT, "rooms", "*", "*.yy"))):
         data = load_yy(yy_path)
@@ -849,7 +720,7 @@ def object_method_names():
     `on_boss_beaten = function(_e) {...}` in a Create event is an instance
     method, and calling it bare from that object's Step is ordinary GML. The
     unknown-function check has no notion of instance scope, so without this it
-    reports every one of them.
+    would report every one of them.
     """
     names = set()
     for gml in glob.glob(os.path.join(ROOT, "objects", "*", "*.gml")):
@@ -863,11 +734,8 @@ def object_method_names():
 def check_gml_asset_references(yyp):
     known = asset_names(yyp)
 
-    # **A project function whose name happens to start with an asset prefix is
-    # not a missing asset.** `fnt_small()` returns the handle
-    # `font_add_sprite_ext` gave back for `spr_fnt_small`, and reading it
-    # through an accessor is the point -- a font can then be re-pointed in one
-    # place. Without this the check reports every call site of every one.
+    # A project function whose name starts with an asset prefix isn't a
+    # missing asset: `fnt_ui()` is an accessor for a font's handle.
     known = known | project_function_names()
 
     # A bare identifier that looks like an asset name. The lookbehind rejects
@@ -924,34 +792,16 @@ def _runtime_function_names():
 def check_unknown_functions():
     """Refuse a call to a function that is not defined anywhere.
 
-    **GameMaker compiles a call to a function that does not exist.** It is the
-    same trap as an undefined `#macro` -- which `check_macro_references` already
-    guards -- and it bites in the same way: the build is clean, and the game
-    throws when the line is finally reached, which under `tools/test.py` and
-    `tools/shot.py` is a *hang* rather than a failure, since both run the game
-    under a timeout and kill it.
-
-    This is not hypothetical. `scripts/board_draw` was written, called from
-    `obj_game`'s Draw event, and left unregistered in the `.yyp`; the build
-    reported OK. Renaming a function so that missed call sites "become compile
-    errors" does not work for the same reason, and this check is what makes that
-    argument true after the fact.
-
-    Method names are excluded -- `_fx.parts` and friends are struct fields, and
-    a call through a dot is not a call to a global function.
-
-    **String literals are stripped along with comments**, which is not
-    fastidiousness: this project's test names read like English, so
-    `"a word (uppercased)"` and `"cost per word on board (us)"` scan as calls to
-    `word()` and `board()` and produced four false alarms on the first run. A
-    check that cries wolf gets its output skimmed, which is the failure mode
-    that matters most for a check nothing else can replace.
+    GameMaker compiles a call to a function that doesn't exist, and the game
+    throws when the line is reached, which under the harnesses is a hang. Calls
+    through a dot are struct methods and are skipped. String literals are
+    stripped along with comments, because test names read like English and
+    would otherwise scan as calls.
     """
     builtins = _runtime_function_names()
     if builtins is None:
-        # No runtime to read. A hand-maintained list of four thousand names
-        # would be wrong by the next update and wrong in the direction that
-        # produces false alarms, so this check simply stands down.
+        # No runtime to read. A hand-kept list of built-ins would go stale, so
+        # the check stands down.
         return
 
     defined = set()
@@ -967,11 +817,9 @@ def check_unknown_functions():
         "do", "until", "return", "new", "delete", "throw", "catch", "function",
     }
 
-    # Instance methods, and functions handed in as arguments. A parameter or
-    # local holding a function is called by its own name -- `_maker(_g)`, where
-    # `_maker` is an argument -- and this project's convention is that every
-    # local and every argument starts with an underscore, so a leading
-    # underscore is a reliable "this is a value, not a global function".
+    # Instance methods, and functions handed in as arguments. Every local and
+    # argument starts with an underscore by convention, so a leading
+    # underscore means a value, not a global function.
     known = builtins | defined | KEYWORDS | object_method_names()
     call = re.compile(r"(?<![\w.$])([a-z]\w*)\s*\(")
 
@@ -1024,14 +872,9 @@ def _split_args(text):
 def _strip_noise(src):
     """Neutralise comments and string bodies, keeping the file's exact length.
 
-    Comments become spaces and strings become `"xxx"` -- a placeholder rather
-    than blank, because an argument list has to stay countable: blanked out,
-    `word_is_valid("cat")` reads as a call with no arguments at all, which is
-    how the first run of `check_call_arity` reported forty-five faults that
-    were entirely its own.
-
-    Length is preserved so that a match offset into the stripped text still
-    names the right line in the original.
+    Comments become spaces and strings become `"xxx"` (a placeholder rather
+    than blank, so an argument list stays countable). Length is preserved so a
+    match offset still names the right line in the original.
     """
     out = []
     i = 0
@@ -1062,23 +905,13 @@ def _strip_noise(src):
 
 
 def check_call_arity():
-    """Every call to a project function must pass a number of arguments it takes.
+    """Every call to a project function must pass a number of arguments it
+    takes.
 
-    **This is the third identifier trap and the last of them.** GML does not
-    refuse a call with too few arguments -- it binds the missing ones to
-    `undefined` and lets the arithmetic run, so the failure surfaces wherever
-    that value is finally used rather than where the mistake is. Where that
-    happens to be inside a Draw event, no suite can reach it: `tools/test.py`
-    runs the rules and never draws a frame.
-
-    That is not hypothetical either. `draw_arc_band` takes a step count as its
-    tenth argument and the versus stun ring passed nine; the build was clean,
-    all 767 assertions passed, and the game died on the first frame a player
-    was ever stunned -- in a mode whose every other rule is covered.
-
-    Only project functions are checked. The runtime's own arities are not in
-    `fnames` in any form worth parsing, and the two traps that matter for
-    built-ins are already covered by `check_unknown_functions`.
+    GML binds missing arguments to `undefined` rather than refusing the call,
+    so the failure surfaces wherever the value is finally used, possibly in a
+    Draw event no suite reaches. Only project functions are checked; the
+    runtime's arities aren't available in a usable form.
     """
     sig = re.compile(r"\bfunction\s+([A-Za-z_]\w*)\s*\(")
     arities = {}
@@ -1162,23 +995,9 @@ def _split_list(text):
 
 
 def check_delta_time_in_rules():
-    """No rule may read `delta_time`; it must take the step it is given.
-
-    **In play the two are the same number, which is exactly why this hid.** A
-    rule that rolls against `delta_time` behaves correctly at any frame rate,
-    because `delta_time` *is* the frame's step -- so nothing is ever wrong on
-    screen and no suite that draws frames can see a problem.
-
-    It comes apart under simulation. A balance harness steps a fixed `dt` as
-    fast as the machine will go, so `delta_time` there is a few microseconds:
-    `cpu_wants_spirit` rolled against it, and the simulated opponent therefore
-    essentially never struck its seal. Every figure measured that way was taken
-    against a CPU that could not use its vessel, and the only thing that could
-    have revealed it was running one match twice at two different speeds.
-
-    So the rules take their step as an argument, always. Objects are exempt: an
-    event is where real time legitimately enters, and `var _dt = delta_time /
-    1000000` at the top of a Step is how it gets in.
+    """No script may read `delta_time`: the game is fixed-step and measures
+    time in frames, which is what lets the tests drive it headlessly. Object
+    events are not scanned.
     """
     for gml in sorted(glob.glob(os.path.join(ROOT, "scripts", "*", "*.gml"))):
         with open(gml, encoding="utf-8-sig") as fh:
@@ -1195,15 +1014,10 @@ def check_delta_time_in_rules():
 def check_font_ink_ratio():
     """`FONT_INK_RATIO` must match what the font atlases actually contain.
 
-    A sprite font's `string_height` returns the *cell*, which carries room for
-    an ascender and a descender that a row of capitals never touches. The HUD
-    lays itself out in ink, so it multiplies by `FONT_INK_RATIO` — and a
-    constant like that is exactly the kind that goes stale silently the next
-    time `make_fonts.py` changes a size or a padding.
-
-    Nothing else would notice: the game would still build, still run, and the
-    layout tests would still pass while measuring the wrong thing. So the number
-    is checked against the PNGs it was derived from.
+    A sprite font's `string_height` returns the atlas cell, not the ink, and
+    the HUD lays itself out in ink by multiplying by `FONT_INK_RATIO`. The
+    constant would go stale silently when `make_fonts.py` changes a size or
+    padding, so it is checked against the PNGs.
     """
     try:
         from PIL import Image
@@ -1258,16 +1072,11 @@ def check_font_ink_ratio():
 def check_font_digit_mid():
     """`FONT_DIGIT_MID_*` must match where the atlases actually put a digit.
 
-    The boss's percentage and the dial's clock are counters: each digit is set
-    on a wheel centred in a window, and the window's edges are what the eye
-    measures it against. `text_digit_middle_y` centres a digit's ink with these
-    two ratios, so a regenerated font that moved its digits would put every
-    counter in the game a pixel or two off-centre -- the defect they exist to
-    fix, reported first as the percentage sitting two pixels low -- and nothing
-    else would notice.
-
-    Measured as the mean over the ten digits of where the ink's middle sits
-    above the bottom of the cell, as a fraction of the cell.
+    `text_digit_middle_y` centres a digit's ink with these ratios (for the
+    boss's percentage and the dial's clock), so a regenerated font that moved
+    its digits would put every counter off-centre. Measured as the mean, over
+    the ten digits, of where the ink's middle sits above the bottom of the
+    cell, as a fraction of the cell.
     """
     try:
         from PIL import Image
@@ -1333,26 +1142,10 @@ def _bg_layers():
 def check_bg_seams():
     """A scrolling layer must tile seamlessly top to bottom.
 
-    The world moves down the screen forever, so every background layer is drawn
-    twice -- at `y` and at `y - GAME_H` -- and a discontinuity between its first
-    row and its last is a hard horizontal line sweeping up the screen once a
-    cycle. It is the one artefact in a scrolling game a player cannot un-see,
-    and it is invisible in the generator's own preview, which shows one tile.
-
-    **Measured against the layer's own texture, not against a fixed number.**
-    A busy layer has a lot of difference between any two adjacent rows and a
-    smooth one has almost none, so the only meaningful question is whether the
-    join is worse than an ordinary row boundary. Three times is generous and
-    still catches everything that reads as a seam: the first version of these
-    layers scored twenty-five times on the rock and the shading was visibly
-    stepped.
-
-    This caught two real ones. The rock and near layers were *shaded* at one
-    tile's height, so `shade_shape`'s distance field treated the canvas edge as
-    the edge of the shape and lit a boulder crossing the join differently at
-    each end. And the ground's molten cracks wandered freely down the tile, so
-    each one arrived at the bottom several hundred pixels from where it left
-    the top.
+    Each layer is drawn twice, at `y` and at `y - GAME_H`, so a mismatch
+    between its first and last rows is a line sweeping up the screen. The join
+    is measured against the layer's own texture: it fails if it differs by more
+    than three times the layer's typical adjacent-row difference.
     """
     try:
         from PIL import Image
@@ -1370,9 +1163,8 @@ def check_bg_seams():
             np.abs(arr[y] - arr[y - 1]).mean()
             for y in (h // 4, h // 2, (3 * h) // 4)
         ]))
-        # A perfectly flat layer has an adjacent delta of zero, which no
-        # multiple can be taken of; the floor is what keeps that from being an
-        # automatic failure.
+        # The floor keeps a perfectly flat layer (adjacent delta 0) from
+        # failing automatically.
         budget = max(1.0, adjacent * 3.0)
         if join > budget:
             fail("%s does not tile top to bottom: its join differs by %.2f "
@@ -1381,13 +1173,10 @@ def check_bg_seams():
 
 
 def check_bg_keepout():
-    """The near parallax layer must leave the middle of the screen alone.
-
-    It is drawn *over* the field, so anything it puts in the centre is
-    somewhere a bullet can be invisible. The generator enforces this with a
-    window that reaches zero at the boundary -- see `make_near` -- and this is
-    the check that the window is still there, because the failure is a bullet
-    the player never saw rather than anything that looks wrong in a preview.
+    """The near parallax layer must leave the middle of the screen alone: it is
+    drawn over the field, so anything in the centre could hide a bullet. The
+    generator's window (`make_near`) keeps it clear; this checks the window is
+    still there.
     """
     try:
         from PIL import Image
@@ -1416,18 +1205,11 @@ def check_bg_keepout():
 def check_rotunda_scale_agrees():
     """The far chamber's painting and its quad have to agree about its size.
 
-    `rotunda` in `tools/make_sanctum.py` computes its own perspective: how
-    much a gallery ring is foreshortened depends on how far above the eye it
-    sits *in the finished frame*, which means the painting has to know how
-    many design pixels wide it is going to be hung. That number is
-    `HALL_ROT_HW_SCREEN` there and it is derivable here, from the world
-    half-width, the distance and the lens.
-
-    Nothing else would notice them drifting apart. The card would still be a
-    valid PNG at a valid size on a valid quad, and what it would draw is a
-    round room whose rings curve by the wrong amount -- which reads as a
-    slightly odd building rather than as a mistake, and which is exactly the
-    sort of thing this project has learnt only a measurement finds.
+    `rotunda` in `tools/make_sanctum.py` paints its own perspective for the
+    design-pixel width it will be drawn at (`HALL_ROT_HW_SCREEN` there), which
+    is derivable here from the world half-width, the distance and the lens. If
+    the two drift apart, the rings curve by the wrong amount and nothing else
+    notices.
     """
     src_path = os.path.join(ROOT, "tools", "make_sanctum.py")
     with open(src_path, encoding="utf-8") as fh:
@@ -1453,27 +1235,14 @@ def check_rotunda_scale_agrees():
              % (drawn, want))
 
 def check_scrub_covers_horizon():
-    """The hedgerow must never fall below the line it is there to hide.
+    """The grove's hedgerow must never fall below the horizon it hides.
 
-    The grove's ground plane meets the far wood at one ruled horizontal row
-    the full width of the field, and the scrub band is drawn over the join to
-    break it. Whether it *does* is a property of the hedge's thinnest stretch
-    and not of its average, and it is the sum of four numbers living in three
-    files: how tall the band is drawn, how much of it stands above the
-    horizon, how far the wave and the dip push it back down, and where the
-    art's own crown bottoms out. Every one of them is individually reasonable.
-    Nothing was adding them up.
-
-    So the mat in `make_scrub` thinned to a sixth of its height between two
-    ellipses, the crown there landed *below* the horizon, and the join showed
-    through -- reported as the border peeking out from behind the hedgerow.
-    Nothing could have seen it: the build is clean, the sprite is inked, every
-    constant is in range, and `tools/shot.py` photographs one frame of a band
-    that used to slide, so the bare patch swept past rather than sitting still.
-
-    The near row is what is measured, because it is drawn over the far one and
-    is the taller of the two -- so it is the row that does the covering, and
-    the check says so rather than assuming it.
+    The ground plane meets the far wood at one horizontal row, and the scrub
+    band is drawn over the join. Whether it covers it depends on the hedge's
+    thinnest stretch and on four numbers in three files: the band's drawn
+    height, how much of it stands above the horizon, how far the wave and dip
+    push it down, and where the art's crown bottoms out. The near row is
+    measured, because it is drawn over the far one and is the taller.
     """
     try:
         from PIL import Image
@@ -1533,29 +1302,13 @@ IDENT = "[A-Za-z_][A-Za-z_0-9]*"
 
 
 def check_bands_are_rooted():
-    """A scenery band's sideways position is the camera's, or it is the wind.
+    """A grove scenery band's sideways position must follow the camera.
 
-    The grove's tiled bands -- the far wood, the hedgerow, the canopy -- stand
-    on the ground, so the only thing that may move them sideways is the camera
-    turning. Each of them nonetheless shipped with a share of an accumulator
-    that only ever grows, and the canopy then shipped with a sinusoid, and both
-    were reported: a wall of wood panning left for ever in a stage flying
-    straight ahead, and branches overhead sliding left and right under their
-    own clock while everything else in the frame answered to the player.
-
-    The rule is invisible at the call site -- every one of those arguments is a
-    perfectly ordinary number -- which is exactly the case a comment cannot
-    hold. So the x of a band draw has to be `grove_rooted_x(...)`, or a
-    parameter passed straight through from a caller that is itself checked, and
-    `_b.drift` is allowed only in `grove_draw_mist`, because fog is the one
-    thing out there that really does travel.
-
-    **Found by scanning rather than by matching**, because this guard's first
-    version carried a literal backspace where it meant a word boundary -- an
-    escape that survived review, compiled, ran against three deliberate
-    violations and reported all three as clean. Which is the `GAME_ERROR`
-    lesson exactly: the only thing that separates a guard from a comment is
-    watching it fail.
+    The tiled bands (far wood, hedgerow, canopy) stand on the ground, so only
+    the camera may move them sideways. The x of a band draw has to be
+    `grove_rooted_x(...)`, or a parameter passed straight through from a
+    checked caller; `_b.drift` is allowed only in `grove_draw_mist`, since the
+    mist is the one thing that drifts.
     """
     path = os.path.join(ROOT, "scripts", "bg_grove", "bg_grove.gml")
     if not os.path.exists(path):
@@ -1620,34 +1373,18 @@ def check_bands_are_rooted():
 
 
 def check_font_accessors_called():
-    """A font accessor must be *called*, never passed by name.
+    """A font accessor must be called, never passed by name.
 
-    `fnt_small` is a function returning the handle `font_add_sprite_ext` gave
-    back for `spr_fnt_small`. Written without its parentheses it is a perfectly
-    valid expression -- a reference to the function itself -- which GML happily
-    hands to `draw_set_font`, which then throws:
-
-        draw_set_font argument 1 incorrect type (script) expecting a font
-
-    **Nothing else in this project's tooling can see it.** The build is clean
-    because the expression is legal. `check_unknown_functions` only looks at
-    `name(` and so never considers it. `check_gml_asset_references` was *taught*
-    that `fnt_*` names are project functions rather than missing assets, which
-    is correct and is precisely what stops it reporting this. And the throw
-    happens in a Draw event, which no suite reaches -- this one shipped as a
-    crash the first time a boss threw floating text, and was found by a person
-    playing the game.
-
-    A general "function referenced without being called" check would be wrong
-    here: passing a function by name is ordinary in this codebase -- every
-    wave's fire routine and every boss attack is handed over exactly that way.
-    What makes the font accessors different is that they exist *only* to be
-    called, so for this one family the rule is absolute.
+    `fnt_ui` without parentheses is a valid reference to the function, which
+    `draw_set_font` accepts and then throws on ("argument 1 incorrect type
+    (script) expecting a font"), in a Draw event no suite reaches. Nothing else
+    catches it, because `check_gml_asset_references` treats `fnt_*` names as
+    project functions. Passing functions by name is ordinary elsewhere in this
+    codebase; the font accessors exist only to be called.
     """
-    # **The word boundary is load-bearing.** Without it `\w*` simply backtracks
-    # until the negative lookahead succeeds, so `fnt_small(` matches as
-    # `fnt_smal` followed by `l(` -- and the check reports every correct call
-    # site in the project as a fault. It did, on its first run.
+    # The word boundary matters: without it `\w*` backtracks until the
+    # lookahead succeeds, so `fnt_ui(` would match as `fnt_u` followed by
+    # `i(`.
     bare = re.compile(r"(?<![\w.$])(fnt_[a-z_]\w*)\b(?!\s*\()")
 
     for gml in sorted(glob.glob(os.path.join(ROOT, "**", "*.gml"),
@@ -1672,27 +1409,9 @@ def check_font_accessors_called():
 def check_sprite_draws_are_explicit():
     """Every sprite draw states its own blend colour and alpha.
 
-    `draw_sprite` is the bare form: it draws with whatever `draw_set_colour`
-    and `draw_set_alpha` happen to be set to. That is fine in a routine that
-    just set them and a trap everywhere else, because the state it inherits
-    can have been left by a *different event on the previous frame*.
-
-    It shipped exactly that. The two `draw_sprite` calls that laid down the
-    parallax ground layer were the only bare ones in the game; everything else
-    passes `c_white, 1` explicitly. The stage-name splash fades its title text
-    out over 34 frames and `draw_text_outline` returned without putting the
-    alpha back, so the GUI event ended each of those frames with the alpha
-    wound down toward zero -- and the first thing the next frame's Draw event
-    does is lay down the ground. The world faded out under the splash and
-    snapped back to full the frame the splash stopped drawing.
-
-    **No suite could have caught it and no screenshot scene did either.**
-    `tools/test.py` never draws a frame, and every scene `tools/shot.py` poses
-    is photographed long after the splash has gone. It was found by a person
-    watching the game start.
-
-    The rule is cheap because the codebase already keeps it everywhere else:
-    the fix is `draw_sprite_ext(..., c_white, 1)`.
+    A bare `draw_sprite` uses whatever colour and alpha were last set, possibly
+    by a different event on the previous frame (a fading splash once faded the
+    ground layer with it). Use `draw_sprite_ext(..., c_white, 1)`.
     """
     bare = re.compile(r"(?<![\w.$])draw_sprite\s*\(")
 
@@ -1714,22 +1433,13 @@ def check_sprite_draws_are_explicit():
 
 
 def check_rings_block_before_enemies():
-    """`obj_game`'s Step must block shots on rings *before* the enemies take
+    """`obj_game`'s Step must block shots on rings before the enemies take
     them.
 
-    A ring stops the player's fire along its metal, and the whole of what makes
-    that true is an ordering: `ring_block_shots` removes a shot from the pool,
-    so anything that runs after it never sees that shot. Run it the other way
-    round and the boss behind a ring takes every hit exactly as if the ring
-    were not there -- and the picture is *identical*, because the ring is still
-    drawn, the shots still spark on it, and the only difference is a health bar
-    going down at the normal rate.
-
-    Nothing else can see it. `test_rings` proves the blocking works and cannot
-    prove anybody calls it first; the build is clean either way; and a
-    screenshot of a boss being shot through a ring looks like a screenshot of a
-    boss being shot. Same shape of rule as `check_run_clears_the_field`, and
-    the same reason for it: the bug was never going to be in the function.
+    `ring_block_shots` removes a blocked shot from the pool, so it has to run
+    first; the other way round, a boss behind a ring takes every hit and the
+    picture looks identical. `test_rings` proves the blocking works but can't
+    prove the order.
     """
     step = os.path.join(ROOT, "objects", "obj_game", "Step_0.gml")
     if not os.path.exists(step):
@@ -1759,29 +1469,13 @@ def check_rings_block_before_enemies():
 def check_hall_frame_textures():
     """A hall buffer may not be submitted with a multi-frame sprite's page.
 
-    `vertex_submit` takes **one** texture and `bg_sanctum`'s `hall_uv` writes
-    coordinates in *page* space, so a buffer holding geometry from two frames
-    of a sprite is drawn against whichever page `sprite_get_texture(spr, 0)`
-    names. That is correct exactly while the packer has put both frames on the
-    same page, and the packer is under no obligation to: adding two tiles to
-    the hall's folder repacked the atlas, `spr_hall_banner`'s two frames came
-    apart, and one tabard in every other bay came back drawn out of a piece of
-    masonry.
-
-    Nothing else can see it. The build is clean, the sprite is present and
-    inked, every coordinate is in range, and what lands on screen is a
-    perfectly valid picture of the wrong thing -- the same failure this file
-    already records about the ceiling drawing the floor's winged discs. It was
-    reported by a person looking at the screen.
-
-    **And it cannot be asserted at run time either.** `sprite_get_texture`
-    answers a pointer to the frame's own entry rather than to the page it sits
-    on -- measured: three single-frame sprites certainly packed together give
-    three different pointers -- so no suite can ask whether two frames share a
-    page. What can be refused is the construction that needs the question
-    asking, which is this. The answer is `hall_submit_frames`: one buffer per
-    frame, each drawn with its own frame's texture, right whatever the packer
-    does.
+    `vertex_submit` takes one texture and `hall_uv` writes coordinates in page
+    space, so a buffer holding geometry from two frames of a sprite is right
+    only while the packer keeps both frames on one page; a repack that splits
+    them draws one frame out of whatever else is on the page. It can't be
+    asserted at run time (`sprite_get_texture` returns a per-frame pointer, not
+    the page), so this refuses the construction. `hall_submit_frames` gives
+    each frame its own buffer.
     """
     path = os.path.join(ROOT, "scripts", "bg_sanctum", "bg_sanctum.gml")
     if not os.path.exists(path):
@@ -1846,30 +1540,11 @@ def _hall_args(src, start):
 def check_hall_buffer_textures():
     """A hall buffer may not be written from one sprite and drawn with another.
 
-    `vertex_submit` takes **one** texture and `bg_sanctum`'s `hall_uv` writes
-    coordinates in *page* space, so a buffer's geometry is drawn against
-    whichever page the submit binds. Write it from a second sprite and what
-    those coordinates index is whatever the packer happened to leave at that
-    spot on the bound page -- which is correct exactly while the two sprites
-    land together, and the packer is under no obligation to keep them there.
-
-    That is the rule `hall_build_case` states in a comment, and the pedestals
-    broke it twice: the shaft was textured `spr_hall_deskface` and rode in the
-    buffer submitted with `spr_hall_plinth`, and the cap was textured
-    `spr_hall_pale` and rode in the one submitted with `spr_hall_stone`. It was
-    reported as the pedestals *sometimes* coming back as white paper, and
-    "sometimes" is the whole diagnosis -- a repack that separated the two
-    sprites put the shaft's coordinates over a blank corner of another page.
-
-    Nothing else could see it. The build is clean, both sprites exist and are
-    inked, every coordinate is in range, and what lands on screen is a
-    perfectly valid picture of the wrong thing. This is
-    `check_hall_frame_textures`' rule between two *sprites* rather than
-    between two frames of one, and it was tested against a deliberate
-    violation before being believed.
-
-    A slot whose submit names no sprite statically -- the orrery's rings carry
-    theirs on the struct -- is skipped rather than guessed at.
+    The same rule as `check_hall_frame_textures`, between two sprites rather
+    than two frames of one: a buffer's page-space coordinates index whatever is
+    at that spot on the page it is submitted with, which is right only while
+    the packer keeps both sprites together. A slot whose submit names no sprite
+    statically (the orrery's rings carry theirs on the struct) is skipped.
     """
     path = os.path.join(ROOT, "scripts", "bg_sanctum", "bg_sanctum.gml")
     if not os.path.exists(path):
@@ -1973,19 +1648,9 @@ def check_hall_buffer_textures():
 
 
 def check_texture_groups_exist(yyp):
-    """A sprite may not name a texture group the project does not have.
-
-    GameMaker does not complain: an unknown `textureGroupId` falls back to
-    Default and the sprite packs there, so the group is *silently* not applied
-    and nothing anywhere says so. What that hides is a mitigation that was
-    never wired up -- five of the hall's multi-frame sprites named a
-    `HallFrames` group, presumably to force each sprite's frames onto one page,
-    and the group had never been added to the `.yyp`. It is the `GAME_ERROR`
-    shape again: the thing that makes it hard to notice is that the sprites
-    look exactly as though the group is doing its job.
-
-    (The hall no longer needs one. `hall_submit_frames` is right whatever the
-    packer does, which is the whole argument for building it that way.)
+    """A sprite may not name a texture group the project doesn't have. An
+    unknown `textureGroupId` silently falls back to Default, so the group is
+    never applied and nothing says so.
     """
     if yyp is None:
         return

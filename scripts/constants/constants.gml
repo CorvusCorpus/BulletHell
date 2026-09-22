@@ -1,26 +1,18 @@
-/// @desc Every number the game is tuned by, and the enums it is shaped by.
+/// @desc The game's tuning numbers and enums.
 ///
-/// **The whole game runs on a fixed 60Hz step and counts frames, never
-/// seconds.** Every duration here is a frame count. That is not nostalgia: a
-/// danmaku pattern is a sequence of exact angles fired on exact ticks, and a
-/// pattern that advances by `delta_time` is a pattern that is subtly different
-/// on every machine and impossible to assert anything about.
-/// `check_delta_time_in_rules` in `tools/check_project.py` refuses `delta_time`
-/// inside `scripts/`, so the self-test can step a boss through nine hundred
-/// frames in a few milliseconds and read the bullets it laid down.
-///
-/// Where a figure is easier to think about in seconds it is written as
-/// `seconds * FPS`, so the arithmetic stays visible rather than pre-multiplied.
+/// The game runs on a fixed 60 Hz step and every duration is a frame count;
+/// `delta_time` is not allowed in `scripts/` (checked by
+/// `check_delta_time_in_rules`). Durations easier to think of in seconds are
+/// written as `seconds * FPS`.
 
 #macro FPS 60
 
 // ---------------------------------------------------------------------------
 // The screen
 //
-// The design resolution, and the only thing `GAME_*` is for. Anything that
-// genuinely owns the whole display -- the pause scrim, the result panel, the
-// flash -- measures from these; everything about the playfield measures from
-// `FIELD_*` and everything about the readouts from `HUD_*`.
+// The design resolution. Only things that own the whole display (title, pause
+// scrim, result panel, flash) measure from `GAME_*`; the playfield measures
+// from `FIELD_*` and the readouts from `HUD_*`.
 // ---------------------------------------------------------------------------
 
 #macro GAME_W 1920
@@ -31,54 +23,12 @@
 // ---------------------------------------------------------------------------
 // The field
 //
-// **The field is a bounded rectangle inside the screen, and the HUD lives
-// outside it.** This reverses what this project started from, so the reasoning
-// is worth writing down properly.
-//
-// The original bargain was: let the danmaku have all 1920x1080, put the
-// readouts in the corners, and have them fade as the player approaches. Two
-// things went wrong with it, and only the second is fixable by tuning.
-//
-// The first is that a fading readout is a readout you cannot rely on. The one
-// moment you most want to check your life is the moment you are deepest in a
-// pattern -- which is exactly when the fade has taken it down to its floor.
-//
-// The second is worse and is a matter of arithmetic. A readout has to be big
-// enough to read at a glance from a metre away, and anything big enough to do
-// that is big enough to hide bullets. Every attempt at fixing the legibility
-// made the occlusion worse; every attempt at fixing the occlusion made the
-// legibility worse. There is no size that satisfies both, because they are the
-// same pixels.
-//
-// So the field gets a boundary and the HUD gets its own real estate. What that
-// buys, beyond the obvious:
-//
-//   - **The HUD can be as loud as it likes.** Nothing it draws is over
-//     anything, so there is no fade rule, no alpha budget, and no reason for
-//     any number on this screen to be small.
-//   - **It is assertable.** "No HUD element overlaps the field" is a rectangle
-//     test, and `test_hud_layout` now runs it. The fade rule was never
-//     testable, which is why it shipped measuring from one corner of a bar.
-//   - **A bullet leaving the field is unambiguous.** Culling, the near layer's
-//     keep-out, and where a wave enters from are all questions about the field
-//     now, and the field has edges.
-//
-// What it costs is the full-bleed look, and the field is deliberately kept
-// wide -- 1360x868 is nothing like a Touhou strip -- so that the fast,
-// horizontal game this is meant to be still has room to be one.
-//
-// **Everything about the playfield is measured from these**, not from
-// `GAME_*`. `GAME_*` is now only for things that genuinely own the whole
-// screen: the title, the pause scrim, the result panel and the flash.
+// The playfield is a rectangle inside the screen with a 44px margin on three
+// sides and the console plate on the fourth. No HUD element may overlap it
+// (`test_hud_layout`); the boss's health rail is the one thing drawn inside
+// it.
 // ---------------------------------------------------------------------------
 
-// **The margin is the same width on three sides and the fourth is the
-// console.** The strip above the field used to be 168 pixels of nothing
-// holding a boss's name set at 66pt and a health tube spanning the screen --
-// a sixth of the display, spent on two readouts, next to a right-hand column
-// with room to spare. Both of those moved: the tube is *inside* the field
-// where the genre has always put it, the name is centred and small above it,
-// and the 124 pixels that bought back went to the playfield.
 #macro FIELD_X0 44
 #macro FIELD_Y0 44
 #macro FIELD_W 1360
@@ -93,107 +43,47 @@
 #macro FIELD_EDGE 3
 #macro FIELD_GLOW 26
 
-// The ornamented outer frame: where the corner pieces sit, how big they are,
-// and -- derived from both -- where the rule they stand on runs.
-//
-// **`UI_CORNER_INSET` mirrors `o` in `tools/make_ui.py`**, which is how far
-// into its own sprite the corner piece draws its bracket. The two have to be
-// edited together, exactly as `BG_NEAR_EDGE` and `NEAR_EDGE` are: get it wrong
-// and the rule is a second line running near the corners rather than the line
-// they are the corners of, which is the difference between a frame and four
-// ornaments beside a box.
+// The ornamented outer frame. `UI_CORNER_INSET` is how far into its own
+// sprite the corner piece draws its bracket, and `UI_CORNER_DEPTH` is the
+// deepest ink in it; both mirror `tools/make_ui.py` (`o` and `o + chamfer`)
+// and must be changed together with it. The rule the corners stand on is
+// derived from them, and the corner pieces must stay out of the field.
 #macro UI_CORNER_INSET 11
-
-// How far the corner piece reaches *away* from the edge it runs along -- the
-// far end of its chamfer, which is the deepest ink in the sprite. Also
-// mirrored from `tools/make_ui.py`, where it is `o + chamfer`.
-//
-// **This is what decides `FIELD_ORN_OUT`, and getting it wrong put ornament on
-// the playfield.** A corner piece is not a thin line along an edge: near the
-// elbow it is 37 pixels deep, so pushed only 16 pixels out it had its set
-// stone seven pixels *inside* the field. Seven pixels of near-black in the
-// extreme corner is not going to cost anybody a life, and that is not the
-// standard -- nothing decorative is drawn over the playfield, and the rule is
-// worth keeping absolute precisely because every individual exception to it
-// sounds this reasonable. `test_hud_layout` asserts it.
 #macro UI_CORNER_DEPTH 37
 
 #macro FIELD_ORN_SCALE 0.62
 #macro FIELD_ORN_OUT 24
 #macro FIELD_RULE_OUT (FIELD_ORN_OUT - UI_CORNER_INSET * FIELD_ORN_SCALE)
 
-// How far in from the field's own edge the player is held. Not zero: a player
-// pinned into the literal corner has nowhere to dodge, and every pattern would
-// end there.
+// How far in from the field's edge the player is held.
 #macro FIELD_MARGIN 34
 
-// A bullet is culled this far outside the screen. Generous, because a pattern
-// that sweeps in from off-screen has to exist before it arrives, and a bullet
-// culled at the edge would pop into being in front of the player.
+// A bullet is culled this far outside the field, so patterns can enter from
+// off-screen. One value for the whole game.
 #macro CULL_MARGIN 160
 
-// The share of the *field's* width at each edge the near parallax layer may
-// occupy. It draws over the field, so anything it puts in the middle is
-// somewhere a bullet can hide. `tools/make_bg.py` builds to this number and
-// `check_bg_keepout` measures the shipped PNG against it -- and since the
-// layers are now generated at the field's size rather than the screen's, the
-// fraction means the same thing in both places without any conversion.
+// Stage one's near parallax layer draws over the field, so it keeps to this
+// share of the field's width at each edge (built to by `tools/make_bg.py`,
+// measured by `check_bg_keepout`) and is never more opaque than
+// `BG_NEAR_ALPHA`, so a bullet reads through it.
 #macro BG_NEAR_EDGE 0.13
-
-// **How opaque the foreground may ever be, and this is a fairness rule rather
-// than a look.**
-//
-// The near layer is the one piece of scenery drawn *over* the danmaku. The
-// keep-out window stops it standing in the middle of the field, and that was
-// treated as the whole of the problem -- the reasoning being that the player is
-// rarely dodging in the outer sixth. That reasoning is wrong, and it was
-// reported the way this class of bug is always reported: "I am taking damage
-// and there is nothing on screen."
-//
-// There *was* something on screen. It was behind a spire. An opaque foreground
-// over a live playfield does not hide scenery, it hides *bullets*, and a bullet
-// the player cannot see is a bullet they cannot dodge -- which is the one thing
-// this whole project is arranged to prevent, from the delay marks to the
-// contour on every sprite.
-//
-// So the layer is translucent, and low enough that a lit bullet reads straight
-// through it. What is lost is a little of the depth; what is bought is that no
-// arrangement of art in this layer can ever cost the player a life.
 #macro BG_NEAR_ALPHA 0.42
 
 // ---------------------------------------------------------------------------
 // The player
 // ---------------------------------------------------------------------------
 
-// **Tuned for a 1920-wide field, not for a 384-wide Touhou strip.** The first
-// pass of every speed in this file was picked by eye against the genre's own
-// numbers, and the genre's numbers are for a playfield a fifth of this one's
-// width: a player at 7.2 px/frame takes four and a half seconds to cross this
-// screen, where a Touhou player crosses theirs in under one. What that
-// produced was a game that felt sluggish everywhere without any single number
-// looking wrong, because none of them were wrong -- they were answers to a
-// different question about the size of the room.
-//
-// So the traversal *time* is what is held fixed rather than the pixel rate.
-// Everything that moves is up by roughly half again, and the field being five
-// times wider is why the factor is not larger still: the vertical axis has
-// only grown by 2.4, and a player who crossed the width in a second would
-// cover the height in half of one.
+// Speeds are scaled for this field's size rather than copied from Touhou's
+// 384px strip.
 #macro PLAYER_SPD 11.0
 #macro PLAYER_SPD_FOCUS 4.6
 
-// **The hitbox is tiny and it is the whole game.** Four pixels against a
-// sprite eighty wide is the contract danmaku is built on: the picture is a
-// character, the hitbox is a point, and holding focus is what tells you so.
+// The hitbox, drawn at exactly this size when focused.
 #macro PLAYER_R 4.0
 #macro GRAZE_R 30.0
 
-// **A laser is grazed on a cooldown, where a bullet is grazed once ever.**
-// The flag a bullet carries is the right answer for a thing that passes and is
-// gone; a laser is a wall that stands there for two seconds, and a flag would
-// pay a player who touched it for a frame exactly as much as one who rode it
-// the whole way. So sliding along a beam pays every `LASER_GRAZE_CD` frames,
-// which is what the genre does and what ph3 spells `SetGrazeInvalidFrame`.
+// A bullet pays a graze once; a laser pays every this many frames while the
+// player rides it.
 #macro LASER_GRAZE_CD 20
 
 #macro HP_MAX 100
@@ -203,24 +93,13 @@
 
 #macro MP_MAX 100
 #macro MP_PER_BOMB 25
-#macro BOMB_INVULN 150         // 2.5s of grace on a special
+#macro BOMB_INVULN 150         // grace on a special
 #macro BOMB_CLEAR_R 560        // bullets inside this are swept
 #macro BOMB_GROW 26            // frames the sweep takes to reach full radius
 
-// **The special has two halves: the sigil takes, and the seals give it back.**
-// The sweep is the half that was always there -- a circle of Szuix's sigil
-// grows out from where he cast it and every bullet it reaches is erased, its
-// magic streaming back into the circle's heart. `BOMB_SEAL_AT` frames later
-// the heart lets go: `BOMB_SEALS` wisps of his fire spiral out, hunt whatever
-// is nearest, and burst on it -- sweeping the bullets they pass and the ones
-// round where they land. It is Touhou's Fantasy Seal turned to an imp who
-// steals magic: what comes back at the boss is its own pattern, burnt blue.
-//
-// **The seals do damage, and that is a rule change rather than a picture.**
-// The special used to hurt nothing. A seal that visibly strikes a boss and
-// leaves its bar where it was reads as broken, so each lands for
-// `BOMB_SEAL_DMG` -- six of them together are two seconds of the shot held
-// on target, and like the shot they pass through a boss in ceremony.
+// The special (sigil): the sweep grows from the cast point and erases
+// bullets, then `BOMB_SEAL_AT` frames later `BOMB_SEALS` wisps spiral out,
+// hunt the nearest target and burst, each dealing `BOMB_SEAL_DMG`.
 #macro BOMB_SEALS 6
 #macro BOMB_SEAL_AT 40         // frames after the cast the seals leave
 #macro BOMB_SEAL_CURL 24       // frames they spiral out before they hunt
@@ -234,28 +113,20 @@
 #macro BOMB_SEAL_DMG 10
 #macro BOMB_SIGIL_OUT 116      // the frame the circle has finished fading
 
-// The close-up of Szuix that flashes as he casts -- the same card a boss's
-// spell gets, for the same length. See `draw_eye_card`.
+// The close-up of Szuix shown as he casts (see `draw_eye_card`).
 #macro PLAYER_CARD_TIME BOSS_EYE_TIME
 
-// **The grace dial.** Wordsearch's combo ring, round Szuix instead of round a
-// pointer: a faint circle for the whole grace and a bright arc for what is
-// left of it, sweeping back to noon, tightening as it goes and flickering in
-// its last `GRACE_URGENT`. Sized to clear his wings at full and to sit just
-// inside their tips as it closes. See `player_draw_grace`.
+// The grace dial round the player (see `player_draw_grace`): its radius at
+// full and at empty, and the share of the grace left when it starts to
+// flicker.
 #macro GRACE_RING_R_FULL 80
 #macro GRACE_RING_R_EMPTY 62
 #macro GRACE_URGENT 0.3
 
-// **One hit from death, he beats.** A heartbeat rather than a flash -- two
-// pulses and a rest -- because a warning that flickers constantly is one the
-// eye learns to ignore within a minute, and a rhythm is noticed without being
-// looked at. `LOW_HP_BEAT` is frames per beat.
+// Frames per heartbeat of the one-hit-from-death warning.
 #macro LOW_HP_BEAT 48
 
-// The shot. Two barrels that converge slightly, and a focused mode that
-// narrows them -- the standard trade, and the reason focus is not purely a
-// dodging tool.
+// The shot: two converging barrels, narrowed while focused.
 #macro PSHOT_PERIOD 3          // frames between volleys
 #macro PSHOT_SPD 36
 #macro PSHOT_DMG 0.75
@@ -263,21 +134,17 @@
 #macro PSHOT_SPREAD_FOCUS 1.5
 #macro PSHOT_OFFSET 26         // how far either side of centre a barrel sits
 
-// **How far in front of him a bolt is born.** `spr_szuix` is 122x102 with its
-// origin on his chest, so his horns are 56 pixels above the point the player
-// occupies; anything spawned closer than that is spawned *inside* him and
-// spends its first frames hidden behind his own sprite. See `player_fire`.
+// How far in front of the player a bolt is born, so it clears his sprite
+// (his horns are 56px above his origin).
 #macro PSHOT_MUZZLE 62
 
-#macro PLAYER_HIT_SHARDS 10    // scattered on a hit, so a hit is not only loss
+#macro PLAYER_HIT_SHARDS 10    // recoverable shards scattered on a hit
 
 // ---------------------------------------------------------------------------
 // Pools
 //
-// Hard caps, and every one is a *refusal* rather than a resize. A pool that
-// grows without limit turns a runaway pattern into a machine that stops
-// responding, which is far worse to find than a pattern that visibly stops
-// firing. `danmaku_stats` reports how close a run came to each.
+// Hard caps. A full pool refuses (the allocator returns `undefined`) rather
+// than growing.
 // ---------------------------------------------------------------------------
 
 #macro BULLET_MAX 4096
@@ -289,101 +156,54 @@
 #macro PARTICLE_MAX 1024
 #macro FLOATER_MAX 64          // floating text
 
-// A curved laser is a trail of positions. This is how many it keeps, which
-// makes its length a number of *frames* rather than of pixels -- so a fast one
-// is longer, which is both correct and what it looks like in the games this is
-// imitating.
+// How many past positions a curved laser keeps, so its length is a number of
+// frames.
 #macro CURVE_NODES 64
 
 // ---------------------------------------------------------------------------
 // Bullets
 // ---------------------------------------------------------------------------
 
-// A bullet spends its delay fading in and *intangible*. This is the single
-// most important fairness rule in the genre: a boss that spawns a hundred
-// bullets on top of the player kills them before the frame is drawn, so every
-// bullet is born as a soft mark that says "something is about to be here".
+// A bullet spends its delay as a harmless, stationary warning mark that
+// starts this much larger than the bullet.
 #macro BULLET_DELAY_DEFAULT 8
-#macro BULLET_DELAY_SCALE 2.6      // how much larger the mark starts
+#macro BULLET_DELAY_SCALE 2.6
 
-// A bullet born out of another one -- a split or a shed -- gets a shorter
-// mark than one fired from a boss. The player is already looking at the parent
-// and the burst comes out of a place they are watching, so the warning has
-// less work to do; what it must still do is exist, because a burst on top of
-// the player is precisely the case the marks were written for.
+// The delay given to children of a split or shed.
 #macro BULLET_SPLIT_DELAY 4
 
-// When a phase is cleared every bullet on screen converts to score, which is
-// the reward for finishing a spell and the reason clearing one feels like an
-// exhale.
-#macro CLEAR_ITEM_EVERY 7          // one shard per N bullets swept
+// When a phase is cleared, one shard is dropped per this many bullets swept.
+#macro CLEAR_ITEM_EVERY 7
 
 // ---------------------------------------------------------------------------
 // Rings
 //
-// **The first thing on this field that is neither a bullet nor an enemy.** A
-// ring is furniture the boss puts down: it cannot be destroyed, it stops the
-// player's shots along its metal, and when it is charged the metal kills. See
-// `scripts/ring_functions` for the whole argument and `stage_sanctum` for the
-// fight built out of them.
+// Furniture a boss puts down: indestructible, blocks player shots on its
+// band, hurts to touch. See `ring_functions`.
 // ---------------------------------------------------------------------------
 
-// **Every ring in the game is this size and there is no way to make one that
-// is not.** The radius is a macro rather than a field on the struct, which is
-// the difference between a rule and a convention: an attack cannot ask for a
-// bigger ring, so six of them on the field are six of the same object and the
-// player learns one shape once.
-//
-// The number is set against the *bullets*: `BSHAPE_SPHERE` is the largest
-// thing this game fires at 108 pixels across, and a ring is 167 -- moderately
-// bigger, and nothing like the 400-pixel gates the first pass drew. Those read
-// as architecture rather than as the bands he wears, and at that size two of
-// them walled the field.
+// Every ring is this size; a ring has no radius of its own (owner's rule).
 #macro RING_R 72
 
-// Half the metal's thickness, as a fraction of the ring's radius.
-//
-// **This is the sprite's own proportion and it is quoted in
-// `tools/make_rings.py`.** Because the sprite is scaled uniformly, holding the
-// number in one place is what makes the band that is drawn and the band that
-// blocks a shot the same shape by construction rather than by agreement --
-// the property `capsule_half` buys the meters and `laser_draw_curve` buys a
-// curve. `UI_CORNER_DEPTH` mirrors a generator for the same reason.
+// Half the metal's thickness as a fraction of the radius. This is the
+// sprite's own proportion, quoted in `tools/make_rings.py`, so the drawn band
+// and the blocking band match.
 #macro RING_BAND_FRAC 0.16
-
-// ...and what that comes to in pixels. Every test in the file is against this.
 #macro RING_BAND_HALF (RING_R * RING_BAND_FRAC)
 
 // Where the band's centre line sits in the sprite, as a fraction of its half
-// width: 200 of 256. Also `make_rings.py`'s, and the only other number the two
-// have to agree about.
+// width (200 of 256). Also mirrored in `make_rings.py`.
 #macro RING_SPR_LINE 0.78125
 
-// How much of the metal actually kills. Under the drawn width, on the genre's
-// rule -- see `ring_kill_half`.
-//
-// **The metal is lethal whenever it is solid**, which it did not used to be:
-// a ring only bit after being charged, and a player who flew into one at any
-// other time passed through a wall. Asked for in those words -- his rings
-// should do damage if the player touches them, like with regular bullets --
-// and it is the reading the object always had: a ring is a band of somebody
-// else's metal hanging in the air, and nothing else on this field that looks
-// solid is safe to stand in.
+// How much of the band kills: its core when cold, the whole drawn cuff when
+// charged. Never wider than the drawn metal.
 #macro RING_KILL_FRAC 0.62
-
-// ...and what a *charged* one kills at, which is the whole of the cuff.
-//
-// **Charging still has to mean something now that cold metal bites.** What it
-// escalates is the width: cold, only the core of the band is lethal and the
-// bevel either side is the margin a player who believes the black of the cuff
-// is the hitbox gets; charged, the whole drawn cuff is live. It never goes
-// past the drawn width, because that is the one promise the picture makes.
 #macro RING_HOT_KILL_FRAC 1.0
 
 #macro RING_FORM 34                // frames arriving: no block, no kill
 #macro RING_FADE 22                // frames leaving
-#macro RING_WARN 40                // the default charge, before the metal bites
-#macro RING_GRAZE_CD 20            // as a laser's: a wall pays repeatedly
+#macro RING_WARN 40                // the default charge warning
+#macro RING_GRAZE_CD 20            // graze cooldown, as a laser's
 
 #macro RING_ARC_WID 26             // the current between two rings, drawn
 #macro RING_ARC_NODES 14           // segments the bolt is jittered in
@@ -402,8 +222,7 @@
 #macro ITEM_HP_VALUE 1
 #macro ITEM_MP_VALUE 1
 
-// How the stones are drawn -- see `item_draw`. Decoration only: nothing here
-// changes where a stone is or when it is caught.
+// How the stones are drawn (see `item_draw`). Visual only.
 #macro ITEM_TURN 0.45              // turns a second, give or take a fifth
 #macro ITEM_POP 10                 // frames a new stone takes to arrive
 #macro ITEM_FADE 50                // frames a stone takes to go out at ITEM_LIFE
@@ -411,116 +230,57 @@
 #macro ITEM_GLINT_EVERY 150        // frames between twinkles, give or take
 #macro ITEM_GLINT_LEN 18           // frames one twinkle lasts
 
-// **Auto-collect above a line.** Touhou's point-of-collection: fly to the top
-// of the field and everything comes to you. It is the one place the genre
-// rewards being where the bullets are, and removing it would remove the only
-// reason to ever go there.
+// Above this line every item on the field is drawn to the player
+// (Touhou's point-of-collection).
 #macro ITEM_AUTO_LINE 240
 
 // ---------------------------------------------------------------------------
 // Scoring
 //
-// Named `tally` throughout and never `score`. **`score` is a built-in global
-// GameMaker still carries from GM8**, and a variable of that name silently
-// splits in two: `g.score = 5` writes an instance variable and a bare `score`
-// in the same object reads the global. It compiles, it runs, nothing warns,
-// and the number on screen never moves. `check_legacy_globals` refuses it.
+// Points are called `tally`, never `score`: `score` is a legacy built-in
+// global (see `check_legacy_globals`).
 // ---------------------------------------------------------------------------
 
 #macro TALLY_GRAZE 40
 #macro TALLY_ENEMY 250
 #macro TALLY_ITEM 120
 
-// **Ending an attack pays a flat award and a speed bonus on top.** The
-// speed bonus is Touhou's spell bonus and it is here to answer a hole the
-// marks opened: the top mark is earned by passing a *score* threshold rather
-// than by being quick, so without a time term in the score the best way to
-// reach it would be to stall an attack and graze it for forty seconds.
-//
-// **It is not a constant, and that is the whole of what took two goes.** A
-// fixed sixteen thousand was the first version, and measured against the
-// threshold it made a fast break *harder* on a long attack and easier on a
-// short one -- 26 grazes a second to reach the bar on a 40-second spell
-// broken with three quarters of its clock left, against 6 on a 24-second
-// non-spell. The exchange rate between the two routes was the attack's own
-// length, which is nothing anybody chose. So the bonus is priced at exactly
-// **the grazing the player gave up by finishing early** -- see
-// `rank_speed_award` -- and the rate required to reach the threshold is
-// `RANK_GRAZE_RATE` at every clock and every finishing time.
-//
-// **The flat award cancels out of the mark entirely**, because the threshold
-// contains it too, so it is free to be whatever the score wants it to be. It
-// is the number it always was.
-//
-// **The bonus is not voided by a hit, which is where this departs from
-// Touhou.** There it is lost the moment you are touched -- which here would
-// make "met the threshold" and "was clean" the same measurement, and the
-// clean case is already what sets the base mark. Hits and bombs are deducted
-// once, by `rank_for_encounter`, and the score says something else.
+// The flat award for ending an attack. A speed bonus is paid on top (see
+// `rank_speed_award`); it is not voided by a hit.
 #macro TALLY_SPELL_CLEAR 40000
 #macro TALLY_PHASE_CLEAR 12000
 
-// Breaking a spell untouched. Its own constant rather than a second helping
-// of `TALLY_SPELL_CLEAR`, which is what it used to be: the capture bonus and
-// the clear award are two different facts and reading one off the other
-// meant tuning either one moved both.
+// Breaking a spell with no hit and no sigil.
 #macro TALLY_SPELL_CAPTURE 40000
 
 #macro TALLY_NO_HIT_BONUS 100000
 
 // ---------------------------------------------------------------------------
-// Marks
-//
-// What an encounter is graded on. See `rank_functions` for the ladder itself
-// and for why the deductions are the shape they are.
+// Marks (see `rank_functions`)
 // ---------------------------------------------------------------------------
 
-// **The mark a clean encounter starts from.** One below the top, so the top
-// is always something extra rather than the default for not making a mistake.
+// A clean encounter's mark; beating the score threshold adds one rung.
 #macro RANK_BASE Mark.Gold
 
-// What a mistake costs, in rungs. **A hit is worth two and a bomb is worth
-// one**, which is the opposite way round from the first version of this: a
-// sigil is a resource the player chose to spend and a hit is one they did not
-// choose at all. The meter refills at `ITEM_MP_VALUE` a shard against a cost
-// of `MP_PER_BOMB`, so a bomb is expensive enough already without the ladder
-// charging for it twice.
+// What a mistake costs, in rungs.
 #macro RANK_HIT_COST 2
 #macro RANK_BOMB_COST 1
 
-// **How much grazing an encounter is expected to be worth, per second.** This
-// is the whole of the score threshold's difficulty: a target is the score an
-// encounter hands out for simply finishing it, plus this rate over however
-// long it lasts. Nothing is being asked for beyond the ordinary except the
-// nerve, which is what the top mark should be for.
-//
-// **Unplayed**, like every number in this file. Fourteen grazes a second is
-// about a third of a busy pattern going past at the range the hitbox is drawn
-// at, which is a guess and is meant to be replaced by somebody's report.
+// Grazes per second the score threshold expects on top of what finishing the
+// encounter pays. Unplayed.
 #macro RANK_GRAZE_RATE 14
 
-// A floor under a wave's clock, so a group cleared in a second and a half
-// cannot be marked against a target of nothing.
+// A floor under a wave group's duration for its threshold.
 #macro RANK_WAVE_MIN_TIME (4 * FPS)
 
-// **The rank card, and its length is not a taste decision.** The whole of the
-// clear air it can be promised is `BOSS_PHASE_PAUSE` -- eighty-four frames --
-// after which a non-spell's next pattern is already opening and a spell's eye
-// card owns the middle of the field. Eighty frames is that window with four
-// to spare, and the card is additive precisely because "promised" is doing a
-// lot of work in that sentence: a wave's gate grace is half a second and what
-// follows it is whatever the timeline says. See `rank_card`.
+// The rank card (see `rank_card`). Its length fits inside `BOSS_PHASE_PAUSE`.
 #macro RANK_CARD_TIME 80
 #macro RANK_CARD_STRIKE 6          // the medal arrives oversized and settles
 #macro RANK_CARD_SETTLE 24         // ...with a small elastic under it
 #macro RANK_CARD_GLINT_END 40      // the glint crossing its face
 #macro RANK_CARD_FLY 24            // and it leaves for its socket
 
-// Where it lands: above the half of the field the player lives in, below the
-// boss's line and its station. **Not centred**, because the middle of the
-// field is where a boss stands and where the eye card goes, and a medal in
-// the same place as the ceremony is a medal that collides with it twice a
-// fight.
+// Where the card is shown: above the player's half, below the boss's station.
 #macro RANK_CARD_Y (FIELD_Y0 + FIELD_H * 0.38)
 
 #macro RANK_CARD_SCALE 1.25        // the medal is authored at 176
@@ -538,168 +298,57 @@
 #macro BOSS_DECLARE_TIME (3.4 * FPS)   // the name splash
 #macro BOSS_PHASE_PAUSE (1.4 * FPS)    // invulnerable, between attacks
 
-// **How long attack practice waits before the attack starts.** Longer than the
-// pause between attacks in a fight, because it is doing a different job: there
-// the player arrives from the attack before it, already somewhere they chose,
-// and here they arrive at the default spawn with a pattern about to open on
-// them.
-//
-// It is two seconds rather than three because `BOSS_SPELL_LEAD` now follows
-// it: a practised spell gets this *and* its declaration, which is three and a
-// half seconds before a bullet, and this is a mode whose whole value is how
-// quickly it can be done again. A non-spell gets the two seconds alone, which
-// is what a non-spell is worth -- they are wide and slow by design.
+// The READY beat before a practised attack starts.
 #macro PRACTICE_READY (2 * FPS)
 #macro BOSS_SPELL_BANNER (2.6 * FPS)   // how long the spell name holds
 #macro BOSS_EYE_TIME (1.5 * FPS)       // the eye card
 
-// **How long a spell declares itself before its pattern opens.** The genre's
-// rule, and it was missing: a spell used to fire from the frame it was named,
-// so the eye card announcing it was drawn over bullets it had already
-// launched. The boss is invulnerable through this and the phase clock has not
-// started, so nothing is lost or gained by it.
-//
-// It is the eye card's own length, because the card is the piece of the
-// ceremony that *occludes* -- a face across the middle of the field is the
-// thing bullets must not be under, where the banner is one line of outlined
-// text sliding out and danmaku beneath it is what the genre looks like. So the
-// pattern opens as the face leaves and the banner is still going.
+// How long a spell declares itself before its pattern opens: the eye card's
+// length. The boss is invulnerable and the phase clock stopped through it.
 #macro BOSS_SPELL_LEAD BOSS_EYE_TIME
 
-// A boss drifts rather than standing still, so it is never a fixed target and
-// the aimed patterns it fires leave from a moving origin.
 #macro BOSS_DRIFT_SPD 1.1
 
-// How far a boss wanders from its station, and how fast. Wide, because the
-// field is wide: a boss confined to the middle third of a 1920px screen is a
-// boss the player never has to turn round for.
+// `BossMove.Drift`: how far a boss wanders from its station, and how sharply
+// it chases its wander point.
 #macro BOSS_DRIFT_X 430
 #macro BOSS_DRIFT_Y 74
-#macro BOSS_DRIFT_RATE 0.075   // how sharply it chases its wander point
+#macro BOSS_DRIFT_RATE 0.075
 
-// **Loose horizontal tracking**: `BossMove.Track`. The station walks toward
-// the player's column at a bounded speed rather than easing proportionally,
-// and that is the whole difference between "trends toward" and "follows". A
-// proportional ease moves *fastest* when the player is furthest away, which is
-// the opposite of loose; a speed cap means a player who crosses the field
-// genuinely gets out from under the boss and keeps that advantage for the
-// couple of seconds it takes to walk back.
-//
-// A third of `PLAYER_SPD`, and within a whisker of how fast the drift's own
-// wander point already travels -- 430 pixels of amplitude at 0.55 degrees a
-// frame peaks at about 4.1 -- so a tracking boss reads as the same creature
-// moving at the same pace, just with somewhere to be.
+// `BossMove.Track`: the station walks toward the player's column at this
+// capped speed (not a proportional ease, which would be fastest when the
+// player is furthest away), wanders `BOSS_TRACK_SWAY` either side of it so it
+// is not directly overhead, and keeps its centre `BOSS_TRACK_EDGE` in from the
+// field's sides.
 #macro BOSS_TRACK_SPD 4.0
-
-// How far it still wanders either side of the tracked column. **A tracking
-// boss that sat exactly above the player would fire every aimed pattern
-// straight down**, which is the thing drifting exists to prevent, reintroduced
-// by the fix for it. At the station's height against a player near the bottom
-// of the field this is about ten degrees either way, which is enough to make
-// an aimed fan arrive somewhere different each time.
 #macro BOSS_TRACK_SWAY 120
-
-// How close the boss's centre may come to the side of the field: half the
-// widest boss sprite, so the sprite stays inside the picture.
-//
-// **The sway is squashed against this rather than the station being held off
-// it.** Holding the station back by a whole sway would leave a cornered player
-// with the boss 240 pixels away and unhittable, which defeats the point of
-// tracking a player who is pinned. Clamped this way the wander flattens as the
-// boss reaches the edge and it still passes over the corner.
 #macro BOSS_TRACK_EDGE 130
 
-// Where a boss holds station, measured down the field. A boss's station is a
-// fact about the arena rather than about the readouts, which is why it is here
-// and not among the HUD constants.
-//
-// **Clear of its own bar, and of nothing else.** `spr_boss_ziggy` is 250 tall
-// on a centred origin, so 250 less a drift of 74 less half a sprite leaves the
-// top of the boss twenty-three pixels under the tube at its highest.
-//
-// **It used to be 320, and what was in the way was type rather than the
-// bar.** The name was centred over the middle of the line and the timer sat
-// beside it, so the boss had to hold station clear of a block fifty-six pixels
-// deep that it was never going to touch anyway -- and at 320 the foot of the
-// sprite reached past the middle of the field on the low half of its drift,
-// which is a boss leaning over the player for the whole fight. Reported as
-// oppressive, and it was: a boss belongs at the top of the arena, and the
-// player owns everything under it.
-//
-// Moving the name and the timer to the two ends of the bar gave the middle of
-// the line back, and the station came up with it. What the fight loses is
-// nothing -- the boss is still 250 pixels down a 992-pixel field -- and what
-// the player gains is 70 pixels of room under the thing shooting at them.
+// Where a boss holds station, measured down the field.
 #macro BOSS_HOME_Y (FIELD_Y0 + 250)
 
-// **The tallest ink any boss sprite carries above its own origin**, measured
-// off the shipped PNGs: Ziggy's 260x250 frame holds 198x208 of drawing with
-// its origin at y=125, so his horns reach 100 above it; Mika's reach 77. It
-// mirrors the art the way `UI_CORNER_DEPTH` mirrors its generator, and it is
-// what the rail's clearance is measured against -- half a sprite's *box* is
-// twenty-five pixels of empty canvas asserted as though it were horns.
-//
-// A commissioned replacement has to be measured and this number moved with it;
-// `test_hud_layout` checks it against every boss sprite's own origin so a
-// sprite that got shorter is caught rather than quietly flying through the
-// bar.
+// The tallest ink any boss sprite carries above its origin, measured off the
+// PNGs (Ziggy's horns: 100). The health rail's clearance is measured against
+// it, so re-measure it when boss art changes.
 #macro BOSS_INK_ABOVE 100
 
 // ---------------------------------------------------------------------------
 // The HUD
 //
-// **One console down the right-hand side, and a thin line inside the field.**
-// That is the whole layout, and it is the third arrangement this project has
-// had. The first put the readouts in the corners of a full-bleed field and
-// faded them as the player flew near -- unwinnable, because a readout big
-// enough to read at a glance is big enough to hide a bullet and fading it
-// makes it unreadable exactly when it is most needed. The second gave the
-// field a boundary and put the readouts in two margins: a 168px strip above
-// and a column beside.
-//
-// The strip was the part that did not earn its keep. It carried a boss's name
-// at 66pt and a health tube 1360 wide -- a sixth of the display spent on two
-// facts -- and it was empty for the two or three minutes of every stage before
-// the boss arrives. The genre has always drawn a boss's bar *over* the
-// playfield, and it is right to: the bar is a fact about the thing you are
-// shooting, so it belongs beside it, and a line fourteen pixels tall is a
-// rounding error against a field of 992.
-//
-// So the strip is gone, the field grew into it, and there is one region left:
-//
-//   the console, right of the field   everything that is not the boss
-//   a line inside the field's top     the boss's name, bar, marks and timer
-//
-// `hud_box` is still the only thing that knows where anything is, and
-// `test_hud_layout` still walks it -- see the note there about the one box
-// that is now *deliberately* over the field, and what is asserted instead.
+// One console plate right of the field, and the boss's health rail inside
+// the top of the field. `hud_box` is the one place that knows where each
+// readout is; `test_hud_layout` walks it.
 // ---------------------------------------------------------------------------
 
-// How far the console's own contents are inset from its plate.
+// How far the console's contents are inset from its plate.
 #macro HUD_PAD 24
 
-// **What a caption is drawn in, and it is one macro because it is the most
-// repeated element on the screen.** Five tags run down the console and they
-// set its colour more than any single ornament does -- grey caption text over
-// a violet plate is the exact combination that reads as a settings dialog
-// rather than as an illuminated panel. Antique gold: the gilt taken most of
-// the way down toward the ground it sits on, so it is legible without
-// competing with the values beside it.
+// The colour of the console's small caption tags: gilt pulled toward the
+// plate.
 #macro HUD_TAG_COL merge_colour(COL_GILT, COL_ARCANE, 0.3)
 
-// **The console is a plate, not a region.** It has edges, a material and
-// corners, so it is drawn rather than merely occupied -- see `hud_draw_plate`.
-// It stands the same height as the field and is separated from it by a gap
-// about half the field's own margin, which is what reads as two panels on one
-// fascia rather than as a picture with a list beside it.
-//
-// **It stands to the field's outer rule, not to the field.** Set flush with
-// `FIELD_Y0` the plate's top edge sits seventeen pixels below the ornamented
-// rule that frames the picture beside it, and two panels on one fascia that
-// disagree about where the top of the fascia is read as one of them having
-// slipped -- which is exactly how it was reported: "the right side UI area is
-// slightly unaligned, too low next to the game screen". `FIELD_RULE_OUT` is
-// where the field's own frame runs, so both outer edges are now the same line.
+// The console plate. It is the field's height and its top and bottom line up
+// with the field's outer rule (`FIELD_RULE_OUT`), not with the field itself.
 #macro HUD_PANEL_X0 (FIELD_X1 + 20)
 #macro HUD_PANEL_X1 (GAME_W - 32)
 #macro HUD_PANEL_Y0 (FIELD_Y0 - FIELD_RULE_OUT)
@@ -708,47 +357,8 @@
 #macro HUD_COL_X (HUD_PANEL_X0 + HUD_PAD)
 #macro HUD_COL_W (HUD_PANEL_X1 - HUD_PAD - HUD_COL_X)
 
-// The rows in it. **Written out rather than derived**, because a column of
-// readouts is a layout and a layout is a list of positions: deriving each from
-// the height of the one above means a font change silently moves everything,
-// which is how a HUD drifts. `test_hud_layout` asserts the order and the
-// spacing, so a typo here is a failed suite rather than two readouts on top of
-// one another.
-//
-// **The meters sit in the middle, not at the foot.** They were at the foot
-// first, on the reasoning that a danmaku player lives in the bottom half of the
-// field so a life bar level with the character is one the eye reaches without
-// leaving the pattern. That is a real argument and it lost to a simpler one:
-// the console is a column and a column is read top to bottom, so the order down
-// it should be the order of *importance*, and life is more important than a
-// ledger of grades. The meters now sit directly under the score, which also
-// groups the four things that are true every frame into one block and leaves
-// the whole bottom of the plate to the one thing that grows -- see
-// `HUD_ROW_MARKS`. What is given up is about 350 pixels of eye travel, which is
-// worth less than not having to hunt for the life bar under a list.
-//
-// **Four sections of comparable height, not four crammed at the top.** The
-// first pass of this layout put the header, the score, the graze count and the
-// attack row in the console's top four hundred pixels, the meters in its last
-// two hundred, and left three hundred and thirty pixels of plate in the middle
-// with nothing on it -- which is the same complaint that removed the strip
-// above the field, reappearing on the other axis. A console with a hole in it
-// is a console that has not been laid out.
-//
-// So the rows are spread across the whole plate, and the two sections that
-// only exist during a boss fight -- the attack marks and the spell nameplate
-// -- were merged into one. That is the fix the first respacing missed: moving
-// a hole is not closing it, and *two* conditional sections leave two holes
-// whatever their heights. One conditional section can be given a tenant that
-// is never absent, and `hud_draw_engagement` is that tenant.
-//
-// **Every readout is one line, so the rows closed up.** Collapsing the score's
-// tag and its numerals onto a shared centre freed a row's worth of height and
-// the layout kept the old spacing anyway, which turned a tidy-up into a
-// console with visible gaps between every line. Rows that share a shape should
-// share a rhythm: `BEST`, `SCORE` and `GRAZE` are one pitch apart, the two
-// meters are one pitch apart, and the space that was reclaimed went to the
-// ledger at the foot rather than being left between things.
+// The console's rows, top to bottom, measured from the plate's top. Written
+// out as a list of positions; every readout row goes through `hud_row`.
 #macro HUD_ROW_CREST 8             // the headpiece, down from the plate's top
 #macro HUD_ROW_STAGE 92            // the stage's name; subtitle 44 below it
 #macro HUD_RULE_1 172
@@ -756,7 +366,7 @@
 #macro HUD_ROW_SCORE 274           // tag and numerals on one line
 #macro HUD_ROW_GRAZE 346
 #macro HUD_RULE_2 388
-#macro HUD_ROW_LIFE 446            // the tube's top edge; its row 24 above it
+#macro HUD_ROW_LIFE 446            // the meter's top edge; its row 24 above it
 #macro HUD_ROW_SIGIL 542
 #macro HUD_RULE_3 622
 #macro HUD_ROW_MARKS 656           // the ledger, and the rest of the plate
@@ -764,31 +374,15 @@
 // ---------------------------------------------------------------------------
 // The meters
 //
-// **Life and sigil are vessels of liquid, and they lie down.** The Wordsearch
-// project worked the shape of a vessel out: a surface that sloshes, bubbles
-// that rise and light that falls off with depth is read *peripherally*,
-// because the part that moves is the part that carries the number. A flat bar
-// has to be looked at, and in this genre looking away is how you die.
-//
-// They stood upright first, as a pair of 132x464 tubes at the foot of the
-// column, and that was the wrong axis twice over. A vertical vessel is read
-// against its own height, so two of them side by side are two lengths to
-// compare rather than two numbers to glance at; and a column 416 wide filled
-// with a pair of narrow uprights is a column mostly made of the gap between
-// them. Lying down, each spans the console's full width, its name and its
-// value share one line above it, and the two stack into a block that reads top
-// to bottom like everything else in the console.
-//
-// **Every meter in the game is now this shape** -- life, sigil and the boss's
-// health -- so `draw_gauge_h` is the only vessel, and `draw_gauge_v` went with
-// the uprights.
+// Life, sigil and the boss's health are all horizontal vessels of liquid,
+// drawn by `draw_gauge_h`.
 // ---------------------------------------------------------------------------
 
 #macro HUD_METER_W HUD_COL_W
 #macro HUD_METER_H 52
 
-// The surface: how far it displaces, and how many segments it is drawn in.
-// Lifted wholesale from the Wordsearch gauges.
+// The liquid's surface: two travelling waves, and how many segments it is
+// drawn in.
 #macro LIQ_WAVE_A1 3.0             // pixels of displacement
 #macro LIQ_WAVE_A2 1.7
 #macro LIQ_WAVE_K1 4.6             // degrees per pixel along the surface
@@ -798,277 +392,123 @@
 #macro LIQ_WAVE_AMP (LIQ_WAVE_A1 + LIQ_WAVE_A2)
 #macro LIQ_WAVE_STEPS 22           // segments the surface is drawn in
 
-// How the *body* of a vessel is sampled. **The liquid follows the glass**,
-// which a roundrect-shaped fill could never do -- see `capsule_half` and the
-// note on it in `draw_gauge_h`.
-//
-// Two numbers rather than one, because a capsule is an arc at each end and a
-// straight line between them: `LIQ_BODY_STEPS` is how many segments the
-// straight part gets, and `LIQ_CAP_STEP` is the pixel spacing inside a
-// radius of either end, where an evenly spaced walk crosses the entire curve
-// in one segment and draws it as a triangle.
+// How the liquid's body is sampled along the capsule contour
+// (`capsule_half`): `LIQ_BODY_STEPS` segments along the straight part, and a
+// finer pixel spacing within a radius of either end, where an even walk would
+// cut across the curve.
 #macro LIQ_BODY_STEPS 40
 #macro LIQ_CAP_STEP 1.5
 
 // ---------------------------------------------------------------------------
 // The boss's line, inside the field
 //
-// **Over the playfield, and that is a deliberate exception to the one rule the
-// bordered field was built to keep.** Everything else the HUD draws is outside
-// the boundary; this is not, because a boss's health belongs beside the boss
-// and because every game in the genre puts it there.
-//
-// What makes the exception affordable is that the part of it a bullet can hide
-// behind is a *line*. Its occlusion budget is its height, not its alpha:
-// twenty-two pixels of a 992-pixel field is two per cent, and a bullet
-// crossing it is behind it for a single frame at the slowest speed this game
-// fires at. Everything under the bar is outlined text, which is what the genre
-// does and what `draw_text_outline` exists for.
-//
-// `test_hud_layout` asserts the bar's height rather than asserting the box is
-// clear of the field, because the box is not clear of the field and is not
-// meant to be. See the note there.
+// A gilded rail hung on chains from the frame: the health channel, a
+// percentage cartouche at the left end, a clock dial at the right, the
+// caster's name on a plate above it and the spell's name below the
+// cartouche. It is drawn before the field's frame mask, so it can be stowed
+// above the field between bosses.
 // ---------------------------------------------------------------------------
 
 #macro BOSS_BAR_INSET 34           // in from the field's left and right edges
-
-// **The rail hangs from the frame rather than being pinned to it.** It was
-// flush with the top of the field -- fourteen pixels of tube floating in
-// mid-air, which is a game element rather than an object, and which left
-// nowhere for a boss's arrival to be *staged*: the bar simply existed from the
-// frame the fight started.
-//
-// Dropped forty-four pixels it is a thing hung on two chains that run up out
-// of the top of the frame and are cut off by the mask, so it can be lowered
-// into view when a boss appears and drawn back up when one dies. The number is
-// what the chain costs: much less and there is no chain, much more and the
-// rail is in the boss's airspace -- see the clearance assertion in
-// `test_hud_layout`, which measures against the tallest ink any boss sprite
-// carries above its own origin rather than against the sprite's box.
 #macro BOSS_BAR_Y (FIELD_Y0 + 38)  // the rail's top edge, at rest
 #macro BOSS_BAR_H 30               // the casing's full height
 
-// **The liquid's own height inside the casing.** The rail is a container and
-// the health is what is in it, so the gauge is inset into a channel rather
-// than being the whole of the bar: the gilt above and below the channel is
-// what the graduations are cut into, and it is the difference between a health
-// bar and a thing somebody machined.
+// The height of the health channel cut into the rail.
 #macro BOSS_BAR_CHANNEL 14
 
-// The hardware at each end: how far in from the rail's ends the terminals --
-// and therefore the chains -- are centred.
+// How far in from the rail's ends the terminals (and the chains) are centred.
 #macro BOSS_RIG_END 26
 
-// **Where the rail is stowed.** Far enough above `FIELD_Y0` that the frame's
-// mask covers the whole assembly, which is what makes "hidden" a fact about
-// geometry rather than an alpha somebody has to remember to set.
+// Where the rail is stowed: high enough that the frame's mask hides all of
+// it.
 #macro BOSS_RIG_STOW (FIELD_Y0 - BOSS_BAR_H - 40)
 
-// The spring that lowers it. **An overshoot rather than an ease**, for the
-// reason the rank card arrives at 1.6x: a thing that stops exactly where it
-// was going has been faded in, and a thing on a chain has weight. `K` is the
-// pull and `D` the damping.
-//
-// **They are slower than they look like they should be, and the first pair
-// were not.** At a stiffness of 0.055 the rail was fully down inside ten
-// frames, which is a sixth of a second -- arithmetically a descent and
-// visually a cut. The pair here put the rail home at about fifty frames, the
-// bottom of its dip at seventy, and everything settled by a hundred and ten --
-// which is inside `BOSS_ENTRY_TIME`, the beat the arrival exists to fill.
-//
-// The damping is set for roughly a tenth of the travel in overshoot, which on
-// a hundred-pixel drop is the ten pixels of dip that read as chains coming up
-// taut rather than as the rail falling past its stop.
+// The spring that lowers the rail: pull `K` and damping `D`. Tuned to land
+// in about fifty frames with one small overshoot, inside `BOSS_ENTRY_TIME`.
 #macro BOSS_RIG_K 0.0030
 #macro BOSS_RIG_D 0.066
 
-// **The percentage, in a cartouche at the rail's left end.** A tube answers
-// "roughly how much" and cannot answer "how close is this to breaking", which
-// is the question a player asks in the last ten per cent of an attack -- and
-// the left end of the rail was empty, because the caster's name moved out of
-// it.
-// **Sized to the widest thing it will ever hold, which is `100.0%`.** It was
-// 236 by 58, which is a plate built for a number two digits longer than one
-// that exists -- and a cartouche with that much air in it reads as a gap with
-// something in the middle rather than as a setting. Every pixel taken off it
-// goes to the channel, which is the readout that actually wants the length.
+// The percentage cartouche, sized to hold `100.0%`, and the scale its digits
+// are set at.
 #macro BOSS_PCT_W 178
 #macro BOSS_PCT_H 50
-
-// How large the whole part of the percentage is set, against the numeral
-// face's own size. It is what makes the digits fit inside the cartouche's
-// moulding rather than standing over it.
 #macro BOSS_PCT_SCALE 0.72
 
-// **The clock, as a dial at the rail's other end.** It was set as a numeral
-// under the bar, which made the one readout on this line that is a *fraction
-// of something* the only one not drawn as one -- and put it in competition
-// with the caster's name for a size. A dial says how much of the attack is
-// left the way the channel beside it says how much of the boss is.
-// **It mirrors `DIAL_D` in `tools/make_ui.py`**, and the sprite is scaled to
-// it rather than drawn at 1:1, so the two drifting apart costs a soft bezel
-// rather than a dial that is the wrong size for the hole it sits in.
+// The clock dial. `BOSS_DIAL_D` mirrors `DIAL_D` in `tools/make_ui.py`.
 #macro BOSS_DIAL_D 84
 #macro BOSS_DIAL_URGENT 8      // seconds, below which it goes to the hit hue
+#macro BOSS_DIAL_SCALE 0.72    // the count's size inside it
 
-// How large the count inside it is set, against the numeral face's own size.
-#macro BOSS_DIAL_SCALE 0.72
-
-// **The caster's name is set in a plate standing on the rail**, not printed on
-// the field below it. Free-standing it had to be large to read as a title at
-// all -- it was set in the numeral face at the size the clock used to be --
-// and a hundred and forty pixels of outlined capitals across the middle of the
-// top of the field is a lot of type over the one part of the playfield the
-// boss is actually in. In a setting it can be small and still read as a name,
-// which is the whole of what a frame buys: the plate says "this is a label" so
-// the type does not have to.
-//
-// **Above the rail, and it was below it for one pass.** Hung off the underside
-// it was a forty-pixel tab in the middle of the field's top edge, which is
-// exactly where the boss stands -- the rail's whole job is to keep the field
-// under it clear, and a nameplate there spends the room it exists to save.
-// Above, it sits in the gap the chains already occupy, between the rail and
-// the frame, where nothing is ever fought.
-//
-// It is an extension of the rail rather than something set on top of it: the
-// plate's bottom edge sinks *into* the casing's top flange, so the two read as
-// one piece of metal with a tab formed out of it.
+// The plate carrying the caster's name, standing on the rail with its foot
+// sunk into the rail's top flange.
 #macro BOSS_PLATE_H 38
 #macro BOSS_PLATE_SINK 6       // how far the plate's foot sinks into the rail
 #macro BOSS_PLATE_Y (BOSS_BAR_Y + BOSS_PLATE_SINK - BOSS_PLATE_H)
 #macro BOSS_PLATE_PAD 30       // metal either side of the name
 #macro BOSS_NAME_TRACK 7
 
-// The name's centre line, which is the plate's. See `text_cap_middle_y` for
-// why the name is centred by its ink rather than by its cell.
+// The name's centre line. It is centred by its ink (`text_cap_middle_y`).
 #macro BOSS_NAME_Y (BOSS_PLATE_Y + BOSS_PLATE_H * 0.5)
 
-// **How wide the plate may grow before the name in it is shrunk.** A caster
-// with a long name gets a wider plate rather than smaller type, up to a width
-// that still leaves the chains either side of it clear of the frame's corners.
+// A long name widens the plate up to this, then shrinks.
 #macro BOSS_PLATE_MAX_W 560
 
-// **The spell's name, at the rail's left end and under the cartouche.** It sat
-// on the caster's row for a pass, which put its capitals across the bottom of
-// the cartouche -- reported as overlapping the meter, and it was. Under the
-// cartouche it is clear of everything on the rail, and it is at the left end
-// rather than the middle, which is the boss's. A centre line, not a top edge,
-// and the name is centred on it by its ink.
+// The spell's name: its centre line under the cartouche, and the width it is
+// fitted (shrunk) to.
 #macro BOSS_SPELL_Y (BOSS_BAR_Y + BOSS_BAR_H * 0.5 + BOSS_PCT_H * 0.5 + 18)
-
-// **There is no capture readout.** "Capture live" printed beside the spell's
-// name said whether the attack could still be broken clean, and it was the
-// genre's own terminology copied straight across -- noise on the one line the
-// player reads mid-dodge, for a fact the result screen already reports. The
-// capture bonus itself is gameplay and is unchanged; only the readout went.
-
-// **How much room a spell's name has before it is shrunk.** It is fitted to
-// this rather than clipped by it, so a long title stays at the rail's end
-// rather than running out into the middle of the field, which is the boss's.
 #macro BOSS_SPELL_W 330
 
-// **How many divisions the rail is graduated in.** Twenty, so the scale reads
-// every five per cent, with a longer tick at each quarter. It is what makes
-// the bar an instrument rather than a diagram -- see `hud_rail_scale`.
+// Divisions the rail is graduated in (see `hud_rail_scale`).
 #macro RAIL_GRADS 20
 
-// **Where the chain attaches on `spr_ui_hanger`, measured down its own
-// canvas.** It mirrors `HANGER_EYE_CY` in `tools/make_ui.py` exactly as
-// `UI_CORNER_DEPTH` mirrors the corner piece's inset, and for the same reason:
-// a chain that ended four pixels above the eye it is threaded through reads as
-// a mistake in a way that a chain ten pixels longer would not.
+// Where the chain attaches on `spr_ui_hanger`; mirrors `HANGER_EYE_CY` in
+// `tools/make_ui.py`.
 #macro UI_HANGER_EYE 8
 
-// **The cartouche's chamfer**, mirroring `PLAQUE_CHAMF` in `tools/make_ui.py`.
-// The percentage is laid out from the plate's inner right corner, and a number
-// set against the plate's *outer* edge instead runs over the angled end -- the
-// `%` sat on the chamfer for one screenshot, which reads as the plate being
-// too small for what is in it.
+// The cartouche's chamfer; mirrors `PLAQUE_CHAMF` in `tools/make_ui.py`. The
+// percentage is laid out from the plate's inner corner.
 #macro UI_PLAQUE_CHAMF 16
 
-// The tallest a *bar* drawn over the playfield may be. One number, so the
-// exception above cannot quietly grow back into the 168-pixel strip it was
-// carved out of.
-//
-// **It was 22 and the rail could not be drawn inside it.** A casing with a
-// channel cut down it needs a flange either side wide enough to carry the
-// graduation, and at twenty-two with a fourteen-pixel channel that flange was
-// four pixels -- of which one is the contour -- so what photographed was two
-// gold hairlines with a black slot between them rather than a bar. Thirty is
-// three per cent of the field's height and a sixth of the strip this whole
-// exception was carved out of; the guarantee it encodes is unchanged, and it
-// is still asserted against the rail rather than against the line, because
-// everything under the rail is outlined text and occludes nothing.
+// The tallest bar allowed over the playfield.
 #macro FIELD_OVERLAY_MAX_H 30
 
 #macro FONT_INK_RATIO 0.58         // see check_font_ink_ratio
 
-// **How far a sprite font's cell falls below its own baseline**, as a fraction
-// of the cell. Every face in this game is one of two typefaces at six sizes,
-// so the metric is nearly the same proportion in all of them, and it is the
-// one number `text_baseline_y` and `text_cap_middle_y` need to set several
-// sizes on a shared line.
-//
-// Aligning *middles* instead is what the boss's percentage did first, and it
-// reads exactly as wrong as it sounds: three pieces of one number, each
-// centred in its own cell, so the tenth and the sign float half way up the
-// digits they belong to. It is the finding `hud_row` records about a tag
-// beside a value, inside a single number.
-//
-// **It is measured, not guessed, and the guess was 0.21.** The bottom ink row
-// of an `H` is the baseline, and across the six atlases it lands between 0.238
-// and 0.290 of the cell above its own bottom edge. The guess put the caster's
-// name two pixels high in its plate -- which is a defect nothing can see
-// except somebody looking at it, and which was reported that way.
+// How far a sprite font's cell falls below its baseline, as a fraction of the
+// cell (measured off the atlases). `text_baseline_y` and
+// `text_cap_middle_y` use it to set different sizes on one line.
 #macro FONT_BASELINE_DROP 0.26
 
-// **Where a digit's ink is centred, above the bottom of its cell, as a
-// fraction of the cell** -- one per typeface, because a number set in a window
-// is measured against the window's edges and the shared caption metric put the
-// numeral face's digits two pixels low in the boss's cartouche. Measured off
-// the atlases and re-derived by `check_font_digit_mid`; see
-// `text_digit_middle_y`.
+// Where a digit's ink is centred above the bottom of its cell, per typeface.
+// Measured off the atlases and re-derived by `check_font_digit_mid`.
 #macro FONT_DIGIT_MID_NUM 0.527     // Cinzel, `fnt_num`
 #macro FONT_DIGIT_MID_UI 0.561      // Spectral, `fnt_ui` and `fnt_small`
 
-// **How fast a counter's wheels catch up with the number they are showing**:
-// the share of the gap closed per frame, and the least it may close by, in
-// units of the lowest wheel. The share matches the vessel's own ease, so the
-// boss's percentage and the liquid beside it drain together; the floor is what
-// makes a single tenth *roll* rather than creep, since an exponential ease
-// spends most of its time on the last few per cent of the way.
+// How fast a counter's wheels catch up with their value: the share of the
+// gap closed per frame, and the least they move per frame (in units of the
+// lowest wheel).
 #macro COUNTER_EASE 0.18
 #macro COUNTER_MIN_STEP 0.09
 
-// **The dial's seconds turn over in the first part of each second, not across
-// all of it.** A clock whose wheel was always half way between two numbers
-// would be a clock that could never be read; one that snaps over in a fifth of
-// a second and then sits still is a mechanism.
+// The share of each second in which the dial's seconds wheel turns over.
 #macro DIAL_TICK_SHARE 0.2
 
 // ---------------------------------------------------------------------------
 // Spell backgrounds
 //
-// **Which one a spell uses is a property of the boss, not of the spell.** A
-// spell background exists to say who is casting, and every boss in the first
-// version got the same pair of counter-rotating magic circles -- which says
-// nothing about anybody. A style is one of these plus a function in
-// `bg_functions`, so a new boss costs a field and a function.
-//
-// `SPELLBG_SIGIL` is the fallback and is genuinely right for some casters; it
-// is what the Warden uses, being a carved stone told to watch.
+// A spell background belongs to the boss (`def.spell_bg`), not the spell. A
+// style is a macro here plus a function in `bg_functions`.
 // ---------------------------------------------------------------------------
 
-#macro SPELLBG_SIGIL 0
+#macro SPELLBG_SIGIL 0         // two counter-rotating magic circles
 #macro SPELLBG_BRIMSTONE 1     // Ziggy: a forge, in red, grey and black
 
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
 
-/// What a run is doing right now. The distinction that matters is that
-/// `Paused` and `BossDeclare` both stop the clock while only one of them stops
-/// the field being live.
+/// What a run is doing. `Paused` and `BossDeclare` both stop the stage clock;
+/// only `Paused` stops the field.
 enum Phase {
     Intro,        // the stage opening; the player is flying in, no input yet
     Playing,
@@ -1079,34 +519,18 @@ enum Phase {
     Lost,
 }
 
-/// How a bullet behaves *for as long as it lives*, beyond `spd`, `acc` and
-/// `turn`. **Most bullets are `Plain`**, and the test is one integer compare,
-/// so the interesting kinds cost nothing to the ninety per cent that are not.
-///
-/// **The one-shot changes used to live here as well**, as a single slot with a
-/// frame number beside it -- which allowed a bullet exactly one event in its
-/// life, and meant "accelerate at 30 and then turn at 60" was not a thing that
-/// could be written. Those are `BQ` now and they queue. What is left here is
-/// the two behaviours that are not events at all: they have no frame, because
-/// they are what the bullet is doing on every frame.
+/// What a bullet does on every frame of its life, beyond `spd`, `acc` and
+/// `turn`. Most bullets are `Plain`. One-off changes at a frame are `BQ`.
 enum BMod {
     Plain,
     Home,       // steers toward the player, weakly, for as long as it lives
-    Wander,     // drifts on a sine -- wisp trails and dandelion patterns
+    Wander,     // drifts on a sine
 }
 
-/// What a bullet can be told to do *at a frame*. This is ph3's `AddPattern`
-/// family and its `AddShot` pair, and the entries queue: a bullet carries up
-/// to `BULLET_QUEUE_MAX` of them, sorted, and `bullet_step` walks them off the
-/// front as its life reaches each one.
-///
-/// The arguments are `a`, `b`, `c`, `d` on the queue entry, and what each of
-/// them means is per kind -- which is the bargain the single modifier slot's
-/// own `mod_a`/`mod_b`/`mod_n` made before it, kept because a struct per kind
-/// would allocate per scheduled event and this pool is built not to allocate.
-/// Every one of them has a named
-/// helper (`bullet_accel_at`, `bullet_split_at`, ...) so no pattern has to
-/// remember which letter is which.
+/// What a bullet can be told to do at a frame (ph3's `AddPattern` family).
+/// A bullet queues up to `BULLET_QUEUE_MAX` of these, sorted by frame. The
+/// arguments are `a`..`d` on the entry and mean something different per kind;
+/// use the `bullet_*_at` helpers rather than filling them by hand.
 enum BQ {
     Aim,        // face the target, plus `a` degrees of lead or lag
     Move,       // speed `a`, direction `b`; `BQ_KEEP` leaves one of them alone
@@ -1119,23 +543,16 @@ enum BQ {
     Fade,       // start fading out, over `a` frames
 }
 
-/// "Leave this one as it is", for the fields of `BQ.Move` that take a value a
-/// bullet could legitimately be given. Zero speed and zero degrees are both
-/// ordinary, so the sentinel has to be a number no pattern would ever mean.
+/// "Leave this field as it is", for `BQ.Move` arguments where zero is an
+/// ordinary value.
 #macro BQ_KEEP -999999
 
-/// How many scheduled events one bullet may carry. **A refusal rather than a
-/// resize**, on the same terms as `BULLET_MAX`: a pattern that queues without
-/// limit is a pattern that quietly eats memory a frame at a time, which is far
-/// harder to find than one whose fifth scheduled event visibly does nothing.
+/// How many scheduled events one bullet may carry. Past it, scheduling is
+/// refused.
 #macro BULLET_QUEUE_MAX 8
 
-/// How long a bullet takes to fade out when it is deleted by time rather than
-/// by leaving the field. **It fades rather than vanishing**, because a bullet
-/// that blinks out of existence in the middle of the field reads as a bug in
-/// the game rather than as a rule of the pattern -- and a fading bullet is
-/// harmless from the first frame of the fade, so what the player sees leave is
-/// gone before it looks gone rather than after.
+/// How long a bullet deleted by time takes to fade out. It is harmless from
+/// the first frame of the fade.
 #macro BULLET_FADE_DEFAULT 12
 
 enum LaserKind {
@@ -1157,9 +574,8 @@ enum ItemKind {
     Tally,      // gold; points only
 }
 
-/// The fodder. **Nothing here is a creature**: a stage is full of animated
-/// objects -- a wisp, a grimoire, a cut gem -- because a world in which imps
-/// are the trash mob should not be asking the player to shoot down imps.
+/// The fodder. None of it is a creature (owner's rule): wisps, grimoires,
+/// gems and sentries are animated objects.
 enum EnemyKind {
     Wisp,
     Grimoire,
@@ -1171,16 +587,11 @@ enum EnemyKind {
 /// One entry in a boss's attack table.
 enum AttackKind {
     NonSpell,   // a basic attack: no banner, no background change
-    Spell,      // named, with a banner, an eye card and a background of its own
+    Spell,      // named, with a banner, an eye card and the boss's background
 }
 
-/// **How the boss carries itself during one attack**, because the drift is not
-/// one size fits all. It is a property of the *attack* rather than of the boss:
-/// the same caster wants to wander through a wide non-spell and hold still
-/// through a radial spell, and a boss-wide setting could not say that.
-///
-/// A phase that names none of these drifts, so every attack written before
-/// this existed still reads correctly. See `boss_move`.
+/// How a boss moves during one attack; set per attack with the phase's
+/// `move` field. A phase that names none drifts. See `boss_move`.
 enum BossMove {
     Drift,      // the default: a wide lissajous wander round its station
     Close,      // the same wander, kept near the station
@@ -1190,204 +601,84 @@ enum BossMove {
 }
 
 // ---------------------------------------------------------------------------
-// The hop
+// BossMove.Step
 //
-// **A pattern whose structure lives in absolute space cannot be fired from a
-// moving origin**, and that is the whole of why this kind exists. Most attacks
-// in this game are read within a second of being fired -- a bullet crosses the
-// field and is gone, so where the boss was when it left hardly matters. Mika's
-// sand is not: a grain settles to a crawl and is still on the field eight
-// seconds later, so what the player is looking at is an accumulation of a
-// hundred volleys. Fire those from a hundred different positions and every
-// figure in it is smeared by however far the boss walked, however tidy each
-// volley was on its own. Reported as a heavy lack of visible structure, and
-// correctly diagnosed as the movement rather than the pattern.
-//
-// **This is what Touhou's bosses actually do**, and it is not a stylistic
-// choice there either: a boss holds station long enough for a pattern to
-// build and fire, then hops, then holds again. The hop is what stops the
-// player learning one pixel; the hold is what lets the pattern exist.
-//
-// An attack takes it by asking for `BossMove.Step` and by firing only while
-// `boss_holding` is true. The second half is the attack's business rather
-// than the movement's, because a pattern that reads fine from a moving origin
-// -- anything that crosses the field and is gone -- should keep firing
-// through the hop.
-// **A hop every four seconds, and a short one.** The hold is what the pattern
-// is drawn during and the move is dead time, so the cycle is mostly hold: over
-// three seconds of standing still and three quarters of a second of getting
-// somewhere else. N1 stops firing for the move -- see `mika_n1_rim` -- so a
-// long transition is a long hole in the storm.
-#macro BOSS_STEP_HOLD 195      // frames held still: the burst
-#macro BOSS_STEP_MOVE 45       // frames spent hopping, and the pause between
+// The boss holds still for `BOSS_STEP_HOLD` frames, then hops to a new spot
+// over `BOSS_STEP_MOVE` frames. An attack that should only fire while the
+// boss is still checks `boss_holding`.
+// ---------------------------------------------------------------------------
+#macro BOSS_STEP_HOLD 195      // frames held still
+#macro BOSS_STEP_MOVE 45       // frames spent hopping
 
-// How far a hop goes. **It is the gap that wants to be long and the travel
-// that wants to be short**, which is the correction the first pass got
-// backwards: at 260 either side of the station, two consecutive hops could
-// put 500 pixels between one burst and the next, and 40 frames to cross it
-// meant he arrived at 70 pixels a frame. Reported as the hops being too long
-// and too drastic and the pauses between waves too short -- which is one
-// trade rather than two complaints, because both came out of the same pair of
-// numbers.
-//
-// So the travel is roughly a `Close` wander's width and the pause is nearly
-// twice what it was. He still lands somewhere else -- that is what stops the
-// player learning one pixel -- but the move reads as him repositioning rather
-// than as him being thrown across the field.
+// How far a hop may land from the station.
 #macro BOSS_STEP_X 140
 #macro BOSS_STEP_Y 24
 
-// How hard he chases the spot he is hopping to. It has to get there inside
-// `BOSS_STEP_MOVE`, because the frame the hold begins is the frame the pattern
-// starts being drawn again and a boss still sliding then smears it. At this
-// rate a 45-frame move covers better than 99% of the distance; much harder
-// than this and the hop reads as a lunge rather than as him repositioning.
+// How hard the boss chases the spot it is hopping to; it must arrive within
+// `BOSS_STEP_MOVE`.
 #macro BOSS_STEP_RATE 0.10
 
-// How far a `Close` attack wanders. **The wander without the traverse**: a
-// boss whose attack is built out of things he carries -- rings, and whatever
-// they are throwing -- takes the whole figure with him when he crosses the
-// field, so a four-hundred-pixel drift drags the pattern off one wall and
-// back rather than letting it settle anywhere. Reported on N1, in those
-// words: his drifting movement should stay more confined to the centre
-// instead of drifting to the far ends of the screen.
-//
-// It is still a wander rather than a hold, because `Fixed` gives up the one
-// thing the drift is for -- a boss that stands still fires every aimed
-// pattern from the same pixel, and the player learns the pixel.
+// `BossMove.Close`: how far the wander strays from the station, sideways and
+// vertically.
 #macro BOSS_CLOSE_X 150
-
-// ...and the vertical, which is held much tighter still.
-//
-// **A pattern is read at the bottom of the field and its source is at the
-// top**, so anything the source does vertically arrives down there as the
-// whole figure sliding up and down the screen -- streams that reach the
-// player a little further along or a little further back on every pass, which
-// is the pattern refusing to be the same twice. Reported as the dodging at the
-// bottom feeling inconsistent and messy, with the suggestion that the vertical
-// drift come down and the boss keep closer to the top. Sideways it does not
-// matter nearly as much, because a figure that slides sideways is the same
-// figure moved; it is the *depth* the player is measuring against.
 #macro BOSS_CLOSE_Y 22
 
 // ---------------------------------------------------------------------------
-// Backgrounds that are corridors
+// Corridor backgrounds (stage two; see `bg_corridor`)
 //
-// **Stage one is a floor and stage two is a corridor**, and the difference is
-// the projection rather than the art. See `scripts/bg_corridor` for the whole
-// argument; what lives here is the camera it is drawn through and the numbers
-// the grove is arranged with.
-//
-// The camera sits at the origin looking down +z, `CORRIDOR_CAM_H` above a
-// ground plane, and everything comes off one quotient: `k = FOCAL / z` is the
-// screen pixels one world unit covers at depth z. A prop's position, its
-// scale, how fast it crosses the frame and how much air is in front of it are
-// all that number.
+// The camera sits at the origin looking down +z, `CORRIDOR_CAM_H` above the
+// ground, and `k = FOCAL / z` is the screen pixels one world unit covers at
+// depth z.
 // ---------------------------------------------------------------------------
 
-// The lens. Bigger is longer -- less spread between near and far, and a
-// flatter picture. 900 against a field 1360 wide is about a 75-degree
-// horizontal field of view, which is wide enough that a tree passing the
-// camera visibly *accelerates* and narrow enough that the far end of the
-// corridor is not a dot.
+// The lens: about a 75-degree horizontal field of view on this field.
 #macro CORRIDOR_FOCAL 900
 
-// How high the camera flies. It is what decides where the ground meets a
-// prop's feet, so it is also what decides how much of the picture is floor.
+// How high the camera flies.
 #macro CORRIDOR_CAM_H 250
 
-// The vanishing point, as a share of the view's height. **Low enough to leave
-// room for a floor**: the ground is where the sense of speed comes from, and a
-// horizon at the middle of the frame gives it half a screen to do that in
-// while giving the sky half a screen of nothing.
-// **Half way down, not two fifths.** The floor of a corridor is where the
-// speed lives, so the first pass gave it three fifths of the frame -- and
-// what that produced was a picture that was mostly ground, which is a picture
-// of a lake. A forest is read off what is *over* the camera; the room the
-// horizon gives back goes to the canopy.
+// The vanishing point, as a share of the view's height.
 #macro CORRIDOR_HORIZON 0.52
 
-// The near plane a prop is recycled at, the clamp that stops the projection
-// dividing by nothing, and the far plane it fades in from.
-//
-// **Nothing is ever seen at `CORRIDOR_Z_MIN`.** Props are set out well off the
-// centre line, so they leave the frame *sideways* -- at the near plane a tree
-// three hundred units off the path projects two thousand pixels from the
-// middle of a field six hundred and eighty pixels wide. The clamp exists for
-// the frame that arithmetic is wrong on, not for one anybody will see.
+// The clamp that stops the projection dividing by nothing, the near plane a
+// prop is recycled at, the depth inside which there is no haze, and the far
+// plane (the corridor's back wall).
 #macro CORRIDOR_Z_MIN 60
 #macro CORRIDOR_Z_NEAR 200
 #macro CORRIDOR_Z_CLEAR 900     // no haze at all closer than this
 #macro CORRIDOR_Z_FAR 5200
 
-// **How much of the air may still be clear where a ring recycles its props.**
-// A prop's alpha is zero at its own ring's far plane, so nothing ever
-// *appears* -- but that is only half of arriving unseen. The other half is
-// that its colour has to already be the fog's, and `corridor_haze` only
-// reaches that at `CORRIDOR_Z_FAR`. The trunks recycled at 2800, where more
-// than half the air is still clear, so what faded up was a four-hundred-pixel
-// shape in nearly its own colour: reported, twice, as big trees popping in in
-// front of smaller ones that were further back. Sorting them correctly did not
-// help, because they genuinely were in front -- the fault was that they
-// arrived at a distance where a thing that size can be seen at all.
-//
-// So a ring's far plane is not a free choice: it has to be far enough back
-// that the air does the arriving. `test_corridor` measures every ring against
-// this rather than trusting the numbers below.
+// The most haze-free air allowed where a ring recycles its props. A prop must
+// arrive already nearly the fog's colour, or it visibly pops in;
+// `test_corridor` checks every ring against this.
 #macro CORRIDOR_ARRIVE_HAZE 0.45
 
-// How many columns of vertices a wave band's strip has, per tile. See
-// `corridor_draw_band_wave`: the wave is interpolated between them, so this
-// is a smoothness and not a step size, and it costs two vertices a column.
-// It used to be a slice count, and slices are what drew a row of one-pixel
-// lines across the moon.
+// Vertex columns per tile of a wave band's strip (see
+// `corridor_draw_band_wave`).
 #macro CORRIDOR_BAND_COLS 64
 
 #macro BGKIND_PARALLAX 0
 #macro BGKIND_CORRIDOR 1
 
-// **How long a stage takes to turn.** A background may have a second half --
-// see `bg_set_omen` -- and four and a half seconds is what the grove's blood
-// moon needs: a beat of quiet, an eclipse, and a wavefront rolling down the
-// corridor toward the player. Short enough to be an event; long enough that
-// none of the three is over before the eye has found it.
+// How long a background's mid-stage turn takes (see `bg_set_omen`).
 #macro BG_OMEN_TIME 270
 
 // ---------------------------------------------------------------------------
-// The Hollow Grove
+// The Hollow Grove (stage two)
 //
-// **One moon lights this stage and half way through it turns to blood.** Every
-// piece of scenery is therefore drawn as luminance and tinted, and every
-// colour below comes in a pair -- see `tools/make_grove.py`. Nothing here is
-// painted into a sprite.
+// Scenery is drawn as luminance and tinted at draw time, so the whole wood
+// can change colour when the moon turns to blood (see `tools/make_grove.py`).
 // ---------------------------------------------------------------------------
 
-// How fast the world comes at you, in world units a frame, before and after.
-// **The stage speeds up rather than the danmaku doing**, which is the cheapest
-// way a background has of saying the second half is worse: nothing about the
-// fight changed and the room is going past half again as fast.
+// Flight speed in world units a frame, before and after the turn.
 #macro GROVE_SPEED 6
 #macro GROVE_SPEED_FAST 9.5
 
-// The moon. It sits on the horizon in the middle of the frame, which is
-// exactly where the boss stands and exactly where the danmaku is thickest --
-// so its *value* is held well under white and it carries its structure in
-// maria and craters instead. A pale disc bright enough to read as a lamp is a
-// disc no bullet reads against.
-// **How much light there is in this wood on an ordinary night**, before the
-// eclipse takes any of it away. One is "everything the palette says", and the
-// palette was tuned against a frame with the moon in full -- which came out
-// hazier and flatter than the same wood half way through its eclipse, where
-// the mist stops glowing and the charms become the brightest things in the
-// picture. That frame was the better one, so this is the number that moves the
-// default toward it: the mist quietens, the rims come down, the floor goes
-// nearer the colour of the air, and the moon -- which is not dimmed by it --
-// is left as the one bright thing.
+// The wood's light on an ordinary night, as a multiplier on the palette. The
+// moon is not dimmed by it.
 #macro GROVE_NIGHT_LIGHT 0.74
 
-// The shadow that crosses the moon. **Copper rather than black**, because a
-// total lunar eclipse turns the moon dark red: the eclipse is not something
-// that happens before the blood moon, it is the reason for it.
+// The eclipse's shadow on the moon: copper rather than black.
 #macro GROVE_UMBRA_COL make_colour_rgb(44, 9, 7)
 #macro GROVE_UMBRA_RAMP 0.75     // the penumbra, as a share of the moon's radius
 #macro GROVE_UMBRA_SLICES 72
@@ -1395,94 +686,44 @@ enum BossMove {
 #macro GROVE_MOON_R 168
 #macro GROVE_MOON_RISE 44       // how far its centre sits above the horizon
 
-// The trees, in world units: how tall one is and how far off the path the
-// nearest may stand.
-//
-// **The path half-width is what makes the near plane safe, and it is measured
-// from a tree's *edge* rather than from its centre.** At 300 the arithmetic
-// looked right and was wrong by exactly one tree half-width: a trunk on the
-// path's own edge still had four hundred pixels of itself inside the field
-// when the ring recycled it, so the nearest tree in the wood winked out in
-// plain sight once a second. A tree is about 215 units wide either side of
-// its trunk, and it has to clear the field's half-width *plus* that before
-// `CORRIDOR_Z_NEAR` -- which is what `test_corridor` measures rather than
-// this comment claiming it.
+// The trees, in world units. `GROVE_PATH_HALF` is measured from a tree's
+// edge, and has to put every tree off the side of the field before it reaches
+// `CORRIDOR_Z_NEAR` (`test_corridor` checks).
 #macro GROVE_TREE_H 700
 #macro GROVE_PATH_HALF 470
 #macro GROVE_TREE_OUT 1600
 #macro GROVE_TREE_N 40
 
-// The trunks. **Taller than the screen at any distance worth drawing one
-// at**, which is what makes them read as something the camera is going past
-// rather than something it is looking at.
-// **The half-width is measured from the trunk's inner edge, and getting it
-// from its centre is what made them walls.** A trunk is about three hundred
-// and forty units wide either side of itself; standing the nearest one three
-// hundred and sixty units off the path put its inner edge twenty units from
-// the centre line, so the two nearest trunks in the wood met in the middle of
-// the screen and the picture was a pair of black slabs with a keyhole between
-// them. At five hundred and sixty the same trunk frames the field instead of
-// filling it.
-// **How much a billboard's own size is allowed to vary from its kind's.**
-// Six tree frames and eight trunk frames drawn at exactly nominal size read as
-// six trees and eight trunks -- which is what "the same sprite pasted over and
-// over" means. Height and width vary independently, so a frame is effectively
-// never seen twice: the same trunk comes past squat, then tall and narrow.
-//
-// Bounded rather than free, because the placement rules downstream are built
-// on how wide a prop can get. See `GROVE_TRUNK_HALF` and `test_corridor`.
+// How much a prop's own height and width may vary from its kind's, so the
+// same frame rarely looks the same twice. Placement allows for the widest.
 #macro GROVE_VARY_H 0.20
 #macro GROVE_VARY_W 0.16
 #macro GROVE_VARY_MAX ((1 + GROVE_VARY_H) * (1 + GROVE_VARY_W))
 
+// The trunks: taller than the screen. `GROVE_TRUNK_HALF` is the clearance a
+// trunk's inner edge keeps from the centre line (`grove_make_trunk` adds the
+// prop's own half-width), and they run out to the corridor's far plane so
+// they arrive out of the fog.
 #macro GROVE_TRUNK_H 1500
-// **The clearance a trunk's inner *edge* keeps from the centre line**, which
-// is not the same thing as where its middle stands once trunks come in eight
-// widths. `grove_make_trunk` adds the prop's own half-width to this.
 #macro GROVE_TRUNK_HALF 230
 #macro GROVE_TRUNK_OUT 1400      // ...and how much further out it may go
-// **Far enough back that they arrive out of the fog.** At nineteen hundred a
-// trunk was recycled into a place the air was still three quarters clear, so
-// even with a fade it had barely a second of distance to arrive across. It is
-// also what gives the layer its depth: a trunk should be a dark shape at the
-// vanishing point long before it is a wall going past the camera.
-// **Out to the corridor's own far plane**, so a trunk emerges from the fog
-// rather than fading up in the middle distance. The count goes up with the
-// span so the spacing between them is what it was.
 #macro GROVE_TRUNK_Z CORRIDOR_Z_FAR
 #macro GROVE_TRUNK_N 22
 
 #macro GROVE_IVY_H 190
 
-// **What kind of thing a prop is.** It has to be on the prop rather than
-// implied by which loop is drawing it, because every ring is drawn in one
-// merged depth-sorted pass -- see `corridor_merge_new`.
+// What kind of thing a prop is. Carried on the prop because every ring is
+// drawn in one merged depth-sorted pass (see `corridor_merge_new`).
 #macro GROVE_KIND_TREE 0
 #macro GROVE_KIND_TRUNK 1
 #macro GROVE_KIND_BUSH 2
 #macro GROVE_KIND_BOUGH 3
 
-// The boughs overhead: the tree sprite hung upside down from a point above the
-// camera. `GROVE_BOUGH_UP` is how far above, and it is varied per prop or the
-// canopy is a ceiling at one height.
-// **High and few.** At twelve boughs hanging four hundred units over the
-// camera the canopy came down over half the field and the moon was behind a
-// thicket -- which is a wood the player is inside rather than one they are
-// flying under. The point of the layer is that something passes overhead, and
-// eight of them doing it near the top of the frame says that better than
-// twelve filling it.
+// The boughs overhead: the tree sprite hung upside down from a point
+// `GROVE_BOUGH_UP` above the camera. They keep `GROVE_BOUGH_IN` (from their
+// inner edge) off the centre line so none hangs across the moon.
 #macro GROVE_BOUGH_H 440
 #macro GROVE_BOUGH_UP 950
-// **Where a bough may hang, measured from its inner edge -- and it may not
-// hang across the moon.** They were spread right across the corridor on the
-// reasoning that the place a bough is most wanted is directly ahead, and a
-// bough directly ahead and far away hangs straight down the middle of the
-// moon: an upside-down tree in front of the one thing everybody looks at,
-// which was most of what was reported as a tangle there. Kept to the sides,
-// they frame the moon as an arch and sweep up and out of the top corners as
-// they come. `GROVE_BOUGH_IN` is what that costs in world units at the far
-// end of the ring, which is where a bough is level with the moon, and
-// `test_corridor` does the arithmetic rather than this comment.
 #macro GROVE_BOUGH_IN 900
 #macro GROVE_BOUGH_OUT 1700
 #macro GROVE_BOUGH_Z 4200
@@ -1492,96 +733,44 @@ enum BossMove {
 #macro GROVE_BUSH_Z 3400
 #macro GROVE_BUSH_N 50
 
-// A charm hangs on about two trees in five. Every one of them is drawn from
-// the branch tips `tools/make_grove.py` wrote into `scripts/grove_table`.
-// **Bigger than it looks like it should be.** A charm at a seventh of a
-// tree's height is arithmetically a reasonable hanging ornament and
-// photographs as a two-pixel green spark: the tree it is hanging in is four
-// hundred pixels tall at the distance anybody looks at it, and a hex nobody
-// can make out is a hex that is not in the picture. It is the one thing in
-// this wood that says somebody lives here.
+// Hanging charms: the odds a tree carries one, and their size. They hang from
+// the branch tips `tools/make_grove.py` writes into `scripts/grove_table`.
 #macro GROVE_CHARM_ODDS 0.55
 #macro GROVE_CHARM_H 200
 #macro GROVE_CHARM_SWAY 7        // degrees either way
 
-// Where the fog sits, as a share of the view height below the horizon, and how
-// far the ground's own banding reaches before the air swallows it.
-// The forest floor, laid down the corridor in bands.
-//
-// **`GROVE_FLOOR_ROW` is a screen height, and everything else about the floor
-// follows from it.** A band is textured *affinely* -- one `draw_sprite_part`
-// stretched between two screen rows -- where the perspective it is standing in
-// wants the texture to compress as one over the depth. Over a band twenty-six
-// pixels tall that difference is under a pixel; over one of constant world
-// depth, which is a quarter of the screen tall by the time it comes close, the
-// near half of the tile is stretched to nearly twice its length and the
-// texture visibly swims under the camera.
-//
-// So the floor is cut into bands of constant *screen* height and each one is
-// told which slice of the tile it is showing. It is the same trick every
-// pseudo-3D racing game of the period used, for the same reason.
-// **The tile is square in the world as well as in the sprite**, which is
-// why there is one number here and not two. Six hundred and sixty units of
-// forest floor stretched across five hundred and twelve pixels of texture put
-// every leaf in it at thirty pixels on screen, and thirty-pixel leaves are not
-// litter, they are lily pads -- which is most of why the first version of this
-// floor still read as water even with a texture on it.
+// The forest floor, laid down the corridor in bands of constant screen
+// height (so the affine texturing error stays under a pixel). The tile is
+// square in world units.
 #macro GROVE_FLOOR_W 270         // world units across one tile
-#macro GROVE_FLOOR_Z GROVE_FLOOR_W   // ...and along it. Square, deliberately.
+#macro GROVE_FLOOR_Z GROVE_FLOOR_W   // ...and along it
 #macro GROVE_FLOOR_ROW 26        // screen pixels per band
 
-// **How the floor survives the distance, and it is a mip map by hand.** A
-// band a fixed number of world units across is many pixels wide under the
-// camera and a fraction of one near the horizon, so a floor drawn at one
-// scale has to be faded out well before the vanishing point -- and what that
-// leaves is a hard horizontal line across the field with a textured floor
-// below it and nothing above.
-//
-// The tile is periodic in both axes, so laying it out at twice the world size
-// is a legal thing to do and halves how much of it a band has to show. Doing
-// that in doubling steps, and cross-fading between two adjacent steps rather
-// than switching, is exactly what a mip chain is -- and the cross-fade is the
-// part that matters, because a *step* in texture scale across the floor is
-// the same visible line the fade was there to remove.
-//
-// `GROVE_FLOOR_NYQ` is the share of a tile one band may show before the next
-// level takes over. Comfortably under a half, because a pattern sampled at
-// its own period does not draw finely, it crawls.
+// The floor's hand-made mip chain: the tile is laid at doubling world sizes,
+// cross-faded, and a level hands over when one band would show more than
+// `GROVE_FLOOR_NYQ` of a tile.
 #macro GROVE_FLOOR_NYQ 0.34
 #macro GROVE_FLOOR_MIPS 4
 
 #macro GROVE_MIST_Y 0.10
 #macro GROVE_GROUND_BAND 130     // world units between root ridges
 
-// The blood wavefront. It launches from the moon -- which is at infinity --
-// and travels *down the corridor toward the player*, so the red arrives at the
-// far trees first and reaches the near ones last. `GROVE_WAVE_FEATHER` is how
-// deep the front is and `GROVE_WAVE_FLARE` is how far either side of it a
-// hanging charm catches light from it.
+// The blood wavefront: it launches from the moon and travels down the
+// corridor toward the player, so far props turn first. `GROVE_WAVE_FEATHER`
+// is how deep the front is and `GROVE_WAVE_FLARE` how far either side of it a
+// charm catches its light.
 #macro GROVE_WAVE_START 0.30     // the share of the omen it launches at
 #macro GROVE_WAVE_Z0 6400
 #macro GROVE_WAVE_FEATHER 900
 #macro GROVE_WAVE_FLARE 700
 
-// How close a tree has to be before its lit edge is drawn *over* the field as
-// well as behind it. See `grove_draw_front`: that pass is additive without
-// exception, so it cannot hide a bullet at any alpha.
+// How close a tree must be before its lit edge is also drawn over the field
+// (additively; see `grove_draw_front`).
 #macro GROVE_NEAR_Z 560
 
 // ---------------------------------------------------------------------------
-// The arrival
-//
-// **A stage used to begin at full speed on its first frame**, which is the
-// one moment in it that nobody composed: the rack cuts and the wood is
-// already rushing past. So the corridor opens deep in fog and nearly still,
-// and the fog lifts as the flight picks up -- which is the turn's own
-// movement run once at the beginning and in the other direction, and it costs
-// one number on the background and one veil at the end of the back pass.
-//
-// `GROVE_INTRO_SPD` is not zero, deliberately. A world that is completely
-// stopped for half a second reads as a frozen frame -- as the game having
-// hung rather than as a flight beginning -- where one that is barely creeping
-// reads as coming out of cloud.
+// The arrival: the stage opens in fog, nearly still, and the fog lifts as the
+// flight picks up speed.
 // ---------------------------------------------------------------------------
 #macro GROVE_INTRO_TIME 170      // frames the fog takes to lift
 #macro GROVE_INTRO_SPD 0.12      // the share of full speed the flight opens at
@@ -1589,201 +778,55 @@ enum BossMove {
 // ---------------------------------------------------------------------------
 // The camera
 //
-// **Nothing was flying the camera, and that is what made the corridor read as
-// a slideshow.** A constant speed down a straight line is arithmetically a
-// flight and looks like a dolly on rails: there is no cadence in it and
-// nothing the eye can attribute to a body. So the flight *swells* -- a slow
-// sinusoid on the speed and nothing else -- and the path gets a slow meander
-// in both axes, so the wood is not permanently dead ahead and the flight is
-// not permanently level.
-//
-// **It was a wingbeat first, and it was too much of one twice.** The first
-// pass surged the speed a fifth either way every second and a quarter and
-// pitched the camera on the same beat. The pitch came out first -- see below
-// -- and the surge was then reported as "a little bit jarring": a fifth of
-// the speed in six-tenths of a second is a *lurch* on anything near the lens,
-// which is where a player sees speed at all. What is left is under a tenth
-// either way over four seconds, which changes the speed by a quarter of a
-// per cent a frame at most where the wingbeat changed it by more than one and
-// a half, and `test_corridor` holds that number. A glide, not a stroke.
-//
-// **The wingbeat used to pitch the camera as well, and that was wrong twice
-// over.** It ran at nine pixels a beat, which is what flying looks like and
-// was reported as overkill and as a clash with the genre: this horizon is
-// also the level a danmaku player reads the field against, so whatever it
-// does at a beat's rate, every bullet on screen appears to do with it. And
-// the *rate* was the worse half. What a corridor wants overhead is not a
-// cadence, it is a slow rise and fall on the same timescale as the meander --
-// so the two axes are one movement, and what the camera is doing is drifting
-// through a wood rather than flapping through one.
-//
-// **Both are rotations rather than translations**, because a rotation moves
-// everything on screen by the same number of pixels: the moon at infinity,
-// the far wood, the near trees and the ground all go together. See
-// `corridor_view`, which is where the two numbers land.
-//
-// Small on purpose. This is the background of a danmaku stage and the player
-// is reading bullets across it; a camera with character is worth having and a
-// camera that has to be fought is not.
+// The flight swells gently in speed, and the view meanders slowly in yaw and
+// pitch (rotations, so everything shifts together; see `corridor_view`).
 // ---------------------------------------------------------------------------
 #macro GROVE_SWELL 240           // frames in one swell of the glide
 #macro GROVE_SWELL_SURGE 0.09    // ...and the share of the speed it adds
 #macro GROVE_SWAY 12             // how far the path wanders on its own
 #macro GROVE_RISE 14             // ...and how far the flight rises and falls
-// Two periods, neither a multiple of the other, so the meander never comes
-// back to the same place -- the same argument the floor's two band periods
-// make one file over.
+// Two periods per axis, neither a multiple of the other, so the meander does
+// not repeat.
 #macro GROVE_SWAY_P1 1130
 #macro GROVE_SWAY_P2 431
-// ...and the rise gets two more of its own, longer again and sharing no
-// factor with the sway's. Matched periods would have the camera tracing one
-// diagonal line for ever, which is a movement with a shape and therefore a
-// movement the eye can learn.
 #macro GROVE_RISE_P1 1670
 #macro GROVE_RISE_P2 709
 
 // ---------------------------------------------------------------------------
 // The lean
 //
-// **The yaw used to be the meander and nothing else, and the meander answers
-// to nobody.** Two sinusoids wander the camera left and right on their own
-// clock, which gives the flight a body and gives the player no part in it --
-// so the one thing on screen that could plausibly be *steering* the camera
-// was the one thing it was not reading. It also reads as arbitrary, because
-// it is: reported as the stage steering at random and mostly to the right,
-// which is exactly what two sinusoids seeded where these are seeded do for
-// the first twenty seconds.
-//
-// So the camera looks where the player is. `GROVE_LEAN` is how far the
-// vanishing point swings when they are against a wall, and the sign is the
-// rail-shooter one: a player on the left of the field is a camera looking
-// left, which puts the vanishing point on the *right* of the screen and the
-// player heading toward it. See `corridor_view` for why a yaw moves the moon
-// and the nearest trunk by the same number of pixels.
-//
-// **The meander stays, at a third of what it was.** A danmaku player parks
-// in one place for seconds at a time, and a camera that reads only the
-// player is a dolly on rails again the moment they hold still -- which is
-// the defect the meander was written for. What it no longer has to do is
-// carry the whole of the camera's character on its own.
-//
-// **The follow is filtered, and both halves of the filter earn their keep.**
-// The player crosses this field in about four seconds and *dodges* across it
-// several times a second, so a camera that read their position directly
-// would shake in time with the dodging -- at exactly the moment the player
-// is reading bullets, which is the one thing this horizon may never do. The
-// lag is what removes the dodge: a flick left and back is a third of a
-// second against a time constant of one, and comes out as a pixel or two.
-// The cap is what makes it a *guarantee* rather than a tuning -- the same
-// argument `BOSS_TRACK_SPD` makes about a boss that tracks, where a
-// proportional ease alone is fastest exactly when the player has just moved
-// furthest, which is the worst frame to be fast on.
-//
-// Committing to one side for a second and a half is about half the lean;
-// wall to wall is about five seconds. Both are unplayed, like everything
-// else here, and both are one number.
+// The camera slides sideways toward the player's side of the field (a
+// rail-shooter lean: a player on the left moves the view left, putting the
+// vanishing point on the right). It is a lateral slide in world units, so
+// each depth shifts by its own `corridor_k` and near things part from far
+// ones. It is eased, so dodging doesn't shake the horizon, and capped per
+// frame. A player-less screen does not steer.
 // ---------------------------------------------------------------------------
-// **It is world units, not screen pixels, and that is what buys parallax.**
-// The lean used to be a yaw, which moves the moon, the far wall of wood and
-// the nearest trunk by the same number of pixels -- so a camera driven by
-// nothing but a yaw is a camera whose scene has no depth in it, and the
-// canopy sat at a fixed offset in front of the moon however the player flew.
-// It is a lateral *slide* now, so every band and every prop takes
-// `corridor_k` of its own depth: the moon does not move, the far wood shifts
-// five pixels, the canopy overhead shifts forty and the nearest trunk a
-// hundred. See `corridor_view`. The idle meander stays a yaw, because a
-// look-around is what it is for.
 #macro GROVE_LEAN 30             // world units the camera slides at the wall
 #macro GROVE_LEAN_EASE 0.016     // ...the share of the gap it closes a frame
 #macro GROVE_LEAN_SPD 0.34       // ...and the most it may slide in one frame
 
 // ---------------------------------------------------------------------------
-// The verge
-//
-// **Undergrowth, and it is answering two complaints with one ring.** The
-// first is that the far left and right of the frame went bare in stretches:
-// the trees pick a side by coin flip, and a fair coin over forty trees
-// produces a run of six on one side about as often as not -- which is one
-// edge of the picture empty for two seconds. `grove_side` fixes the runs; the
-// verge is what fills the space between the trunks whatever the run does,
-// because it is dense, low, and spread from the edge of the path out past
-// where the trees stop.
-//
-// The second is the horizon. A verge prop at the far end of the corridor is
-// sixty pixels of ragged silhouette standing exactly on the line where the
-// wood meets the ground, and there are enough of them that the line is never
-// bare for long.
+// The verge: dense low undergrowth on both sides, from the path's edge out
+// past the trees and back to the far plane.
 // ---------------------------------------------------------------------------
-#macro GROVE_VERGE_H 320         // world units tall: bracken, not a fern
+#macro GROVE_VERGE_H 320         // world units tall
 #macro GROVE_VERGE_IN 300        // ...how close to the path it may grow
 #macro GROVE_VERGE_OUT 2400      // ...and how far out it goes
 #macro GROVE_VERGE_N 78
 #macro GROVE_KIND_VERGE 4
 
-// How far the far wood's foot dips, in screen pixels. See
-// `corridor_draw_band_wave`: downward only, because the ground is painted
-// over the foot and a slice lifted above the horizon shows sky underneath a
-// wood.
+// How far the far wood's foot dips, in screen pixels. Downward only
+// (`corridor_draw_band_wave`): lifting it would show sky under the wood.
 #macro GROVE_RIDGE_H 58
 #macro GROVE_MIST_WAVE 44
 
 // ---------------------------------------------------------------------------
-// The scrub
-//
-// **Solid, and that is the whole specification.** The first version of this
-// layer was the treeline sprite reused at a third of its size -- and that
-// sprite is a lace of two-pixel twigs with its alpha ramped away down its own
-// height, because it is drawn as a *distance* and its feet are meant to go
-// into haze. Laid small over a lit floor the same art is a smear. Reported,
-// accurately, as transparent messiness thrown at the problem.
-//
-// A hedgerow at the foot of a wood is a **mass**: opaque, with a lumpy top and
-// no light through it at all.
-//
-// **A second version drew it as a filled silhouette at run time** -- a row of
-// overlapping lobes in one triangle strip, which is solid and needs no art at
-// all. It answered the complaint and it was still the wrong answer: a row of
-// arcs is a row of arcs, and what a new layer wants is new *art*. `make_scrub`
-// is that, and it is a hedge rather than a shape.
-//
-// Two things about how it is drawn are not decoration:
-//
-//   * **It dips where the path runs into it, and it does not part.** It did
-//     part, wider than the moon is round, on the reasoning that undergrowth
-//     across the stage's centrepiece would be losing it -- and what that
-//     left was the one stretch of horizon everybody looks at, under the
-//     brightest thing in the picture, ruled dead straight. That was the
-//     complaint the layer was built to answer. Worse, it was the only place
-//     the hedge could be *seen*: everywhere else it is dark on dark, and
-//     against the moon it is a silhouette. Reported as "I'm not seeing any
-//     hedgerow", which was accurate. A hedge crossing the foot of a moon is
-//     the oldest composition there is; `test_corridor` holds the dip short
-//     of a parting.
-//   * **Its foot dissolves and its crown does not**, which is one alpha ramp
-//     in `make_scrub` doing two jobs: a crown against the sky has to be hard
-//     or it is fog, and a foot on the litter has to not be, or it is the
-//     cardboard-cutout edge `grove_draw_mound` exists to remove.
-// ---------------------------------------------------------------------------
-//   * **And the one thing it may never do is fall below the line it is
-//     covering.** That is a property of the hedge's *thinnest* stretch, not
-//     of its average, and it is the sum of four numbers that live in three
-//     files: how tall the band is drawn (`GROVE_SCRUB_NEAR`), how much of it
-//     stands above the horizon (`GROVE_SCRUB_RISE`), how far the wave and the
-//     dip push it back down, and where the art's own crown bottoms out. Every
-//     one of those is individually reasonable and nothing was adding them up
-//     -- so the mat in `make_scrub` thinned to a sixth of its height between
-//     two ellipses, the crown there fell *below* the horizon, and the ruled
-//     join the layer exists to hide showed straight through it. Reported as
-//     the border peeking out from behind the hedgerow, and with the wave and
-//     the dip both zeroed the worst stretch still cleared the line by one
-//     pixel -- which is the measurement that says the art was the fault and
-//     not the tuning.
-//
-//     The wave and the dip came down as well, because both were sized as if
-//     this band were as tall as the treeline: 26 and 0.22 on a band 116
-//     pixels high is forty-four per cent of it spent pushing the crown down,
-//     which leaves an art budget no hedge can be drawn inside.
-//     `check_scrub_covers_horizon` does the addition against the shipped PNG.
+// The scrub: an opaque hedgerow band drawn over the floor along the horizon,
+// hiding the join between the ground and the far wood. It dips (does not
+// part) where the path meets it. Its thinnest stretch must still cover the
+// horizon; `check_scrub_covers_horizon` adds up these numbers against the
+// shipped PNG.
 // ---------------------------------------------------------------------------
 #macro GROVE_SCRUB_FAR 0.95      // the far row's size against the band's width
 #macro GROVE_SCRUB_NEAR 1.45     // ...and the near row's, which is the cover
@@ -1793,86 +836,48 @@ enum BossMove {
 #macro GROVE_SCRUB_DIP_W 320     // ...and over how many pixels either side
 #macro GROVE_SCRUB_CLEAR 12      // px the thinnest stretch must clear the line
 
-#macro SPELLBG_GROVE 2         // the grove's caster: a ring of bone and ivy
+#macro SPELLBG_GROVE 2         // Velka's spell background: a ring of bone and ivy
 
 // ---------------------------------------------------------------------------
 // Sound
 //
-// The three global knobs. Everything else about a cue -- its gain, how often
-// it may sound, what it outranks -- is a row in `audio_functions`' table,
-// because a mix is a set of numbers that only mean anything relative to each
-// other and splitting them across two files would mean tuning one against the
-// other with a scroll bar in between.
+// The global knobs. Per-cue gain, gap and priority are rows in
+// `audio_functions`.
 // ---------------------------------------------------------------------------
 
-// **The per-frame voice budget.** Not a performance limit -- GameMaker will
-// happily start far more -- but a legibility one: past about five simultaneous
-// cues nothing is distinguishable from anything else, and what the player
-// hears on the busiest frame in the game should be the five most important
-// things rather than an average of twenty. `sfx_step` spends it in priority
+// Most cues that may start in one frame; `sfx_step` spends them in priority
 // order.
 #macro SFX_VOICES 5
 
-// The count at which a coalesced volley is as big as it is allowed to get.
-// Thirty-two is about a full ring-stack; past it a pattern is not audibly
-// larger, it is just louder, which is the thing the swell exists to avoid.
+// The request count at which a coalesced volley stops getting bigger.
 #macro SFX_SWELL_FULL 32
 
-// One number over everything, so the whole mix can be pulled down without
-// re-levelling twenty-four rows. Below 1 deliberately: these cues are drawn to
-// their designed peaks in `tools/make_sfx.py` and the headroom is what keeps
-// five of them at once from clipping the master bus.
+// Master gain over the whole mix, below 1 for headroom.
 #macro SFX_MASTER 0.72
 
 
 // ---------------------------------------------------------------------------
-// The Archives of Bequeathed Memories: a room, in three dimensions
+// Stage three's hall: a room in 3D (see `bg_sanctum`)
 //
-// **Stage one is a floor, stage two is a corridor, and stage three is a
-// room.** See `scripts/bg_sanctum` for why that is a third projection rather
-// than a third set of art; what lives here is the hall it flies down and the
-// camera that flies it.
-//
-// The camera is a *real* one -- a view matrix and a perspective projection,
-// with the GPU's depth buffer doing the sorting. That is what the grove's
-// could not be: `corridor_horizon` adds its pitch to the horizon, which is a
-// principal-point shift, and a shift keeps the optical axis pointing forward
-// however far it travels. This stage opens aimed at the floor, and pointing a
-// camera at the floor is a rotation.
+// A real camera with a view matrix, a perspective projection and the depth
+// buffer. The stage opens with the camera high and aimed at the floor, then
+// rises and levels out (the "reveal").
 // ---------------------------------------------------------------------------
 
 #macro BGKIND_SANCTUM 2
 
-// The hall. A nave 1400 units across under a ceiling at 1250, in bays of 560
-// -- which is one three-bay run of `spr_hall_wall`, so a bay of geometry and
-// a bay of art are the same thing by construction.
+// The nave's half-width, the height of the case tops' ceiling line, and the
+// bay length (one three-bay run of `spr_hall_wall`).
 #macro HALL_HALF_W 700
 #macro HALL_CEIL_H 1250
 #macro HALL_BAY_Z 560
-// How many bays are submitted ahead of the camera. At 560 apiece this is
-// 6720 units of hall, which is past where the fog has closed completely.
-// How many bays are submitted in front of the camera. **It is set by the
-// fade, not by taste**: the last bay drawn has to be gone by alpha before it
-// can enter the loop, so it must sit at or beyond `HALL_FADE_END` at its
-// nearest -- `(HALL_BAYS - 1) * HALL_BAY_Z`, which `test_hall_sky` checks.
-//
-// It went 13 -> 16 when the fade did, and the reason is worth keeping: the
-// fade has to happen somewhere, and wherever it happens is the end of the
-// hall. Putting it where the fog already was cost the depth the fog was
-// buying -- see `HALL_FADE_START`. Bays are frozen geometry and a dozen
-// submits each, so buying the room back is the cheap half of it.
+// How many bays are drawn ahead of the camera. The nearest a newly entering
+// bay can be is `(HALL_BAYS - 1)` bays out, which must be beyond
+// `HALL_FADE_END` so it arrives invisible (`test_hall_sky` checks).
 #macro HALL_BAYS 16
 
-// **The pavement, in three courses.** One tile repeated across the nave is a
-// grid, and a grid has no middle -- which in a hall with a processional way
-// down it is the one thing the floor has to say. So: a sunken runner the
-// player flies along, an ornamented border either side of it, and the marble
-// field out at the walls where the furniture stands. The two joints between
-// them are straight lines converging on the vanishing point, which is a
-// perspective cue a field of squares cannot have.
-//
-// Measured from the centre line outward, and the marble takes whatever is
-// left: 264 + 92 leaves 344 of field, which is two tiles of 172 either side.
+// The pavement's three courses, from the centre line out: a sunken runner,
+// an ornamented border, and the marble field at the walls.
 #macro HALL_RUNNER_HW 264     // the runner's half-width
 #macro HALL_FLOOR_STEP 13     // ...and how far it is sunk below the aisles
 #macro HALL_BORDER_W 92       // the ornamented course between the two
@@ -1882,185 +887,93 @@ enum BossMove {
 #macro HALL_BORDER_NZ 2
 #macro HALL_THRESH_NX 3
 
-// The lens. A vertical field of view of 58 degrees against the field's 1.371
-// aspect is about 74 horizontal -- the same angle the grove flies, so that
-// anything learnt about framing in one stage carries to the other.
+// Vertical field of view in degrees (about 74 horizontal on this field).
 #macro HALL_FOV 58
-// **Forty, not eight.** Depth precision is spent across the near-to-far
-// ratio, so a near plane far closer than anything the camera can actually get
-// to throws most of the buffer away on empty space -- and what is left is
-// what every coplanar surface in the hall has to be told apart with. Nothing
-// in the nave comes within forty units of the lens (the walls are six hundred
-// out), so this is free, and it is about five times the precision at the
-// distances the shelving is read at.
+// The near and far planes. Nothing comes within 40 units of the lens, and a
+// nearer near plane would waste depth precision.
 #macro HALL_ZNEAR 40
 #macro HALL_ZFAR 14000
 
-// **The fog is the aerial perspective and it is doing the work the grove's
-// haze did**, except that the hardware applies it. Its far end is inside the
-// last bay drawn, so the hall ends in air rather than in a visible edge.
+// Distance fog (applied in `sh_hall`) and then an alpha fade. The fade starts
+// where the fog is solid, so a bay dissolves only once it has no colour of
+// its own left; it matters because the lit rotunda at the end of the hall is
+// behind the last bays, and fog alone would leave them as silhouettes.
 #macro HALL_FOG make_colour_rgb(10, 17, 46)
 #macro HALL_FOG_START 1100
-// **The air goes solid at 7200, not 6400.** The fog and the fade were made to
-// end at the same distance, which sounds tidy and is the one arrangement that
-// cannot work: fog is what makes the far end *dim* and the fade is what makes
-// it *go*, so ending them together means the rows the fog had dimmed were also
-// the rows the fade removed. Measured by counting tabards down the nave, the
-// hall lost two rows of depth -- reported as six deep before, four after. The
-// fog ends further out now and the fade begins where it leaves off.
 #macro HALL_FOG_END 7200
-// **...and a surface's alpha goes with its colour**, which is the half of
-// distance the fog cannot do. Fog recolours a surface toward the air, and that
-// hides it only where what is *behind* it is the air too -- at the end of this
-// hall it is not, because `hall_draw_far` hangs a lit rotunda at the vanishing
-// point and the last few bays project into the middle of it. A bay arriving
-// fully fogged arrived as a perfectly air-coloured silhouette cut out of a
-// bright building, which is exactly as visible as a black one was. `sh_hall`
-// is where this is applied, because a frozen vertex buffer cannot carry how
-// far it is from the camera.
-//
-// **Gone before it can arrive.** One more bay enters the draw loop every time
-// the camera crosses a bay line, and the nearest that bay can ever be is
-// `(HALL_BAYS - 1)` bays out -- so the fade has to be complete by then or the
-// arrival is the thing being hidden. `test_hall_sky` does the arithmetic.
-//
-// **It begins exactly where the fog ends, and that is the whole of the
-// arrangement.** Two earlier versions got this wrong in opposite directions.
-// At 4600 the fade began where the air was three quarters thick, so a surface
-// was still visibly its own colour while it was going transparent -- which
-// reads as the texture dissolving rather than as distance taking it, and was
-// reported as the fade being close and noticeable. Moving it to 5200 fixed
-// that and cost depth instead: everything past it went, including the rows the
-// fog had merely dimmed, and the hall came back two tabbards shallower than it
-// had been before any of this.
-//
-// Beginning at `HALL_FOG_END` is what has both. Up to there the fog does the
-// work and every bay is drawn; past there every surface is already flat
-// `HALL_FOG`, so what the alpha removes is a shape with no colour left in it
-// at all, and the dissolve has nothing to be seen against but the rotunda it
-// exists to stop silhouetting on.
 #macro HALL_FADE_START 7200
 #macro HALL_FADE_END 8400
 
-// The two ends of the reveal.
-//
-// **Phase A is high and aimed down**, and both halves of that matter. High,
-// so the marble and the things standing on it are what fills the frame; aimed
-// down far enough that the vanishing point is off the top of the screen, so
-// the hall is genuinely hidden rather than merely small. At a 58-degree field
-// of view a pitch of -55 puts the top of the frame 26 degrees below level,
-// which is a clear margin.
+// The two ends of the reveal: phase A is high and pitched down far enough to
+// hide the vanishing point; phase B is at flying height, nearly level.
 #macro HALL_CAM_HIGH 900
 #macro HALL_CAM_FLY 250
 #macro HALL_PITCH_A -55
 #macro HALL_PITCH_B -2
 
 #macro HALL_SPEED 9.0
-// **Phase A flies slower, and that is so it does not look slower.** Speed is
-// read off whatever is nearest the lens; from 900 units up there is nothing
-// near, so the same number reads as a crawl.
-// **The arrival.** The stage used to open at full speed on its first frame,
-// in a hall already lit -- which is the one moment in it nobody composed: the
-// rack cuts and the room is simply there. So it opens dark and nearly still
-// and the lights come up as the flight gathers, which is the grove's own
-// `intro` on the same terms and driven by the same one number.
-//
-// `HALL_INTRO_SPD` is not zero, deliberately, for the reason `GROVE_INTRO_SPD`
-// is not: a world that has stopped dead for a second reads as the game having
-// hung rather than as a flight beginning.
+// The arrival: the stage opens dark and nearly still and the lights come up
+// as the flight gathers. Phase A flies slower because nothing is near the
+// lens up there.
 #macro HALL_INTRO_TIME 165
 #macro HALL_INTRO_SPD 0.16
 #macro HALL_SPEED_A 5.2
 #macro HALL_SWELL 0.055
 #macro HALL_SWELL_P 260
 
-// Baked light. A vertex colour multiplies its texture, so these are the whole
-// of the lighting model -- everything brighter than the material is the
-// emissive pass.
 // ---------------------------------------------------------------------------
-// The joinery
-//
-// **The wall is built, not painted.** Reading outward from the nave: a
-// pilaster standing proud of everything, the case front set back behind it,
-// the recess set back again with the books at the bottom of it, and a cornice
-// and plinth projecting past the pilaster at top and bottom. Every one is a
-// real plane at a real depth, which is what buys the parallax, the occlusion
-// and the light on the shelf edges that a flat quad could not have.
+// The joinery: a wall built of real planes at real depths (pilasters, case
+// fronts, shelf recesses, cornice and plinth).
 // ---------------------------------------------------------------------------
 #macro HALL_PIL_D 46          // how far a pilaster stands out from the case
 #macro HALL_PIL_W 80          // ...and how wide it is along the hall
 #macro HALL_CASE_D 120
-// **How far behind the case front the books actually stand.** They were at
-// the *back* of the recess, a hundred and twenty units in, which is not where
-// books are: a shelf is deep and the spines sit at the front of it. At that
-// depth the boards ran back into darkness and the shelving read as a row of
-// empty ledges -- the flat texture it replaced was closer to right.
-#macro HALL_BOOK_INSET 22        // how deep a bookcase recess goes
-#macro HALL_ALCOVE_D 280      // ...and the alcove, which is deeper on purpose
+#macro HALL_BOOK_INSET 22     // how far behind the case front the books stand
+#macro HALL_ALCOVE_D 280      // how deep an alcove goes
 #macro HALL_PLINTH_H 130
 #macro HALL_PLINTH_D 30
 #macro HALL_CASE_TOP 1040
 #macro HALL_CORN_D 46
 #macro HALL_SHELVES 6
-// The rhythm of the hall: an alcove every fourth bay, at the third of them.
-// See `hall_bay_kind` for why this is a stratum and not a hash.
+// An alcove every fourth bay, at the third of them (see `hall_bay_kind`).
 #macro HALL_ALCOVE_EVERY 4
 #macro HALL_ALCOVE_AT 2
 #macro HALL_BOARD_T 6
-// **A shelf board is stone, not gold.** The flat bay tile it replaced drew
-// its boards as an ordinary moulding -- a warm grey lit edge over a dark
-// underside -- and gilded only the cornice and the plinth. The 3D version
-// made every board a bright gilt bar, six a bay, twelve a side, and that one
-// substitution is most of why the joinery went from refined to blocky: gold
-// stopped being a line somewhere and became the thing the wall is made of.
 #macro HALL_BOARD_COL make_colour_rgb(92, 86, 76)
 #macro HALL_GILT make_colour_rgb(104, 80, 32)
-// **A tint only means anything over a pale albedo.** See `pale_tile` in
-// `tools/make_sanctum.py`: a vertex colour multiplies its texture, so these
-// are all drawn on `spr_hall_pale` rather than on the stone.
+// Tints for surfaces drawn on the pale albedo `spr_hall_pale` (a vertex
+// colour multiplies its texture).
 #macro HALL_CAT make_colour_rgb(46, 46, 60)     // the statues: black basalt
 #macro HALL_MASONRY make_colour_rgb(27, 28, 36)
 #macro HALL_GLASS make_colour_rgb(72, 78, 104)
 #macro HALL_ORB_COL make_colour_rgb(120, 186, 255)
 #macro HALL_LAMP_GLOW 0.40
 
-// Where the furniture sits, in world units.
-// **A statue's plinth is built, and it used to be built and painted.**
-// `spr_hall_bastet` carried a plinth in its own bottom third -- a flat one,
-// on a card that faces down the hall -- and `hall_bastet` stood that card on
-// a *tapered box*, so what the frame actually held was a billboard plinth
-// balanced on a real one. From the nave it read as the cat sitting on a
-// painted slab hovering over the masonry, which is what it was. The card is
-// the figure alone now and this is the whole of the plinth.
-#macro HALL_STATUE_BASE 262     // the height of a statue's plinth
+// The height of a statue's plinth (the statue sprite is the figure alone).
+#macro HALL_STATUE_BASE 262
 #macro HALL_DESK_TOP 150
 
-// The orb in the alcove: a real object at a real position, and the thing the
-// stone around it is actually lit by.
-// How far a moulding stands out from the face it is on. Any non-zero value
-// breaks the depth tie; this is also simply what a fillet does.
+// How far a moulding stands out from the face it is on (also breaks depth
+// ties).
 #macro HALL_FILLET_D 4
 #macro HALL_ORB_BODY make_colour_rgb(34, 48, 86)
 
+// The orb in an alcove, and the light it casts on the stone round it.
 #macro HALL_ORB_R 48
 #macro HALL_ORB_Y 470
 #macro HALL_ORB_GLOW 0.95
 #macro HALL_ORB_POWER 1.55
 #macro HALL_ORB_LIGHT_R 420
-// **How far into the recess the orb stands, and it is one number because it
-// has to be.** The geometry read it one way and `hall_wall_light` read it
-// another -- 763 against 949 -- so the pool of light on the stone was a
-// hundred and eighty units deeper into the alcove than the thing casting it.
-// Nothing about that is visible as an error: both are perfectly good numbers
-// and what it draws is a lit patch with nothing in it beside an unlit lamp.
-// `hall_orb_x` is the one answer now and `test_hall_orb` holds the two to it.
+// How far into the recess the orb stands. `hall_orb_x` is the one place that
+// turns this into a position, for both the geometry and the light
+// (`test_hall_orb`).
 #macro HALL_ORB_STAND 84
 #macro HALL_ORB_STEM_H 262    // the pedestal, from the alcove sill upward
 #macro HALL_ORB_CRADLE 28     // ...and the gilt cup it sits in
 #macro HALL_ORB_BLOOM 5.2     // the bloom card's radius, in orb radii
 
-// Baked light. `AMB` is what a surface gets with nothing near it, and the two
-// powers are how much each source adds at its own centre.
+// Baked light. `AMB` is what a surface gets with nothing near it; the powers
+// are how much each source adds at its own centre.
 #macro HALL_WALL_AMB 0.46
 #macro HALL_LAMP_Y 360
 #macro HALL_LAMP_POWER 0.62
@@ -2068,178 +981,104 @@ enum BossMove {
 
 #macro HALL_WALL_LIGHT 1.00
 #macro HALL_FLOOR_LIGHT 0.86
-// **The pavement is lit by both walls at once**, which is why it has a light
-// model of its own rather than the joinery's: a wall quad faces one way and
-// answers to the lamps on its own side, and a floor quad in the middle of the
-// nave is between two of them. `HALL_FLOOR_AMB` is what a point equidistant
-// from everything falls to, and the bounce is how much of a lamp reaches the
-// stone under it -- the two together are what keep the centre of the field,
-// where the player lives, the darkest part of the picture.
+// The pavement is lit by both walls at once (`hall_floor_light`):
+// `HALL_FLOOR_AMB` is what a point far from everything gets, and the bounce is
+// how much of a lamp reaches the stone under it.
 #macro HALL_FLOOR_AMB 0.26
 #macro HALL_FLOOR_BOUNCE 0.74
-// **...and then a vignette over the top of it, which is a fairness rule and
-// not physics.** `HALL_LIGHT_R` is 680 against a nave 1400 wide, so both
-// walls' lamps reach everywhere and the honest falloff alone comes out flat:
-// measured, the middle of the nave and the stone at the wall were within one
-// and a half per cent of each other, which is a floor with no shape in it and
-// -- worse -- a *bright* floor exactly where the player lives and the danmaku
-// is thickest. This is the share of the light the centre line keeps.
+// A vignette on top: the share of the light the centre line keeps, so the
+// floor under the player is the darkest part of it.
 #macro HALL_FLOOR_DIM 0.42
 // Where the lamps sit up the wall, as a share of its height from the cornice
-// down. It is where `tools/make_sanctum.py` draws them, and the falloff in
-// `hall_build_wall` is measured from it.
+// down (where `tools/make_sanctum.py` draws them).
 #macro HALL_LAMP_V 0.46
 
-// The steering, on the grove's terms: an ease to take the dodging out and a
-// cap to make the limit a guarantee rather than a tuning.
+// Steering, as the grove's lean: an ease and a per-frame cap.
 #macro HALL_LEAN 92
 #macro HALL_LEAN_EASE 0.022
 #macro HALL_LEAN_SPD 1.7
 
-// What stands in it, in world units.
+// What stands in the nave, in world units.
 #macro HALL_STATUE_X 548
-// The figure alone, standing on `HALL_STATUE_BASE`. The two sum to what the
-// cat and its painted plinth used to come to together.
+// The statue figure's height, standing on `HALL_STATUE_BASE`.
 #macro HALL_STATUE_H 300
-// How hard the moonward edge is lit, in the additive pass. Low, because it
-// is there to keep a black statue against black shelving from reading as a
-// hole rather than to make one a lamp -- see `hall_bastet`.
+// How strongly the statue's lit edge is drawn in the additive pass.
 #macro HALL_STATUE_RIM 0.42
-// How many facets round the sweep's cross-section. Sixteen, because she is
-// smooth-shaded off analytic normals -- the faceting that `hall_sphere` is
-// happy to show at eight would read as a cut gem, and a polished basalt cat
-// is the one thing in this hall that must not.
+// Facets round the statue's swept cross-section.
 #macro HALL_STATUE_STEPS 16
-// What the sweep's own form adds to the sprite's baked light: a lift where
-// the surface turns up into the lamp, and a fall where it turns away down
-// the hall. Both are zero on the face looking back at the camera, which is
-// why the view the card was right for did not change when it became a solid.
+// What the statue's swept form adds to the sprite's baked light: a lift where
+// the surface faces up and a fall where it faces away down the hall. Both are
+// zero on the face toward the camera.
 #macro HALL_STATUE_TOP 0.34
 #macro HALL_STATUE_AWAY 0.32
-// **Out on the statue line, not adrift in the nave.** At 430 the pedestals
-// stood in open floor with nothing behind them and nothing beside them, which
-// is what read as floating: a thing against a wall is furnished, a thing in
-// the middle of a room is dropped. They share the statues' setback now and
-// fall at the midpoint between two of them.
+// The pedestals stand on the statue line, midway between two statues.
 #macro HALL_DESK_X 548
 #macro HALL_DESK_H 165
 
-// The instruments the pedestals carry: an hourglass on one and a small
-// armillary on the other.
-//
-// **They are built at the origin and drawn under a matrix**, which is the
-// whole of why they can move at all. Everything else in the hall is frozen
-// into a bay's buffers and drawn by one translation, so a thing built into
-// one is a thing that can never do anything -- which is why the armillary
-// stood dead still in a hall whose centrepiece is an armillary turning. This
-// is `hall_draw_orrery`'s construction at a five-hundredth of the size.
+// The instruments on the pedestals (an hourglass and a small armillary). They
+// are built at the origin and drawn under a matrix, so they can move; the rest
+// of the hall is frozen into each bay's vertex buffers.
 #macro HALL_INST_Y 88          // how far over the cap the instrument floats
 #macro HALL_INST_BOB 9         // ...and how far it rises and falls
 #macro HALL_INST_BOB_P 274     // frames a rise and a fall takes
 #macro HALL_INST_SPIN 0.17     // degrees a frame the hourglass turns
-// The hourglass. **Two bulbs of revolution, not two boxes**: it was a pair of
-// square tapers meeting at a point inside a frame of four square posts, which
-// at this size is four flat facets a side and reads as origami. A lathe costs
-// the same handful of triangles and is round from every angle the camera
-// reaches.
+// The hourglass: two bulbs turned on a lathe (`hall_lathe`).
 #macro HALL_GLASS_H 104        // the glass, foot to head
 #macro HALL_GLASS_R 31         // ...at its belly
 #macro HALL_GLASS_NECK 3.2     // ...and at its waist
 #macro HALL_GLASS_SEG 18       // segments round
-// **Dark, like everything else out here.** At (176, 134, 60) under an
-// additive shell the glass measured a 99th percentile of 205 against a
-// pedestal at 122 -- a prop twice as bright as the masonry it stands on, in
-// the half of the field the player lives in. It is scenery, and the rule is
-// the one the brimstone stage is built on: every point of value spent on it
-// is a point the bullets no longer have.
+// The sand is kept dark: it is scenery under the danmaku.
 #macro HALL_SAND make_colour_rgb(118, 90, 40)
 #macro HALL_SAND_FILL 0.40     // how much of the lower bulb is full
 #macro HALL_SAND_HEAD 0.18     // ...and how far up the upper bulb reaches
-// The armillary: rings at their own rates, on `hall_draw_orrery`'s terms.
+// The armillary, built like `hall_draw_orrery` at small scale.
 #macro HALL_ARM_R 46
 #macro HALL_ARM_CORE 11
-// **A banner is placed by its centre and is two hundred units wide**, so
-// how far out it may hang is bounded by the cornice face it would otherwise
-// go through rather than by the wall. Moved out to 628 to hang it off the
-// new wall head, it put its outer third inside the cornice and the pilaster
-// -- reported, accurately, as the tabards suddenly clipping into the walls.
-// `test_hall_sky` does the addition now, because the number that has to hold
-// is a sum of three that live in three different places.
+// The tabards, placed by their centre; `HALL_BANNER_X` plus half a banner's
+// width must stay clear of the cornice (`test_hall_sky` checks).
 #macro HALL_BANNER_X 540
 #macro HALL_BANNER_H 620
-// It hangs from the wall head rather than from the ceiling that used to be
-// there: its top is just under the coping's soffit.
+// Its top hangs this far under the wall head's coping.
 #macro HALL_BANNER_DROP 6
 #macro HALL_LAMP_X 606
 #macro HALL_LAMP_H 340
 
-// **How hard the emissive pass is driven.** The lamps are drawn additively
-// over an almost black hall, so at full white a bay's two orbs were the
-// brightest thing on the screen by a wide margin -- brighter than the
-// bullets, which is the one thing no piece of scenery may ever be.
+// How hard the additive emissive pass is driven, so the lamps stay dimmer
+// than the bullets.
 #macro HALL_EMISSIVE_K 0.50
-// How much light a prop's own surface carries. Props stand out in the nave
-// rather than against the shelving, so they take a flat value rather than the
-// wall's falloff from the lamp height.
+// A prop's own light: a flat value rather than the wall's falloff.
 #macro HALL_PROP_LIGHT 0.88
-// **Below this, a texel is not there at all.** Cut-out sprites on quads have
-// transparent corners, and with depth writing on those corners would punch a
-// rectangular hole in whatever is behind them.
+// Alpha test threshold. Cut-out sprites on quads have transparent corners
+// that would otherwise write depth.
 #macro HALL_ALPHA_REF 96
 #macro HALL_LAMP_EMISSIVE make_colour_rgb(96, 96, 96)
 
 // ---------------------------------------------------------------------------
 // The open roof
 //
-// **The hall has no ceiling, and that is what stopped it reading as a
-// corridor.** It was capped at `HALL_CEIL_H` by a coffered plane with a
-// starfield painted on its underside -- a picture of a sky on a lid, and a
-// lid is precisely what a tunnel has. Floor, two walls and a ceiling is four
-// edges and no way out: every ray the camera casts lands on something a
-// couple of bays away, so however deep the shelving is modelled the room can
-// never be bigger than its own cross-section.
-//
-// Taking the lid off costs one thing and buys two. It costs the enclosure the
-// original note argued for -- and that argument was right about libraries and
-// wrong about *this* library, which is a death-god's archive and is open to
-// the sky. It buys somewhere for the distance to be, which is where the
-// orrery hangs; and it buys a silhouette, because the wall tops now end
-// against something.
-//
-// **What the sky is allowed to be is a wedge, and the wedge is a rule.** The
-// visible sky is bounded by the two wall tops, and a long horizontal edge at
-// height H and half-width X projects to a straight ray out of the vanishing
-// point with slope (H - camera) / X. Anything built above the wall narrows
-// that wedge for the whole length of the hall, so the parapet's height is not
-// a free choice -- it is the price of the sky, paid once and paid everywhere.
-// `test_hall_sky` does the arithmetic against the orrery's own screen radius,
-// because the failure it guards against is "the landmark this stage was
-// opened up for is behind the masonry", which no assertion about either piece
-// on its own could ever see.
+// The hall has no ceiling. The visible sky is the wedge between the two wall
+// tops: a long horizontal edge at height H and half-width X projects to a ray
+// from the vanishing point with slope (H - camera) / X, so anything built
+// above the wall narrows the sky for the whole hall. `test_hall_sky` checks
+// that the orrery still clears the masonry.
 // ---------------------------------------------------------------------------
 
-// The coping: the slab that caps the wall, oversailing it on the nave side.
+// The coping: the slab capping the wall, oversailing it on the nave side.
 #macro HALL_COPING_H 26
 #macro HALL_COPING_OUT 46        // how far past the pilaster it stands
 
-// The parapet standing on the coping. `X` is its *inner* face, which is the
-// edge that silhouettes, and it is what the wedge is measured from.
+// The parapet on the coping. `X` is its inner face, the edge that silhouettes
+// and that the sky's wedge is measured from.
 #macro HALL_PARAPET_X 672
 #macro HALL_PARAPET_H 72
 
-// An obelisk on every ordinary bay, over the pilaster that carries it.
-//
-// **Thin, on purpose.** A continuous upper storey would be a second wall and
-// would close the wedge along the whole hall; a post closes it only at its
-// own bay. What the eye gets instead is a rhythm of dark verticals marching
-// away against the stars, which says the building goes up much further than
-// the frame does without spending any of the sky to say it.
+// An obelisk over the pilaster on each ordinary bay. Thin, so it narrows the
+// sky only at its own bay.
 #macro HALL_OBELISK_H 430
 #macro HALL_OBELISK_W 32
-#macro HALL_OBELISK_CAP 78       // the gilt pyramidion, which is the lit bit
+#macro HALL_OBELISK_CAP 78       // the gilt pyramidion, the lit part
 
-// ...and a brazier on the alcove bays instead, so the upper level has a light
-// of its own and the rhythm is a rhythm rather than a repeat.
+// A brazier on the alcove bays instead.
 #macro HALL_BRAZIER_H 104
 #macro HALL_BRAZIER_R 62
 #macro HALL_BRAZIER_COL make_colour_rgb(255, 176, 92)
@@ -2248,92 +1087,40 @@ enum BossMove {
 // ---------------------------------------------------------------------------
 // The sky
 //
-// **A dome centred on the camera, drawn first, with the depth test off.**
-// That is the whole of a skybox, and it is the only construction that gets
-// both halves right at once: it turns with the pitch and the lean exactly as
-// the world does, and it does not translate at all -- which is what "at
-// infinity" means and what no amount of parallax tuning on a flat backdrop
-// can imitate.
-//
-// The radius is arbitrary and has to be *inside the frustum anyway*, because
-// the near and far planes clip whether or not the depth test is on.
+// A dome centred on the camera, drawn first with the depth test off, so it
+// rotates with the view but never translates. Its radius must still be inside
+// the frustum, since the near and far planes clip regardless.
 // ---------------------------------------------------------------------------
 #macro HALL_SKY_R 6000
 #macro HALL_SKY_COLS 40
 #macro HALL_SKY_ROWS 13
-// The dome runs well below the horizon, so that no pitch the reveal passes
-// through can put an unpainted band under it. Everything down there is
-// covered by the floor in play; this is the guarantee rather than the
-// expectation.
+// The dome reaches well below the horizon so no pitch in the reveal shows an
+// unpainted band.
 #macro HALL_SKY_EL0 -40
-// **The sky is saturated and the fog is not, and that is the whole of the
-// difference between night and haze.** The first version derived every band
-// of it from `HALL_FOG` by multiplication -- which keeps the join at the
-// horizon exact, and which is also why it came back as a grey void with
-// something caught in it. A multiply cannot add chroma, so a desaturated fog
-// makes a desaturated sky however it is scaled, and the one thing this stage
-// had to gain by losing its ceiling was somewhere that reads as *outside*.
-//
-// It is the grove's own correction one layer out: value and saturation are
-// different budgets. A deep blue at the same value as a neutral grey costs
-// the danmaku exactly nothing and is the difference between a night sky and
-// a photocopy of one. So the value here stays where it was and the chroma
-// goes up by a factor of three.
-//
-// The join is kept by construction rather than by matching: elevation zero
-// *is* the fog colour, and the blue ramps in above it. What that draws is a
-// horizon glow, which is what the bottom of a real sky has anyway.
+// The sky's colour ramp. Elevation zero is exactly `HALL_FOG`, so the far end
+// of the hall dissolves into it; above that it ramps to these saturated
+// blues. The ramp sits inside the band the camera actually sees (roughly
+// 10-28 degrees of elevation).
 #macro HALL_SKY_LOW make_colour_rgb(20, 44, 104)
 #macro HALL_SKY_HIGH make_colour_rgb(7, 12, 46)
-// **Where the ramp happens is set by what the camera can see.** The whole
-// visible sky is between about ten and twenty-eight degrees of elevation, so
-// a gradient spread over the full ninety puts every one of its stops out of
-// frame and what is left in frame is one flat colour.
 #macro HALL_SKY_LOW_EL 13
 #macro HALL_SKY_HIGH_EL 52
 
-// The stars. Three magnitudes, and the count is most of what makes a sky read
-// as a sky rather than as a handful of dots.
-//
-// **Nine thousand of them, for about a hundred on screen.** The dome is a
-// whole hemisphere and the wedge between the two parapets is a narrow
-// triangle at the top of the frame, so ninety-eight per cent of any star
-// count is spent out of shot -- measured, not guessed: at two thousand six
-// hundred the frame held thirty-nine stars and read as an empty sky with
-// something wrong with it. Generating them only where the camera looks would
-// be cheaper and would be a dome that is a lie the moment anything ever
-// tilts, so the count is what moves instead. Nine thousand cards is one
-// frozen buffer and one draw.
+// The stars, in three magnitudes. Only about a hundred of these fall in the
+// visible wedge; they are one frozen buffer and one draw.
 #macro HALL_STARS 9000
-// **Extinction, and it is load-bearing rather than decorative.** A star at
-// the horizon is seen through the same haze the far end of the hall is, so it
-// has to fade out before it reaches the wall tops -- otherwise the fog closes
-// on the architecture and the stars behind it do not, and the seam between
-// the two is the exact line the fog exists to hide.
+// Star extinction toward the horizon: out by `HALL_STAR_EL0`, full by
+// `HALL_STAR_EL1` degrees, so stars fade before the wall tops as the fog does.
 #macro HALL_STAR_EL0 1
 #macro HALL_STAR_EL1 11
 #macro HALL_STAR_SIZE 40         // a middling star's half-size at HALL_SKY_R
-// **The band the extinction is measured over is the band that is *seen*.**
-// The camera never looks up: at the reveal's own pitch the top of the frame
-// is twenty-seven degrees above the horizon and the wall tops cut off
-// everything under about ten, so the whole of the visible sky is one narrow
-// strip low down. The first ramp faded the stars in between two and thirty
-// degrees, which is a perfectly sensible atmosphere over a sky nobody in this
-// stage can see: every star actually in frame was at a third of its
-// brightness, and what came back was an empty grey wedge.
-//
-// A band of denser, fainter stars across the sky: the one arrangement that
-// separates a designed starfield from a uniform sprinkle.
+// A band of denser, fainter stars across the sky.
 #macro HALL_STAR_BAND 0.44       // what share of them fall in it
 #macro HALL_STAR_BAND_TILT 34
 #macro HALL_STAR_BAND_W 13       // its half-width, in degrees
 
-// **How far either side of dead ahead the composed sky is spread.** The
-// stars are over the whole dome, because there are enough of them that the
-// wedge gets its share wherever they fall. The nebulae and the constellations
-// are not: there are a handful of each, the wedge is a narrow V, and a
-// uniform azimuth put one segment of one figure on the screen. Wider than the
-// lens, so nothing is arranged in a fan the eye could read as one.
+// How far either side of dead ahead the nebulae and constellations are
+// placed, so the few of them there are land in view.
 #macro HALL_SKY_SPREAD 64
 
 #macro HALL_NEB_N 16
@@ -2341,45 +1128,29 @@ enum BossMove {
 #macro HALL_NEB_R0 62            // a patch's half-angle, in degrees
 #macro HALL_NEB_R1 26            // ...and how much less it can be
 
-// The constellations: a handful of the bright stars, joined.
+// The constellations: a handful of bright stars, joined.
 #macro HALL_CONST_N 22
 #macro HALL_CONST_A 0.22
 
 // ---------------------------------------------------------------------------
 // The chamber at the end of the hall
 //
-// **The sky needed a floor.** With the roof off, the hall's perspective ran
-// out at the vanishing point and everything past it was stars -- so the nave
-// read as a corridor trailing off into space rather than as a room open to
-// the night. What was missing is what every real view of a horizon has:
-// something the ground *becomes*.
-//
-// It is one painted quad at a fixed depth. A second room in three dimensions
-// at the end of an endless hall is a room the flight would have to either
-// reach or visibly never reach, and both are worse than a backdrop -- which
-// is what `bg_grove`'s moon is and what this is.
-//
-// The half-width in *screen* pixels is shared with `HALL_ROT_HW_SCREEN` in
-// `tools/make_sanctum.py`, because the painting's own perspective is computed
-// from how far above the eye each gallery sits in the finished frame.
-// `test_hall_sky` checks the two agree.
+// One painted quad at a fixed depth, so the ground ends in a building rather
+// than in stars. The painting computes its own perspective from its screen
+// size, so `HALL_ROT_HW` and `HALL_ROT_Z` must agree with
+// `HALL_ROT_HW_SCREEN` in `tools/make_sanctum.py`
+// (`check_rotunda_scale_agrees`).
 // ---------------------------------------------------------------------------
 #macro HALL_ROT_Z 12500
 #macro HALL_ROT_HW 5600
-// **Wide and short, because that is the shape of the hole it fills.** The
-// band available for it is the vanishing point up to the orrery's skirt --
-// 260 pixels of a 992-pixel field. Hung over the whole wedge instead, its
-// galleries swept up past the orrery and read as pale arcs across the sky
-// rather than as a building under one.
+// Its half-height: wide and short, to fit between the vanishing point and the
+// orrery.
 #macro HALL_ROT_HH 1830
-// Its foot, in world y. Two hundred units under the hall's own floor, so the
-// thin band between where the marble runs out and the horizon is covered
-// rather than showing a seam -- the card's bottom dissolves there anyway.
+// Its foot, in world y: below the hall's floor, so there is no gap above the
+// horizon.
 #macro HALL_ROT_Y0 -200
 #macro HALL_ROT_COL make_colour_rgb(124, 152, 232)
-// Under one on purpose: what shows through is the sky behind it, which is
-// aerial perspective done the cheapest possible way and the reason it sits
-// *in* the air rather than on top of it.
+// Slightly transparent, so the sky shows through as distance.
 #macro HALL_ROT_A 0.88
 #macro HALL_ROT_LIT make_colour_rgb(255, 206, 132)
 #macro HALL_ROT_LIT_A 0.82
@@ -2387,93 +1158,50 @@ enum BossMove {
 // ---------------------------------------------------------------------------
 // The grand orrery
 //
-// **It is this stage's moon**, in the sense `bg_grove` means one: a fixed
-// direction rather than a place. It is anchored to the camera's own depth, so
-// it never arrives however long the flight lasts -- which is a lie the player
-// cannot catch, because at nine thousand units nothing about it would change
-// over the five minutes a stage runs even if it were real.
-//
-// **Where it sits is derived from the wedge rather than chosen.** Its centre
-// has to clear the parapet's silhouette by its own screen radius or the
-// masonry eats its flanks, and at this field's focal length that is what
-// fixes the height. See `test_hall_sky`.
+// A fixed direction rather than a place: anchored to the camera's depth, so
+// the flight never reaches it. Its height and size are set so it clears the
+// parapet and its top stays in the field (`test_hall_sky`).
 // ---------------------------------------------------------------------------
 #macro HALL_ORRERY_Z 9000
 #macro HALL_ORRERY_Y 2820
 #macro HALL_ORRERY_R 1120
-// **Drawn with the fog off and dimmed by hand instead.** Hardware fog at nine
-// thousand units is total -- the far end of the haze is at 6400 -- so a
-// fogged orrery is a rectangle of fog colour. What distance actually does to
-// a bright thing is take its contrast away, which is a multiply, and this is
-// it.
+// Drawn with fog off (fog at this distance is total) and dimmed by this
+// multiply instead.
 #macro HALL_ORRERY_DIM 0.80
 #macro HALL_ORRERY_GILT make_colour_rgb(226, 184, 100)
 #macro HALL_ORRERY_CORE make_colour_rgb(150, 205, 255)
 #macro HALL_ORRERY_HALO_R 2900
 #macro HALL_ORRERY_HALO_A 0.16
-// How long the core takes to breathe once, in frames.
+// Frames the core takes to breathe once.
 #macro HALL_ORRERY_PULSE 310
 
 // ---------------------------------------------------------------------------
-// The sand
+// Blown sand in the air (see `hall_draw_front`)
 //
-// **It is sand in a desert temple, and it used to be grey dust on the
-// glass.** Two things were wrong with it and they are different kinds of
-// wrong.
-//
-// The colour and the direction were the small one: at (150, 190, 255)
-// drifting *upward* the motes were the alcove orb's own blue at a fifth of
-// its size, moving the way an ember moves. Neither belongs in a hall
-// somebody built out of stone in a desert.
-//
-// The large one is that they were **screen-space** -- a position across the
-// field and a rate down it -- in a stage that is a real room seen through a
-// real lens. So they did not parallax, did not grow as they came, did not
-// answer the lean or the reveal, and nothing ever passed anybody: a sheet of
-// acetate in front of the picture, which is the defect `bg_grove` records
-// about its canopy bands, and which no amount of density or speed can reach.
-// They are projected through the camera now; see `hall_draw_front`.
-//
-// **Sand differs from dust by direction before it differs by colour.** Dust
-// hangs and falls, each speck to itself. Sand is driven -- it crosses on one
-// wind, so every grain leans the same way -- and it keeps low, because what
-// a temple in a desert has is a drift over the floor rather than a fog in
-// the air. Hence a shared `HALL_SAND_WIND` and a `HALL_SAND_TOP` biased hard
-// toward the pavement.
-//
-// What it may **not** be is *saturated* warm: Mika fires gold, amber and
-// bone, and a small bright warm dot over live danmaku is the brimstone
-// stage's ember-and-pellet finding exactly -- a player cannot be asked to
-// tell an obstacle from scenery by watching which of them accelerates. A
-// desaturated tan is a hue no bullet in his table reaches, and every bullet
-// carries a white core and a hard dark contour that additive scenery is
-// structurally incapable of drawing.
+// Grains are projected through the camera, all driven by one sideways wind
+// and kept low over the pavement. One hash sets a grain's size, fall and
+// wander together, so heavy grains fall faster. The colour is a desaturated
+// tan that no bullet in Mika's table uses.
+// ---------------------------------------------------------------------------
 #macro HALL_SAND_N 130
 #macro HALL_SAND_COL make_colour_rgb(206, 180, 142)
 #macro HALL_SAND_A 0.30
 // The volume it blows through, in world units: how near a grain may come
 // before it is gone, how deep the cloud runs, how far out either side of the
-// nave it starts, and how high the drift reaches. The ceiling is under the
-// camera's own flying height, so most of the sand is below the eye.
+// nave it starts, and how high the drift reaches.
 #macro HALL_SAND_NEAR 300
 #macro HALL_SAND_RANGE 3400
 #macro HALL_SAND_SPREAD 360
 #macro HALL_SAND_TOP 900
-// How far across the hall the wind carries a grain over one fall. Well over
-// the height it drops in the same time, because blown sand travels sideways
-// faster than it settles -- that ratio is the whole of what reads as wind.
+// How far sideways the wind carries a grain over one fall, and the fall
+// rate.
 #macro HALL_SAND_WIND 680
 #macro HALL_SAND_FALL 0.00042
-// A grain's radius in world units, so perspective sizes it rather than a
-// hash. **Grain, and grain is what separates sand from dust**: one hash sets
-// the size, the fall and the wander together, so the heavy ones fall faster
-// and wander less and the fine ones hang.
+// A grain's radius in world units.
 #macro HALL_SAND_R 7.0
-// How many frames back the streak is drawn from, and the longest it may be
-// in pixels. The cap is what stops a grain passing the lens drawing a line
-// across the field.
+// How many frames back the streak is drawn from, and its maximum length in
+// pixels.
 #macro HALL_SAND_TRAIL 5
 #macro HALL_SAND_TRAIL_MAX 26
-// Nearer than this in view space a grain is dropped rather than projected,
-// because the divide runs away.
+// Nearer than this in view space a grain is dropped rather than projected.
 #macro HALL_SAND_ZNEAR 60

@@ -1,45 +1,16 @@
 #!/usr/bin/env python3
-"""The parallax layers a stage scrolls past.
+"""Stage one's three parallax layers (ground, rock, near).
 
-**Every layer tiles seamlessly top to bottom**, because the world moves down
-the screen forever and a seam is the one artefact a player cannot un-see.
-Everything is therefore drawn three tiles tall and cropped to the middle, or
-generated from a field that is periodic in y by construction; `shade_wrapped`
-and `A.fbm_field(wrap_y=True)` are the two routes and nothing here takes a
-third. `check_bg_seams` in `tools/check_project.py` measures the join.
+- Every layer tiles seamlessly top to bottom (the world scrolls down
+  forever). Layers are shaded three tiles tall and cropped to the middle
+  (`shade_wrapped`), or built from fields periodic in y
+  (`A.fbm_field(wrap_y=True)`, `worley`). `check_bg_seams` measures the join.
+- Farther layers are hazed toward the air colour.
+- The near layer is drawn over the field, so it keeps to the left and right
+  edges (`NEAR_EDGE`); `check_bg_keepout` measures it.
 
-**Depth is value, not detail.** The rule the Wordsearch backgrounds are built
-on holds here for the same reason: the further away something is, the closer
-its colour is to the ambient light -- so the deepest layer is hazed almost to
-the colour of the air and only the nearest is allowed real contrast.
-
-**The near layer keeps out of the middle.** It is drawn *over* the field, so
-anything it puts in the centre of the screen is something a bullet can hide
-behind. It lives in the left and right sixths. `check_bg_keepout` measures it.
-
-Texture, and why there is so much of it
----------------------------------------
-
-The first version of this stage was six polygon calls and one noise field per
-layer, and photographed at 1:1 that is exactly what it looked like: flat brown
-masses with orange squiggles laid over them. It read as *drawn by a script*,
-which next to a commissioned player sprite is the one thing scenery cannot
-afford to read as.
-
-So the rock is built the way the Wordsearch slabs are, out of layers that each
-answer a different question about the surface:
-
-`worley`      where the stone is jointed -- the plate boundaries
-mottle        what colour this patch of rock happens to be, at two scales
-grain         what it feels like at arm's length, at two scales
-`rim_light`   which edges the light from below is catching
-haze          how far away it is
-
-None of them is expensive and none is representational. What makes the result
-read as rock rather than as noise is that the joint network is a *Voronoi*
-diagram: real basalt cools into polygonal columns, so plates meeting at
-three-way junctions at consistent angles is not a stylisation, it is what the
-material does. Nothing else here has to be drawn once that is right.
+The rock surface is built from layered fields: a Voronoi joint network
+(`worley`), mottle and grain at two scales each, `rim_light`, and haze.
 
 Usage:
     python tools/make_bg.py
@@ -56,65 +27,34 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import art_common as A
 import gm_new
 
-# **The size of the field, not of the screen.** These layers are the world the
-# playfield is a window onto, and since the window became a rectangle inside
-# the screen rather than the whole of it, a 1920-wide layer would be a fifth of
-# its own art hidden under the HUD margin -- including a third of the near
-# layer's spires, which would leave the field with a foreground down one side
-# and nothing down the other.
+# The layers are field-sized (the playfield is a window onto them).
 W, H = A.FIELD_W, A.FIELD_H
 
-# The share of the width at each edge the near layer may occupy. The rest is
-# the field, and the field belongs to the bullets. **Mirrored in
-# `scripts/constants` as `BG_NEAR_EDGE`**, which is what `check_bg_keepout`
-# measures the shipped PNG against -- the two have to be edited together.
+# The share of the width at each edge the near layer may occupy. Must equal
+# `BG_NEAR_EDGE` in `scripts/constants` (`check_bg_keepout` measures the PNG).
 NEAR_EDGE = 0.13
 
-# Voronoi and the two mottle fields are computed at half resolution and
-# enlarged. Every one of them is a *smooth* field being used as a shading ramp,
-# so the only thing full resolution would buy is four times the runtime; the
-# joint grooves are drawn from the field rather than being the field, and they
-# get their crispness from the threshold, not from the sampling.
+# The Voronoi and mottle fields are smooth, so they are computed at half
+# resolution and enlarged.
 HALF = 2
 
 
 class Brimstone:
-    """Stage one: a basalt pavement cracked open over something molten.
-
-    **Dark, and deliberately much darker than it wants to be.** A background
-    for a bullet hell is not a picture, it is the ground a picture is drawn on:
-    two thousand lit bullets have to read against it in a fifth of a second,
-    and every point of value spent on the scenery is a point the bullets no
-    longer have. The first pass of this was a handsome mid-brown ravine and it
-    was useless -- an amber bullet over it was invisible.
-
-    So the rock is nearly black and the only bright thing is the lava, which is
-    narrow, deep orange, and never white. White is what a bullet's core is.
+    """Stage one's palette: a basalt pavement cracked open over lava. Kept very
+    dark so the bullets read against it; only the lava is bright, and it is
+    narrow, deep orange and never white.
     """
 
     name = "brim"
-    #
-    # **Every one of these came down by about forty per cent after the first
-    # textured pass was photographed.** The texture was right and the values
-    # were not: a jointed pavement at these hues and twice this brightness is a
-    # handsome mid-brown floor, and a handsome mid-brown floor is precisely
-    # what the flat version of this stage was replaced for. Detail does not
-    # earn a background any extra value budget -- if anything it costs some,
-    # because a busy surface competes for attention in a way a flat one does
-    # not, and the thing it is competing with is the bullets.
-    #
-    # The only bright thing on the stage is the lava, and it is narrow.
+    # Kept very dark: only the narrow lava is bright.
     air = (26, 10, 9)             # what distance fades toward
     ground = (11, 8, 10)
     ground_lit = (29, 19, 18)
     ground_cool = (13, 12, 17)    # the other rock, so the floor is not one hue
     rock = (14, 10, 11)
     rock_lit = (37, 21, 19)
-    # The one layer allowed a little more than the rest. It is the closest
-    # thing to the camera and the only one with a silhouette, so it is where
-    # the depth actually comes from -- taken down with everything else in the
-    # darkening pass it stopped being visible at all, which is a layer being
-    # paid for and not delivered.
+    # The near layer is slightly lighter, as the closest layer and the only
+    # one with a silhouette.
     near = (10, 6, 8)
     near_lit = (34, 19, 18)
     lava = (150, 44, 11)
@@ -129,19 +69,9 @@ class Brimstone:
 
 def worley(w, h, n, seed, wrap_y=True):
     """Distance to the nearest and second-nearest of `n` scattered points.
-
-    `f2 - f1` is small exactly on the boundary between two cells, which is the
-    canonical cheap crack network -- and for basalt it is not a stylisation:
-    cooling lava contracts into polygonal columns, so plate boundaries really
-    do meet three at a time at something near 120 degrees. Drawing the joints
-    by hand as strokes is what makes rock look like a doodle of rock; letting
-    the plates decide where their own edges are is what stops it.
-
-    **The points are replicated a tile above and a tile below**, which is the
-    whole of what makes the result periodic in y. Without it every cell along
-    the top edge is bounded by the canvas rather than by its neighbour, and the
-    joint network arrives at the bottom of the tile disagreeing with the top --
-    the same failure `shade_wrapped` exists to fix, one layer down.
+    `f2 - f1` is small on cell boundaries, giving a crack network that looks
+    like basalt joints. With `wrap_y`, the points are replicated a tile above
+    and below so the result tiles vertically.
 
     Returns `(f1, f2, cell)` at `w` by `h`, distances in pixels.
     """
@@ -169,17 +99,15 @@ def worley(w, h, n, seed, wrap_y=True):
 
 
 def plate_field(w, h, n, seed):
-    """The joint network and a per-plate tone, both at `w` by `h`.
-
-    `edge` is 1 in the middle of a groove and 0 well inside a plate; `tone` is
-    one value per plate, so no two neighbouring stones are the same colour.
+    """The joint network and a per-plate tone, both at `w` by `h`. `edge` is 1
+    in the middle of a groove and 0 well inside a plate; `tone` is one value
+    per plate.
     """
     f1, f2, cell = worley(w // HALF, h // HALF, n, seed)
     gap = (f2 - f1) * HALF                      # back into full-size pixels
 
-    # A groove a few pixels wide, with soft shoulders. Squaring the ramp keeps
-    # the middle of a plate perfectly clean -- a linear falloff shades the
-    # whole stone toward its own edges and the floor turns into a quilt.
+    # A groove a few pixels wide with soft shoulders; squaring the ramp keeps
+    # plate interiors clean.
     edge = np.clip(1.0 - gap / 26.0, 0, 1) ** 2.2
 
     rng = np.random.default_rng(seed + 7717)
@@ -198,29 +126,16 @@ def fbm(w, h, seed, octaves=5, base=6):
 
 
 def grain(w, h, seed, amount=0.055):
-    """Fine tooth, at two scales.
-
-    **Two, because one reads as film noise and two as stone** -- the same
-    finding the Wordsearch slabs are built on. It goes through `fbm_field`
-    rather than through `A.noise_layer` for one reason only: this has to be
-    periodic in y, and white noise is not.
-    """
+    """Fine grain at two scales, periodic in y."""
     a = fbm(w, h, seed, octaves=2, base=w // 3)
     b = fbm(w, h, seed + 4001, octaves=2, base=w // 9)
     return ((a - 0.5) * amount + (b - 0.5) * amount * 0.8)
 
 
 def shade_wrapped(mask3, colour, core, core_frac, edge_frac):
-    """Shade a 3H-tall mask and return its middle third.
-
-    **A layer that tiles has to be *shaded* tall and cropped, not shaded at its
-    own height.** `shade_shape` works off a distance field, and a distance
-    field measured on a one-tile canvas treats the canvas edge as the edge of
-    the shape -- so a boulder crossing the top of the tile is lit as though it
-    ended there, while the copy of it drawn at the bottom is lit as though it
-    ended *there*. The two do not match, and what that produces is a hard
-    horizontal line across the screen every time the layer wraps. The first
-    screenshot of this stage had two of them.
+    """Shade a 3H-tall mask and return its middle third, so the distance-field
+    shading sees across the wrap (shaded at one tile's height, shapes crossing
+    the edge are lit as if they ended there, which leaves a seam).
     """
     body = A.shade_shape(mask3, colour, core=core, core_frac=core_frac,
                          edge_frac=edge_frac, spec=False)
@@ -228,7 +143,7 @@ def shade_wrapped(mask3, colour, core, core_frac, edge_frac):
 
 
 def _haze(img, air, amount):
-    """Fade a layer toward the colour of the air. Distance, in one line."""
+    """Fade a layer toward the colour of the air."""
     arr = np.asarray(img, dtype=np.float32)
     arr[..., :3] = (arr[..., :3] * (1 - amount)
                     + np.array(air, dtype=np.float32) * amount)
@@ -240,19 +155,13 @@ def _haze(img, air, amount):
 # ---------------------------------------------------------------------------
 
 def make_ground(p, seed=1):
-    """The floor: a jointed basalt pavement with fire under it.
-
-    Built in the order the material was: the plates, then what colour each of
-    them happens to be, then the grooves between them, then the fissures that
-    cut across the lot, then the light coming up through both.
+    """The floor: plates, a tone per plate, the grooves between them, fissures
+    across them, then the light from below.
     """
     rng = np.random.default_rng(seed)
 
-    # 210 plates on the floor against 90 on the middle distance and 55 on the
-    # foreground. **The scale of the joint network is doing depth work**: the
-    # same rock at three distances has the same plates at three apparent sizes,
-    # and that reads as distance far more strongly than the haze does, because
-    # it survives the haze being subtle.
+    # 210 plates on the floor, against 90 in the middle distance and 55 in the
+    # foreground: the plate size shows the depth.
     edge, tone = plate_field(W, H, 210, seed)
     broad = fbm(W, H, seed + 11, octaves=5, base=4)     # patches of rock
     fine = fbm(W, H, seed + 23, octaves=4, base=22)     # what is on them
@@ -261,10 +170,7 @@ def make_ground(p, seed=1):
     hi = np.array(p.ground_lit, dtype=np.float32)
     cool = np.array(p.ground_cool, dtype=np.float32)
 
-    # **Two rocks, not one.** A floor mixed between a warm stone and a cold one
-    # at a large scale stops the whole layer reading as a single flat hue, and
-    # it costs one lerp. This is the part that does the most for how expensive
-    # the ground looks and the least to the frame budget.
+    # Two rock colours mixed at a large scale, so the floor isn't one hue.
     base = lo[None, None, :] + (hi - lo)[None, None, :] * (broad ** 1.5)[..., None]
     base = base * (1 - (broad ** 3)[..., None] * 0.45) \
          + cool[None, None, :] * (broad ** 3)[..., None] * 0.45
@@ -276,30 +182,20 @@ def make_ground(p, seed=1):
     base *= (0.86 + 0.28 * fine)[..., None]
     base *= (1.0 + grain(W, H, seed + 91))[..., None]
 
-    # The grooves. Darkened rather than drawn: a joint is an absence of stone,
-    # and a dark line laid *on* the stone reads as a line drawn on a floor.
+    # The grooves, darkened into the stone.
     base *= (1.0 - edge * 0.82)[..., None]
 
-    # ...and the lip of stone either side of a groove, catching what light
-    # there is from below. `rim_light` does this for a silhouette; here the
-    # shape is the groove itself, so it is the gradient of the edge field that
-    # is wanted, and one shifted subtraction is that.
+    # ...and the lit lip either side of each groove (the gradient of the edge
+    # field, by one shifted subtraction).
     lip = np.clip(np.roll(edge, 5, axis=0) - edge, 0, 1)
     base += np.array(p.lava, dtype=np.float32)[None, None, :] * (lip * 0.16)[..., None]
 
     img = A.from_arrays(base, np.ones((H, W), dtype=np.float32))
 
-    # The fissures: the cracks that are open far enough to see fire in.
-    #
-    # **A crack has to arrive at the bottom of the tile where it left the
-    # top.** Left to wander freely it does not, and what that produces is a
-    # line of orange that jumps sideways every time the layer wraps -- which
-    # measured as a join delta of 5.2 against an adjacent-row delta of 0.2, and
-    # read on screen as a horizontal fault across the whole floor.
-    #
-    # So the wander is *de-trended*: the accumulated drift is subtracted back
-    # out in proportion to how far down the tile each point is, which pins the
-    # last point to the first without flattening the wander in between.
+    # The fissures: cracks open enough to see fire in. Each crack's wander is
+    # de-trended (the accumulated drift subtracted in proportion to depth
+    # down the tile), so it ends at the bottom where it started at the top and
+    # the layer tiles.
     H3 = H * 3
     crack = Image.new("L", (W, H3), 0)
     cd = ImageDraw.Draw(crack)
@@ -336,18 +232,12 @@ def make_ground(p, seed=1):
                 cd.line([(px_, py_ + dy) for px_, py_ in bp], fill=205,
                         width=max(2, wide // 2), joint="curve")
 
-    # Three glows and they do different jobs: a wide, dim wash saying the rock
-    # near a fissure is warm; a tight one that is the fire itself; and a thread
-    # of the hottest colour down the middle of the widest cracks. None goes
-    # near white -- the one thing on this screen allowed to be white is a
-    # bullet's core.
+    # Three glows: a wide dim wash near each fissure, a tight glow that is the
+    # fire, and a thread of the hottest colour down the widest cracks. None
+    # near white.
     wide_glow = Image.new("RGBA", (W, H3), A.rgba(p.lava, 0))
-    # **Dim, and the reason is arithmetic rather than taste.** This wash is
-    # additive over the whole neighbourhood of every fissure, so its alpha is
-    # multiplied by the number of fissures near a given pixel -- at 1.35 the
-    # seven of them lit most of the floor between them and the stage came back
-    # from the darkening pass no darker at all. The rock was never the problem;
-    # the light on it was.
+    # The wash is additive over every fissure's neighbourhood, so overlapping
+    # washes add up; it is kept dim for that reason.
     wide_glow.putalpha(crack.filter(ImageFilter.GaussianBlur(68))
                             .point(lambda v: int(min(255, v * 0.58))))
     core = Image.new("RGBA", (W, H3), A.rgba(p.lava_hot, 0))
@@ -357,15 +247,14 @@ def make_ground(p, seed=1):
     img = A.add(img, wide_glow.crop((0, H, W, H * 2)))
     img = A.add(img, core.crop((0, H, W, H * 2)))
 
-    # A dim glow along the plate joints as well, so the pavement is lit from
-    # underneath everywhere rather than only where a fissure happens to run.
+    # A dim glow along the plate joints too.
     seep = Image.new("RGBA", (W, H), A.rgba(p.lava, 0))
     seep.putalpha(Image.fromarray(
         np.clip(edge * 255, 0, 255).astype(np.uint8), "L")
         .filter(ImageFilter.GaussianBlur(9)).point(lambda v: int(v * 0.085)))
     img = A.add(img, seep)
 
-    # Hazed toward the air, which is what puts it at the back.
+    # Hazed toward the air (the farthest layer).
     return _haze(img, p.air, 0.38)
 
 
@@ -374,13 +263,8 @@ def make_ground(p, seed=1):
 # ---------------------------------------------------------------------------
 
 def make_rock(p, seed=2):
-    """Plateaus and boulders standing off the floor.
-
-    The silhouettes are the same lobed blobs they always were -- what changed
-    is everything inside them. A shaded blob with a rim light is a *shape*; the
-    same blob with plate joints running across it, a tone per plate and grain
-    over the top is a rock, and the difference is four fields and no extra
-    geometry.
+    """The middle layer: lobed plateaus and boulders, shaded, with plate
+    joints, per-plate tone, grain and a rim light.
     """
     rng = np.random.default_rng(seed)
     # Three tiles tall, so shading sees across the wrap. See `shade_wrapped`.
@@ -407,16 +291,12 @@ def make_rock(p, seed=2):
             rng.bit_generator.state = state       # the same blob, three places
             blob(dy, cx, cy, rx, ry, lobes)
 
-    # **Barely blurred, and that is a change.** At a blur of 3 every boulder
-    # had a soft edge, and a soft edge at this distance reads as fog rather
-    # than as stone. One pixel is enough to take the polygon's stairs off.
+    # Barely blurred (a soft edge at this distance reads as fog).
     mask = mask.filter(ImageFilter.GaussianBlur(1.2))
     body = shade_wrapped(mask, p.rock_lit, A.shade(p.rock_lit, 0.28),
                          0.30, 0.44)
 
-    # The inside of the rock: joints, tone, grain. Multiplied into the shaded
-    # body rather than composited over it, so it darkens the stone instead of
-    # laying a grey film across the alpha the shading worked out.
+    # Joints, tone and grain, multiplied into the shaded body.
     edge, tone = plate_field(W, H, 90, seed + 5)
     fine = fbm(W, H, seed + 31, octaves=4, base=16)
     k = (1.0 - edge * 0.66) * (0.78 + 0.44 * tone) * (0.88 + 0.24 * fine)
@@ -426,10 +306,8 @@ def make_rock(p, seed=2):
     arr[..., :3] *= k[..., None]
     body = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
 
-    # **The rim is what stops a dark mass reading as a hole in the picture.**
-    # Subtract the mask from a copy of itself shifted down and what is left is
-    # the top edge of every lump in it, which is where the light from the
-    # cracks below would actually land.
+    # The rim: the mask minus a copy shifted down leaves the top edge of every
+    # lump, lit.
     rim = A.rim_light(mask, p.lava_hot, drop=6, blur=2.4, strength=0.55)
     rim.putalpha(ImageChops.multiply(rim.getchannel("A"), mask))
     rim = rim.crop((0, H, W, H * 2))
@@ -445,10 +323,8 @@ def make_rock(p, seed=2):
 # ---------------------------------------------------------------------------
 
 def make_near(p, seed=3):
-    """Spires up the two edges, and nothing in the middle.
-
-    Drawn over the field, so the keep-out is not a style choice -- a spire in
-    the centre of the screen is a place a bullet can be invisible.
+    """Spires up the two edges and nothing in the middle (it is drawn over the
+    field).
     """
     rng = np.random.default_rng(seed)
     mask = Image.new("L", (W, H * 3), 0)      # see `shade_wrapped`
@@ -464,12 +340,7 @@ def make_near(p, seed=3):
             hgt = rng.uniform(220, 520)
             wid = rng.uniform(70, 175)
             lean = rng.uniform(-26, 26)
-            # **A column, not a triangle.** Columnar basalt fractures into
-            # near-parallel shafts with a broken top, so the silhouette wanted
-            # here is a tall box with a chipped crown -- the four-point wedge
-            # this used to be read as a paper cut-out of a mountain. The extra
-            # vertices cost nothing and they are the whole difference between
-            # "spire" and "triangle".
+            # A tall column with a broken top (columnar basalt).
             state = rng.bit_generator.state
             for dy in (0, H, H * 2):
                 rng.bit_generator.state = state
@@ -487,14 +358,8 @@ def make_near(p, seed=3):
 
     mask = mask.filter(ImageFilter.GaussianBlur(1.4))
 
-    # **The keep-out is enforced by a window, not by arithmetic on the
-    # spires.** Getting it right per spire means every one of base_x, width,
-    # lean and the shading halo staying inside the budget, and the first
-    # version of this missed by fifty pixels -- which the check caught, and
-    # which would have been a bullet hiding behind a rock had it not. A window
-    # that reaches zero at the boundary cannot be got wrong, and it fades the
-    # spires into the haze on the way in, which is what they should be doing
-    # anyway.
+    # The keep-out is enforced by a window that reaches zero at the boundary,
+    # rather than by constraining each spire.
     xs = np.arange(W, dtype=np.float32)
     window = np.clip(np.minimum(xs, W - 1 - xs) / edge_px, 0, 1)
     window = (1.0 - window) ** 1.5
@@ -504,8 +369,7 @@ def make_near(p, seed=3):
 
     body = shade_wrapped(mask, p.near_lit, A.shade(p.near, 0.10), 0.20, 0.46)
 
-    # The same treatment the middle distance gets, at a coarser scale: this is
-    # the closest layer to the camera, so its plates are the biggest.
+    # The same treatment as the middle distance, with bigger plates.
     edge, tone = plate_field(W, H, 55, seed + 3)
     k = (1.0 - edge * 0.72) * (0.80 + 0.40 * tone)
     k = k * (1.0 + grain(W, H, seed + 61, amount=0.075))
@@ -545,8 +409,7 @@ def main():
         rock = make_rock(p)
         near = make_near(p)
 
-        # The keep-out is asserted here as well as in `check_project.py`,
-        # because the generator is the only place that can explain *why*.
+        # The keep-out is asserted here too (also `check_bg_keepout`).
         inner_l = W * NEAR_EDGE
         inner_r = W * (1 - NEAR_EDGE)
         cols = np.asarray(near.getchannel("A"), dtype=np.uint8) > 12
@@ -563,8 +426,7 @@ def main():
             shown.append(img.resize((W // 4, H // 4), Image.LANCZOS))
             labels.append("%s %s" % (p.name, name))
 
-        # ...and the three of them stacked, which is the only view that says
-        # whether the depth ramp is doing its job.
+        # The three layers stacked...
         stack = Image.new("RGBA", (W, H), A.rgba(p.air, 255))
         stack.alpha_composite(ground)
         stack.alpha_composite(rock)
@@ -572,9 +434,7 @@ def main():
         stack.resize((W // 2, H // 2), Image.LANCZOS).save(
             os.path.join(A.PREVIEW, "bg_%s.png" % p.name))
 
-        # And a crop at 1:1, because a background judged at half size is a
-        # background whose texture has been resampled away before anyone looked
-        # at it -- which is how the flat first version passed inspection.
+        # ...and a 1:1 crop.
         stack.crop((W // 2 - 440, H // 2 - 250, W // 2 + 440, H // 2 + 250)) \
              .save(os.path.join(A.PREVIEW, "bg_%s_detail.png" % p.name))
         print("%s: 3 layers of %dx%d" % (p.name, W, H))

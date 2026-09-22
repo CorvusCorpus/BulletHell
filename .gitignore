@@ -60,3 +60,9 @@ Temporary Items
 
 # GMRT build directory
 Build
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Generator preview sheets and shot.py screenshots: local output, regenerated on demand
+tools/_preview/

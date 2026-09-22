@@ -1,33 +1,19 @@
 #!/usr/bin/env python3
-"""Prepare Szuix from the commissioned sheet.
+"""Prepare Szuix from the commissioned pixel sheet, and draw his aura and eye
+card.
 
-**This is the one asset in the project that is not drawn here**, and the whole
-job of this script is to get it to the game without damaging it. The source is
-`tools/source/szuix_sheet.png`: six frames of 55x45, hard-alpha pixel art, a
-back view of him flying. Everything else on screen is generated smooth at 1920
-x1080, so the sprite has two problems -- it is small, and it is the only
-aliased thing in the frame.
+The source is `tools/source/szuix_sheet.png`: six frames of 55x45 hard-alpha
+pixel art, a back view of him flying. (Nobody has said whether this sheet is
+under the same restriction as the painted commissions; ask before building
+more on it.)
 
-**Upscaling it is not a resize.** A LANCZOS enlargement of hard-alpha pixel art
-is mush: the filter has nothing to interpolate between but a pixel and its
-neighbour, so every edge becomes a four-pixel gradient and the character loses
-his silhouette. And a NEAREST enlargement keeps the silhouette and keeps the
-staircase, which against smooth bullets and a painted background reads as a
-sprite from a different game.
+Upscaling: NEAREST to 6x, one blur at that size to round the staircase, then
+LANCZOS down to 2x, all premultiplied (see `smooth_upscale`). A plain LANCZOS
+enlargement blurs the silhouette; plain NEAREST keeps the staircase. Then a
+dark contour and a cool rim on upward-facing edges are added (`dress`).
 
-So it goes up hard and comes back down soft: NEAREST to six times, one blur at
-that size to round the corners the staircase left, then LANCZOS down to two
-times. The blur happens where a pixel of the original is six pixels wide, so it
-softens *within* an original pixel rather than across several -- which is the
-difference between an anti-aliased edge and a blurred one.
-
-Then two things are added that the source could not have: a dark contour, so he
-survives being flown across a bright background for the same reason every
-bullet has one, and a cool rim along his upward-facing edges, so he sits in the
-same light as everything else on the field.
-
-If the commission is ever redone at a higher resolution, point `SOURCE` at it
-and set `SCALE` to 1 -- the rest of this still applies.
+If the commission is redone at a higher resolution, point `SOURCE` at it and
+set `SCALE` to 1.
 
 Usage:
     python tools/make_player.py
@@ -49,24 +35,16 @@ FRAME_W = 55
 FRAME_H = 45
 FRAMES = 6
 
-# Final size is SCALE times the source. At 2x he is 110x90, which is about
-# eight per cent of the screen's height -- the same share a Touhou player
-# sprite occupies at 640x480, which is the proportion the whole genre's sense
-# of "how much room have I got" is calibrated on.
+# Final size is SCALE times the source: 110x90 at 2x.
 SCALE = 2
 OVERSAMPLE = 6
 
 
 def smooth_upscale(img, scale, oversample=OVERSAMPLE, soften=2.4):
-    """Enlarge pixel art without either mushing it or keeping its staircase.
-
-    **Premultiplied, and that is not a detail.** Every transparent pixel in the
-    commissioned sheet is *white* -- it was drawn on white and the background
-    erased, which is invisible while the alpha is hard and 0 or 255. Blur it
-    unpremultiplied and PIL blurs the colour channels too, so that white bleeds
-    into every edge: the first run of this came out with a pale grey halo all
-    round him, which read as a badly cut-out sticker. Multiplying the colour by
-    the alpha first means what bleeds in is *nothing*, which is the truth.
+    """Enlarge pixel art: NEAREST up by `oversample`, blur, LANCZOS down to
+    `scale`. Premultiplied, because the sheet's transparent pixels are white
+    (it was drawn on white), and blurring unpremultiplied bleeds that white
+    into the edges as a grey halo.
     """
     w, h = img.size
     arr = np.asarray(img, dtype=np.float32)
@@ -93,10 +71,8 @@ def dress(img):
                     (0, 0, 0, 0))
     out.alpha_composite(img, (pad, pad))
 
-    # The contour. Traced from a *hardened* copy of the alpha: tracing the
-    # feathered edge directly puts the line halfway into the character and
-    # thickens him by a pixel all round, which across six frames reads as him
-    # pulsing.
+    # The contour, traced from a hardened copy of the alpha (tracing the
+    # feathered edge thickens him by a pixel, which flickers across frames).
     solid = out.getchannel("A").point(lambda v: 255 if v > 110 else 0)
     grown = solid.filter(ImageFilter.MaxFilter(5))
     ring = ImageChops.subtract(grown, solid).filter(
@@ -108,9 +84,8 @@ def dress(img):
     result.alpha_composite(contour)
     result.alpha_composite(out)
 
-    # The rim: the same trick the background layers use, applied to a
-    # character. It gives every upward-facing edge a lit side, which is what
-    # stops a dark blue silhouette reading as a hole in a dark blue night.
+    # The rim: a lit edge on every upward-facing edge (`rim_light`), so the
+    # dark blue silhouette doesn't disappear against dark backgrounds.
     rim = A.rim_light(solid, A.SZUIX_LIT, drop=3, blur=1.2, strength=0.55)
     rim.putalpha(ImageChops.multiply(rim.getchannel("A"), solid))
     result = A.add(result, rim)
@@ -121,17 +96,10 @@ AURA_PAD = 18
 
 
 def aura(frame):
-    """A soft white halo in the shape of one frame of him, for tinting.
-
-    **His silhouette, grown and blurred, and nothing else.** The two states
-    that need him to light up -- one hit from death, and the instant he casts
-    -- both want light that hugs his outline rather than a disc behind him,
-    because a disc says "something is here" and an outline says "*he* is
-    burning". Drawn white so one sprite is red in the first case and cyan in
-    the second; see `player_draw`.
-
-    Padded by `AURA_PAD` all round so the glow has somewhere to go, which is
-    why the game draws it with an origin shifted by the same amount.
+    """A soft white halo in the shape of one frame (his silhouette grown and
+    blurred), tinted at draw time: red at one hit from death, cyan when he
+    casts (`player_draw`). Padded by `AURA_PAD` all round; the game offsets its
+    origin by the same amount.
     """
     w, h = frame.size
     solid = frame.getchannel("A").point(lambda v: 255 if v > 90 else 0)
@@ -139,8 +107,7 @@ def aura(frame):
     big.paste(solid, (AURA_PAD, AURA_PAD))
     grown = big.filter(ImageFilter.MaxFilter(7))
     soft = grown.filter(ImageFilter.GaussianBlur(6.5))
-    # A tighter, brighter band right at the edge on top of the wide one, so
-    # the glow has a rim rather than being fog.
+    # A tighter, brighter band right at the edge, over the wide one.
     rim = big.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(1.6))
     a = ImageChops.lighter(soft.point(lambda v: int(min(255, v * 1.15))),
                            rim.point(lambda v: int(v * 0.8)))
@@ -153,17 +120,12 @@ def aura(frame):
 # The eye card
 # ---------------------------------------------------------------------------
 #
-# **Drawn here from nothing, and it has to be.** The painted commissions of him
-# are references for what he looks like and are not the game's to ship, so
-# nothing below is traced, cropped or sampled from one: every shape is a curve
-# written out in card pixels. What was taken from them is a description --
-# blue skin, cyan eyes that glow, bat ears with violet inside them, ram horns
-# curling round beside them, dark hair falling in spikes, and one fang.
-#
-# The style is cel-shaded and inked, which is what the references are and what
-# primitives can do honestly: a flat colour, one hard shadow shape and one
-# light, and a dark line round the outside. Soft airbrushed volume out of
-# primitives is exactly what makes Ziggy's card read as a placeholder.
+# Drawn from nothing: the painted commissions of him are reference only and
+# none of their pixels may ship (owner's rule), so every shape is a curve
+# written out in card pixels. From the references: blue skin, glowing cyan
+# eyes, bat ears with violet inside, ram horns curling beside them, dark
+# spiky hair, one fang. Cel-shaded and inked: flat colour, one hard shadow
+# shape and one light per plane, and a dark outline.
 
 CARD_W, CARD_H = 1280, 420      # the same card Ziggy's spells use
 CARD_SS = 3
@@ -246,8 +208,7 @@ class _Card:
         return m
 
     def taper(self, pts, w0, w1, m=None, v=255):
-        """A line that thickens or thins along its length -- an ink stroke
-        rather than a wire."""
+        """A stroke that thickens or thins along its length."""
         m = m if m is not None else self.mask()
         d = ImageDraw.Draw(m)
         n = len(pts) - 1
@@ -321,12 +282,8 @@ def _ear_right():
 
 
 def _face_half():
-    """The right half of the face, top to chin.
-
-    **Angular, not round.** The first pass curved smoothly from temple to chin
-    and came back as a blue ball -- a mascot rather than an imp. A face with
-    attitude is read off its planes: a cheekbone that is a *point*, a jaw that
-    runs straight from it, and a chin that comes to an end.
+    """The right half of the face, top to chin: angular (a pointed cheekbone, a
+    straight jaw, a defined chin).
     """
     return _chain(_bez((CX, -60), (760, -64), (868, -44), (878, -14)),
                   _bez((878, -14), (890, 60), (904, 150), (904, 206)),
@@ -335,22 +292,12 @@ def _face_half():
 
 
 def _horn_right():
-    """A ram's horn: a spiral that thins as it winds in.
-
-    **A spine and a width along it**, not an arc of a circle -- the same
-    reasoning as Ziggy's spell horns: a real horn is broadest where it leaves
-    the skull and the curl tightens as it grows, so the radius has to fall as
-    the angle turns or it reads as a croissant. The first pass wound a near-
-    circle of constant width round a hole and read as a pair of headphones.
-
-    It leaves the top of his head, goes up and out of the frame, comes back
-    down the outside and curls in under itself to a point by his temple.
+    """A ram's horn: a spine with a width along it, broad at the skull and
+    tightening as it curls. It leaves the top of his head, goes up out of the
+    frame, comes back down the outside and curls in to a point by his temple.
     """
-    # **More than one turn, and the radius falls fast.** At a single turn of
-    # nearly constant radius the inner end hides behind the outer loop and
-    # what is left is a ring. A ram's horn is recognised by its *coil* -- the
-    # tip visibly inside the curl it has made -- so it winds a turn and a
-    # quarter and ends at a quarter of the radius it started at.
+    # A turn and a quarter, ending at a quarter of the starting radius, so the
+    # tip sits visibly inside the curl.
     cx, cy = 992, 128
     n = 140
     th0, sweep = 206.0, 440.0
@@ -375,11 +322,8 @@ def _horn_right():
 
 
 def _lock(root, width, tip, bend, n=16):
-    """One lock of hair: a blade from the hairline to a point, bowed.
-
-    `bend` pushes the middle of it sideways, so a fringe of these reads as
-    hair falling and not as a row of teeth -- which is what a fringe of
-    straight triangles did.
+    """One lock of hair: a blade from the hairline to a point, bowed sideways
+    by `bend`.
     """
     rx, ry = root
     tx, ty = tip
@@ -402,10 +346,7 @@ def _eye(c, ex, ey, flip):
     def F(pts):
         return [(ex + (x - ex) * flip, y) for x, y in pts]
 
-    # **Half-lidded.** The top lid runs nearly flat across the upper third of
-    # the iris, which is the whole of the difference between a smug look and
-    # a startled one -- the first pass had the lid arched clear of the iris
-    # and he looked surprised to be casting anything.
+    # Half-lidded: the top lid runs nearly flat across the upper iris.
     top = F(_bez((ex - 90, ey + 16), (ex - 52, ey - 26),
                  (ex + 36, ey - 42), (ex + 106, ey - 30)))
     bot = F(_bez((ex + 106, ey - 30), (ex + 66, ey + 22),
@@ -417,7 +358,7 @@ def _eye(c, ex, ey, flip):
     sclera = c.ramp(t, [(0, (90, 104, 190)), (0.5, SCLERA), (1, SCLERA)])
     c.paint_field(opening, sclera)
 
-    # The iris, off centre toward the nose so he is looking *at* something.
+    # The iris, off centre toward the nose.
     ix, iy, ir = ex - 8 * flip, ey + 2, 43
     iris_m = _and(c.ellipse(ix, iy, ir, ir), opening)
     r = np.hypot(c.xs - ix, c.ys - iy) / ir
@@ -438,7 +379,7 @@ def _eye(c, ex, ey, flip):
     lid_shadow = _and(_minus(opening, c.shift(opening, 0, 18)), iris_m)
     c.paint(lid_shadow, (6, 30, 96), 0.6)
 
-    # The pupil: a slit, which is what makes this an imp and not a boy.
+    # The pupil: a slit.
     pupil = c.poly(_chain(_bez((ix, iy - 38), (ix + 9, iy - 14),
                                (ix + 9, iy + 14), (ix, iy + 38)),
                           _bez((ix, iy + 38), (ix - 9, iy + 14),
@@ -457,22 +398,16 @@ def _eye(c, ex, ey, flip):
                     (ex + 50, ey - 58), (ex + 96, ey - 48)))
     c.paint(c.taper(crease, 1.5, 3.5), SKIN_SHADE, 0.9)
 
-    # The light in it: one big catch and one small, on the same side for
-    # both eyes, because there is one source. Returned rather than painted,
-    # so they can go on after the glow instead of under it.
+    # The highlights: one big and one small, on the same side for both eyes.
+    # Returned rather than painted, so they go on after the glow.
     catches = [(ix - 14, iy - 12, 9, 7, 1.0), (ix + 16, iy + 17, 4, 3.5, 0.9)]
     return opening, iris_m, pupil, catches
 
 
 def eye_card():
-    """The close-up that flashes when Szuix spends a sigil.
-
-    **The same card the bosses announce a spell with, turned round.** Ziggy's
-    is a close-up of his face across the upper third of the field for a second
-    and a half; this is Szuix's, on the same terms, saying the attack coming
-    the other way is his. Same shape as Ziggy's -- a band pushed in until the
-    head runs off all four edges, the eyes as the brightest thing in it, and a
-    vignette so it melts into the field instead of ending in a rectangle.
+    """Szuix's eye card, shown when he spends a sigil: a close-up of his face
+    in a band across the upper field, cropped so the head runs off all four
+    edges, the eyes the brightest thing in it, with a vignette.
     """
     c = _Card()
 
@@ -504,8 +439,7 @@ def eye_card():
         o = outer if side > 0 else _flip(outer)
         i = inner if side > 0 else _flip(inner)
         rs = ridges if side > 0 else [_flip(q) for q in ridges]
-        # Closed well inside the head, so the edge that closes it is behind
-        # the face rather than a straight line beside the jaw.
+        # Closed inside the head, so the closing edge is hidden by the face.
         ear_m = c.poly(o + [(CX + side * 150, 300), (CX + side * 150, 40)])
         c.paint(ear_m, SKIN)
         mem = c.poly(i)
@@ -532,9 +466,8 @@ def eye_card():
     t = np.clip((c.ys + 40) / 520.0, 0, 1)
     c.paint_field(face, c.ramp(t, [(0, (66, 82, 222)), (0.55, SKIN),
                                    (1, (46, 56, 186))]))
-    # **One hard shadow shape per plane.** The side of the face turned from
-    # the light, the hollow under each cheekbone -- which is what makes the
-    # cheekbone a point -- and a thin one down the lit side.
+    # One hard shadow shape per plane: the side turned from the light, the
+    # hollow under each cheekbone, and a thin one down the lit side.
     c.paint(_and(_minus(face, c.shift(face, -58, 0)), face), SKIN_SHADE, 0.95)
     c.paint(_and(_minus(face, c.shift(face, 12, 0)), face), SKIN_SHADE, 0.5)
     hollow_r = c.poly([(904, 206), (872, 240), (818, 300), (774, 340),
@@ -564,8 +497,8 @@ def eye_card():
     c.paint(c.ellipse(CX - 9, 274, 9, 3.6), (104, 118, 220), 0.9)
     c.paint(c.stroke([(CX, 301), (CX, 316)], 3.0), INK)
 
-    # A smirk: the corner on his left -- our right -- pulled higher, and the
-    # mouth just open enough to show the fang on that side.
+    # A smirk: the corner on his left (our right) higher, the mouth open just
+    # enough to show the fang on that side.
     upper = _bez((548, 316), (600, 332), (692, 330), (760, 292))
     lower = _bez((760, 292), (718, 340), (640, 358), (568, 324))
     mouth = c.poly(_chain(upper, lower))
@@ -593,19 +526,15 @@ def eye_card():
         catches += cs
 
     # ---- the brows ---------------------------------------------------------------
-    # One raised and one level: the brow on the smirk's side lifts, the other
-    # lowers toward the nose. Symmetrical brows on a smirk read as a mask.
+    # One raised (on the smirk's side) and one lowered.
     c.paint(c.taper(_bez((712, 132), (756, 108), (820, 92), (882, 94)),
                     13, 3), HAIR)
     c.paint(c.taper(_bez((570, 138), (526, 124), (470, 118), (404, 124)),
                     13, 3), HAIR)
 
     # ---- the hair -----------------------------------------------------------------
-    # **Two layers of locks, and the mass stops at their roots.** The first
-    # pass hung a fringe off the bottom of a rectangle, so the rectangle's
-    # edge showed as a ruled line in every gap between locks. Here the
-    # fringe *is* the hairline: a back row fills the notches of the front
-    # row, and nothing above them has an edge that can be seen.
+    # Two rows of locks; the back row fills the gaps of the front row, and the
+    # hair mass ends at their roots (so no straight edge shows between locks).
     back = [((438, 50), 70, (430, 150), -8),
             ((502, 56), 74, (486, 136), -6),
             ((574, 58), 78, (548, 150), -10),
@@ -642,9 +571,7 @@ def eye_card():
     for pts, _, _, _ in lock_pts:
         front = c.poly(pts, front)
     c.paint(_minus(back_hair, front), (8, 8, 22), 0.9)
-    # A sheen down each lock, on the side the light is on. Hair in this style
-    # is drawn in strips; a zigzag band across the crown -- the first pass --
-    # read as a crack in it, and vertical strokes across the mass as a fence.
+    # A sheen down each lock, on the lit side.
     sheen = c.mask()
     for pts, root, tip, bend in lock_pts:
         dy = tip[1] - root[1]
@@ -697,9 +624,8 @@ def eye_card():
                             sp[k][1] + (oo[k][1] - sp[k][1]) * 0.55)
                            for k in range(n - 1, -1, -1)])
         c.paint(_and(lit, horn), HORN_LIT, 0.35)
-        # Growth rings: arched, closer together toward the tip, each with a
-        # lit edge behind it -- which is what makes it horn rather than rope,
-        # and rather than a ruler.
+        # Growth rings: arched, closer together toward the tip, each with a lit
+        # edge.
         rings, ring_lit = c.mask(), c.mask()
         k = 3.0
         while k < n - 8:

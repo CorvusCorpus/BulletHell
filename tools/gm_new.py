@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 """Create GameMaker resources and register them everywhere they must appear.
 
-A resource is never in one place. A script is a `.gml`, a `.yy`, a line in
-`Wordsearch.yyp` and a line in `Wordsearch.resource_order`; a sprite adds a PNG
-per frame plus a second copy under `layers/`; an object's events are stored
-both as `.gml` files and as entries in its own `eventList`. Miss one and the
-failure is silent in a different way each time -- the project won't open, or
-the asset won't resolve, or GameMaker draws nothing and mentions it to nobody.
+A script is a `.gml`, a `.yy`, a line in `Bullet Hell.yyp` and a line in
+`Bullet Hell.resource_order`; a sprite adds a PNG per frame plus a second copy
+under `layers/`; an object's events are `.gml` files and entries in its
+`eventList`. Missing one fails silently in different ways, so everything that
+creates a resource goes through this module.
 
-This module is the single place that knows those pairings. Everything that
-generates art or code for this project goes through it.
-
-**Every GUID is derived from the resource's name**, not generated fresh, so
-re-running a generator writes byte-identical files and produces no diff. That
-is what makes the art scripts safe to re-run.
+Every GUID is derived from the resource's name, so re-running a generator
+writes identical files.
 
 Import it; there is no command line:
 
@@ -84,7 +79,7 @@ def write(path, text):
 
 
 def validate(path):
-    """Parse GameMaker's JSON-with-trailing-commas to prove an edit is sound."""
+    """Parse GameMaker's trailing-comma JSON to prove an edit is sound."""
     text = read(path)
     try:
         json.loads(re.sub(r",(\s*[}\]])", r"\1", text))
@@ -175,11 +170,8 @@ SCRIPT_YY = """{
 
 
 def script(name, body=None, folder=None, order=0):
-    """Create a script asset, or register one whose .gml is authored elsewhere.
-
-    `body=None` means "leave whatever .gml is on disk alone" -- most of this
-    project's GML is written as files rather than as Python strings, and this
-    is what lets the same call register it without clobbering it.
+    """Create a script asset, or register one whose .gml already exists on disk
+    (`body=None` leaves the .gml alone).
     """
     d = os.path.join(ROOT, "scripts", name)
     gml = os.path.join(d, name + ".gml")
@@ -211,15 +203,8 @@ SHADER_YY = """{
 
 
 def shader(name, vertex=None, fragment=None, folder=None, order=0):
-    """Create a GLSL ES shader asset, or register one authored on disk.
-
-    `type: 1` is GLSL ES, which is the only one that compiles on every target
-    this project could ship to -- the HLSL variants are Windows-only and there
-    is nothing in here that needs them.
-
-    Like `script`, passing `None` for either stage leaves whatever is on disk
-    alone, so a shader can be written as files and registered without being
-    clobbered.
+    """Create a GLSL ES shader asset (`type: 1`), or register one authored on
+    disk (`None` for a stage leaves that file alone).
     """
     d = os.path.join(ROOT, "shaders", name)
     for text, ext in ((vertex, ".vsh"), (fragment, ".fsh")):
@@ -287,10 +272,8 @@ def _ref(name, kind):
 
 def obj(name, events=None, sprite=None, parent_object=None, persistent=False,
         folder=None, order=0):
-    """Create or overwrite an object. `events` maps event stem -> GML source.
-
-    The event `.gml` files and the `eventList` are written from the same dict,
-    which is the whole point: they cannot drift apart.
+    """Create or overwrite an object. `events` maps event stem -> GML source;
+    the event files and the `eventList` are written from the same dict.
     """
     events = events or {}
     d = os.path.join(ROOT, "objects", name)
@@ -562,10 +545,9 @@ def room(name, width, height, instances=None, folder=None, order=0,
          colour=0xFF000000):
     """Create or overwrite a room.
 
-    `instances` is a list of (object_name, x, y). Each is written into **both**
-    the layer's instance list and `instanceCreationOrder` -- GameMaker creates
-    what the second list names, so an instance in only the layer silently does
-    not exist at run time.
+    `instances` is a list of (object_name, x, y). Each goes into both the
+    layer's instance list and `instanceCreationOrder` (GameMaker only creates
+    what the second list names).
     """
     instances = instances or []
     placed = []
@@ -661,18 +643,10 @@ SOUND_YY = """{
 
 
 def sound(name, samples, rate=44100, folder=None, order=0, preload=True):
-    """Create or overwrite a sound from mono float samples in [-1, 1].
-
-    Written as **16-bit PCM WAV, uncompressed and preloaded**, which is the
-    right answer for every sound in this project and the wrong one for exactly
-    none of them: these are all short cues, a decode on first play is a stutter
-    at the worst possible moment, and `compression` 0 with `preload` true is
-    what says "this lives in memory". Music, if it ever arrives, wants the
-    opposite and should not come through here without saying so.
-
-    The `.yy` carries the duration, and GameMaker believes it rather than
-    measuring the file -- so it is computed from the samples that were actually
-    written rather than passed in.
+    """Create or overwrite a sound from mono float samples in [-1, 1], written
+    as 16-bit PCM WAV, uncompressed and preloaded (right for short cues; music
+    would want different settings). The `.yy` duration is computed from the
+    samples written, since GameMaker uses it rather than measuring the file.
     """
     import struct
     import wave

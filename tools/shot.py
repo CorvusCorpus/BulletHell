@@ -1,30 +1,19 @@
 #!/usr/bin/env python3
-"""Build the game, photograph a posed scene, and copy the PNG out.
+"""Build the game, pose a scene, save a screenshot, and copy the PNG out.
 
-The counterpart to `tools/test.py`. That one proves the rules are right; this
-one is the only way to see whether the screen actually *reads* -- which for a
-bullet hell is most of the game. A pattern that is correct and illegible is a
-bug, and no assertion can see it.
-
-The game poses itself -- see `objects/obj_shot` -- so what comes back is the
-real bullet system running the real pattern, not a mock-up.
-
-**The scene name is passed as a second argument, not fused into the flag**, so
-`obj_boot` can refuse one it does not know. Wordsearch fused them, and a scene
-whose switch nothing read did not fail: the game opened its menu and sat there
-until the 120-second timeout, with nothing in the output to say the scene
-simply did not exist.
-
-GameMaker's sandbox puts `screen_save` output in the per-game save area rather
-than beside the executable, so the file is fetched from there.
+The game poses the scene itself (`objects/obj_shot`, `scripts/shot_scenes`)
+and saves the screenshot with `screen_save`, which writes into the game's
+save area; this fetches it from there. The scene name is passed as a
+separate argument, so the game can refuse an unknown one.
 
 Usage:
     python tools/shot.py                # -> tools/_preview/stage.png
     python tools/shot.py boss
     python tools/shot.py boss out.png
-    python tools/shot.py --all          # every scene, one after another
     python tools/shot.py bomb --burst 0,20,40,70,110
-                                        # one launch, five frames, one sheet
+                                        # one launch, several frames, one sheet
+    python tools/shot.py --all          # every scene (slow)
+    python tools/shot.py boss --fullscreen   # design-size pixels
 """
 import contextlib
 import os
@@ -37,19 +26,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import build
 
-# Save files the game seeds during a posed shot, so panels are photographed
-# populated rather than empty.
-#
-# **The `.tmp` siblings are listed too, and they matter.** Saving is atomic --
-# the game builds the new file beside the live one and swaps -- so a seeded run
-# leaves a `.tmp` full of fabricated progress. Left behind, that is precisely
-# what the recovery path restores the next time a live file is missing, which
-# would quietly write the screenshot's data into a real player's save.
+# Save files a posed shot may write, set aside for the run and restored after
+# (`saves_set_aside`). The `.tmp` sibling is included because the save
+# loader falls back to it.
 SEEDED = ("progress.json", "progress.json.tmp")
 
-# What can be photographed. Each is a scene `obj_shot` knows how to pose; the
-# game refuses a name that is not in its own list, so this and that one cannot
-# drift apart silently.
+# Scene names. Must match `shot_scene_list()` in `scripts/shot_scenes`; the
+# game refuses a name it doesn't know.
 SCENES = (
     "title",        # the stage-select screen
     "practice",     # the attack list: every attack of a stage's bosses
@@ -91,26 +74,17 @@ SCENES = (
     "sanctum",       # stage three: two gateposts standing in a live wave
     "mika_attacks",  # its attack list, scrolled half way down Mika's fifteen
 
-    # The hall itself, at the two ends of its reveal. **Two pictures of the
-    # same room**, and the only difference between them is where the camera
-    # is: phase A is nine hundred units up aimed at the marble, phase B is at
-    # flying height and level. Nothing else in the stage changes, which is the
-    # whole argument for making the reveal a camera move rather than a scene
-    # change -- and it is why both have to be photographed, because "the hall
-    # is hidden" is a claim about a frame and not about a number.
+    # Stage three's hall: before the reveal, after it, partway, and the
+    # opening fade.
     "hall_a",        # the approach: aimed at the floor, the hall off-frame
     "hall_b",        # the reveal: level, the room open
     "hall_turn",     # ...and half way between them, off the review card
     "hall_arrive",   # ...and the dark it all comes up out of
 )
 
-# **Mika's fifteen, one scene per slot**, generated the way `shot_scene_list`
-# generates them in the game: a non-spell and then a spell, seven times, and a
-# last spell -- `mika_n1`, `mika_s1`, ... `mika_n7`, `mika_s7`, `mika_s8`. Each
-# is his attack in that slot, practised in the open hall and photographed four
-# seconds in; `--burst` offsets are relative to that. The game refuses any name
-# its own list does not have, so a slot count that changed on one side only
-# fails loudly rather than photographing the wrong attack.
+# One scene per slot of Mika's table (`mika_n1`, `mika_s1`, ... `mika_s8`),
+# generated as the game generates them: his attack in that slot, practised,
+# photographed four seconds in (`--burst` offsets count from there).
 MIKA_NONSPELLS = 7
 SCENES += tuple(
     name
@@ -120,35 +94,24 @@ SCENES += tuple(
 
 EXE = os.path.join(build.BUILD, "out", build.project_name() + ".exe")
 
-# **GameMaker sanitises the save directory name, and this project has a space
-# in its own.** `screen_save` is sandboxed into `%LOCALAPPDATA%\<game>`, and
-# the game there is `Bullet_Hell` rather than `Bullet Hell` -- so a harness
-# using the project name verbatim looks in a directory that does not exist,
-# finds no screenshot, and reports the run as having failed to save one. The
-# game had saved it perfectly well.
+# `screen_save` writes into `%LOCALAPPDATA%\<game>`, where GameMaker has
+# replaced the project name's space with an underscore.
 SAVE_DIR = os.path.join(os.environ.get("LOCALAPPDATA", ""),
                         build.project_name().replace(" ", "_"))
 
 TIMEOUT = 120
 
-# GameMaker's run-time error banner. **A scene can produce a screenshot and
-# still have crashed**, and that is not a corner case: `obj_shot` calls
-# `screen_save` from its Step event, `game_end()` lets the current frame finish,
-# and a throw in the Draw event that follows happens *after* the file is on
-# disk. The first time a boss threw floating text the game died exactly there,
-# every scene's PNG was written, and this tool reported fifteen successes.
+# GameMaker's run-time error banner. A scene can save its screenshot and still
+# crash (the screenshot is saved in Step; a throw in the following Draw
+# happens after the file exists), so the output is checked for this too.
 GAME_ERROR = re.compile(r"^ERROR!!!|^ERROR in action number", re.M)
 
 
 @contextlib.contextmanager
 def saves_set_aside(directory, names):
-    """Move save files out of the way, and put them back afterwards.
-
-    **The player's real saves are not ours to delete.** Renaming and restoring
-    gets a clean slate for the shot and gives the save back, including when the
-    run crashes. A file that did not exist beforehand must not exist afterwards
-    either -- the posed run *writes* these, and a version that only restored
-    what it had moved left seeded progress sitting in the real save directory.
+    """Move save files out of the way, and put them back afterwards (also on a
+    crash). A file that didn't exist before is deleted afterwards, since the
+    posed run may write it.
     """
     moved = []
     absent = []
@@ -175,12 +138,7 @@ def saves_set_aside(directory, names):
 
 
 def contact_sheet(paths, labels, out, cols=3, scale=0.42):
-    """Tile a burst into one sheet, so a sequence can be read at a glance.
-
-    A bomb is four seconds of sigil, theft, seals and bursts; six PNGs in a
-    folder is six things to open in order and hold in your head, and one sheet
-    is the sequence. Same argument every generator's preview makes.
-    """
+    """Tile a burst's screenshots into one labelled sheet."""
     from PIL import Image, ImageDraw
 
     shots = [Image.open(p).convert("RGB") for p in paths]
@@ -201,22 +159,14 @@ def contact_sheet(paths, labels, out, cols=3, scale=0.42):
 
 
 def take(scene, out, fullscreen=False, burst=None):
-    """Photograph one scene.
-
-    **Windowed by default, and that reverses an earlier decision.** Full screen
-    made a screenshot 1920x1080 exactly, so a photographed pixel was a design
-    pixel -- but this tool is run every few minutes while somebody is working on
-    something else, and eighteen scenes each seizing the display, changing the
-    display mode and rearranging every other window is a far worse cost than
-    the one it bought. Windowed, GameMaker clamps to 1864x1048: 97% of design
-    size, scaled together, and nothing here measures a screenshot. Pass
-    ``--fullscreen`` when a photographed pixel really has to be a design pixel.
+    """Photograph one scene. Windowed unless `fullscreen` (a windowed
+    screenshot is 1864x1048 on a 1080p desktop; `--fullscreen` gives
+    design-size pixels).
     """
     names = (["shot_%d.png" % i for i in range(len(burst))] if burst
              else ["shot.png"])
     shots = [os.path.join(SAVE_DIR, n) for n in names]
-    # Remove any previous shot first, or a run that failed to save one leaves
-    # the last good image in place and the failure looks like success.
+    # Remove any previous shot, so a failed save can't pass with an old image.
     for path in shots:
         if os.path.exists(path):
             os.remove(path)
@@ -228,9 +178,8 @@ def take(scene, out, fullscreen=False, burst=None):
                 cmd += ["-burst", ",".join(str(int(b)) for b in burst)]
             if fullscreen:
                 cmd.append("-fullscreen")
-            # Minimised and un-activated unless somebody asked to watch it.
-            # `--fullscreen` is the one run that wants the display, so it is
-            # the one run that gets shown. See `build.run_game`.
+            # Minimised without focus, unless `--fullscreen` (see
+            # `build.run_game`).
             proc = build.run_game(cmd, TIMEOUT, show=fullscreen)
             output = (proc.stdout or "") + (proc.stderr or "")
             missing = [p for p in shots if not os.path.exists(p)]
@@ -239,13 +188,7 @@ def take(scene, out, fullscreen=False, burst=None):
                       % (scene, ", ".join(missing)))
                 print("\n".join(output.splitlines()[-25:]))
                 return 1
-            # **The screenshot is not the verdict**, for the reason spelled
-            # out above `GAME_ERROR`: `screen_save` runs in Step and a throw
-            # in the Draw event that follows lands after the file is on
-            # disk. That check was written down and never called, so this
-            # tool has been grading a crashed scene by whether it managed to
-            # photograph itself before dying -- which is the exact failure
-            # the comment says once cost fifteen false successes.
+            # A saved screenshot isn't enough: fail if the game threw.
             if GAME_ERROR.search(output):
                 print("FAILED (%s): the game threw" % scene)
                 print("\n".join(output.splitlines()[-25:]))
@@ -308,8 +251,7 @@ def main():
         for s in SCENES:
             if take(s, os.path.join(preview, "%s.png" % s), fullscreen) != 0:
                 failed.append(s)
-        # A summary, because eighteen scenes is more output than fits on a
-        # screen and a failure in the middle of it scrolls away.
+        # A summary at the end.
         print()
         if failed:
             print("%d of %d scenes FAILED: %s"
