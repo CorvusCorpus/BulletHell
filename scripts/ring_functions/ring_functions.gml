@@ -491,17 +491,28 @@ function ring_draw() {
         draw_sprite_ext(spr_ring, 0, _r.x, _r.y, _k, _k, _r.ang, c_white,
                         _v.alpha);
 
-        // The charge: the same sprite again, additively, in the ring's hue.
-        // (The sprite's own colours are baked in.)
+        // The light stays put while the pattern turns under it, so these two
+        // are drawn unrotated (`tools/make_rings.py`). The sheen is the
+        // reflections, added. The glint scales what is already there
+        // (dst * (1 + src)), which lifts the chain's gold and leaves the black
+        // alone; that blend ignores alpha, so it fades through its colour.
+        gpu_set_blendmode(bm_add);
+        draw_sprite_ext(spr_ring_sheen, 0, _r.x, _r.y, _k, _k, 0, c_white,
+                        _v.alpha);
+        gpu_set_blendmode_ext(bm_dest_colour, bm_one);
+        draw_sprite_ext(spr_ring_glint, 0, _r.x, _r.y, _k, _k, 0,
+                        merge_colour(c_black, c_white, _v.alpha), 1);
+
+        // The charge: the band heats up in the ring's hue.
         if (_v.charge > 0.01) {
             gpu_set_blendmode(bm_add);
-            draw_sprite_ext(spr_ring, 0, _r.x, _r.y, _k, _k, _r.ang, _col,
-                            _v.alpha * _v.charge * 0.9);
+            draw_sprite_ext(spr_ring_heat, 0, _r.x, _r.y, _k, _k, _r.ang,
+                            _col, _v.alpha * _v.charge * 0.9);
             var _gs = (RING_R * 2.8) / sprite_get_width(spr_fx_bloom);
             draw_sprite_ext(spr_fx_bloom, 0, _r.x, _r.y, _gs, _gs, 0, _col,
                             _v.alpha * _v.charge * 0.10);
-            gpu_set_blendmode(bm_normal);
         }
+        gpu_set_blendmode(bm_normal);
     }
 
     ring_draw_arcs();
