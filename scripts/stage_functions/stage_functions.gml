@@ -72,22 +72,18 @@ function stage_encounter_step(_s, _g) {
         if (!_live) return;
         _s.enc_n++;
         _s.enc = {
-            // Real frames open, not stage time (which is frozen during a
-            // gate, where most of a group is fought).
-            frames: 0,
             tally0: _g.tally,
             hits0: _g.player.hit_n,
             bombs0: _g.player.bomb_n,
-            worth0: global.enemy_worth,
+            // The group opens the frame after its first fodder spawns, so
+            // what is already on the field belongs to it.
+            worth0: global.enemy_worth - enemy_live_worth(),
             n: _s.enc_n,
         };
         return;
     }
 
-    if (_live) {
-        _s.enc.frames++;
-        return;
-    }
+    if (_live) return;
     stage_encounter_close(_s, _g);
 }
 
@@ -101,7 +97,7 @@ function stage_encounter_close(_s, _g) {
     var _hits = _g.player.hit_n - _e.hits0;
     var _bombs = _g.player.bomb_n - _e.bombs0;
     var _worth = global.enemy_worth - _e.worth0;
-    var _target = rank_wave_target(_worth, _e.frames);
+    var _target = rank_wave_target(_worth);
 
     rank_note(_g[$ "marks"], "WAVE " + string(_e.n),
               rank_for_encounter(_hits, _bombs, _earned >= _target), false,

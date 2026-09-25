@@ -46,6 +46,9 @@ function ring_blank() {
         arc: undefined,          // another ring this one is strung to
         arc_gen: -1, arc_t: 0,
         graze_t: 0,
+        // False for a ring that may be carried off the field and back (one
+        // riding the player), which would otherwise be culled.
+        cull: true,
         alive: true,
     };
 }
@@ -77,6 +80,7 @@ function ring_alloc() {
     _g.act = undefined;
     _g.arc = undefined; _g.arc_gen = -1; _g.arc_t = 0;
     _g.graze_t = 0;
+    _g.cull = true;
     _g.alive = true;
     global.ring_seq++;
     _g.gen = global.ring_seq;
@@ -297,10 +301,11 @@ function ring_step(_g) {
             }
         }
 
-        // Culled once it is entirely off the field.
+        // Culled once it is entirely off the field, unless `cull` is off.
         var _out = RING_R + CULL_MARGIN;
-        if (_r.x < FIELD_X0 - _out || _r.x > FIELD_X1 + _out
-            || _r.y < FIELD_Y0 - _out || _r.y > FIELD_Y1 + _out) {
+        if (_r.cull
+            && (_r.x < FIELD_X0 - _out || _r.x > FIELD_X1 + _out
+                || _r.y < FIELD_Y0 - _out || _r.y > FIELD_Y1 + _out)) {
             ring_kill_at(_i);
         }
     }

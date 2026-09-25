@@ -330,14 +330,16 @@ function mika_def() {
 /// @desc The fifteen slots, one row each in fight order. This is the only
 ///       list to edit; `mika_phases` derives the phase table from it.
 ///
-///       A row is `{name, col, hp, time, attack, move?}`. A name makes it a
-///       spell. `hp` is the share of his health the slot is worth; thresholds
-///       and his total are summed from it, so retuning one slot moves nothing
-///       else.
+///       A row is `{name, col, hp, time, attack, move?, at?, par?, score?,
+///       survival?}`. A name makes it a spell. `at` is a `Fixed` slot's own
+///       station (`boss_move_at`). `hp` is the share of his health
+///       the slot is worth; thresholds and his total are summed from it, so
+///       retuning one slot moves nothing else. `par`, `score` and `survival`
+///       are for the grading (`rank_attack_target`, `rank_attack_expired`).
 ///
 ///       Current state (keep this true):
-///           N1  written: the mill           S1  old placeholder, Gilded Aperture
-///           N2  written: the mill mirrored  S2  old placeholder, Ashiah's Circuit
+///           N1  written: the mill           S1  written: Storm Cage
+///           N2  written: the mill mirrored  S2  written: Chakram Blitz
 ///           N3  draft: the quad             S3  old placeholder, Three Open Gates
 ///           N4  draft: the quad mirrored    S4  unwritten
 ///           N5  draft: the crown            S5  unwritten
@@ -355,16 +357,21 @@ function mika_slots() {
         // rings blocking part of the player's fire.
         { name: "", col: BCOL_AMBER, hp: 260, time: 35 * FPS,
           move: BossMove.Step, attack: mika_n1_sandmill },
-        // S1
-        { name: "Gilded Aperture", col: BCOL_GOLD, hp: 392, time: 40 * FPS,
-          move: BossMove.Fixed, attack: mika_gilded_aperture },
+        // S1 -- Storm Cage (`mika_storm_cage`). Its cage blocks the
+        // player's fire whenever a ring passes over them; the health is the
+        // placeholder's until that has been measured.
+        { name: "Storm Cage", col: BCOL_CYAN, hp: 392, time: 45 * FPS,
+          move: BossMove.Fixed, attack: mika_storm_cage },
 
         // N2 -- N1 mirrored.
         { name: "", col: BCOL_AMBER, hp: 260, time: 35 * FPS,
           move: BossMove.Step, attack: mika_n2_sandmill },
-        // S2
-        { name: "Ashiah's Circuit", col: BCOL_CYAN, hp: 476,
-          time: 42 * FPS, move: BossMove.Fixed, attack: mika_ashiah_circuit },
+        // S2 -- Chakram Blitz (`mika_chakram_blitz`). He holds the middle of
+        // the field, so the player can circle him; the health is half the old
+        // placeholder's, since circling keeps the player off his line of fire.
+        { name: "Chakram Blitz", col: BCOL_GOLD, hp: 238, time: 45 * FPS,
+          move: BossMove.Fixed, at: { x: FIELD_CX, y: FIELD_CY - 60 },
+          attack: mika_chakram_blitz },
 
         // N3 -- the quad (draft). Four rings block more of the player's fire:
         // measured headlessly, 16% of shots reach him against 24% for the
@@ -436,7 +443,11 @@ function mika_phases() {
             hp_end: _left / _total,
             time: _s.time,
             move: _s[$ "move"] ?? BossMove.Drift,
+            at: _s[$ "at"],
             attack: _s.attack,
+            par: _s[$ "par"],
+            score: _s[$ "score"],
+            survival: _s[$ "survival"],
         });
     }
     return _out;
@@ -496,66 +507,11 @@ function mika_unwritten_spell(_e, _g, _t) {
 }
 
 // ---------------------------------------------------------------------------
-// Old placeholders still in S1-S3 and S8
+// Old placeholders still in S3 and S8
 //
 // Delete each one, and anything only it uses, when its slot is written. The
 // frozen copies in `stage_sanctum_old` keep them playable.
 // ---------------------------------------------------------------------------
-
-/// @desc **Gilded Aperture.** Six rings on one orbit round him, turning; the
-///       gaps between them are the lines to the boss. `Fixed`, because the
-///       formation is measured from his position. Its volleys run round the
-///       orbit rather than out of it, so they don't close the gaps.
-function mika_gilded_aperture(_e, _g, _t) {
-    if (_t == 0) {
-        mika_formation(_e, MIKA_RING_N, MIKA_ORBIT, 0.55, MIKA_RING_COL,
-                       mika_aperture_rim, 0, 1.0);
-    }
-    // His own fire: slow, wide and aimed.
-    if ((_t mod 96) == 46) {
-        fire_fan_stack(_e.x, _e.y, 9, 2, 4.6, 1.0,
-                       aim_at(_e.x, _e.y, _g.player.x, _g.player.y), 60,
-                       BSHAPE_RICE, BCOL_BONE, 22);
-    }
-}
-
-/// @desc The aperture rings' volleys, in cyan so they stand apart from the
-///       gold rings.
-function mika_aperture_rim(_ring, _g, _t) {
-    if ((_t mod 50) != 22) return;
-    ring_fire_tangent(_ring, 5, 3.2, _t * 2.2, BSHAPE_MOTE, BCOL_CYAN, 1, 16);
-}
-
-/// @desc **Ashiah's Circuit.** Six rings on an orbit, alternate pairs strung
-///       with lethal current (three bars, three open doors); the pairing
-///       shifts every few seconds so the doors move.
-function mika_ashiah_circuit(_e, _g, _t) {
-    static circuit = { ring: [], gen: [] };
-
-    if (_t == 0) {
-        circuit = mika_formation(_e, MIKA_RING_N, MIKA_ORBIT, 0.60, BCOL_CYAN,
-                                 mika_circuit_rim, 0, 1.2);
-    }
-
-    // The pairing alternates between (0,1)(2,3)(4,5) and (1,2)(3,4)(5,0).
-    if ((_t mod 190) == 0) {
-        var _off = ((_t div 190) mod 2);
-        for (var _k = 0; _k < 3; _k++) {
-            var _a = (_k * 2 + _off) mod MIKA_RING_N;
-            var _b = (_a + 1) mod MIKA_RING_N;
-            mika_link(circuit, _a, _b, 160);
-        }
-    }
-
-    if ((_t mod 34) == 16) {
-        fire_ring(_e.x, _e.y, 5, 3.4, _t * 6.7, BSHAPE_MOTE, BCOL_BONE, 16);
-    }
-}
-
-function mika_circuit_rim(_ring, _g, _t) {
-    if ((_t mod 74) != 30) return;
-    ring_fire_rim(_ring, 5, 3.2, _t * 4.1, BSHAPE_ORB, BCOL_CYAN, 18);
-}
 
 /// @desc **Three Open Gates.** Three rings drifting across the field, each
 ///       with a turning beam through its middle (`ring_beam`).

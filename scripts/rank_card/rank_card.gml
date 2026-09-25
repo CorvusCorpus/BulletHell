@@ -16,6 +16,7 @@ function rank_card_new() {
         spell: false,
         earned: 0,
         target: 0,
+        expired: false,     // a timed-out attack: no score line
         hits: 0,
         bombs: 0,
         slot: 0,            // which socket it flies home to
@@ -33,6 +34,7 @@ function rank_card_show(_c, _mark, _slot, _total) {
     _c.spell = _mark.spell;
     _c.earned = _mark[$ "earned"] ?? 0;
     _c.target = _mark[$ "target"] ?? 0;
+    _c.expired = _mark[$ "expired"] ?? false;
     _c.hits = _mark[$ "hits"] ?? 0;
     _c.bombs = _mark[$ "bombs"] ?? 0;
     _c.slot = _slot;
@@ -165,12 +167,14 @@ function rank_card_draw(_c) {
         draw_text_outline(_x, _ty, rank_card_title(_c),
                           merge_colour(_col, c_white, 0.25), _ta, 3);
 
-        // Score against target, then what it cost.
+        // Score against target (or that the clock ran out, which can't meet
+        // it), then what it cost.
         draw_set_font(fnt_small());
-        var _met = (_c.earned >= _c.target);
+        var _met = !_c.expired && (_c.earned >= _c.target);
         draw_text_tracked(_x, _ty + 52,
-                          string(round(_c.earned)) + "  /  "
-                          + string(round(_c.target)), 4,
+                          _c.expired ? "TIME OUT"
+                                     : string(round(_c.earned)) + "  /  "
+                                       + string(round(_c.target)), 4,
                           _met ? COL_GRAZE : COL_SILVER, _ta * 0.92, 2,
                           fa_center);
         draw_text_tracked(_x, _ty + 90, rank_card_cost(_c), 6,

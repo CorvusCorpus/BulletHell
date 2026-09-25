@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"mika_storm_cage",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"mika_storm_cage",
+  "parent":{
+    "name":"mika",
+    "path":"folders/Scripts/mika.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

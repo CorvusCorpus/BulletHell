@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"mika_chakram_blitz",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"mika_chakram_blitz",
+  "parent":{
+    "name":"mika",
+    "path":"folders/Scripts/mika.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

@@ -80,6 +80,9 @@ SCENES = (
     "hall_b",        # the reveal: level, the room open
     "hall_turn",     # ...and half way between them, off the review card
     "hall_arrive",   # ...and the dark it all comes up out of
+
+    # Temporary: Chakram Blitz rope variants side by side.
+    "rope_lab",
 )
 
 # One scene per slot of Mika's table (`mika_n1`, `mika_s1`, ... `mika_s8`),

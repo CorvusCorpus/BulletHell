@@ -4,7 +4,7 @@
 /// One bar for the whole fight, with each attack's threshold marked on it
 /// (asked for by the owner), rather than Touhou's bar per attack.
 ///
-/// A phase is `{kind, name, col, bg, hp_end, time, attack, move?}` and
+/// A phase is `{kind, name, col, bg, hp_end, time, attack, move?, at?}` and
 /// `attack(_e, _g, _t)` is called once a frame with the frames elapsed. A
 /// phase ends on health (checked first) or on time; a timeout ends the attack
 /// the same way but awards no capture.
@@ -185,7 +185,7 @@ function boss_move(_e, _g, _i) {
 
     switch (_k) {
         case BossMove.Track: boss_move_track(_e, _g); break;
-        case BossMove.Fixed: boss_move_hold(_e);      break;
+        case BossMove.Fixed: boss_move_hold(_e, boss_move_at(_b, _i)); break;
         case BossMove.Step:  boss_move_step(_e);      break;
         case BossMove.Close:
             boss_move_drift(_e, BOSS_CLOSE_X, BOSS_CLOSE_Y);
@@ -233,11 +233,20 @@ function boss_move_track(_e, _g) {
     _e.y += (_y - _e.y) * BOSS_DRIFT_RATE;
 }
 
-/// @desc Glide to the station and stay there. (The sprite still bobs in
-///       `boss_draw`.)
-function boss_move_hold(_e) {
+/// @desc The station the attack at index `_i` asks for with its `at`
+///       (`{x, y}`), or `undefined` for the boss's own.
+function boss_move_at(_b, _i) {
+    if (_i < 0 || _i >= array_length(_b.phases)) return undefined;
+    return _b.phases[_i][$ "at"];
+}
+
+/// @desc Glide to the station (`_at`, or the boss's own) and stay there. (The
+///       sprite still bobs in `boss_draw`.)
+function boss_move_hold(_e, _at = undefined) {
     var _b = _e.boss;
-    enemy_glide(_e, _b.home_x, _b.home_y, BOSS_DRIFT_RATE);
+    var _x = (_at == undefined) ? _b.home_x : _at.x;
+    var _y = (_at == undefined) ? _b.home_y : _at.y;
+    enemy_glide(_e, _x, _y, BOSS_DRIFT_RATE);
 }
 
 /// @desc `BossMove.Step`: hold for `BOSS_STEP_HOLD`, hop for
@@ -368,12 +377,17 @@ function boss_end_phase(_e, _g, _beaten) {
             ? _p.name
             : (_b.def.name + " " + string(_b.phase + 1));
         var _earned = _g.tally - _b.tally_at_phase;
-        var _target = rank_attack_target(_p);
+        // The attack's share of the bar, in hit points: what its par is
+        // priced on.
+        var _top = (_b.phase > 0) ? _b.phases[_b.phase - 1].hp_end : 1;
+        var _span = (_p == undefined) ? 0 : _e.hp_max * (_top - _p.hp_end);
+        var _target = rank_attack_target(_p, _span);
+        var _expired = rank_attack_expired(_p, _beaten);
         rank_note(_g[$ "marks"], _label,
                   rank_for_encounter(_b.hits_this_phase, _b.bombs_this_phase,
-                                     _earned >= _target),
+                                     !_expired && _earned >= _target),
                   _spell, _earned, _target,
-                  _b.hits_this_phase, _b.bombs_this_phase);
+                  _b.hits_this_phase, _b.bombs_this_phase, _expired);
 
         // A capture: the spell broken with no hit and no sigil.
         if (_beaten && _spell

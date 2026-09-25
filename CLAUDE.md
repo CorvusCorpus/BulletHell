@@ -20,7 +20,8 @@ and is open to change. Earlier agents wrote a great deal of invented
 
 - **Finished attacks are hand-crafted and complex**, at the level of
   `Demon Sealing Hex` (Velka's last spell). Every other attack is a
-  placeholder except Mika's non-spells, which are being built now. The simple
+  placeholder except Mika's non-spells, `Storm Cage` and `Chakram Blitz`,
+  which are being built now. The simple
   fans, rings and spirals exist so the stages are playable.
 - **Ziggy is the tutorial boss** (stage one).
 - **One spell background per boss**, never one per spell. It is a signature
@@ -48,7 +49,11 @@ and is open to change. Earlier agents wrote a great deal of invented
   mark: STONE, BRONZE, SILVER, GOLD, AMETHYST. A clean encounter is GOLD; each
   hit costs two rungs and each sigil one; beating the score threshold adds
   one. A stage where every mark is AMETHYST is ABSOLUTE AMETHYST, which is a
-  standing, not a sixth tier.
+  standing, not a sixth tier. The score thresholds lean lenient: decent play
+  passes them without aggressive tactics or grazing skill, and keeping your
+  fire on a boss (beating the attack about as fast as you can) is enough on
+  its own. A boss attack that times out never earns AMETHYST unless it is a
+  survival attack.
 - **UI is gilt on indigo**: a dark saturated violet ground, small areas of
   bright old gold, crescent and four-point-star motifs, cyan as the accent,
   serif type (Cinzel, Spectral). Aimed at old-school danmaku players; never
@@ -132,7 +137,7 @@ Game logic is plain functions over structs; objects are thin controllers.
 | `player_functions` | Player, input, the sigil and its seals, grace, hitbox |
 | `boss_functions` | Boss phase machine, movement modes, ceremony timing |
 | `stage_functions` | Stage timeline, gates, wave helpers, encounter windows, `run_clear_field` |
-| `stage_ziggy`, `stage_grove`, `stage_sanctum`, `mika_nonspells` | Stages one to three: timelines, bosses, attacks. `stage_list()`, the roster of all stages, lives in `stage_ziggy`. |
+| `stage_ziggy`, `stage_grove`, `stage_sanctum`, `mika_nonspells`, `mika_storm_cage`, `mika_chakram_blitz` | Stages one to three: timelines, bosses, attacks. `stage_list()`, the roster of all stages, lives in `stage_ziggy`. |
 | `stage_drafts` | The drafting table, plus `rack_list()`: the roster and the extra cards the rack shows |
 | `stage_preview` | The review card, which flies stage three's hall with no enemies |
 | `stage_sanctum_old` | Stage three as it was before Mika's rebuild, frozen on its own rack card. Delete it once his slots are filled, along with its rack line, `test_old_sanctum`, its line in `test_stage_run` and `stage_is_old_draft`. |
@@ -210,6 +215,8 @@ positions.
 - They can be charged, which widens the lethal band after a warning, and
   linked into a lethal arc.
 - They carry an `act` that fires like a boss attack.
+- They are culled once wholly off the field, unless `cull` is off (Storm
+  Cage's rings ride the player past the walls).
 
 `ring_block_shots` must run before `enemy_take_shots` (checked). To fire from
 a moving ring, use `ring_rim_at_x/_y`, which give where the metal will be when
@@ -229,8 +236,9 @@ the rank card, which is thrown when the ledger grows. The rail is drawn before
 the field frame, so it can hide above the field.
 
 **Bosses.** `boss_spawn(x, y, hp, phases, def)`. A phase is
-`{kind, name, col, bg, hp_end, time, attack, move?}`, and
-`attack(_e, _g, _t)` is called every frame with the frames elapsed.
+`{kind, name, col, bg, hp_end, time, attack, move?, at?, par?, score?,
+survival?}`, and `attack(_e, _g, _t)` is called every frame with the frames
+elapsed. The last three are for grading (see below).
 
 - A phase ends on health (checked first) or on time, and either way the bar
   is pulled to `hp_end`. A capture needs the spell broken with no hit and no
@@ -241,7 +249,9 @@ the field frame, so it can hide above the field.
   (`boss_vulnerable`).
 - `move` is a `BossMove`: `Drift` (the default), `Close`, `Track`, `Fixed`
   or `Step`. Read it as `_p[$ "move"] ?? BossMove.Drift`, because a bare read
-  of a missing struct field raises.
+  of a missing struct field raises. `at` (`{x, y}`) gives a `Fixed` attack its
+  own station instead of the boss's; the boss glides there during the pause
+  before it.
 - `def.final == false` makes a midboss.
 - Phase tables are built by functions (`ziggy_phases()` and so on), never
   shared, because phase structs are mutable.
@@ -261,6 +271,17 @@ bosses}`.
 - A def whose `id` is empty can never write a clear: `progress_record` refuses
   it. Practice, the drafting table, the review card and the old stage three
   all rely on that.
+
+**Grading** (`rank_functions`). A boss attack's score threshold is its clear
+award plus the speed award it would pay if broken exactly at its par. Par is
+its share of the boss's health at full fire (every shot landing), times
+`RANK_PAR_SLACK`, capped at the clock. So breaking it by par meets the
+threshold with no grazing, and each second past par has to be made up with
+`RANK_GRAZE_RATE` grazes. A timeout can't meet it unless the row has
+`survival: true`, and the medal card then shows TIME OUT. A row's `par` or
+`score` overrides the default. A group of waves' threshold is
+`RANK_WAVE_SHARE` of what its fodder is worth (each one killed, and its gold
+collected). All three constants are unplayed first guesses.
 
 **Practice.** X on the rack lists a stage's attacks, and a practice run is an
 ordinary run with an empty timeline:
@@ -445,15 +466,18 @@ Mika's slots (`mika_slots()` is the source of truth):
 | N1, N2 | Written: two rings milling sand, and the same mill turned the other way. Mika himself fires nothing. |
 | N3–N6 | Drafts, unplayed: the mill with four rings, then with six, each followed by its mirror |
 | N7 | Draft, unplayed: six rings whose orbit reverses on each of his hops, with an aimed bolt from each ring at every reversal |
-| S1–S3, S8 | Old placeholders: `Gilded Aperture`, `Ashiah's Circuit`, `Three Open Gates`, `Grand Orrery` |
+| S1 | Written, in playtesting: `Storm Cage`. Three rings strung with lightning ride round the player; a sandstorm floods the field; rings stop grains; on a bolt amber sand bursts into slow falling glass and ember grit burns away. |
+| S2 | Written, in playtesting: `Chakram Blitz` (inspired by Murasa's anchors in Touhou 12). Two rings thrown at the player in turn. Each winds up, lays a braided double-helix rope that holds still and then comes apart, spins up against the wall firing full radial bursts, then flies back. Throws start spaced out and speed up until each lands as the other ring is caught. |
+| S3, S8 | Old placeholders: `Three Open Gates`, `Grand Orrery` |
 | S4–S7 | Stubs (`Unwritten Spell 4` to `7`) |
 
 Known gaps:
 
 - Nothing has been balanced against a human; every tuning number is a first
   guess.
-- These are placeholders: all attacks except the Hex and Mika's non-spells
-  (Ziggy's, Velka's first five, the midbosses', every draft), Ziggy's art and
+- These are placeholders: all attacks except the Hex, Mika's non-spells,
+  `Storm Cage` and `Chakram Blitz` (Ziggy's, Velka's first five, the
+  midbosses', every draft), Ziggy's art and
   therefore his eye card, the grove's tree art, and every sound. There is no
   music.
 - `Sand Burst` on the drafting table is Mika's sand thrown as a two-stage

@@ -130,6 +130,7 @@
 #macro PSHOT_PERIOD 3          // frames between volleys
 #macro PSHOT_SPD 36
 #macro PSHOT_DMG 0.75
+#macro PSHOT_BARRELS 2          // shots per volley (`player_fire`)
 #macro PSHOT_SPREAD 7.0        // degrees off straight ahead, unfocused
 #macro PSHOT_SPREAD_FOCUS 1.5
 #macro PSHOT_OFFSET 26         // how far either side of centre a barrel sits
@@ -266,12 +267,23 @@
 #macro RANK_HIT_COST 2
 #macro RANK_BOMB_COST 1
 
-// Grazes per second the score threshold expects on top of what finishing the
-// encounter pays. Unplayed.
+// The thresholds lean lenient (owner's call): decent play should pass them
+// without aggressive tactics or grazing skill.
+
+// A boss attack's par is how long its share of the boss's health takes with
+// every shot landing, times this: room for dodging and for shots the boss's
+// rings stop. Breaking an attack by its par meets its score threshold on
+// speed alone (`rank_attack_target`). Unplayed.
+#macro RANK_PAR_SLACK 2.5
+
+// What a second of an attack's clock is worth, as a number of grazes: the
+// speed award pays this for every second saved, and each second past par has
+// to be made up with this many grazes. Unplayed.
 #macro RANK_GRAZE_RATE 14
 
-// A floor under a wave group's duration for its threshold.
-#macro RANK_WAVE_MIN_TIME (4 * FPS)
+// A group of waves' threshold, as a share of what its enemies are worth
+// (`rank_wave_target`). Unplayed.
+#macro RANK_WAVE_SHARE 0.75
 
 // The rank card (see `rank_card`). Its length fits inside `BOSS_PHASE_PAUSE`.
 #macro RANK_CARD_TIME 80

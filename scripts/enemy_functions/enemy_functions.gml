@@ -65,6 +65,21 @@ function enemy_count_fodder() {
     return _n;
 }
 
+/// @desc What one piece of fodder is worth if killed and its gold collected.
+function enemy_fodder_worth(_e) {
+    return TALLY_ENEMY + _e.gold * TALLY_ITEM;
+}
+
+/// @desc What the fodder on the field now is worth, together.
+function enemy_live_worth() {
+    var _sum = 0;
+    for (var _i = 0; _i < global.enemy_n; _i++) {
+        var _e = global.enemies[_i];
+        if (_e.boss == undefined) _sum += enemy_fodder_worth(_e);
+    }
+    return _sum;
+}
+
 /// @desc Put an enemy on the field.
 /// @param {function} _act  called every frame as `_act(enemy, g)`
 function enemy_spawn(_kind, _x, _y, _hp, _act, _col = BCOL_CYAN,
@@ -86,7 +101,7 @@ function enemy_spawn(_kind, _x, _y, _hp, _act, _col = BCOL_CYAN,
     // Counted here so any wave shape is graded without reporting anything.
     // Bosses pay out through their phase tables instead.
     if (_kind != EnemyKind.Boss) {
-        global.enemy_worth += TALLY_ENEMY + _gold * TALLY_ITEM;
+        global.enemy_worth += enemy_fodder_worth(_e);
     }
     _e.leaving = false;
     _e.touch = true;

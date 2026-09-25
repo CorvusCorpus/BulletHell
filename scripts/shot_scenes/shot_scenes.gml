@@ -19,7 +19,8 @@ function shot_scene_list() {
               "grove", "grove_arrive", "grove_turn", "grove_blood",
               "grove_boss", "grove_spell",
               "sanctum", "mika_attacks",
-              "hall_a", "hall_b", "hall_turn", "hall_arrive"];
+              "hall_a", "hall_b", "hall_turn", "hall_arrive",
+              "rope_lab"];
     var _n = array_length(mika_slots());
     for (var _i = 0; _i < _n; _i++) {
         array_push(_l, shot_mika_scene(_i));
@@ -138,6 +139,10 @@ function shot_scene_prepare(_name) {
             global.stage_def = stage_sanctum_def();
             break;
 
+        case "rope_lab":
+            global.stage_def = stage_sanctum_def();
+            break;
+
         case "hall_turn":
             // The review card, whose timeline drives the turn.
             global.stage_def = preview_stage_def();
@@ -240,6 +245,15 @@ function shot_pose(_scene, _g) {
     }
 
     switch (_scene) {
+        case "rope_lab":
+            // Temporary: Chakram Blitz rope variants (`shot_rope_lab`), with
+            // the player out of the way.
+            _g.input_override = shot_input(false, false);
+            _g.player.x = FIELD_X0 + 60;
+            _g.player.y = FIELD_Y1 - 60;
+            _g.player.untouchable = true;
+            return 88;
+
         case "motion":
             // Demonstrates the bullet behaviours the stages don't use yet
             // (`shot_motion_demo`), with no player fire.
@@ -556,6 +570,14 @@ function shot_tick(_scene, _g, _t) {
     if (_g == undefined) return;
 
     switch (_scene) {
+        case "rope_lab":
+            // The stage clock is held at zero, so no wave ever arrives.
+            _g.stage.t = 0;
+            if (_t >= 28) enemy_clear_all();
+            if (_t == 30) run_clear_field();
+            if (_t >= 30) shot_rope_lab(_t - 30);
+            break;
+
         case "motion":
             // The stage's first wave would arrive in this window; clear it.
             if (_t >= 28) enemy_clear_all();
@@ -712,4 +734,90 @@ function shot_draw_bullet_chart() {
 
     draw_set_halign(fa_left);
     draw_set_valign(fa_top);
+}
+
+// ---------------------------------------------------------------------------
+// Temporary: Chakram Blitz rope variants side by side (`rope_lab`), for
+// choosing the rope's look. Delete with the scene once one is chosen.
+// ---------------------------------------------------------------------------
+
+/// @desc A full rope style (`chakram_rope_style`) with the given look and
+///       weave, and the attack's own timing.
+function shot_rope(_shape, _scale, _depth, _strands, _gap, _amp, _step,
+                   _front, _align, _back_shape = -1, _back_scale = 1.0) {
+    var _base = chakram_rope_style();
+    return {
+        shape: _shape, scale: _scale, depth: _depth,
+        cols: [BCOL_GOLD, BCOL_BONE, BCOL_AMBER],
+        back_shape: _back_shape, back_scale: _back_scale,
+        strands: _strands, gap: _gap, amp: _amp, step: _step,
+        front: _front, align: _align, unfurl: _base.unfurl,
+        turn: _base.turn, hold: _base.hold, acc: _base.acc, max: _base.max,
+        delay: _base.delay,
+        bloom: _base.bloom, bloom_min: _base.bloom_min,
+        curl: _base.curl, curl_t: _base.curl_t,
+    };
+}
+
+/// @desc The first round's 2 (`_which` 2) or 6 (otherwise), with the fields
+///       in `_over` replaced.
+function shot_rope_from(_which, _over) {
+    var _st = (_which == 2)
+        ? shot_rope(BSHAPE_RICE, 1.0, 0, 2, 14, 12, 40, false, true)
+        : shot_rope(BSHAPE_ORB, 0.9, 0.45, 2, 10, 14, 30, false, false);
+    var _names = variable_struct_get_names(_over);
+    for (var _i = 0; _i < array_length(_names); _i++) {
+        _st[$ _names[_i]] = _over[$ _names[_i]];
+    }
+    return _st;
+}
+
+/// @desc The variants, left to right.
+function shot_rope_lab_styles() {
+    static _l = [
+        // 1: 6 as it disperses now (headings stepping `turn`).
+        shot_rope_from(6, {}),
+        // 2: 6, blooming straight out sideways.
+        shot_rope_from(6, { bloom: 0 }),
+        // 3: 6, blooming with some stretch along the path.
+        shot_rope_from(6, { bloom: 0.35 }),
+        // 4: 6, blooming as much along the path as across.
+        shot_rope_from(6, { bloom: 1.0 }),
+        // 5: 3 with a curl, untwisting as it opens.
+        shot_rope_from(6, { bloom: 0.35, curl: 1.0, curl_t: 50 }),
+        // 6: 3, faster.
+        shot_rope_from(6, { bloom: 0.35, max: 3.2, acc: 0.025 }),
+        // 7: 2, blooming like 3.
+        shot_rope_from(2, { bloom: 0.35 }),
+        // 8: 2 as it disperses now.
+        shot_rope_from(2, {}),
+    ];
+    return _l;
+}
+
+/// @desc Frame `_t` of the lab: every variant laid down the field, top to
+///       bottom, travelling as a thrown ring does (`chakram_fly_frames`).
+function shot_rope_lab(_t) {
+    static _lab = { k: 0, v: 0, bead: [] };
+    var _l = shot_rope_lab_styles();
+    var _n = array_length(_l);
+    if (_t == 0) {
+        _lab.k = 0;
+        _lab.v = CHAKRAM_V0;
+        _lab.bead = array_create(_n, 0);
+    }
+    var _len = FIELD_H - 220;
+    _lab.v = min(_lab.v + CHAKRAM_ACC, CHAKRAM_VMAX);
+    _lab.k = min(_lab.k + _lab.v, _len);
+    for (var _i = 0; _i < _n; _i++) {
+        var _st = _l[_i];
+        var _x = FIELD_X0 + (_i + 0.5) * FIELD_W / _n;
+        while (_lab.bead[_i] * _st.gap <= _lab.k) {
+            for (var _j = 0; _j < _st.strands; _j++) {
+                chakram_bead(_st, _x, FIELD_Y0 + 110, 270, 1, _lab.bead[_i],
+                             _j);
+            }
+            _lab.bead[_i]++;
+        }
+    }
 }

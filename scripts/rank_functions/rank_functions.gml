@@ -52,9 +52,12 @@ function rank_ledger_new() {
 
 /// @desc File a mark (callers: `boss_end_phase`, `stage_encounter_close`).
 ///       The mark keeps the score, target, hits and bombs that produced it,
-///       which the rank card reads.
+///       which the rank card reads. `_expired` marks a boss attack that timed
+///       out without being a survival attack, which can't meet its target
+///       (`rank_attack_expired`).
 function rank_note(_ledger, _label, _tier, _spell = false,
-                   _earned = 0, _target = 0, _hits = 0, _bombs = 0) {
+                   _earned = 0, _target = 0, _hits = 0, _bombs = 0,
+                   _expired = false) {
     if (_ledger == undefined) return;
     array_push(_ledger.marks, {
         label: _label,
@@ -64,6 +67,7 @@ function rank_note(_ledger, _label, _tier, _spell = false,
         target: _target,
         hits: _hits,
         bombs: _bombs,
+        expired: _expired,
     });
     _ledger.best = max(_ledger.best, _tier);
     _ledger.flare = 1;
@@ -77,48 +81,69 @@ function rank_for_encounter(_hits, _bombs, _met) {
     return clamp(_t, 0, Mark.Count - 1);
 }
 
-/// @desc The score threshold for an encounter's top rung: `_award` (what
-///       finishing it pays: an attack's flat clear bonus, or what a wave's
-///       enemies are worth) plus `RANK_GRAZE_RATE` grazes a second over
-///       `_frames`.
-function rank_score_target(_award, _frames) {
-    return _award + rank_graze_worth(_frames);
-}
-
 /// @desc What grazing at `RANK_GRAZE_RATE` is worth over a span of frames.
-///       Shared by the threshold and the speed award so the two stay in step.
+///       Shared by an attack's threshold and its speed award so the two stay
+///       in step.
 function rank_graze_worth(_frames) {
     return RANK_GRAZE_RATE * (max(_frames, 0) / FPS) * TALLY_GRAZE;
 }
 
 /// @desc The speed bonus for breaking an attack with `_frac` of its clock
-///       left: `_frac` of what grazing for the whole clock is worth. This makes
-///       the threshold ask for the same graze rate however early the attack is
-///       broken, so stalling an attack to graze gains nothing (`test_marks`
-///       checks this).
+///       left: `_frac` of what grazing for the whole clock is worth, so every
+///       second saved pays what `RANK_GRAZE_RATE` grazes would.
 function rank_speed_award(_p, _frac) {
     if (_p == undefined) return 0;
     return rank_graze_worth(_p.time) * clamp(_frac, 0, 1);
 }
 
-/// @desc The target for one of a boss's attacks, measured over the attack's
-///       full clock (the speed award covers finishing early). A phase row may
-///       set its own `score` to override it; read with `[$ ]` because most
-///       rows don't have the field.
-function rank_attack_target(_p) {
+/// @desc The target for one of a boss's attacks: its clear award plus the
+///       speed award it pays when broken exactly at par (`rank_attack_par`).
+///       Broken at or before par, an attack meets it on speed alone; each
+///       second after par has to be made up with `RANK_GRAZE_RATE` grazes.
+///       `_span` is the attack's share of the boss's health, in hit points.
+///       A timeout never meets it unless the attack is a survival attack
+///       (`rank_attack_expired`). A phase row may set its own `score` to
+///       override the target; read with `[$ ]` because most rows don't have
+///       the field.
+function rank_attack_target(_p, _span) {
     if (_p == undefined) return 0;
     var _own = _p[$ "score"];
     if (_own != undefined) return _own;
     var _award = (_p.kind == AttackKind.Spell)
         ? TALLY_SPELL_CLEAR : TALLY_PHASE_CLEAR;
-    return rank_score_target(_award, _p.time);
+    return _award + rank_graze_worth(_p.time - rank_attack_par(_p, _span));
 }
 
-/// @desc The target for one group of waves, measured over how long the group
-///       actually lasted (at least `RANK_WAVE_MIN_TIME`). `_worth` is what its
-///       enemies were worth, accumulated by `enemy_spawn`.
-function rank_wave_target(_worth, _frames) {
-    return rank_score_target(_worth, max(_frames, RANK_WAVE_MIN_TIME));
+/// @desc Did this attack end in a way that can't meet its score threshold?
+///       True when its clock ran out (`_beaten` false), unless its row is
+///       marked `survival: true` (an attack meant to be outlasted), which is
+///       graded on its target like any other. Owner's rule.
+function rank_attack_expired(_p, _beaten) {
+    if (_beaten || _p == undefined) return false;
+    return !(_p[$ "survival"] ?? false);
+}
+
+/// @desc An attack's par, in frames: how long `_span` hit points take with
+///       every shot landing, times `RANK_PAR_SLACK`. Never longer than the
+///       clock; an attack with no health of its own has a par of zero. A phase
+///       row may set its own `par`, in frames.
+function rank_attack_par(_p, _span) {
+    var _own = _p[$ "par"];
+    if (_own != undefined) return clamp(_own, 0, _p.time);
+    return clamp(max(_span, 0) / rank_full_fire() * RANK_PAR_SLACK, 0, _p.time);
+}
+
+/// @desc The damage a frame of the player's fire deals when every shot lands.
+function rank_full_fire() {
+    return PSHOT_BARRELS * PSHOT_DMG / PSHOT_PERIOD;
+}
+
+/// @desc The target for one group of waves: `RANK_WAVE_SHARE` of what its
+///       enemies were worth (each one killed, and its gold picked up), as
+///       accumulated by `enemy_spawn`. Grazes and other pickups count toward
+///       it too, but it asks for none.
+function rank_wave_target(_worth) {
+    return _worth * RANK_WAVE_SHARE;
 }
 
 /// @desc The standing so far: the mean tier, rounded half up. -1 for an empty

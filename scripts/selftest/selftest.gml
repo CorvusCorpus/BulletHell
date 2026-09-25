@@ -32,6 +32,7 @@ function selftest_run() {
     test_rings();
     test_mika_slots();
     test_mika_sand();
+    test_storm_cage();
     test_boss_step();
     test_hall_sky();
     test_hall_orb();
@@ -861,6 +862,83 @@ function test_mika_sand() {
     }
     ok("every grain Mika's rings throw kills at the size it is drawn",
        _honest);
+    st_reset();
+}
+
+/// @desc Storm Cage's rings and bolts are the only thing between the player
+///       and the storm, and a grain that got through would look no different
+///       from one that didn't. The player runs a route through the corners
+///       and along the walls, alternately flat out and focused, in the order
+///       `obj_game` steps things; no grain may ever be inside the triangle
+///       between the rings, and the rings, carried past the field's edge,
+///       must not be culled. Also reports what the catch costs a frame.
+function test_storm_cage() {
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _p = _g.player;
+    var _x0 = FIELD_X0 + FIELD_MARGIN;
+    var _x1 = FIELD_X1 - FIELD_MARGIN;
+    var _y0 = FIELD_Y0 + FIELD_MARGIN;
+    var _y1 = FIELD_Y1 - FIELD_MARGIN;
+    var _route = [[_x0, _y1], [_x1, _y1], [FIELD_CX, FIELD_CY], [_x0, _y0],
+                  [_x1, _y0], [_x1, _y1], [FIELD_CX, _y1]];
+    var _leg = 0;
+    var _leaks = 0;
+    var _rings_lost = false;
+    var _cost = 0;
+    var _cost_n = 0;
+
+    for (var _t = 0; _t < 1500; _t++) {
+        var _to = _route[_leg mod array_length(_route)];
+        var _spd = ((_leg mod 2) == 0) ? PLAYER_SPD : PLAYER_SPD_FOCUS;
+        var _d = point_distance(_p.x, _p.y, _to[0], _to[1]);
+        if (_d <= _spd) {
+            _p.x = _to[0];
+            _p.y = _to[1];
+            _leg++;
+        } else {
+            _p.x += (_to[0] - _p.x) / _d * _spd;
+            _p.y += (_to[1] - _p.y) / _d * _spd;
+        }
+
+        bullet_step(_p.x, _p.y);
+        var _t0 = get_timer();
+        mika_storm_cage(undefined, _g, _t);
+        if (_t >= STORM_START + STORM_RISE) {
+            _cost += get_timer() - _t0;
+            _cost_n++;
+        }
+        ring_step(_g);
+
+        if (ring_count() != 3) {
+            _rings_lost = true;
+            break;
+        }
+        var _a = ring_get(0);
+        var _b = ring_get(1);
+        var _c = ring_get(2);
+        for (var _i = 0; _i < bullet_count(); _i++) {
+            var _u = bullet_get(_i);
+            if (_u.shape == STORM_GLASS_SHAPE) continue;
+            var _s0 = (_b.x - _a.x) * (_u.y - _a.y)
+                      - (_b.y - _a.y) * (_u.x - _a.x);
+            var _s1 = (_c.x - _b.x) * (_u.y - _b.y)
+                      - (_c.y - _b.y) * (_u.x - _b.x);
+            var _s2 = (_a.x - _c.x) * (_u.y - _c.y)
+                      - (_a.y - _c.y) * (_u.x - _c.x);
+            if ((_s0 > 0 && _s1 > 0 && _s2 > 0)
+                || (_s0 < 0 && _s1 < 0 && _s2 < 0)) {
+                _leaks++;
+            }
+        }
+    }
+    ok("Storm Cage's rings survive being carried past the field's edge",
+       !_rings_lost);
+    ok("and no grain of its storm gets inside the cage (" + string(_leaks)
+       + " did)", !_rings_lost && _leaks == 0);
+    show_debug_message("SELFTEST INFO storm cage catch "
+                       + string(_cost / max(1, _cost_n) / 1000)
+                       + "ms a frame at full strength");
     st_reset();
 }
 
@@ -2051,42 +2129,54 @@ function test_marks() {
 
     var _surv = { kind: AttackKind.Spell, time: 30 * FPS, name: "S" };
     ok("a survival spell has a target it can reach",
-       rank_attack_target(_surv) > 0 && rank_attack_target(_surv) < 1000000);
+       rank_attack_target(_surv, 0) > 0
+       && rank_attack_target(_surv, 0) < 1000000);
     var _short = { kind: AttackKind.Spell, time: 10 * FPS, name: "S" };
     var _long = { kind: AttackKind.Spell, time: 40 * FPS, name: "L" };
     ok("a longer attack asks for more grazing",
-       rank_attack_target(_long) > rank_attack_target(_short));
+       rank_attack_target(_long, 0) > rank_attack_target(_short, 0));
     ok("and a row may name its own target",
        rank_attack_target({ kind: AttackKind.Spell, time: 40 * FPS,
-                            name: "X", score: 1234 }) == 1234);
+                            name: "X", score: 1234 }, 0) == 1234);
 
-    // The speed bonus is priced as the grazing an early finish gave up, so the
-    // threshold asks the same graze rate however early an attack is broken.
-    var _even = true;
-    var _clocks = [20 * FPS, 40 * FPS, 60 * FPS];
-    var _fracs = [0, 0.25, 0.5, 0.75];
-    for (var _c = 0; _c < array_length(_clocks); _c++) {
-        var _row = { kind: AttackKind.Spell, name: "M", time: _clocks[_c] };
-        for (var _f = 0; _f < array_length(_fracs); _f++) {
-            var _fr = _fracs[_f];
-            var _played = _clocks[_c] * (1 - _fr);
-            if (_played <= 0) continue;
-            var _short_by = rank_attack_target(_row)
-                            - TALLY_SPELL_CLEAR - rank_speed_award(_row, _fr);
-            var _rate = _short_by / (_played / FPS) / TALLY_GRAZE;
-            if (abs(_rate - RANK_GRAZE_RATE) > 0.001) _even = false;
-        }
+    // Par: an attack broken by its par meets its target on speed alone, and
+    // each second past par asks the graze rate. `_short_by` is what is left
+    // to earn by grazing when the attack is broken at frame `_at`.
+    var _row = { kind: AttackKind.Spell, name: "M", time: 60 * FPS };
+    var _span = 300;
+    var _par = rank_attack_par(_row, _span);
+    var _left = [_par, _par * 0.5, _par + 10 * FPS];
+    var _short_by = [];
+    for (var _k = 0; _k < 3; _k++) {
+        _short_by[_k] = rank_attack_target(_row, _span) - TALLY_SPELL_CLEAR
+                        - rank_speed_award(_row, 1 - _left[_k] / _row.time);
     }
-    ok("the threshold asks the same graze rate however early it is broken",
-       _even);
+    ok("an attack broken at its par needs no grazing",
+       _par > 0 && _par < _row.time && abs(_short_by[0]) < 0.01);
+    ok("nor does one broken sooner", _short_by[1] < 0);
+    ok("each second past par asks the graze rate",
+       abs(_short_by[2] / 10 / TALLY_GRAZE - RANK_GRAZE_RATE) < 0.001);
+    ok("more health gives a later par",
+       rank_attack_par(_row, 2 * _span) > _par);
+    ok("par never runs past the clock",
+       rank_attack_par(_row, 1000000) == _row.time);
+    ok("and a row may set its own par",
+       rank_attack_par({ kind: AttackKind.Spell, name: "P", time: 60 * FPS,
+                         par: 600 }, _span) == 600);
+    ok("a timeout can't meet its target",
+       rank_attack_expired(_row, false) && !rank_attack_expired(_row, true));
+    ok("unless the attack is a survival attack",
+       !rank_attack_expired({ kind: AttackKind.Spell, name: "V",
+                              time: 60 * FPS, survival: true }, false));
 
-    var _fast = rank_wave_target(5000, 10 * FPS);
-    var _slow = rank_wave_target(5000, 20 * FPS);
-    ok("a wave dawdled through asks for more", _slow > _fast);
-    ok("and the extra is the graze rate over the extra seconds",
-       abs((_slow - _fast) - RANK_GRAZE_RATE * 10 * TALLY_GRAZE) < 1);
-    ok("and a group killed instantly is still held to a floor",
-       rank_wave_target(1000, 1) == rank_wave_target(1000, RANK_WAVE_MIN_TIME));
+    // Par is priced on a volley's damage, so the volley has to be what
+    // `rank_full_fire` thinks it is.
+    st_reset();
+    player_fire(player_new());
+    ok("a volley is PSHOT_BARRELS shots", pshot_count() == PSHOT_BARRELS);
+
+    ok("a wave is passed by killing most of it, without grazing",
+       rank_wave_target(5000) > 0 && rank_wave_target(5000) < 5000);
 
     st_reset();
     var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
@@ -2101,6 +2191,45 @@ function test_marks() {
     ok("beating an attack files a mark",
        rank_count(_g.marks) == _before + 1);
     ok("and the run now has a standing", rank_overall(_g.marks) >= 0);
+
+    // Through the real end of an attack, clean and with no graze: broken fast
+    // is the top mark; broken at the last moment is not; a timeout is not,
+    // even on an attack whose par reaches its clock (so its target is only
+    // the clear award, which the timeout still pays); and a survival attack
+    // that is outlasted can be.
+    var _tiers = [];
+    var _hp = [400, 400, 100000, 100000];
+    var _at = [1, 40 * FPS - 1, 40 * FPS, 40 * FPS];
+    var _broken = [true, true, false, false];
+    var _surv = [false, false, false, true];
+    for (var _k = 0; _k < 4; _k++) {
+        st_reset();
+        var _gk = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+        var _ek = boss_spawn(FIELD_CX, FIELD_Y0 + 300, _hp[_k],
+                             [{ kind: AttackKind.Spell, name: "RACE",
+                                col: BCOL_GOLD, bg: -1, hp_end: 0,
+                                time: 40 * FPS, move: BossMove.Fixed,
+                                attack: st_attack_idle,
+                                survival: _surv[_k] }],
+                             ziggy_def());
+        _ek.boss.entry_t = 0;
+        _ek.boss.declare_t = 0;
+        _ek.boss.started = true;
+        boss_enter_phase(_ek, _gk, 0);
+        _ek.boss.phase_t = _at[_k];
+        if (_broken[_k]) _ek.hp = 0;
+        boss_end_phase(_ek, _gk, _broken[_k]);
+        _tiers[_k] = _gk.marks.marks[0].tier;
+    }
+    ok("a spell broken clean and fast is the top mark without a graze",
+       _tiers[0] == Mark.Amethyst);
+    ok("and one broken clean at the last moment is the base rung",
+       _tiers[1] == RANK_BASE);
+    ok("and so is a timeout, even one whose par reaches the clock",
+       rank_attack_par({ time: 40 * FPS }, 100000) == 40 * FPS
+       && _tiers[2] == RANK_BASE);
+    ok("but an outlasted survival attack over its target is the top mark",
+       _tiers[3] == Mark.Amethyst);
 
     // The capture bonus is paid after the mark is filed, so it cannot lift
     // the mark over its own threshold.
