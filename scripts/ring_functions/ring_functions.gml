@@ -8,8 +8,14 @@
 ///   (after a visible warning) widens the lethal band to the whole cuff.
 /// - Arc: two rings can be linked by a lethal line of current.
 /// - Fire: `act(ring, run, frame)` runs every frame like a boss attack.
+/// - Lane: it can flash the path it is about to be thrown down
+///   (`ring_lane_flash`). Drawn only.
+/// - Depth: in a 2.5D effect it can be nearer or further (`depth`, a factor on
+///   its size that its collision follows), dimmed (`shade`), or behind its
+///   caster (`behind`), where it is drawn before the enemies and neither
+///   hurts, grazes nor blocks.
 ///
-/// Every ring is `RING_R`; there is no per-ring radius (owner's rule). The pool
+/// Every ring is `RING_R`, times its `depth` (owner's rule). The pool
 /// works like the bullet pool: flat array, swap-remove, reused structs, and a
 /// refusal past `RING_MAX`.
 
@@ -31,7 +37,7 @@ function ring_blank() {
         // Last frame's position. A ring carried by its `src` moves without
         // `vx`/`vy` changing, so this is its true travel (`ring_vel_x`).
         px: 0, py: 0,
-        // No radius field: every ring is `RING_R`.
+        // No radius field: every ring is `RING_R`, times `depth` below.
         ang: 0, spin: 0,
         col: BCOL_GOLD,
         gen: 0,
@@ -49,6 +55,16 @@ function ring_blank() {
         // False for a ring that may be carried off the field and back (one
         // riding the player), which would otherwise be culled.
         cull: true,
+        // 2.5D depth: `depth` scales its size, drawn and collided alike
+        // (`ring_radius`); `shade` dims it (0 to 1, drawn only); a ring
+        // `behind` is drawn before the enemies, so its caster hides it, and
+        // neither hurts, grazes nor blocks (`ring_touchable`).
+        depth: 1, shade: 0,
+        behind: false,
+        // The path it is about to be thrown down (`ring_lane_flash`), and
+        // frames since the flash (-1 is "none"); drawn only.
+        lane_t: -1, lane_life: 1,
+        lane_x0: 0, lane_y0: 0, lane_dir: 0, lane_len: 0,
         alive: true,
     };
 }
@@ -81,6 +97,10 @@ function ring_alloc() {
     _g.arc = undefined; _g.arc_gen = -1; _g.arc_t = 0;
     _g.graze_t = 0;
     _g.cull = true;
+    _g.depth = 1;
+    _g.shade = 0;
+    _g.behind = false;
+    _g.lane_t = -1;
     _g.alive = true;
     global.ring_seq++;
     _g.gen = global.ring_seq;
@@ -157,6 +177,21 @@ function ring_link(_a, _b, _frames) {
     _a.arc_t = _frames;
 }
 
+/// @desc Flash the path this ring is about to be thrown down, for `_life`
+///       frames: the ground its metal will sweep from (`_x0`, `_y0`) along
+///       `_dir` to the point `_len` pixels on where it stops, drawn from
+///       wherever the ring is along it (`ring_draw_lanes`). Decoration only:
+///       the lane neither blocks nor kills.
+function ring_lane_flash(_ring, _x0, _y0, _dir, _len, _life) {
+    if (_ring == undefined) return;
+    _ring.lane_x0 = _x0;
+    _ring.lane_y0 = _y0;
+    _ring.lane_dir = _dir;
+    _ring.lane_len = _len;
+    _ring.lane_t = 0;
+    _ring.lane_life = max(1, _life);
+}
+
 /// @desc Start a ring leaving. It stops blocking and killing at once; the
 ///       fade is only visual.
 function ring_dismiss(_ring, _frames = RING_FADE) {
@@ -182,6 +217,18 @@ function ring_solid(_ring) {
     return _ring.alive && _ring.form <= 0 && _ring.fade < 0;
 }
 
+/// @desc Can the metal hurt, graze or block this frame: solid, and not
+///       behind its caster?
+function ring_touchable(_ring) {
+    return ring_solid(_ring) && !_ring.behind;
+}
+
+/// @desc The ring's radius this frame: `RING_R`, nearer or further by its
+///       `depth`.
+function ring_radius(_ring) {
+    return RING_R * _ring.depth;
+}
+
 /// @desc Is the band charged (lit, and lethal at full width)? `warn` must be
 ///       tested: `ring_charge` sets `warn` and `hot` together, so `hot > 0`
 ///       alone would be true during the warning.
@@ -198,11 +245,11 @@ function ring_arc_live(_ring) {
 
 /// @desc A point on the band, at `_dir` degrees round it.
 function ring_rim_x(_ring, _dir) {
-    return _ring.x + lengthdir_x(RING_R, _dir);
+    return _ring.x + lengthdir_x(ring_radius(_ring), _dir);
 }
 
 function ring_rim_y(_ring, _dir) {
-    return _ring.y + lengthdir_y(RING_R, _dir);
+    return _ring.y + lengthdir_y(ring_radius(_ring), _dir);
 }
 
 /// @desc How far the ring moved this frame, however it is being moved.
@@ -219,17 +266,19 @@ function ring_vel_y(_ring) {
 ///       `_frames`: a bullet's warning mark holds still, so firing at the
 ///       current rim of a moving ring puts the bullet inside the hole.
 function ring_rim_at_x(_ring, _dir, _frames) {
-    return _ring.x + ring_vel_x(_ring) * _frames + lengthdir_x(RING_R, _dir);
+    return _ring.x + ring_vel_x(_ring) * _frames
+           + lengthdir_x(ring_radius(_ring), _dir);
 }
 
 function ring_rim_at_y(_ring, _dir, _frames) {
-    return _ring.y + ring_vel_y(_ring) * _frames + lengthdir_y(RING_R, _dir);
+    return _ring.y + ring_vel_y(_ring) * _frames
+           + lengthdir_y(ring_radius(_ring), _dir);
 }
 
 /// @desc How far a point is from the band (zero on the metal). Hits and
 ///       grazes use the same measurement at different widths.
 function ring_band_dist(_ring, _x, _y) {
-    return abs(point_distance(_ring.x, _ring.y, _x, _y) - RING_R);
+    return abs(point_distance(_ring.x, _ring.y, _x, _y) - ring_radius(_ring));
 }
 
 /// @desc Does the segment from (`_x0`,`_y0`) to (`_x1`,`_y1`) cross the band?
@@ -238,12 +287,13 @@ function ring_band_dist(_ring, _x, _y) {
 ///       between its closest approach and its furthest end, so the segment
 ///       meets the annulus exactly when that interval overlaps the band.
 function ring_seg_crosses(_ring, _x0, _y0, _x1, _y1) {
-    var _half = RING_BAND_HALF;
+    var _rad = ring_radius(_ring);
+    var _half = RING_BAND_HALF * _ring.depth;
     var _lo = point_seg_dist(_ring.x, _ring.y, _x0, _y0, _x1, _y1);
-    if (_lo > RING_R + _half) return false;
+    if (_lo > _rad + _half) return false;
     var _hi = max(point_distance(_ring.x, _ring.y, _x0, _y0),
                   point_distance(_ring.x, _ring.y, _x1, _y1));
-    return _hi >= RING_R - _half;
+    return _hi >= _rad - _half;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +321,10 @@ function ring_step(_g) {
 
         if (_r.form > 0) _r.form--;
         if (_r.graze_t > 0) _r.graze_t--;
+        if (_r.lane_t >= 0) {
+            _r.lane_t++;
+            if (_r.lane_t > _r.lane_life) _r.lane_t = -1;
+        }
         if (_r.arc_t > 0) _r.arc_t--;
 
         // The charge: the warning counts down, then the band is hot.
@@ -325,7 +379,7 @@ function ring_block_shots() {
         var _sh = global.pshots[_s];
         for (var _i = global.ring_n - 1; _i >= 0; _i--) {
             var _r = global.rings[_i];
-            if (!ring_solid(_r)) continue;
+            if (!ring_touchable(_r)) continue;
             if (!ring_seg_crosses(_r, _sh.px, _sh.py, _sh.x, _sh.y)) {
                 continue;
             }
@@ -351,7 +405,7 @@ function ring_block_shots() {
 ///       the drawn metal when cold, the whole drawn cuff when charged, never
 ///       wider.
 function ring_kill_half(_ring) {
-    return RING_BAND_HALF
+    return RING_BAND_HALF * _ring.depth
            * (ring_is_hot(_ring) ? RING_HOT_KILL_FRAC : RING_KILL_FRAC);
 }
 
@@ -368,11 +422,27 @@ function ring_arc_ends(_ring) {
 }
 
 /// @desc Is this ring touching a circle, by its metal (whenever solid) or by
-///       its arc?
-function ring_hits(_ring, _x, _y, _rad) {
-    if (ring_solid(_ring)
-        && ring_band_dist(_ring, _x, _y) < _rad + ring_kill_half(_ring)) {
-        return true;
+///       its arc? The circle was at (`_px`, `_py`) when the frame began.
+///
+///       The metal is tested swept, since a thrown ring can move further in a
+///       frame than the band is wide. Seen from the ring, the circle moved
+///       from where it was against where the ring was to where it is against
+///       where the ring is; the distance from the centre along that path
+///       covers every value between its closest approach and its further end,
+///       so the metal was touched if that range meets the band. When neither
+///       moved, this is the band distance.
+function ring_hits(_ring, _x, _y, _rad, _px = _x, _py = _y) {
+    if (ring_touchable(_ring)) {
+        var _k = _rad + ring_kill_half(_ring);
+        var _ax = _px - _ring.px;
+        var _ay = _py - _ring.py;
+        var _bx = _x - _ring.x;
+        var _by = _y - _ring.y;
+        var _lo = point_seg_dist(0, 0, _ax, _ay, _bx, _by);
+        var _hi = max(point_distance(0, 0, _ax, _ay),
+                      point_distance(0, 0, _bx, _by));
+        var _r = ring_radius(_ring);
+        if (_lo < _r + _k && _hi > _r - _k) return true;
     }
     var _a = ring_arc_ends(_ring);
     if (_a != undefined
@@ -383,10 +453,11 @@ function ring_hits(_ring, _x, _y, _rad) {
     return false;
 }
 
-/// @desc Is any ring touching this circle?
-function ring_any_hit(_x, _y, _rad) {
+/// @desc Is any ring touching this circle (swept from (`_px`, `_py`), as
+///       `ring_hits`)?
+function ring_any_hit(_x, _y, _rad, _px = _x, _py = _y) {
     for (var _i = 0; _i < global.ring_n; _i++) {
-        if (ring_hits(global.rings[_i], _x, _y, _rad)) return true;
+        if (ring_hits(global.rings[_i], _x, _y, _rad, _px, _py)) return true;
     }
     return false;
 }
@@ -400,7 +471,7 @@ function ring_graze(_x, _y, _rad) {
         var _r = global.rings[_i];
         if (_r.graze_t > 0) continue;
         var _near = false;
-        if (ring_solid(_r)) {
+        if (ring_touchable(_r)) {
             _near = ring_band_dist(_r, _x, _y)
                     < _rad + ring_kill_half(_r) + GRAZE_R;
         }
@@ -483,18 +554,36 @@ function ring_visual(_ring) {
     return { scale: 1, alpha: 1, charge: _c };
 }
 
+/// @desc The rings passing behind their caster (`behind`), and their lanes,
+///       drawn before the enemies so the boss hides them.
+function ring_draw_behind() {
+    ring_draw_lanes(true);
+    ring_draw_bodies(true);
+}
+
+/// @desc Every other ring, with the lanes under them and the arcs over.
 function ring_draw() {
+    ring_draw_lanes(false);
+    ring_draw_bodies(false);
+    ring_draw_arcs();
+}
+
+/// @desc The rings whose `behind` is `_behind`.
+function ring_draw_bodies(_behind) {
     var _half = sprite_get_width(spr_ring) * 0.5 * RING_SPR_LINE;
 
     for (var _i = 0; _i < global.ring_n; _i++) {
         var _r = global.rings[_i];
+        if (_r.behind != _behind) continue;
         var _v = ring_visual(_r);
         if (_v.alpha <= 0.01) continue;
         var _col = global.bullet_colour[_r.col];
-        var _k = (RING_R * _v.scale) / _half;
+        var _k = (ring_radius(_r) * _v.scale) / _half;
+        // Dimmed by its shade: the metal toward black, the light with it.
+        var _lit = 1 - _r.shade;
 
-        draw_sprite_ext(spr_ring, 0, _r.x, _r.y, _k, _k, _r.ang, c_white,
-                        _v.alpha);
+        draw_sprite_ext(spr_ring, 0, _r.x, _r.y, _k, _k, _r.ang,
+                        merge_colour(c_black, c_white, _lit), _v.alpha);
 
         // The light stays put while the pattern turns under it, so these two
         // are drawn unrotated (`tools/make_rings.py`). The sheen is the
@@ -503,24 +592,195 @@ function ring_draw() {
         // alone; that blend ignores alpha, so it fades through its colour.
         gpu_set_blendmode(bm_add);
         draw_sprite_ext(spr_ring_sheen, 0, _r.x, _r.y, _k, _k, 0, c_white,
-                        _v.alpha);
+                        _v.alpha * _lit);
         gpu_set_blendmode_ext(bm_dest_colour, bm_one);
         draw_sprite_ext(spr_ring_glint, 0, _r.x, _r.y, _k, _k, 0,
-                        merge_colour(c_black, c_white, _v.alpha), 1);
+                        merge_colour(c_black, c_white, _v.alpha * _lit), 1);
 
         // The charge: the band heats up in the ring's hue.
         if (_v.charge > 0.01) {
             gpu_set_blendmode(bm_add);
             draw_sprite_ext(spr_ring_heat, 0, _r.x, _r.y, _k, _k, _r.ang,
                             _col, _v.alpha * _v.charge * 0.9);
-            var _gs = (RING_R * 2.8) / sprite_get_width(spr_fx_bloom);
+            var _gs = (ring_radius(_r) * 2.8) / sprite_get_width(spr_fx_bloom);
             draw_sprite_ext(spr_fx_bloom, 0, _r.x, _r.y, _gs, _gs, 0, _col,
                             _v.alpha * _v.charge * 0.10);
         }
         gpu_set_blendmode(bm_normal);
     }
+}
 
-    ring_draw_arcs();
+/// @desc The lane flash (`ring_lane_flash`) of every ring whose `behind` is
+///       `_behind`, under the rings drawn with it. The lane is the capsule the
+///       metal sweeps, one outline round both ends, so it wraps the ring
+///       behind and rounds off where the ring stops. It is soft-edged strips
+///       offset from that outline: a hot hairline in a warm bloom, a fainter
+///       second rule just inside it, and light falling off inward from the
+///       edge. It pops in, a pulse of light
+///       runs down it to the stop, a four-pointed star flares there as the
+///       pulse arrives, and it fades. Additive.
+function ring_draw_lanes(_behind) {
+    static _lp = { n: 0, px: [], py: [], nx: [], ny: [], sw: [] };
+    // Rows of each band: offsets from the outline (negative is inward) and
+    // their share of the band's alpha. The rows approximate curves that
+    // meet zero gently, since a linear ramp shows an edge where it ends.
+    static _rim_d = [0, -6, -13.5, -30, -(RING_R + RING_BAND_HALF)];
+    static _rim_a = [1, 0.585, 0.238, 0, 0];
+    static _bloom_d = [11, 6.6, 3.3, 0, -3.3, -6.6, -11];
+    static _bloom_a = [0, 0.352, 0.784, 1, 0.784, 0.352, 0];
+    static _core_d = [1.8, 0, -1.8];
+    static _core_a = [0, 1, 0];
+    static _rule_d = [-5.8, -7, -8.2];
+    static _rule_a = [0, 1, 0];
+
+    var _w = RING_R + RING_BAND_HALF;
+    gpu_set_blendmode(bm_add);
+    for (var _i = 0; _i < global.ring_n; _i++) {
+        var _r = global.rings[_i];
+        if (_r.lane_t < 1 || _r.fade >= 0 || _r.behind != _behind) continue;
+
+        // `ring_step` has already counted this frame, so the flash's first
+        // frame is 0 here. Up over three frames, held, then eased out.
+        var _f = _r.lane_t - 1;
+        var _in = 1;
+        if (_f < 2) {
+            _in = (_f + 1) / 3;
+        } else if (_f >= 5) {
+            _in = sqr(max(0, 1 - (_f - 5) / max(1, _r.lane_life - 5)));
+        }
+        if (_in <= 0.005) continue;
+
+        var _col = global.bullet_colour[_r.col];
+        // The hairline is whitest at the pop and cools as it fades.
+        var _core = merge_colour(_col, c_white,
+                                 0.65 + 0.35 * max(0, 1 - _f / 8));
+
+        // From level with the ring's centre to the stop.
+        var _ux = lengthdir_x(1, _r.lane_dir);
+        var _uy = lengthdir_y(1, _r.lane_dir);
+        var _k0 = clamp((_r.x - _r.lane_x0) * _ux + (_r.y - _r.lane_y0) * _uy,
+                        0, _r.lane_len);
+        var _sx = _r.lane_x0 + _ux * _k0;
+        var _sy = _r.lane_y0 + _uy * _k0;
+        var _len = _r.lane_len - _k0;
+
+        // The pulse runs from behind the ring to past the stop in ten frames,
+        // easing out, then dies away over four.
+        var _run = 1 - power(1 - min(1, _f / 10), 3);
+        var _pos = -_w + (_len + 2 * _w) * _run;
+        var _pg = max(0, 1 - max(0, _f - 10) / 4);
+        ring_lane_loop(_lp, _sx, _sy, _ux, _uy, _len, _w, _pos, _pg);
+
+        var _fill = power(_in, 1.5);
+        ring_lane_rows(_lp, _rim_d, _rim_a, 0.42 * _fill, _col, 1.5,
+                       0.19 * sqrt(_in));
+        ring_lane_rows(_lp, _bloom_d, _bloom_a, 0.30 * _in, _col, 0.8, 0);
+        ring_lane_rows(_lp, _rule_d, _rule_a, 0.45 * _in, _col, 0.6, 0);
+        ring_lane_rows(_lp, _core_d, _core_a, _in, _core, 0.6, 0);
+
+        // The star at the stop, as the pulse gets there.
+        var _arr = _f - 5.5;
+        if (_arr > -1) {
+            var _sa = max(0, 1 - _arr / 12) * clamp((_arr + 1) / 2, 0, 1);
+            if (_sa > 0.01) {
+                ring_lane_star(_sx + _ux * _len, _sy + _uy * _len,
+                               _r.lane_dir, _sa, _core, _col);
+            }
+        }
+    }
+    gpu_set_blendmode(bm_normal);
+}
+
+/// @desc Fill `_lp` with a lane's outline once round, closing where it
+///       began: one side from (`_sx`, `_sy`) to the stop `_len` pixels along
+///       (`_ux`, `_uy`), the round end, the other side back, and the round
+///       end behind. Each point has its outward normal and the pulse's
+///       strength there: a bell `_pos` pixels along the lane, times `_pg`.
+function ring_lane_loop(_lp, _sx, _sy, _ux, _uy, _len, _w, _pos, _pg) {
+    var _nx = -_uy;
+    var _ny = _ux;
+    var _ex = _sx + _ux * _len;
+    var _ey = _sy + _uy * _len;
+    // Sides in steps short enough to carry the pulse; ends in 24.
+    var _steps = max(1, ceil(_len / 24));
+    var _cap = 24;
+    _lp.n = 0;
+    for (var _k = 0; _k <= _steps; _k++) {
+        var _s = _len * _k / _steps;
+        ring_lane_point(_lp, _sx + _ux * _s, _sy + _uy * _s, _nx, _ny, _w, _s,
+                        _pos, _pg);
+    }
+    for (var _k = 1; _k < _cap; _k++) {
+        var _a = 90 - 180 * _k / _cap;
+        ring_lane_point(_lp, _ex, _ey, dcos(_a) * _ux + dsin(_a) * _nx,
+                        dcos(_a) * _uy + dsin(_a) * _ny, _w,
+                        _len + dcos(_a) * _w, _pos, _pg);
+    }
+    for (var _k = _steps; _k >= 0; _k--) {
+        var _s = _len * _k / _steps;
+        ring_lane_point(_lp, _sx + _ux * _s, _sy + _uy * _s, -_nx, -_ny, _w,
+                        _s, _pos, _pg);
+    }
+    for (var _k = 1; _k <= _cap; _k++) {
+        var _a = -90 - 180 * _k / _cap;
+        ring_lane_point(_lp, _sx, _sy, dcos(_a) * _ux + dsin(_a) * _nx,
+                        dcos(_a) * _uy + dsin(_a) * _ny, _w, dcos(_a) * _w,
+                        _pos, _pg);
+    }
+}
+
+/// @desc Add one point of a lane's outline to `_lp`: `_w` out from
+///       (`_cx`, `_cy`) along the unit normal (`_nx`, `_ny`), `_s` pixels
+///       along the lane.
+function ring_lane_point(_lp, _cx, _cy, _nx, _ny, _w, _s, _pos, _pg) {
+    var _i = _lp.n;
+    _lp.px[_i] = _cx + _nx * _w;
+    _lp.py[_i] = _cy + _ny * _w;
+    _lp.nx[_i] = _nx;
+    _lp.ny[_i] = _ny;
+    _lp.sw[_i] = _pg * exp(-sqr((_s - _pos) / 60));
+    _lp.n = _i + 1;
+}
+
+/// @desc One band of a lane, as a triangle strip right round the outline in
+///       `_lp` between each pair of neighbouring rows (offsets `_ds`, alphas
+///       `_as` times `_scale`). Where the pulse is, each alpha is raised by
+///       `_gain` times it, and `_add` times it is added.
+function ring_lane_rows(_lp, _ds, _as, _scale, _col, _gain, _add) {
+    for (var _j = 0; _j < array_length(_ds) - 1; _j++) {
+        var _da = _ds[_j];
+        var _db = _ds[_j + 1];
+        var _aa = _as[_j] * _scale;
+        var _ab = _as[_j + 1] * _scale;
+        draw_primitive_begin(pr_trianglestrip);
+        for (var _i = 0; _i < _lp.n; _i++) {
+            var _p = _lp.sw[_i];
+            var _x = _lp.px[_i];
+            var _y = _lp.py[_i];
+            var _nx = _lp.nx[_i];
+            var _ny = _lp.ny[_i];
+            draw_vertex_colour(_x + _nx * _da, _y + _ny * _da, _col,
+                               min(1, _aa * (1 + _gain * _p) + _add * _p));
+            draw_vertex_colour(_x + _nx * _db, _y + _ny * _db, _col,
+                               min(1, _ab * (1 + _gain * _p) + _add * _p));
+        }
+        draw_primitive_end();
+    }
+}
+
+/// @desc The four-pointed star that flares where a lane ends: a small glow
+///       and two crossed streaks, one along the lane (`_dir`).
+function ring_lane_star(_x, _y, _dir, _a, _core, _glow) {
+    var _bw = sprite_get_width(spr_fx_bloom);
+    draw_sprite_ext(spr_fx_bloom, 0, _x, _y, 44 / _bw, 44 / _bw, 0, _glow,
+                    _a * 0.5);
+    var _sw = sprite_get_width(spr_fx_spark);
+    var _sh = sprite_get_height(spr_fx_spark);
+    var _arm = 92 * (0.7 + 0.3 * _a);
+    for (var _k = 0; _k < 4; _k++) {
+        draw_sprite_ext(spr_fx_spark, 0, _x, _y, _arm / _sw, 5 / _sh,
+                        _dir + _k * 90, _core, _a);
+    }
 }
 
 /// @desc The current strung between two rings: a jagged run of bars along

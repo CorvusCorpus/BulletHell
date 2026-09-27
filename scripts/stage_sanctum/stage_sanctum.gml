@@ -34,6 +34,7 @@ function stage_sanctum_def() {
         needs: 0,                       // unlocked from the start, for now
         make_bg: bg_sanctum,
         build: stage_sanctum_script,
+        music: snd_music_sanctum,       // placeholder (`tools/make_music.py`)
 
 
         // `turned`: Mika is fought after the hall opens, so practice starts
@@ -324,15 +325,19 @@ function mika_def() {
         radius: 64,
         spell_bg: SPELLBG_SIGIL,
         final: true,
+        music: snd_music_mika,          // placeholder (`tools/make_music.py`)
     };
 }
 
 /// @desc The fifteen slots, one row each in fight order. This is the only
 ///       list to edit; `mika_phases` derives the phase table from it.
 ///
-///       A row is `{name, col, hp, time, attack, move?, at?, par?, score?,
-///       survival?}`. A name makes it a spell. `at` is a `Fixed` slot's own
-///       station (`boss_move_at`). `hp` is the share of his health
+///       A row is `{name, col, hp, time, attack, move?, at?, fire_at?, par?,
+///       score?, survival?}`. A name makes it a spell. `at` is a `Fixed`
+///       slot's own station (`boss_move_at`). `fire_at` is the frame its first
+///       shots come on, which his charge cue builds to (`boss_charge`), since
+///       the rings he puts down first are no threat. `hp` is the share of his
+///       health
 ///       the slot is worth; thresholds and his total are summed from it, so
 ///       retuning one slot moves nothing else. `par`, `score` and `survival`
 ///       are for the grading (`rank_attack_target`, `rank_attack_expired`).
@@ -356,52 +361,60 @@ function mika_slots() {
         // rings throw and hops between bursts. Its health is priced for his
         // rings blocking part of the player's fire.
         { name: "", col: BCOL_AMBER, hp: 260, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n1_sandmill },
+          move: BossMove.Step, attack: mika_n1_sandmill,
+          fire_at: MIKA_MILL_WIND },
         // S1 -- Storm Cage (`mika_storm_cage`). Its cage blocks the
         // player's fire whenever a ring passes over them; the health is the
         // placeholder's until that has been measured.
         { name: "Storm Cage", col: BCOL_CYAN, hp: 392, time: 45 * FPS,
-          move: BossMove.Fixed, attack: mika_storm_cage },
+          move: BossMove.Fixed, attack: mika_storm_cage,
+          fire_at: STORM_STRIKE },
 
         // N2 -- N1 mirrored.
         { name: "", col: BCOL_AMBER, hp: 260, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n2_sandmill },
+          move: BossMove.Step, attack: mika_n2_sandmill,
+          fire_at: MIKA_MILL_WIND },
         // S2 -- Chakram Blitz (`mika_chakram_blitz`). He holds the middle of
         // the field, so the player can circle him; the health is half the old
         // placeholder's, since circling keeps the player off his line of fire.
         { name: "Chakram Blitz", col: BCOL_GOLD, hp: 238, time: 45 * FPS,
           move: BossMove.Fixed, at: { x: FIELD_CX, y: FIELD_CY - 60 },
-          attack: mika_chakram_blitz },
+          attack: mika_chakram_blitz, fire_at: CHAKRAM_FIRST },
 
         // N3 -- the quad (draft). Four rings block more of the player's fire:
         // measured headlessly, 16% of shots reach him against 24% for the
         // pair, so its health is N1's times 0.69.
         { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n3_sandquad },
+          move: BossMove.Step, attack: mika_n3_sandquad,
+          fire_at: MIKA_MILL_WIND },
         // S3
         { name: "Three Open Gates", col: BCOL_AMBER, hp: 448,
           time: 44 * FPS, attack: mika_three_gates },
 
         // N4 -- N3 mirrored.
         { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n4_sandquad },
+          move: BossMove.Step, attack: mika_n4_sandquad,
+          fire_at: MIKA_MILL_WIND },
         mika_unwritten_row(true, 4),     // S4
 
         // N5 -- the crown (draft). 14% of shots reach him through six rings,
         // so its health is N1's times 0.60.
         { name: "", col: BCOL_AMBER, hp: 156, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n5_sandcrown },
+          move: BossMove.Step, attack: mika_n5_sandcrown,
+          fire_at: MIKA_MILL_WIND },
         mika_unwritten_row(true, 5),     // S5
 
         // N6 -- N5 mirrored.
         { name: "", col: BCOL_AMBER, hp: 156, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n6_sandcrown },
+          move: BossMove.Step, attack: mika_n6_sandcrown,
+          fire_at: MIKA_MILL_WIND },
         mika_unwritten_row(true, 6),     // S6
 
         // N7 -- the rush (draft). A shorter clock; health is N1's times 0.60
         // (the same blocking as the crown), scaled by 30/35 for the clock.
         { name: "", col: BCOL_AMBER, hp: 134, time: 30 * FPS,
-          move: BossMove.Step, attack: mika_n7_sandrush },
+          move: BossMove.Step, attack: mika_n7_sandrush,
+          fire_at: MIKA_MILL_WIND },
         mika_unwritten_row(true, 7),     // S7
 
         // S8
@@ -445,6 +458,7 @@ function mika_phases() {
             move: _s[$ "move"] ?? BossMove.Drift,
             at: _s[$ "at"],
             attack: _s.attack,
+            fire_at: _s[$ "fire_at"] ?? 0,
             par: _s[$ "par"],
             score: _s[$ "score"],
             survival: _s[$ "survival"],

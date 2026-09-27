@@ -68,6 +68,7 @@ function selftest_run() {
     test_save_atomicity();
     test_audio_budget();
     test_audio_playback();
+    test_music();
     test_attacks_run();
     test_bullet_cost();
 
@@ -170,8 +171,9 @@ function test_bullet_table() {
     ok("no oriented shape carries a default spin", _spun == 0);
     ok("the star shapes turn on their own",
        global.bshape_spin[BSHAPE_STAR] > 0
-       && global.bshape_spin[BSHAPE_STAR6] > 0
-       && global.bshape_spin[BSHAPE_MOTE] > 0);
+       && global.bshape_spin[BSHAPE_SHURIKEN] > 0
+       && global.bshape_spin[BSHAPE_MOTE] > 0
+       && global.bshape_spin[BSHAPE_NOVA] > 0);
 
     st_reset();
     var _spinner = fire(500, 500, 3, 0, BSHAPE_STAR, BCOL_GOLD, 0);
@@ -755,6 +757,40 @@ function test_rings() {
     ok("and it goes out with the ring at its far end", !ring_arc_live(_a));
     ok("...so nothing is left lethal in the middle of the field",
        !ring_any_hit(FIELD_CX, FIELD_CY, PLAYER_R));
+
+    // A thrown ring can move further in a frame than its band is wide, so
+    // the metal is tested along the way it moved, not only where it stopped.
+    st_reset();
+    var _thrown = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(undefined);
+    _thrown.vx = 60;
+    ring_step(undefined);
+    ok("a ring that jumps past a point in one frame still hits it",
+       ring_any_hit(FIELD_CX + 30 + RING_R, FIELD_CY, PLAYER_R));
+    ok("...and not a point it passed wide of",
+       !ring_any_hit(FIELD_CX + 30, FIELD_CY + RING_R + 40, PLAYER_R));
+
+    // A ring behind its caster neither hurts nor blocks, and a ring's depth
+    // moves its metal with its drawn size.
+    st_reset();
+    var _deep = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
+    for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(undefined);
+    _deep.behind = true;
+    ok("a ring behind its caster does not hurt",
+       !ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R));
+    pshot_fire(FIELD_CX, FIELD_CY + 300, PSHOT_SPD, 90, PSHOT_DMG);
+    var _through = 0;
+    for (var _i = 0; _i < 40; _i++) {
+        pshot_step();
+        _through += ring_block_shots();
+    }
+    ok("...nor stop the player's fire", _through == 0);
+    _deep.behind = false;
+    _deep.depth = 1.2;
+    ok("a nearer ring hurts where its metal is drawn",
+       ring_any_hit(FIELD_CX, FIELD_CY + RING_R * 1.2, PLAYER_R));
+    ok("...and not where it would be at its usual size",
+       !ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R));
 
     // A bullet fired from a moving ring with `ring_rim_at_x/_y` goes live on
     // the metal rather than inside the hole.
@@ -1496,6 +1532,37 @@ function test_boss_phases() {
     ok("running the clock out ends the attack", _b.boss.clear_t > 0);
     ok("and pulls the bar down to the threshold",
        _b.hp <= _b.hp_max * _zp[_plain].hp_end + 0.001);
+
+    // The charge sounds once before each attack, `BOSS_CHARGE_LEAD` frames
+    // before its first shots: its first frame, spell or not, unless its row's
+    // `fire_at` says later, when the charge comes during the attack.
+    for (var _k = 0; _k < 3; _k++) {
+        st_reset();
+        _g = st_game_at(GAME_CX, GAME_H - 300);
+        _b = ziggy_spawn(_g);
+        _b.boss.entry_t = 0;
+        _b.boss.declare_t = 0;
+        _b.boss.started = true;
+        boss_enter_phase(_b, _g, _plain);
+        boss_end_phase(_b, _g, true);
+        _b.boss.next_phase = (_k == 1) ? _spell : _plain;
+        var _fire = (_k == 2) ? 150 : 0;
+        _b.boss.phases[_b.boss.next_phase].fire_at = _fire;
+        _b.hp = _b.hp_max;
+        sfx_reset();
+        var _asked = -1;
+        var _shots = -1;
+        for (var _f = 0; _f < 1000 && _shots < 0; _f++) {
+            boss_act(_b, _g);
+            if (_asked < 0 && global.sfx_want[Sfx.Charge] > 0) _asked = _f;
+            if (_b.boss.phase_t > _fire) _shots = _f;
+        }
+        var _what = ["a non-spell", "a spell", "a late-firing attack"][_k];
+        ok("the boss charges once before " + _what,
+           _asked >= 0 && global.sfx_want[Sfx.Charge] == 1);
+        ok("...about BOSS_CHARGE_LEAD frames before its first shots",
+           abs((_shots - _asked) - BOSS_CHARGE_LEAD) <= 2);
+    }
     st_reset();
 }
 
@@ -3059,10 +3126,18 @@ function test_audio_budget() {
     }
     ok("every bullet shape maps to a shot cue", _bad_voice == 0);
 
+    var _medals = [];
+    for (var _m = 0; _m < Mark.Count; _m++) {
+        var _v = sfx_for_mark(_m);
+        if (_v < Sfx.MedalStone || _v > Sfx.MedalAmethyst) continue;
+        if (!array_contains(_medals, _v)) array_push(_medals, _v);
+    }
+    ok("every mark has its own medal cue", array_length(_medals) == Mark.Count);
+
     st_reset();
     sfx_reset();
-    fire_ring(FIELD_CX, FIELD_CY, 30, 3, 0, BSHAPE_NEEDLE, BCOL_CRIMSON, 0);
-    ok("a ring of needles asks for the sharp cue",
+    fire_ring(FIELD_CX, FIELD_CY, 30, 3, 0, BSHAPE_KNIFE, BCOL_CRIMSON, 0);
+    ok("a ring of knives asks for the sharp cue",
        global.sfx_want[Sfx.ShotSharp] == 30);
     sfx_step();
     ok("...and gets one voice for the ring", global.sfx_voices == 1);
@@ -3085,10 +3160,57 @@ function test_audio_playback() {
     sfx_play_now(Sfx.ShotSoft, 240);
     ok("...including a coalesced volley's gain and pitch",
        audio_is_playing(snd_shot_soft));
+    var _tracks = [snd_music_sanctum, snd_music_mika];
+    var _streamed = 0;
+    for (var _i = 0; _i < array_length(_tracks); _i++) {
+        if (audio_is_playing(audio_play_sound(_tracks[_i], 100, true, 0))) {
+            _streamed++;
+        }
+    }
+    ok("every music track streams through the real path",
+       _streamed == array_length(_tracks));
     audio_stop_all();
     global.audio_on = _was;
     sfx_reset();
     ok("and the suite is silent again", global.audio_on == false);
+}
+
+/// @desc `music` only asks; `music_step` acts on the frame's last request,
+///       and leaving the room the music was asked for in drops it.
+function test_music() {
+    sfx_reset();
+    global.music_room = room;
+    music(snd_music_sanctum);
+    music(snd_music_mika);
+    music_step();
+    ok("the frame's last music request wins", global.music_snd == snd_music_mika);
+    music(snd_music_mika);
+    music_step();
+    ok("asking for the track already playing leaves it playing",
+       global.music_snd == snd_music_mika);
+    global.music_room = -999;
+    music_step();
+    ok("leaving the room stops the music", global.music_snd == noone);
+
+    // A retry: the run's Create stops all audio, then asks for the same
+    // track, which must start over rather than be taken as still playing.
+    // The master gain is zero under the harness.
+    var _was = global.audio_on;
+    global.audio_on = true;
+    music(snd_music_mika);
+    music_step();
+    var _first = global.music_voice;
+    audio_stop_all();
+    music(snd_music_mika);
+    music_step();
+    ok("a track stopped from outside starts over when asked for again",
+       _first >= 0 && global.music_voice != _first
+       && audio_is_playing(global.music_voice));
+    audio_stop_all();
+    global.audio_on = _was;
+    global.music_voice = -1;
+    global.music_snd = noone;
+    ok("and the suite ran silent", global.audio_on == false);
 }
 
 /// @desc Every attack on the rack runs for a few seconds without throwing and

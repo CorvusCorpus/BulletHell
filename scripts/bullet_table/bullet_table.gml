@@ -11,18 +11,21 @@
 #macro BSHAPE_RING 4
 #macro BSHAPE_BUBBLE 5
 #macro BSHAPE_RICE 6
-#macro BSHAPE_OVAL 7
-#macro BSHAPE_DART 8
-#macro BSHAPE_NEEDLE 9
-#macro BSHAPE_CARD 10
-#macro BSHAPE_STAR 11
-#macro BSHAPE_STAR6 12
-#macro BSHAPE_CRYSTAL 13
-#macro BSHAPE_RUNE 14
-#macro BSHAPE_BUTTERFLY 15
-#macro BSHAPE_FLAME 16
-#macro BSHAPE_MOTE 17
-#macro BSHAPE_COUNT 18
+#macro BSHAPE_DROPLET 7
+#macro BSHAPE_OVAL 8
+#macro BSHAPE_DART 9
+#macro BSHAPE_KNIFE 10
+#macro BSHAPE_ARROW 11
+#macro BSHAPE_CARD 12
+#macro BSHAPE_STAR 13
+#macro BSHAPE_SHURIKEN 14
+#macro BSHAPE_CRYSTAL 15
+#macro BSHAPE_RUNE 16
+#macro BSHAPE_BUTTERFLY 17
+#macro BSHAPE_FLAME 18
+#macro BSHAPE_MOTE 19
+#macro BSHAPE_NOVA 20
+#macro BSHAPE_COUNT 21
 
 #macro BCOL_CRIMSON 0
 #macro BCOL_EMBER 1
@@ -50,35 +53,38 @@ function bullet_table_init() {
         spr_bul_ring,
         spr_bul_bubble,
         spr_bul_rice,
+        spr_bul_droplet,
         spr_bul_oval,
         spr_bul_dart,
-        spr_bul_needle,
+        spr_bul_knife,
+        spr_bul_arrow,
         spr_bul_card,
         spr_bul_star,
-        spr_bul_star6,
+        spr_bul_shuriken,
         spr_bul_crystal,
         spr_bul_rune,
         spr_bul_butterfly,
         spr_bul_flame,
         spr_bul_mote,
+        spr_bul_nova,
     ];
     global.bshape_radius = [
-        4.2, 7.0, 15.0, 29.0, 12.5, 26.0, 5.6, 9.0, 7.6, 5.6, 9.0, 10.5, 14.0, 9.0, 10.5, 10.5, 9.5, 5.6,
+        4.2, 7.0, 15.0, 20.5, 12.5, 26.0, 5.6, 6.0, 6.8, 7.6, 6.0, 5.4, 9.0, 10.5, 9.0, 9.0, 8.0, 10.5, 9.5, 5.6, 9.2,
     ];
     global.bshape_oriented = [
-        false, false, false, false, false, false, true, true, true, true, true, false, false, true, false, true, true, false,
+        false, false, false, false, false, false, true, true, true, true, true, true, true, false, false, true, false, true, true, false, false,
     ];
     global.bshape_frames = [
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 4, 4,
     ];
     global.bshape_w = [
-        38, 48, 68, 108, 60, 90, 48, 62, 60, 76, 60, 56, 68, 58, 54, 70, 80, 42,
+        38, 48, 68, 76, 60, 90, 48, 50, 52, 60, 68, 72, 60, 56, 56, 58, 44, 70, 80, 42, 66,
     ];
     global.bshape_h = [
-        38, 48, 68, 108, 60, 90, 36, 44, 44, 30, 44, 56, 68, 46, 54, 60, 56, 42,
+        38, 48, 68, 76, 60, 90, 36, 37, 36, 44, 34, 31, 44, 56, 56, 46, 44, 60, 56, 42, 66,
     ];
     global.bshape_spin = [
-        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 2.20, 1.50, 0.00, 0.00, 0.00, 0.00, 2.80,
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 2.20, 9.00, 0.00, 0.00, 0.00, 0.00, 2.80, 2.80,
     ];
 }
 

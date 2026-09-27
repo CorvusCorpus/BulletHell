@@ -66,3 +66,9 @@ __pycache__/
 
 # Generator preview sheets and shot.py screenshots: local output, regenerated on demand
 tools/_preview/
+
+# Placeholder music from OpenTracks, whose licence forbids redistributing the
+# audio files: the downloads and the OGGs made from them stay local
+# (tools/make_music.py says how to get them back).
+tools/source/music/
+sounds/snd_music_*/*.ogg

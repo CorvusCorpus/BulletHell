@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":1.80000000,
+  "duration":1.85000000,
   "exportDir":"",
   "name":"snd_ward_pull",
   "parent":{

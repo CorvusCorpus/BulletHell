@@ -28,6 +28,9 @@ hud = hud_new();
 marks = rank_ledger_new();
 bg = def.make_bg();
 stage = stage_new(def);
+// The stage's track, if it has one; a boss with its own takes over when it
+// arrives (`boss_spawn`).
+music(def[$ "music"] ?? noone);
 
 boss_ref = undefined;
 win_pending = 0;

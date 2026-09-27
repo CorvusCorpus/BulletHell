@@ -361,8 +361,8 @@ function velka_long_antler(_e, _g, _t) {
 #macro HEX_R_IN  296
 #macro HEX_R_OUT 356
 
-/// The bead shape. `BSHAPE_RUNE` was too large (the seal read as individual
-/// stones) and `BSHAPE_PELLET` too small (it stopped reading as an object).
+/// The bead shape. `BSHAPE_PELLET` is too small (it stops reading as an
+/// object).
 #macro HEX_BEAD BSHAPE_ORB
 
 /// Spacing between beads, in px. After subtracting the bead's and the
@@ -609,13 +609,13 @@ function hex_hash(_i, _seed) {
 ///       drawn cyan. `_h` is a hash in `[0, 1)`.
 function hex_debris(_h) {
     static kinds = [
-        { shape: BSHAPE_BALL,    spd: 2.8 },   // r 15.0
-        { shape: BSHAPE_STAR6,   spd: 3.3 },   // r 14.0, and it turns
-        { shape: BSHAPE_RUNE,    spd: 3.9 },   // r 10.5 -- a piece of the ward
-        { shape: BSHAPE_CRYSTAL, spd: 4.5 },   // r  9.0
-        { shape: BSHAPE_ORB,     spd: 5.2 },   // r  7.0 -- the ward's own bead
-        { shape: BSHAPE_MOTE,    spd: 6.0 },   // r  5.6
-        { shape: BSHAPE_PELLET,  spd: 6.9 },   // r  4.2
+        { shape: BSHAPE_BALL,     spd: 2.8 },  // r 15.0
+        { shape: BSHAPE_SHURIKEN, spd: 3.3 },  // r  9.0, and it turns
+        { shape: BSHAPE_CRYSTAL,  spd: 3.9 },  // r  9.0
+        { shape: BSHAPE_RUNE,     spd: 4.5 },  // r  8.0 -- a piece of the ward
+        { shape: BSHAPE_ORB,      spd: 5.2 },  // r  7.0 -- the ward's own bead
+        { shape: BSHAPE_MOTE,     spd: 6.0 },  // r  5.6
+        { shape: BSHAPE_PELLET,   spd: 6.9 },  // r  4.2
     ];
     var _n = array_length(kinds);
     return kinds[clamp(floor(_h * _n), 0, _n - 1)];

@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":0.56000000,
+  "duration":0.87000000,
   "exportDir":"",
   "name":"snd_laser_charge",
   "parent":{

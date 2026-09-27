@@ -177,7 +177,7 @@ function draft_falling_sky(_e, _g, _t) {
     if ((_t mod 96) == 60) {
         fire_stack(_e.x, _e.y, 3, 6.4, 1.3,
                    aim_at(_e.x, _e.y, _g.player.x, _g.player.y),
-                   BSHAPE_NEEDLE, BCOL_CYAN, 20);
+                   BSHAPE_KNIFE, BCOL_CYAN, 20);
     }
 }
 

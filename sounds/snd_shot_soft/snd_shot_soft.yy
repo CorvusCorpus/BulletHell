@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":0.13000000,
+  "duration":0.10000000,
   "exportDir":"",
   "name":"snd_shot_soft",
   "parent":{

@@ -16,7 +16,9 @@ bg_draw_back(bg);
 // The spell background: over the stage background, under everything else.
 spell_bg_draw(spell_style, spell_col, t, spell_fade);
 
-// Every enemy in the pool, bosses included (`enemy_draw`).
+// Rings passing behind their caster (`behind`), then every enemy in the pool,
+// bosses included (`enemy_draw`).
+ring_draw_behind();
 enemy_draw();
 
 // Rings are opaque, so they draw before bullets, lasers and the player; they

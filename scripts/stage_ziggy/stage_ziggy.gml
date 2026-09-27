@@ -287,7 +287,7 @@ function ziggy_basic_scatter(_e, _g, _t) {
     if ((_t mod 62) == 24) {
         fire_stack(_e.x, _e.y, 4, 7.6, 1.5,
                    aim_at(_e.x, _e.y, _g.player.x, _g.player.y),
-                   BSHAPE_NEEDLE, BCOL_GOLD, 14);
+                   BSHAPE_KNIFE, BCOL_GOLD, 14);
     }
     if ((_t mod 22) == 11) {
         fire_spray(_e.x, _e.y, 2, 3.0, 4.8, 90, 160,
@@ -369,7 +369,7 @@ function ziggy_sundering_lash(_e, _g, _t) {
     if (_cycle == 92) {
         fire_stack(_e.x, _e.y, 3, 7.0, 1.6,
                    aim_at(_e.x, _e.y, _g.player.x, _g.player.y),
-                   BSHAPE_NEEDLE, BCOL_CRIMSON, 20);
+                   BSHAPE_KNIFE, BCOL_CRIMSON, 20);
     }
 }
 

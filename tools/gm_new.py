@@ -617,17 +617,19 @@ def delete(name, kind):
 # ---------------------------------------------------------------------------
 
 SOUND_YY = """{
-  "$GMSound":"",
+  "$GMSound":"v2",
   "%%Name":"%(name)s",
   "audioGroupId":{
     "name":"audiogroup_default",
     "path":"audiogroups/audiogroup_default",
   },
   "bitDepth":1,
-  "bitRate":128,
+  "channelFormat":%(channels)d,
   "compression":%(compression)d,
+  "compressionQuality":4,
   "conversionMode":0,
   "duration":%(duration).8f,
+  "exportDir":"",
   "name":"%(name)s",
   "parent":{
     %(parent)s
@@ -636,8 +638,7 @@ SOUND_YY = """{
   "resourceType":"GMSound",
   "resourceVersion":"2.0",
   "sampleRate":%(rate)d,
-  "soundFile":"%(name)s.wav",
-  "type":0,
+  "soundFile":"%(file)s",
   "volume":1.0,
 }"""
 
@@ -671,6 +672,30 @@ def sound(name, samples, rate=44100, folder=None, order=0, preload=True):
         "duration": len(samples) / float(rate),
         "rate": rate,
         "compression": 0,
+        "channels": 0,
+        "file": name + ".wav",
         "preload": "true" if preload else "false",
+    })
+    register(name, "sounds/%s/%s.yy" % (name, name), order)
+
+
+def music(name, ogg_path, duration, channels=2, rate=44100, folder=None,
+          order=0):
+    """Create or overwrite a music track from an OGG Vorbis file, copied in
+    as-is and set to stream (compressed, not preloaded), which suits long
+    tracks and not short cues (see `sound`). `duration` is in seconds;
+    `channels` is 1 or 2."""
+    d = os.path.join(ROOT, "sounds", name)
+    os.makedirs(d, exist_ok=True)
+    shutil.copyfile(ogg_path, os.path.join(d, name + ".ogg"))
+    write(os.path.join(d, name + ".yy"), SOUND_YY % {
+        "name": name,
+        "parent": _parent(folder),
+        "duration": duration,
+        "rate": rate,
+        "compression": 3,                   # compressed and streamed
+        "channels": 1 if channels == 2 else 0,
+        "file": name + ".ogg",
+        "preload": "false",
     })
     register(name, "sounds/%s/%s.yy" % (name, name), order)

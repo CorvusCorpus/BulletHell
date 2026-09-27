@@ -9,6 +9,9 @@ function player_new() {
     return {
         x: FIELD_CX,
         y: FIELD_Y1 - 200,
+        // Where this frame's step began, so rings can be collided swept.
+        px: FIELD_CX,
+        py: FIELD_Y1 - 200,
         hp: HP_MAX,
         mp: 0,
         focus: false,
@@ -104,6 +107,9 @@ function player_grace_begin(_p, _frames) {
 
 /// @desc One frame of the player. `_g` is the run, for tallying and bombs.
 function player_step(_p, _in, _g) {
+    _p.px = _p.x;
+    _p.py = _p.y;
+
     // These run even while flying in.
     if (_p.card_t > 0) _p.card_t--;
     var _grace = player_grace_left(_p);
@@ -414,7 +420,7 @@ function player_collide(_p, _g) {
             return true;
         }
         // A ring's metal and any live arc between rings.
-        if (ring_any_hit(_p.x, _p.y, PLAYER_R)) {
+        if (ring_any_hit(_p.x, _p.y, PLAYER_R, _p.px, _p.py)) {
             player_hit(_p);
             return true;
         }

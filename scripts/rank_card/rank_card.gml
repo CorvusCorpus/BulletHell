@@ -42,9 +42,7 @@ function rank_card_show(_c, _mark, _slot, _total) {
 
     // Shakes the screen for an Amethyst mark.
     if (_mark.tier >= Mark.Amethyst) fx_shake(10);
-    // Reuses the spell-break cue, plus the capture cue for gold and above.
-    sfx(Sfx.SpellBreak);
-    if (_mark.tier >= Mark.Gold) sfx(Sfx.Capture);
+    sfx(sfx_for_mark(_mark.tier));
 }
 
 /// @desc Advance it.

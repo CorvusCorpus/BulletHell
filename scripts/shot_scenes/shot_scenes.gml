@@ -706,7 +706,6 @@ function shot_draw_bullet_chart() {
     var _x0 = 150;
     var _y0 = 92;
     var _cw = 118;
-    var _rh = 56;
 
     draw_set_font(fnt_ui());
     draw_set_valign(fa_middle);
@@ -720,8 +719,20 @@ function shot_draw_bullet_chart() {
                           0.5, 1);
     }
 
+    // Rows are spaced by the heights of the sprites either side, squeezed
+    // evenly so the last row fits on the screen.
+    var _span = 0;
+    for (var _s = 1; _s < BSHAPE_COUNT; _s++) {
+        _span += (global.bshape_h[_s - 1] + global.bshape_h[_s]) * 0.5;
+    }
+    var _room = GAME_H - 20 - _y0 - global.bshape_h[BSHAPE_COUNT - 1] * 0.5;
+    var _k = min(1, _room / max(1, _span));
+
+    var _y = _y0;
     for (var _s = 0; _s < BSHAPE_COUNT; _s++) {
-        var _y = _y0 + _s * _rh;
+        if (_s > 0) {
+            _y += (global.bshape_h[_s - 1] + global.bshape_h[_s]) * 0.5 * _k;
+        }
         draw_set_halign(fa_right);
         draw_text_outline(_x0 - _cw * 0.7, _y,
                           string(global.bshape_radius[_s]), COL_SILVER, 0.5, 1);
@@ -796,19 +807,17 @@ function shot_rope_lab_styles() {
 }
 
 /// @desc Frame `_t` of the lab: every variant laid down the field, top to
-///       bottom, travelling as a thrown ring does (`chakram_fly_frames`).
+///       bottom, travelling as a thrown ring does (`chakram_throw_ease`).
 function shot_rope_lab(_t) {
-    static _lab = { k: 0, v: 0, bead: [] };
+    static _lab = { k: 0, bead: [] };
     var _l = shot_rope_lab_styles();
     var _n = array_length(_l);
     if (_t == 0) {
         _lab.k = 0;
-        _lab.v = CHAKRAM_V0;
         _lab.bead = array_create(_n, 0);
     }
     var _len = FIELD_H - 220;
-    _lab.v = min(_lab.v + CHAKRAM_ACC, CHAKRAM_VMAX);
-    _lab.k = min(_lab.k + _lab.v, _len);
+    _lab.k = _len * chakram_throw_ease(min(1, _t / chakram_fly_frames(_len)));
     for (var _i = 0; _i < _n; _i++) {
         var _st = _l[_i];
         var _x = FIELD_X0 + (_i + 0.5) * FIELD_W / _n;

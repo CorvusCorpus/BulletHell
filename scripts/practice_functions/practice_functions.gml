@@ -116,6 +116,7 @@ function practice_new(_stage, _boss_i, _phase_i) {
             needs: 0,
             make_bg: _stage.make_bg,
             build: practice_empty_script,
+            music: _stage[$ "music"],
             encounters: 1,
             // The console's BEST row reads this instead of the save
             // (`hud_draw_score`).

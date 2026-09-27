@@ -4,6 +4,7 @@
 
 // Resolve sound requests first, before any `exit` below can skip it.
 sfx_step();
+music_hold(phase == Phase.Paused);
 
 // `input_override` replaces the keyboard when set (the screenshot harness).
 var _in = (input_override != undefined) ? input_override : input_gather();

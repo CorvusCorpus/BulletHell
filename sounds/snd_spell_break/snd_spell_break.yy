@@ -10,7 +10,7 @@
   "compression":0,
   "compressionQuality":4,
   "conversionMode":0,
-  "duration":0.68000000,
+  "duration":1.70000000,
   "exportDir":"",
   "name":"snd_spell_break",
   "parent":{

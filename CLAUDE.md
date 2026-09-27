@@ -33,6 +33,9 @@ and is open to change. Earlier agents wrote a great deal of invented
 - **Randomness is per attack.** Some attacks are patterns to learn and
   anticipate; others are pure dodging. Neither is the house style.
 - **Every ring is the same size** (`RING_R`); a ring has no radius of its own.
+  The exception is apparent depth in a 2.5D effect (`depth`), asked for in
+  Chakram Blitz: a ring nearer or further looks, and collides, larger or
+  smaller.
 - **Mika's fight is fifteen attacks**: seven non-spells that are variations of
   each other and act as breathers, alternating with eight spells —
   N1, S1, … N7, S7, then S8. Each is hand-built and playtested in its own
@@ -211,10 +214,19 @@ positions.
 **Rings** (`ring_functions`) are furniture a boss puts down:
 
 - They absorb player shots on their band but not through their hole.
-- They hurt to touch.
+- They hurt to touch, tested swept along the way both the ring and the
+  player moved that frame (the player keeps `px`/`py` for it), so a thrown
+  ring can't step over the player.
 - They can be charged, which widens the lethal band after a warning, and
   linked into a lethal arc.
 - They carry an `act` that fires like a boss attack.
+- They can flash the lane they are about to be thrown down
+  (`ring_lane_flash`), drawn under every ring. It is decoration and never
+  kills.
+- They can fake depth: `depth` scales a ring's size, drawn and collided
+  alike (`ring_radius`); `shade` dims it; and a ring `behind` its caster is
+  drawn before the enemies (`ring_draw_behind` before `enemy_draw`) and
+  neither hurts, grazes nor blocks (`ring_touchable`).
 - They are culled once wholly off the field, unless `cull` is off (Storm
   Cage's rings ride the player past the walls).
 
@@ -236,9 +248,9 @@ the rank card, which is thrown when the ledger grows. The rail is drawn before
 the field frame, so it can hide above the field.
 
 **Bosses.** `boss_spawn(x, y, hp, phases, def)`. A phase is
-`{kind, name, col, bg, hp_end, time, attack, move?, at?, par?, score?,
-survival?}`, and `attack(_e, _g, _t)` is called every frame with the frames
-elapsed. The last three are for grading (see below).
+`{kind, name, col, bg, hp_end, time, attack, move?, at?, fire_at?, par?,
+score?, survival?}`, and `attack(_e, _g, _t)` is called every frame with the
+frames elapsed. The last three are for grading (see below).
 
 - A phase ends on health (checked first) or on time, and either way the bar
   is pulled to `hp_end`. A capture needs the spell broken with no hit and no
@@ -252,12 +264,18 @@ elapsed. The last three are for grading (see below).
   of a missing struct field raises. `at` (`{x, y}`) gives a `Fixed` attack its
   own station instead of the boss's; the boss glides there during the pause
   before it.
+- Before every attack the boss plays a charge cue (`boss_charge`, the Hex's
+  pull), `BOSS_CHARGE_LEAD` frames before the attack's first shots. Those
+  come on the attack's first frame unless the row's `fire_at` says later;
+  Mika's rows set it, because the rings he puts down first are no threat.
 - `def.final == false` makes a midboss.
+- `def.music` is a boss's theme, which takes over from the stage's when it
+  spawns.
 - Phase tables are built by functions (`ziggy_phases()` and so on), never
   shared, because phase structs are mutable.
 
 **Stages.** A stage def is `{id, name, subtitle, needs, make_bg, build,
-bosses}`.
+bosses, music?}`.
 
 - `build` returns a timeline of `ev(at, fn)` and `ev_gate(at)` entries. A gate
   freezes stage time until no fodder is on the field, after a short grace so
@@ -300,7 +318,16 @@ drafts, and the table has no `build`, so it can only be practised.
 votes: one voice per cue, at most `SFX_VOICES` a frame, and the count scales
 gain and pitch. So bullets can call `sfx` freely. Call `sfx_step` at the top
 of a controller's Step, before any `exit`. All cues are synthesised
-placeholders from `tools/make_sfx.py`, and there is no music yet.
+placeholders from `tools/make_sfx.py`.
+
+Music works the same way: `music(snd)` only asks, and `music_step` (run by
+`sfx_step`) plays the frame's last request, crossfading over `MUSIC_FADE`.
+Leaving the room fades it out, and `music_hold` pauses it with the pause
+menu. Only stage three has music: two placeholder tracks from OpenTracks,
+made by `tools/make_music.py`. OpenTracks' licence forbids redistributing
+the audio and the repository is public, so the downloads and OGGs are
+git-ignored; on a fresh clone the build needs them fetched again (the
+script names each track's page).
 
 **Saving.** `save_write_json` writes a temp file and renames it over the live
 one. `save_read_json` falls back to the temp and renames an unparsable file
@@ -357,6 +384,7 @@ owner's Mika sheet in `tools/source/`.
 | `make_mika.py`, `make_rings.py` | Mika from the owner's sheet (a skinned rig; `MIKA_RIG_DEBUG=1` draws its regions over the art); Mika's ring |
 | `make_bg.py`, `make_grove.py`, `make_sanctum.py` | Stage one's layers; stage two's scenery and `scripts/grove_table`; stage three's materials and `scripts/sanctum_table` |
 | `make_sfx.py` | All sound effects |
+| `make_music.py` | The placeholder music, from downloads in `tools/source/music/`: normalised, looped, streamed |
 
 - Most art is luminance and gets tinted at draw time, so one set of fodder
   serves every stage. Mika's ring and characters taken from reference sheets
@@ -467,7 +495,7 @@ Mika's slots (`mika_slots()` is the source of truth):
 | N3–N6 | Drafts, unplayed: the mill with four rings, then with six, each followed by its mirror |
 | N7 | Draft, unplayed: six rings whose orbit reverses on each of his hops, with an aimed bolt from each ring at every reversal |
 | S1 | Written, in playtesting: `Storm Cage`. Three rings strung with lightning ride round the player; a sandstorm floods the field; rings stop grains; on a bolt amber sand bursts into slow falling glass and ember grit burns away. |
-| S2 | Written, in playtesting: `Chakram Blitz` (inspired by Murasa's anchors in Touhou 12). Two rings thrown at the player in turn. Each winds up, lays a braided double-helix rope that holds still and then comes apart, spins up against the wall firing full radial bursts, then flies back. Throws start spaced out and speed up until each lands as the other ring is caught. |
+| S2 | Written, in playtesting: `Chakram Blitz` (inspired by Murasa's anchors in Touhou 12). Two rings rest at his sides and are thrown at the player in turn; while one waits it loops once round him in 2.5D, larger in front and smaller, dimmer and harmless behind him, timed to be back at rest as its wind-up starts. Each winds up aimed at the player, locks its aim with a brief flash of its lane, charges, is thrown fast with a sharp acceleration and a smooth braking stop, lays a braided double-helix rope that holds still and then comes apart, comes to rest short of the wall with its spin still building like a yo-yo's, sprays a brief pinwheel of bullets, and is pulled back. One ring is out at a time, and the gap between throws shrinks over the attack. |
 | S3, S8 | Old placeholders: `Three Open Gates`, `Grand Orrery` |
 | S4–S7 | Stubs (`Unwritten Spell 4` to `7`) |
 
@@ -478,8 +506,8 @@ Known gaps:
 - These are placeholders: all attacks except the Hex, Mika's non-spells,
   `Storm Cage` and `Chakram Blitz` (Ziggy's, Velka's first five, the
   midbosses', every draft), Ziggy's art and
-  therefore his eye card, the grove's tree art, and every sound. There is no
-  music.
+  therefore his eye card, the grove's tree art, every sound, and both
+  music tracks. Only stage three has music.
 - `Sand Burst` on the drafting table is Mika's sand thrown as a two-stage
   burst, parked to be tried before any slot uses it.
 - There is no options screen: no volume, window mode, key remapping or

@@ -4,8 +4,9 @@
 /// One bar for the whole fight, with each attack's threshold marked on it
 /// (asked for by the owner), rather than Touhou's bar per attack.
 ///
-/// A phase is `{kind, name, col, bg, hp_end, time, attack, move?, at?}` and
-/// `attack(_e, _g, _t)` is called once a frame with the frames elapsed. A
+/// A phase is `{kind, name, col, bg, hp_end, time, attack, move?, at?,
+/// fire_at?}` and `attack(_e, _g, _t)` is called once a frame with the frames
+/// elapsed. `fire_at` is the frame its first shots come on (`boss_charge`). A
 /// phase ends on health (checked first) or on time; a timeout ends the attack
 /// the same way but awards no capture.
 
@@ -29,6 +30,9 @@ function boss_spawn(_x, _y, _hp, _phases, _def) {
         // which it holds fire.
         lead_t: 0,
         started: false,
+        // The charge cue has sounded for the attack now coming
+        // (`boss_charge`).
+        charged: false,
 
         declare_t: BOSS_DECLARE_TIME,
         banner_t: 0,
@@ -54,6 +58,9 @@ function boss_spawn(_x, _y, _hp, _phases, _def) {
     _e.touch = false;              // the body only hurts once it is fighting
     // Midbosses get the arrival cue too; only the name splash is the boss's.
     sfx(Sfx.BossAppear);
+    // A boss with a theme brings it in; one without leaves the stage's on.
+    var _theme = _def[$ "music"];
+    if (_theme != undefined) music(_theme);
     return _e;
 }
 
@@ -89,6 +96,8 @@ function boss_act(_e, _g) {
         enemy_glide(_e, _b.home_x, _b.home_y, 0.06);
         return;
     }
+
+    boss_charge(_b);
 
     if (_b.declare_t > 0) {
         _b.declare_t--;
@@ -147,6 +156,45 @@ function boss_act(_e, _g) {
         boss_end_phase(_e, _g, true);
     } else if (_p.time > 0 && _b.phase_t >= _p.time) {
         boss_end_phase(_e, _g, false);
+    }
+}
+
+/// @desc The frame of attack `_p` its first shots come on: its row's
+///       `fire_at`, or its first frame. An attack that puts furniture down
+///       first (Mika's rings) sets it, so the charge builds to the shots
+///       rather than to the furniture.
+function boss_fire_at(_p) {
+    return _p[$ "fire_at"] ?? 0;
+}
+
+/// @desc Frames until the next attack's first shots (`boss_fire_at`), from
+///       its name splash, the pause before it or a spell's declaration through
+///       to those shots; -1 once they have come, and when no attack follows.
+function boss_frames_to_fire(_b) {
+    if (_b.beaten) return -1;
+    var _n = array_length(_b.phases);
+    if (_b.declare_t > 0 || _b.clear_t > 0) {
+        if (_b.next_phase >= _n) return -1;
+        var _next = _b.phases[_b.next_phase];
+        var _wait = max(_b.declare_t, _b.clear_t) + boss_fire_at(_next);
+        if (_next.kind == AttackKind.Spell) _wait += BOSS_SPELL_LEAD;
+        return _wait;
+    }
+    if (_b.phase < 0 || _b.phase >= _n) return -1;
+    var _left = boss_fire_at(_b.phases[_b.phase]) - _b.phase_t;
+    if (_b.lead_t > 0) return _b.lead_t + _left;
+    return (_left > 0) ? _left : -1;
+}
+
+/// @desc The charge before every attack, as Touhou's: the cue sounds once,
+///       `BOSS_CHARGE_LEAD` frames before the attack's first shots.
+function boss_charge(_b) {
+    var _to = boss_frames_to_fire(_b);
+    if (_to < 0) {
+        _b.charged = false;
+    } else if (!_b.charged && _to <= BOSS_CHARGE_LEAD) {
+        _b.charged = true;
+        sfx(Sfx.Charge);
     }
 }
 
@@ -343,7 +391,8 @@ function boss_end_phase(_e, _g, _beaten) {
     ring_clear_all();
 
     var _col = (_p == undefined) ? COL_GRAZE : global.bullet_colour[_p.col];
-    // Broken and survived have different cues.
+    // Broken and survived have different cues. Neither has a melody: the
+    // medal the rank card throws for this attack carries it.
     sfx(_beaten ? Sfx.SpellBreak : Sfx.SpellSurvive);
     fx_flash_screen(c_white, 0.65);
     fx_shake(18);

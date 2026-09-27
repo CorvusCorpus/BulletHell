@@ -319,6 +319,11 @@
 // length. The boss is invulnerable and the phase clock stopped through it.
 #macro BOSS_SPELL_LEAD BOSS_EYE_TIME
 
+// How long before an attack's first shots its boss's charge cue starts
+// (`boss_charge`). The cue is the Hex's 1.8s pull, loudest early and fading
+// as it climbs, so it has mostly died away as the shots come.
+#macro BOSS_CHARGE_LEAD (1.2 * FPS)
+
 #macro BOSS_DRIFT_SPD 1.1
 
 // `BossMove.Drift`: how far a boss wanders from its station, and how sharply
@@ -866,6 +871,11 @@ enum BossMove {
 
 // Master gain over the whole mix, below 1 for headroom.
 #macro SFX_MASTER 0.72
+
+// The music's gain (`tools/make_music.py` writes every track at one
+// loudness), and the frames a change of track crossfades over.
+#macro MUSIC_MASTER 0.4
+#macro MUSIC_FADE 60
 
 
 // ---------------------------------------------------------------------------

@@ -96,8 +96,8 @@ def sh_sphere(w, h, **_):
     """The largest bead: twelve alternating ticks through the outer band, and a
     second hoop inside the first.
     """
-    return _seal(Cut(w, h), 37.0, 24.0, 2.1, (12, 26.4, 35.2), 2.0, 9.0,
-                 inner=(14.0, 1.8), alt=31.0)
+    return _seal(Cut(w, h), 27.0, 17.5, 1.8, (12, 19.4, 25.8), 1.6, 6.8,
+                 inner=(10.4, 1.5), alt=22.8)
 
 
 # ---------------------------------------------------------------------------
@@ -160,19 +160,55 @@ def sh_rice(w, h, **_):
     return c
 
 
+# The droplet's round head, in final pixels: the hitbox, and the origin.
+def _drop_head(w, h):
+    return (w - 11.0, (h - 1) / 2.0)
+
+
+def sh_droplet(w, h, **_):
+    """A tear: a round head leading, drawn out into a fine tail behind it.
+    Origin and hitbox are on the head (see `ORIGINS`).
+    """
+    c = Cut(w, h)
+    hx, cy = _drop_head(w, h)
+    r = 8.4
+    # The flanks leave the head on its tangent and bow inward on their way to
+    # the tail, so it reads as liquid drawn out rather than a cone.
+    tail_x = 2.0
+    top = []
+    for i in range(17):
+        t = i / 16.0
+        x = hx - r * 0.42 + (tail_x - (hx - r * 0.42)) * t
+        top.append((x, cy - r * 0.91 * (1.0 - t) ** 1.9))
+    c.poly("body", top + [(x, 2 * cy - y) for x, y in top[::-1]])
+    c.disc("body", hx, cy, r)
+
+    # A lifted field and a hot bead set toward the front, and a thread of
+    # light back into the tail.
+    c.disc("bevel", hx + 1.2, cy, 5.8, v=160)
+    c.disc("core", hx + 2.2, cy, 3.2)
+    c.line("core", [(hx - 2.0, cy), (hx - 13.0, cy)], 1.1)
+    c.blur("core", 0.35)
+    return c
+
+
 def sh_oval(w, h, **_):
-    """A polished bead: a chamfered capsule with a table cut along it (the
+    """A polished bead: a rounded capsule with a table cut along it (the
     crystal's construction on a blunt body).
     """
     c = Cut(w, h)
-    cy = c.cy
-    c.poly("body", [(9.5, cy - 11.5), (37.5, cy - 11.5), (44.5, cy - 7.0),
-                    (44.5, cy + 7.0), (37.5, cy + 11.5), (9.5, cy + 11.5),
-                    (2.5, cy + 7.0), (2.5, cy - 7.0)])
-    table = [(42.0, cy), (23.5, cy - 8.6), (5.0, cy), (23.5, cy + 8.6)]
+    cx, cy = c.cx, c.cy
+    # A superellipse, a little squarer than an ellipse, so it reads as a
+    # capsule and not as the rice's point.
+    c.poly("body", [(cx + math.copysign(abs(math.cos(a)) ** 0.8, math.cos(a))
+                     * 16.5,
+                     cy + math.copysign(abs(math.sin(a)) ** 0.8, math.sin(a))
+                     * 8.6)
+                    for a in (i * math.pi / 32.0 for i in range(64))])
+    table = [(33.0, cy), (cx, cy - 6.4), (4.0, cy), (cx, cy + 6.4)]
     c.poly("bevel", table)
-    c.line("groove", table + [table[0]], 1.3)
-    c.poly("core", _blade(23.5, cy, 35.0, 12.0, 2.3))
+    c.line("groove", table + [table[0]], 1.1)
+    c.poly("core", _blade(cx, cy, 28.0, 9.0, 1.9))
     c.blur("core", 0.30)
     return c
 
@@ -194,19 +230,72 @@ def sh_dart(w, h, **_):
     return c
 
 
-def sh_needle(w, h, **_):
-    """A lance: spike, guard, haft (the guard gives it a sense of scale)."""
+def sh_knife(w, h, **_):
+    """A throwing knife: a single-edged blade with a fuller, a crossguard, a
+    bound grip and a pommel. The canvas centre (the hitbox) is on the blade.
+    """
     c = Cut(w, h)
     cy = c.cy
-    c.poly("body", [(61, cy), (23, cy - 5.7), (23, cy + 5.7)])
-    c.poly("body", [(19.5, cy - 6.7), (23.0, cy - 6.7),
-                    (23.0, cy + 6.7), (19.5, cy + 6.7)])
-    c.poly("body", [(3, cy - 1.7), (19.5, cy - 3.9), (19.5, cy + 3.9),
-                    (3, cy + 1.7)])
+    spine, edge = cy - 4.4, cy + 4.4
+    c.poly("body", [(15.5, spine), (41.0, spine), (51.0, cy - 0.6),
+                    (48.0, cy + 1.6), (43.5, cy + 3.4), (37.0, edge),
+                    (15.5, edge)])
+    c.poly("body", [(12.5, cy - 7.4), (15.8, cy - 7.4),
+                    (15.8, cy + 7.4), (12.5, cy + 7.4)])
+    c.poly("body", [(5.0, cy - 2.6), (12.8, cy - 2.6),
+                    (12.8, cy + 2.6), (5.0, cy + 2.6)])
+    c.disc("body", 3.8, cy, 3.0)
+
+    # The ground edge is lit; the fuller is cut above it.
+    c.poly("bevel", [(16.0, cy + 1.0), (41.0, cy + 1.0), (50.0, cy - 0.5),
+                     (48.0, cy + 1.6), (43.5, cy + 3.4), (37.0, edge),
+                     (16.0, edge)])
+    c.line("groove", [(18.0, cy - 1.7), (38.0, cy - 1.7)], 1.3)
     for s in (-1, 1):
-        c.line("groove", [(21.2, cy + s * 2.4), (21.2, cy + s * 5.8)], 1.1)
-    c.poly("core", _blade(26.0, cy, 56.0, 6.0, 1.5))
-    c.blur("core", 0.28)
+        c.line("groove", [(14.2, cy + s * 2.9), (14.2, cy + s * 6.4)], 1.0)
+    for x in (7.4, 10.2):
+        c.line("groove", [(x, cy - 2.6), (x, cy + 2.6)], 0.9)
+
+    c.poly("core", [(20.0, cy + 2.2), (40.0, cy + 2.2), (48.5, cy + 0.2),
+                    (40.0, cy + 3.3), (20.0, cy + 3.3)])
+    c.disc("core", 3.8, cy, 1.1)
+    c.blur("core", 0.30)
+    return c
+
+
+# The arrowhead's centre, in final pixels: the hitbox, and the origin.
+def _arrow_head(w, h):
+    return (w - 9.0, (h - 1) / 2.0)
+
+
+def sh_arrow(w, h, **_):
+    """An arrow: a barbed head, a shaft and two fletching vanes. Its origin
+    and hitbox are on the head (see `ORIGINS`); the shaft trails harmlessly.
+    """
+    c = Cut(w, h)
+    cy = c.cy
+    hx = _arrow_head(w, h)[0]
+    tip = hx + 7.0
+    c.poly("body", [(tip, cy), (hx - 5.5, cy - 7.2), (hx - 2.6, cy - 1.8),
+                    (hx - 2.6, cy + 1.8), (hx - 5.5, cy + 7.2)])
+    c.poly("body", [(4.0, cy - 1.6), (hx - 1.0, cy - 1.6),
+                    (hx - 1.0, cy + 1.6), (4.0, cy + 1.6)])
+    for s in (-1, 1):
+        vane = [(22.0, cy + s * 1.2), (13.5, cy + s * 6.6),
+                (4.5, cy + s * 6.6), (9.0, cy + s * 1.2)]
+        c.poly("body", vane)
+        c.poly("bevel", vane)
+        for x in (10.0, 14.0, 18.0):
+            c.line("groove", [(x, cy + s * 1.6), (x - 3.6, cy + s * 5.6)],
+                   0.9)
+    c.poly("body", [(1.5, cy - 2.4), (5.0, cy - 2.4),
+                    (5.0, cy + 2.4), (1.5, cy + 2.4)])
+    c.line("groove", [(1.0, cy), (3.4, cy)], 1.1)
+
+    c.poly("bevel", [(tip, cy), (hx - 5.5, cy - 7.2), (hx - 2.6, cy - 1.8),
+                     (hx - 2.6, cy)])
+    c.poly("core", _blade(hx + 0.5, cy, tip - 2.0, hx - 3.0, 1.9))
+    c.blur("core", 0.30)
     return c
 
 
@@ -266,24 +355,33 @@ def sh_star(w, h, **_):
     return c
 
 
-def sh_star6(w, h, **_):
-    """A hexagram drawn as two triangles that visibly cross: the inner hexagon
-    is engraved and alternate arms are lit.
+def sh_shuriken(w, h, **_):
+    """A four-bladed throwing star with a hole through its hub. Each blade has
+    a short straight leading edge and a long hooked trailing one, and its
+    leading facet is lit, so it reads as whirling (it spins by default; see
+    `SPIN`).
     """
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
-    r = 24.0
-    c.ngon("body", cx, cy, r, 3, turn=-90.0)
-    c.ngon("body", cx, cy, r, 3, turn=90.0)
-
-    r_hex = r / math.sqrt(3.0)
-    hexa = _ngon_pts(cx, cy, r_hex, 6, turn=0.0)
-    for i in range(3):
-        tip = _polar(cx, cy, 90.0 + i * 120.0, r)
-        c.poly("bevel", [tip, hexa[(i * 2 + 1) % 6], hexa[(i * 2 + 2) % 6]])
-    c.ngon_line("groove", cx, cy, r_hex, 6, 2.1, turn=0.0)
-    c.ngon("core", cx, cy, 5.4, 6, turn=0.0)
+    tip_r, hub_r = 19.5, 7.2
+    for i in range(4):
+        a = i * 90.0 - 45.0
+        lead = [(a - 24.0, hub_r), (a - 15.0, 11.2), (a - 7.0, 15.4)]
+        trail = [(a + 14.0, 13.4), (a + 30.0, 10.4), (a + 48.0, 8.6),
+                 (a + 64.0, hub_r)]
+        blade = ([_polar(cx, cy, b, r) for b, r in lead]
+                 + [_polar(cx, cy, a, tip_r)]
+                 + [_polar(cx, cy, b, r) for b, r in trail])
+        c.poly("body", blade)
+        c.poly("bevel", [_polar(cx, cy, b, r) for b, r in lead]
+               + [_polar(cx, cy, a, tip_r), _polar(cx, cy, a + 12.0, hub_r)])
+        c.line("groove", [_polar(cx, cy, a + 12.0, hub_r + 0.5),
+                          _polar(cx, cy, a + 2.0, tip_r - 4.0)], 1.0)
+    c.disc("body", cx, cy, hub_r + 0.8)
+    c.hoop("groove", cx, cy, hub_r - 0.6, 1.1)
+    c.annulus("core", cx, cy, 5.2, 3.0)
     c.blur("core", 0.30)
+    c.disc("body", cx, cy, 2.5, v=0)
     return c
 
 
@@ -293,20 +391,20 @@ def sh_rune(w, h, **_):
     """
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
-    m, k = 2.5, 5.5
+    m, k = 2.0, 4.2
     c.poly("body", [(m + k, m), (w - 1 - m - k, m), (w - 1 - m, m + k),
                     (w - 1 - m, h - 1 - m - k), (w - 1 - m - k, h - 1 - m),
                     (m + k, h - 1 - m), (m, h - 1 - m - k), (m, m + k)])
-    i, j = 6.5, 4.5
+    i, j = 5.0, 3.4
     face = [(i + j, i), (w - 1 - i - j, i), (w - 1 - i, i + j),
             (w - 1 - i, h - 1 - i - j), (w - 1 - i - j, h - 1 - i),
             (i + j, h - 1 - i), (i, h - 1 - i - j), (i, i + j)]
-    c.line("groove", face + [face[0]], 1.3)
+    c.line("groove", face + [face[0]], 1.1)
 
-    c.line("core", [(cx, cy - 9.0), (cx, cy + 9.0)], 1.9)
-    c.line("core", [(cx - 7.0, cy - 7.0), (cx, cy - 0.5)], 1.9)
-    c.line("core", [(cx + 7.0, cy - 7.0), (cx, cy - 0.5)], 1.9)
-    c.line("core", [(cx - 5.5, cy + 4.5), (cx + 5.5, cy + 4.5)], 1.7)
+    c.line("core", [(cx, cy - 6.6), (cx, cy + 6.6)], 1.7)
+    c.line("core", [(cx - 5.0, cy - 5.0), (cx, cy - 0.4)], 1.7)
+    c.line("core", [(cx + 5.0, cy - 5.0), (cx, cy - 0.4)], 1.7)
+    c.line("core", [(cx - 4.0, cy + 3.4), (cx + 4.0, cy + 3.4)], 1.5)
     c.blur("core", 0.30)
     return c
 
@@ -418,6 +516,26 @@ def sh_mote(w, h, frame=0, frames=4, **_):
     return c
 
 
+# How much larger the nova is than the mote.
+NOVA_K = 1.65
+
+
+def sh_nova(w, h, frame=0, frames=4, **_):
+    """The mote drawn at `NOVA_K` times its size, pulsing and spinning the same
+    way.
+    """
+    c = Cut(w, h)
+    cx, cy = c.cx, c.cy
+    k = NOVA_K
+    p = 0.84 + 0.16 * math.cos(2 * math.pi * frame / frames)
+    c.star("body", cx, cy, 13.0 * k * p, 4, 0.30)
+    c.star("body", cx, cy, 7.8 * k * p, 4, 0.36, turn=-45.0)
+    c.star("core", cx, cy, 5.2 * k * p, 4, 0.36)
+    c.disc("core", cx, cy, 1.8 * k)
+    c.blur("core", 0.32 * k)
+    return c
+
+
 # ---------------------------------------------------------------------------
 # The catalogue
 #
@@ -431,36 +549,45 @@ SHAPES = [
     ("pellet",    24, 24, 4.2,  False, 1, sh_pellet,   {}),
     ("orb",       34, 34, 7.0,  False, 1, sh_orb,      {}),
     ("ball",      54, 54, 15.0, False, 1, sh_ball,     {}),
-    ("sphere",    88, 88, 29.0, False, 1, sh_sphere,   dict(bloom_r=3.2)),
+    ("sphere",    62, 62, 20.5, False, 1, sh_sphere,   {}),
     ("ring",      46, 46, 12.5, False, 1, sh_ring,     {}),
     ("bubble",    76, 76, 26.0, False, 1, sh_bubble,   {}),
     ("rice",      34, 22, 5.6,  True,  1, sh_rice,     {}),
-    ("oval",      48, 30, 9.0,  True,  1, sh_oval,     {}),
+    ("droplet",   36, 23, 6.0,  True,  1, sh_droplet,  {}),
+    ("oval",      38, 22, 6.8,  True,  1, sh_oval,     {}),
     ("dart",      46, 30, 7.6,  True,  1, sh_dart,     {}),
-    ("needle",    64, 18, 5.6,  True,  1, sh_needle,   dict(contour=1.0)),
+    ("knife",     54, 20, 6.0,  True,  1, sh_knife,    {}),
+    ("arrow",     60, 19, 5.4,  True,  1, sh_arrow,    dict(contour=1.0)),
     ("card",      46, 30, 9.0,  True,  1, sh_card,     {}),
     ("star",      44, 44, 10.5, False, 1, sh_star,     dict(contour=1.0)),
-    ("star6",     54, 54, 14.0, False, 1, sh_star6,    {}),
+    ("shuriken",  42, 42, 9.0,  False, 1, sh_shuriken, {}),
     ("crystal",   44, 32, 9.0,  True,  1, sh_crystal,  {}),
-    ("rune",      40, 40, 10.5, False, 1, sh_rune,     {}),
+    ("rune",      30, 30, 8.0,  False, 1, sh_rune,     {}),
     ("butterfly", 58, 48, 10.5, True,  4, sh_butterfly, dict(contour=1.0)),
     ("flame",     66, 42, 9.5,  True,  4, sh_flame,    {}),
     ("mote",      30, 30, 5.6,  False, 4, sh_mote,     dict(contour=1.0)),
+    ("nova",      50, 50, 9.2,  False, 4, sh_nova,     dict(contour=1.0,
+                                                          bloom_r=3.0)),
 ]
 
 # Default spin in degrees per frame; `fire` copies it into the bullet's `spin`.
 # Oriented shapes get none, because their `angle` is their heading
 # (`test_bullet_table` checks this).
 SPIN = {
-    "star":  2.2,
-    "star6": 1.5,
-    "mote":  2.8,
+    "star":     2.2,
+    "shuriken": 9.0,
+    "mote":     2.8,
+    "nova":     2.8,
 }
 
-# Origins other than the centre. The flame pivots on its head, which is its
-# hitbox.
+# Origins other than the centre. The flame, the droplet and the arrow pivot on
+# their heads, which are their hitboxes.
 ORIGINS = {
     "flame": lambda w, h, pad: (int(round(_flame_head(w, h)[0])) + pad,
+                                h // 2 + pad),
+    "droplet": lambda w, h, pad: (int(round(_drop_head(w, h)[0])) + pad,
+                                  h // 2 + pad),
+    "arrow": lambda w, h, pad: (int(round(_arrow_head(w, h)[0])) + pad,
                                 h // 2 + pad),
 }
 
