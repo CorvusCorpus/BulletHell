@@ -36,6 +36,8 @@ function selftest_run() {
     test_boss_step();
     test_hall_sky();
     test_hall_orb();
+    test_hall_lights();
+    test_hall_uncropped();
     test_hall_floor();
     test_hall_preview();
     test_old_sanctum();
@@ -1084,7 +1086,7 @@ function test_hall_sky() {
     st_reset();
 }
 
-/// @desc The orb in an alcove and the light it casts are at the same place.
+/// @desc The orb in an alcove stands in it, on its stand.
 function test_hall_orb() {
     st_reset();
     for (var _s = -1; _s <= 1; _s += 2) {
@@ -1097,17 +1099,6 @@ function test_hall_orb() {
            abs(_x) - HALL_ORB_R > abs(_mouth)
            && abs(_x) + HALL_ORB_R < abs(_back));
 
-        var _z = HALL_BAY_Z * 0.5;
-        var _near = hall_wall_light(_x, HALL_ORB_Y, _z + 700, _s, 2)
-                    - hall_wall_light(_x, HALL_ORB_Y, _z + 700, _s, 0);
-        var _far = hall_wall_light(_x, HALL_ORB_Y, _z + 1000, _s, 2)
-                   - hall_wall_light(_x, HALL_ORB_Y, _z + 1000, _s, 0);
-        ok("...and the light it casts falls off with distance from it",
-           _near > _far && _far > 0);
-        ok("...and a bay with no orb in it is not lit by one",
-           hall_wall_light(_x, HALL_ORB_Y, _z, _s, 0)
-           < hall_wall_light(_x, HALL_ORB_Y, _z, _s, 2));
-
         var _cup = HALL_ORB_Y - HALL_ORB_R;
         ok("the orb sits in its cup rather than over it",
            _cup - HALL_ORB_CRADLE > HALL_PLINTH_H);
@@ -1116,22 +1107,82 @@ function test_hall_orb() {
     }
 }
 
+/// @desc The hall's lights: where the torches stand, and how the lights
+///       wake. A light that went out again, or one left dark after a skip to
+///       the boss, would look like a rendering fault rather than a failure.
+function test_hall_lights() {
+    st_reset();
+    ok("a torch's fire burns over its bowl, not inside the stand",
+       HALL_TORCH_Y > HALL_TORCH_H);
+    ok("a torch stands clear of the wall's plinth",
+       HALL_TORCH_X + 42 < HALL_HALF_W - HALL_PLINTH_D);
+    ok("...and of the statues' plinths down the bay",
+       HALL_BAY_Z * 0.5 - 82 > 42);
+
+    ok("a light ahead of its front is out", hall_ignite(100, 200) == 0);
+    ok("...and one the front has passed is on", hall_ignite(300, 200) > 0);
+    ok("...and settles to steady", abs(hall_ignite(100000, 200) - 1) < 0.01);
+
+    // The fronts only ever move on: a light once lit stays lit.
+    var _b = { intro: 0, omen: 0, turn_z: undefined };
+    var _last = -HALL_FRONT_ALL;
+    var _steady = true;
+    for (var _f = 0; _f <= HALL_INTRO_TIME; _f += 5) {
+        _b.intro = _f / HALL_INTRO_TIME;
+        var _fr = hall_front(_b, HALL_WAKE_TORCH);
+        if (_fr < _last) _steady = false;
+        _last = _fr;
+    }
+    ok("the torches' front never runs backward", _steady);
+    ok("...and when the opening is over every light is lit",
+       _last >= HALL_FRONT_ALL);
+
+    // Practice starts the hall awake.
+    var _h = bg_sanctum();
+    bg_skip_to_boss(_h, true);
+    hall_step(_h);
+    ok("a skip to the boss leaves no veil", hall_veil(_h) <= 0);
+    ok("...and every torch lit", hall_front(_h, HALL_WAKE_TORCH)
+                                 >= HALL_FRONT_ALL);
+    ok("...and the braziers too", hall_brazier_front(_h) >= HALL_FRONT_ALL);
+    bg_free(_h);
+
+    var _r = hall_bay_range(_h);
+    ok("the bays drawn include the one the camera is in",
+       _r[0] <= floor(hall_cam_z(_h) / HALL_BAY_Z)
+       && _r[1] > floor(hall_cam_z(_h) / HALL_BAY_Z));
+}
+
+/// @desc The hall's sprites are packed whole: a cropped sprite's frames and
+///       alignment don't match what the hall measures them from (a cropped
+///       flame strip slid each frame off its flame).
+function test_hall_uncropped() {
+    st_reset();
+    var _l = [spr_hall_flame, spr_hall_bastet, spr_hall_bastet_rim,
+              spr_hall_banner, spr_hall_rot, spr_hall_rot_lit, spr_hall_pil,
+              spr_hall_pil_glow, spr_hall_runner, spr_hall_floor];
+    var _bad = "";
+    for (var _i = 0; _i < array_length(_l); _i++) {
+        for (var _f = 0; _f < sprite_get_number(_l[_i]); _f++) {
+            var _q = sprite_get_uvs(_l[_i], _f);
+            if (_q[4] != 0 || _q[5] != 0 || _q[6] != 1 || _q[7] != 1) {
+                _bad += sprite_get_name(_l[_i]) + " ";
+                break;
+            }
+        }
+    }
+    ok("the hall's sprites are packed uncropped " + _bad, _bad == "");
+}
+
 function test_hall_floor() {
     st_reset();
     ok("the runner and its border fit inside the nave",
        HALL_RUNNER_HW + HALL_BORDER_W < HALL_HALF_W);
-
-    // The floor is lit per world point, not per tile, so a course joint is not
-    // a light of its own.
-    var _z = HALL_BAY_Z * 0.5;
-    var _mid = hall_floor_light(0, 0, _z, 1, 0);
-    var _wall = hall_floor_light(HALL_HALF_W - 40, 0, _z, 1, 0);
-    var _seam = hall_floor_light(HALL_RUNNER_HW, 0, _z, 1, 0);
-    ok("the joint between two courses is not a light of its own",
-       _seam < _wall && _seam > _mid);
-    ok("an alcove throws a pool onto the stone in front of it",
-       hall_floor_light(HALL_HALF_W - 40, 0, _z, 1, 2)
-       > hall_floor_light(HALL_HALF_W - 40, 0, _z, 1, 0));
+    ok("the floor's baked shade leaves the nave alone",
+       hall_floor_light(0, 0, 0, 1, 0) == 1
+       && hall_floor_light(HALL_RUNNER_HW + HALL_BORDER_W, 0, 0, 1, 0) == 1);
+    ok("...and darkens only into the foot of the wall",
+       hall_floor_light(HALL_HALF_W - HALL_PLINTH_D, 0, 0, 1, 0) < 1);
 }
 
 /// @desc The review card, which flies the hall with no enemies.

@@ -46,6 +46,11 @@ and is open to change. Earlier agents wrote a great deal of invented
   rings as they spin, which shoot out quickly and then rapidly decelerate to a
   slower speed then drift in a deterministic pattern". The sand is
   yellow/orange (amber). A ring's metal hurts to touch like a bullet.
+- **The hall's ornament is realistic material work**: fine inlay and
+  carving of varying weight, never flat fills or lines of one weight (both
+  read as cartoon or MS Paint). Mika's library is fancy and pristine, not a
+  ruin: no wear, flaking or tarnish. Motifs must read as Egyptian at a
+  glance; a star in a circle doesn't.
 - **Pickups are crystals or gemstones** in red, blue and yellow, small and
   partly see-through so they don't compete with the bullets.
 - **Grading.** Every encounter (a group of waves, or one boss attack) gets a
@@ -353,17 +358,46 @@ and `bg_draw_front`.
     mist drifts.
   - Halfway through, `wave_bg_omen()` turns the stage: an eclipse, a blood
     moon, and a red wave travelling down the corridor by depth.
-- **Room** (stage three, `bg_sanctum`): real 3D with a perspective matrix,
-  the depth buffer and the project's only shader, `sh_hall`. The shader does
-  distance fog, fades far bays out, and does its own alpha test. Bays are
-  frozen vertex buffers. Two things bite:
+- **Room** (stage three, `bg_sanctum`): real 3D with a perspective matrix
+  and the depth buffer, drawn into its own surface. Bays are frozen vertex
+  buffers (position, normal, colour, texcoord).
+  - `sh_hall` lights every surface per pixel: the night through the open roof
+    (the hall is a trench, so what a direction sees of the sky is worked out
+    exactly from the two wall tops), a moon off to one side that the walls
+    shadow, and the fires and orbs. The lights repeat with the bays, so the
+    shader places them itself from one bay's positions (`hall_shader`); the
+    positions come from the same GML functions as the geometry
+    (`hall_torch_x`, `hall_orb_x`).
+  - A buffer's surface is set by `hall_mat` before its submit. The hall's
+    carved and paved textures carry a gloss map in their alpha; drawn with a
+    material whose gloss-map flag is off, that alpha reads as coverage and the
+    surface goes see-through.
+  - The flicker and the waking curve exist twice, in `sh_hall` and in GML
+    (`hall_flicker`, `hall_ignite`), so a flame card matches its light. Change
+    both together.
+  - Fires are cards rebuilt every frame (`hall_draw_flames`), and the polished
+    floor mirrors them (`hall_draw_reflections`, drawn between the pavement
+    and everything standing on it). Then the hall is bloomed and graded
+    (`hall_post`, `sh_hall_post`) before it goes on screen.
+  - The opening (`intro`, `HALL_INTRO_TIME`) is half a minute of the hall
+    waking: black, a moonbeam on the pavement, the torches catching in a front
+    that runs away down the hall, the camera tilting forward and gathering
+    speed. The parapet braziers catch on the reveal instead. Stage three's
+    timeline is pushed back by `SANCTUM_OPENING` so the first wave arrives
+    after the dark.
+  - The hall's lit textures are in the `Hall` texture group, which is
+    mipmapped. The draw turns mipmapping on with `mip_markedonly`; `mip_on`
+    mips every texture drawn, every frame, and ran the game at one frame a
+    second.
+  - The hall holds buffers and surfaces the garbage collector can't reach;
+    `bg_free` (from each owner's Clean Up) frees them.
   - `vertex_submit` takes one texture, so a buffer may only hold geometry
     UV-mapped from the sprite frame it is submitted with.
     `check_hall_frame_textures` and `check_hall_buffer_textures` enforce this.
     A wrong pairing looks fine until the atlas repacks, then shows garbage
     intermittently.
-  - Restore every GPU state you change (culling, shader, depth). A leak breaks
-    the HUD.
+  - Restore every GPU state you change (culling, shader, depth, mipmapping).
+    A leak breaks the HUD.
 
 Spell backgrounds (`spell_bg_*`, chosen per boss by `def.spell_bg`) darken
 the world rather than brightening it, and the front layers fade with them.
@@ -380,28 +414,42 @@ owner's Mika sheet in `tools/source/`.
 | `make_palette.py` | `scripts/palette` |
 | `make_bullets.py` | Bullet sprites **and** `scripts/bullet_table`: hit radius, default spin, frame counts. A bullet's radius is defined next to its picture. |
 | `make_fx.py`, `make_items.py`, `make_ui.py`, `make_fonts.py` | Effects plus Szuix's shot and sigil; pickups; console furniture, medals and the boss rail; sprite fonts |
+| `medal_art.py` | Imported by `make_ui.py` (run alone, it only writes a preview): the rank medals, rendered in their own colours from height fields shaded as metal, enamel, cut stones and granite. The card's medal with its reverse and edge (for the coin spin, `medal_draw`) and a spell's star; the console's medals and sockets. |
 | `make_enemies.py`, `make_player.py`, `make_boss.py` | Fodder; Szuix from his sheet; Ziggy, whose art is a placeholder. `make_boss.py` states what a painted replacement must keep. |
 | `make_mika.py`, `make_rings.py` | Mika from the owner's sheet (a skinned rig; `MIKA_RIG_DEBUG=1` draws its regions over the art); Mika's ring |
-| `make_bg.py`, `make_grove.py`, `make_sanctum.py` | Stage one's layers; stage two's scenery and `scripts/grove_table`; stage three's materials and `scripts/sanctum_table` |
+| `make_bg.py`, `make_grove.py`, `make_sanctum.py` | Stage one's layers; stage two's scenery and `scripts/grove_table`; stage three's materials, fire and statue, and `scripts/sanctum_table` |
+| `sanctum_glyphs.py`, `sanctum_relief.py` | Imported by `make_sanctum.py`: a set of hieroglyphs and the column layout that sets them in squares; and the material work (inlay, sunk and raised relief, grooves, worn gilding, marble, basalt) with the larger ornament (the winged sun, cartouche, lotus frieze, scarab) |
 | `make_sfx.py` | All sound effects |
 | `make_music.py` | The placeholder music, from downloads in `tools/source/music/`: normalised, looped, streamed |
 
 - Most art is luminance and gets tinted at draw time, so one set of fodder
-  serves every stage. Mika's ring and characters taken from reference sheets
-  keep their own colours.
+  serves every stage. Mika's ring, the rank medals and characters taken from
+  reference sheets keep their own colours.
 - A bullet is a bright core in a saturated body with a hard dark contour
   (`cut_finish` in `art_common`). The dark contour is what additive scenery
   can never produce. Each shape is one sprite with one frame per colour; get
   the index from `bullet_frame`. Oriented shapes point right at angle 0.
 - Some numbers exist both in a generator and in `constants`.
-  `check_project.py` compares the font metrics, the near layer's keep-out and
-  the rotunda's scale. Nothing compares `UI_CORNER_DEPTH` or `BOSS_INK_ABOVE`,
+  `check_project.py` compares the font metrics, the near layer's keep-out,
+  the rotunda's scale and the medals' sizes. Nothing compares `UI_CORNER_DEPTH` or `BOSS_INK_ABOVE`,
   so re-measure those by hand when their art changes.
 - `check_sprites_not_blank` refuses a sprite with an empty frame, which is how
   IDE damage shows up. `BLANK_FRAMES_OK` lists the few sprites whose empty
   frames are intentional.
 - Szuix is scaled up by NEAREST to 6x, blurred, then LANCZOS down, all with
   premultiplied alpha: the sheet's transparent pixels are white.
+- The Bastet's outline follows the owner's reference statue, written down as
+  points in `make_sanctum.py` (`BASTET_REF`). Her card is a relief of
+  separate parts (`BASTET_PARTS`), so her legs, haunch and ears each read.
+  The far ear showing behind the near one is intended (the owner's), for a
+  sense of depth. Her eyes are Ashiah's red. In the hall she is swept into a
+  solid part by part (`BASTET_SOLIDS`, written to `scripts/sanctum_table`),
+  each part round its own axis at her near or far side, so from above her
+  legs are separate forms. The solid samples texels just outside her
+  outline, so her sprite carries its colour out past it and the hall draws
+  her ignoring alpha (`HALL_MAT_STATUE`); an alpha-tested statue shows holes
+  and cracks. Her plinth is sized from her sprite, so it follows if she
+  changes.
 - Fonts are sprite fonts built from bundled OFL faces. Don't bake in the
   system's Microsoft fonts. There is no kerning, which shows on Cinzel's `Q`.
 
@@ -432,6 +480,11 @@ owner's Mika sheet in `tools/source/`.
   own capsule contour.
 - A primitive textured with `sprite_get_texture` reads UVs in the sprite's
   own 0–1 space, not the texture page's.
+- The `Default` texture group crops transparent borders, so a sprite's UVs on
+  the page may cover only part of it (`sprite_get_uvs` entries 4–7 say how
+  much). Mapping across them as if they were the whole sprite made the hall's
+  flame strip slide off its flames. The hall's sprites are in the uncropped
+  `Hall` group (`test_hall_uncropped`), and `hall_uv` allows for cropping.
 - `window_set_visible(false)` stops the game stepping.
   `option_windows_start_fullscreen` is read before any GML runs, so it stays
   off; `obj_boot` enters borderless full screen itself.
@@ -477,7 +530,9 @@ What's playable:
 - Stage one: Ziggy, and the Warden as midboss.
 - Stage two: Velka, and the Husk as midboss. The wood turns to blood halfway
   through.
-- Stage three: Mika, and the Proctor as midboss, in the finished 3D hall.
+- Stage three: Mika, and the Proctor as midboss, in the 3D hall: lit per
+  pixel by torches, orbs and the open sky, with a half-minute opening in
+  which the hall wakes.
 - The result screen and permanent progress.
 - Practice for every attack.
 - The drafting table.

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """The HUD's furniture: filigree, rules, marks, medals and material.
 
-Everything here is drawn white and tinted at draw time (mostly `COL_GILT`),
-so every shape is built from value rather than colour: a lit edge beside a
-dark one reads as relief once tinted. Anything that carries a value (a
-gauge's length, a rule's straight run, the panel's ground) is drawn in GML
-so it can stretch; the shapes are sprites made here.
+Everything here but the medals is drawn white and tinted at draw time
+(mostly `COL_GILT`), so every shape is built from value rather than colour: a
+lit edge beside a dark one reads as relief once tinted. Anything that carries
+a value (a gauge's length, a rule's straight run, the panel's ground) is drawn
+in GML so it can stretch; the shapes are sprites made here. The rank medals
+are rendered in their own colours by `medal_art.py`.
 
 Usage:
     python tools/make_ui.py
@@ -21,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import art_common as A
 import gm_new
+import medal_art
 
 PREVIEW = os.path.join(A.PREVIEW, "ui.png")
 
@@ -268,8 +270,8 @@ def crest(w=360, h=58):
 # ---------------------------------------------------------------------------
 
 def marks(size=30):
-    """Three frames for the console's row of attack marks: a lozenge
-    (non-spell), a rosette (spell) and the empty socket. The two filled marks
+    """Two small ornaments: a lozenge (the tablet's end sparks, a non-spell
+    in the attack list) and a rosette (a spell in the attack list). They
     differ in silhouette rather than size, so they tell apart at 30 pixels.
     """
     out = []
@@ -297,18 +299,7 @@ def marks(size=30):
     ro.polygon(pts, fill=(LIT, LIT, LIT, 255))
     out.append(_alpha_only(ro.finish()))
 
-    # The socket, for an encounter not yet reached: the lozenge hollowed and
-    # dimmed, so a row of marks reads as one row partly filled.
-    so = A.Canvas(size, size)
-    so.polygon([(h, 4), (size - 7, h), (h, size - 4), (7, h)],
-               fill=(FACE, FACE, FACE, 255))
-    so.polygon([(h, 9), (size - 12, h), (h, size - 9), (12, h)],
-               fill=(0, 0, 0, 0))
-    out.append(_alpha_only(so.finish()))
-
     return out
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -552,7 +543,7 @@ def plaque(w=PLAQUE_W, h=PLAQUE_H):
     return _alpha_only(c.finish())
 
 # ---------------------------------------------------------------------------
-# The medal
+# Rings
 # ---------------------------------------------------------------------------
 
 def _ring(c, cx, cy, r, w, v, alpha, steps=240):
@@ -575,230 +566,6 @@ def _ring(c, cx, cy, r, w, v, alpha, steps=240):
                       fill=(vv, vv, vv, max(aa, prev[3])))
         prev = cur
 
-
-def _bevel(c, cx, cy, r, w, lit=1.0):
-    """An edge that catches light from up and to the left: a bright band beside
-    a dark one, which reads as a slope. The light is a raised cosine of the
-    angle, so the two faces swap over smoothly rather than at a seam.
-    """
-    key = math.radians(-135.0)
-
-    def face(a, phase):
-        # 1 at the lit side, 0 at the shaded one.
-        return 0.5 + 0.5 * math.cos(a - key + phase)
-
-    # The outer chamfer: bright where it faces the light.
-    _ring(c, cx, cy, r, w * 0.5,
-          lambda a: LIT if face(a, 0) > 0.5 else FACE,
-          lambda a: (60 + 195 * face(a, 0)) * lit)
-    # The inner chamfer, half a turn out of phase, so the rim has two faces.
-    _ring(c, cx, cy, r - w * 0.5, w * 0.5,
-          lambda a: FACE if face(a, math.pi) > 0.5 else DARK,
-          lambda a: (30 + 150 * face(a, math.pi)) * lit)
-
-
-def _gem(c, cx, cy, r, facets, rough=False, star=False):
-    """A cut stone: a girdle, a ring of crown facets, and a table. Every face
-    is a polygon at one flat value, and neighbouring faces are forced apart in
-    value so the cut reads. `rough` draws an uncut lump instead: an irregular
-    girdle, two big cleavage planes, and no table.
-    """
-    key = math.radians(-135.0)
-
-    if rough:
-        # An uncut lump. The girdle wanders, so nothing about it is regular.
-        pts = []
-        for i in range(9):
-            a = math.radians(-90 + i * 40.0)
-            rr = r * (0.80 + 0.30 * math.sin(i * 2.7) * math.cos(i * 1.3))
-            pts.append((cx + math.cos(a) * rr, cy + math.sin(a) * rr))
-        c.polygon(pts, fill=(DARK + 30, DARK + 30, DARK + 30, 255))
-        # Two cleavage planes, one catching the light and one not.
-        c.polygon(pts[7:] + pts[:3] + [(cx, cy)],
-                  fill=(FACE + 30, FACE + 30, FACE + 30, 255))
-        c.polygon(pts[2:5] + [(cx, cy)],
-                  fill=(DARK + 6, DARK + 6, DARK + 6, 255))
-        return
-
-    girdle = []
-    table = []
-    for i in range(facets):
-        a = math.radians(-90 + i * 360.0 / facets)
-        b = a + math.pi / facets
-        girdle.append((cx + math.cos(a) * r, cy + math.sin(a) * r))
-        table.append((cx + math.cos(b) * r * 0.50,
-                      cy + math.sin(b) * r * 0.50))
-
-    for i in range(facets):
-        j = (i + 1) % facets
-        # Where this pair of faces points, and therefore how lit they are.
-        a = math.radians(-90 + i * 360.0 / facets) + math.pi / facets
-        f = 0.5 + 0.5 * math.cos(a - key)
-        base = DARK + (LIT - DARK) * (0.10 + 0.90 * f)
-        # ...pushed hard apart, so no two neighbours are ever close.
-        v1 = int(max(DARK - 30, min(LIT, base + (46 if i % 2 == 0 else -46))))
-        v2 = int(max(DARK - 30, min(LIT, base + (-38 if i % 2 == 0 else 38))))
-        c.polygon([girdle[i], girdle[j], table[i]], fill=(v1, v1, v1, 255))
-        c.polygon([girdle[i], table[i - 1], table[i]], fill=(v2, v2, v2, 255))
-
-    # The table: the flat top, brightest on its lit half.
-    c.polygon(table, fill=(LIT - 26, LIT - 26, LIT - 26, 255))
-    half = [table[k % facets] for k in range(facets // 2, facets + 1)]
-    if len(half) >= 3:
-        c.polygon(half, fill=(FACE - 4, FACE - 4, FACE - 4, 255))
-
-    if star:
-        # A star cut across the table: short alternating facets from its
-        # centre to its corners.
-        for i in range(facets):
-            j = (i + 1) % facets
-            v = LIT if i % 2 == 0 else FACE + 26
-            c.polygon([table[i], table[j], (cx, cy)], fill=(v, v, v, 255))
-        c.ellipse([cx - r * 0.10, cy - r * 0.10, cx + r * 0.10,
-                   cy + r * 0.10], fill=(LIT, LIT, LIT, 255))
-
-
-def _rays(c, cx, cy, r0, r1, n, v, alpha, long_every=2, phase=0.0):
-    """Light coming off the piece. Uneven, or it is a sun."""
-    for i in range(n):
-        a = math.radians(phase + i * 360.0 / n)
-        rr = r1 if (i % long_every == 0) else r0 + (r1 - r0) * 0.55
-        c.line([(cx + math.cos(a) * r0, cy + math.sin(a) * r0),
-                (cx + math.cos(a) * rr, cy + math.sin(a) * rr)],
-               fill=(v, v, v, alpha), width=1.6)
-
-
-def _crescent(c, cx, cy, r, v=LIT):
-    """The interface's crescent, at the head of the medal, on its own layer so
-    the bite is a true hole.
-    """
-    moon = A.new_layer(c)
-    md = A.layer_draw(moon)
-    ss = c.ss
-    md.ellipse([(cx - r) * ss, (cy - r) * ss, (cx + r) * ss, (cy + r) * ss],
-               fill=(v, v, v, 255))
-    md.ellipse([(cx - r * 0.28) * ss, (cy - r * 1.06) * ss,
-                (cx + r * 1.34) * ss, (cy + r * 1.06) * ss],
-               fill=(0, 0, 0, 0))
-    c.paste_full(moon)
-
-
-def medals(size=176):
-    """One frame per rung of the ladder, plus ABSOLUTE AMETHYST.
-
-    One medal with more ornament at each rung (beading, volutes, a crescent,
-    rays), drawn white and tinted at draw time (`mark_colour`). Drawn at 176
-    for the rank card; the ornament is built from bands and masses rather than
-    hairlines so it survives being scaled down.
-    """
-    out = []
-    n = size / 2.0
-
-    # How much ornament each rung gets; the gem's facet count climbs with it.
-    SPEC = [
-        # ticks volutes crescent rays facets rough  star   halo
-        (0,     False,  False,   0,   0,     True,  False, False),  # STONE
-        (16,    False,  False,   0,   6,     False, False, False),  # BRONZE
-        (20,    True,   False,   0,   7,     False, False, False),  # SILVER
-        (24,    True,   True,    0,   8,     False, True,  False),  # GOLD
-        (28,    True,   True,    20,  9,     False, True,  False),  # AMETHYST
-        (36,    True,   True,    36,  10,    False, True,  True),   # ABSOLUTE
-    ]
-
-    for ticks, volutes, crescent, rays, facets, rough, star, halo in SPEC:
-        c = A.Canvas(size, size)
-        cx = cy = n
-        r_out = n - 8.0
-
-        # The rays go first, behind everything, so the medal sits on them.
-        if rays:
-            _rays(c, cx, cy, r_out - 2, n - 1.0, rays, FACE, 150)
-            _rays(c, cx, cy, r_out - 2, n - 5.0, rays, LIT, 90,
-                  long_every=3, phase=360.0 / (rays * 2))
-
-        # The field: the flat of the medal, dark so everything on it reads.
-        c.ellipse([cx - r_out + 3, cy - r_out + 3, cx + r_out - 3,
-                   cy + r_out - 3], fill=(DARK - 20, DARK - 20, DARK - 20, 235))
-
-        # The struck edge.
-        if rough:
-            # Stone is the same medal badly cast: the rim wobbles, the bevel is
-            # weak and the light on it is patchy.
-            _ring(c, cx, cy, r_out,
-                  lambda a: 9.5 + 3.4 * math.sin(a * 5.0 + 1.1)
-                            + 1.8 * math.sin(a * 11.0),
-                  lambda a: FACE + 40 * math.cos(a - math.radians(-135.0)),
-                  245)
-            # Pits, which is what a bad cast has instead of a bevel.
-            for i in range(26):
-                a = i * 2.39996
-                rr = r_out - 4.0 - 7.0 * ((i * 0.37) % 1.0)
-                px, py = cx + math.cos(a) * rr, cy + math.sin(a) * rr
-                sz = 1.4 + 2.2 * ((i * 0.61) % 1.0)
-                c.ellipse([px - sz, py - sz, px + sz, py + sz],
-                          fill=(DARK - 30, DARK - 30, DARK - 30, 235))
-        else:
-            _bevel(c, cx, cy, r_out, 9.0)
-
-        # A course of beading inside the rim.
-        if ticks:
-            rb = r_out - 11.0
-            for i in range(ticks):
-                a = math.radians(i * 360.0 / ticks)
-                bx, by = cx + math.cos(a) * rb, cy + math.sin(a) * rb
-                f = 0.5 + 0.5 * math.cos(a - math.radians(-135.0))
-                v = int(FACE + (LIT - FACE) * f)
-                c.ellipse([bx - 2.6, by - 2.6, bx + 2.6, by + 2.6],
-                          fill=(v, v, v, 235))
-            # An engraved circle under the beading: a dark hairline with a pale
-            # one beside it.
-            _ring(c, cx, cy, rb - 5.0, 1.6, DARK, 190)
-            _ring(c, cx, cy, rb - 6.6, 1.2, LIT, 120)
-
-        # Volutes either side.
-        if volutes:
-            _scroll(c, cx - r_out + 13, cy + 2, 13.0, 0.62, 200, 2.4,
-                    FACE + 30, 225)
-            _scroll(c, cx + r_out - 13, cy + 2, 13.0, -0.62, -20, 2.4,
-                    FACE + 30, 225)
-
-        # The crescent at the head of the field.
-        if crescent:
-            _crescent(c, cx, cy - r_out + 22, 8.5)
-
-        # ABSOLUTE AMETHYST gets a second rim and a wreath, so it is clearly
-        # distinct from AMETHYST.
-        if halo:
-            _ring(c, cx, cy, n - 2.5, 2.2, LIT, 210)
-            _ring(c, cx, cy, r_out - 17.0, 1.4, LIT, 130)
-            for i in range(2):
-                sgn = 1 if i == 0 else -1
-                for k in range(11):
-                    a = math.radians(108 + sgn * (k * 15.4) + (0 if i else 0))
-                    rr = r_out - 22.0
-                    lx, ly = cx + math.cos(a) * rr, cy + math.sin(a) * rr
-                    c.polygon([(lx, ly - 5.5), (lx + sgn * 4.2, ly),
-                               (lx, ly + 5.5)],
-                              fill=(FACE + 50, FACE + 50, FACE + 50, 190))
-
-        # The stone.
-        _gem(c, cx, cy + (3 if crescent else 0), n * 0.335, max(facets, 3),
-             rough=rough, star=star)
-
-        # A four-pointed spark on the table.
-        if rays:
-            for sx, sy, ln in ((0, 0, 13.0),):
-                gx, gy = cx + sx - n * 0.10, cy + sy - n * 0.10
-                c.polygon([(gx, gy - ln), (gx + ln * 0.20, gy),
-                           (gx, gy + ln), (gx - ln * 0.20, gy)],
-                          fill=(LIT, LIT, LIT, 255))
-                c.polygon([(gx - ln, gy), (gx, gy - ln * 0.20),
-                           (gx + ln, gy), (gx, gy + ln * 0.20)],
-                          fill=(LIT, LIT, LIT, 255))
-
-        out.append(_alpha_only(c.finish()))
-
-    return out
 
 # ---------------------------------------------------------------------------
 # The material
@@ -848,7 +615,7 @@ def main():
     mk = marks()
     gr = grain()
     cr = crest()
-    md = medals()
+    md = medal_art.build()
     ch = chain()
     hg = hanger()
     pl = plaque()
@@ -859,7 +626,23 @@ def main():
     gm_new.sprite("spr_ui_mark", mk, origin="center", folder="Sprites/ui")
     gm_new.sprite("spr_ui_grain", [gr], origin="topleft", folder="Sprites/ui")
     gm_new.sprite("spr_ui_crest", [cr], origin="topleft", folder="Sprites/ui")
-    gm_new.sprite("spr_ui_medal", md, origin="center", folder="Sprites/ui")
+    # The rank medals, one frame per rung: the card's medal, its reverse and
+    # edge (for the spin), a spell's star, the empty socket at the card's
+    # size; the console's medals (non-spells, then spells) and its socket.
+    gm_new.sprite("spr_ui_medal", md["front"], origin="center",
+                  folder="Sprites/ui")
+    gm_new.sprite("spr_ui_medal_back", md["back"], origin="center",
+                  folder="Sprites/ui")
+    gm_new.sprite("spr_ui_medal_edge", md["edge"], origin="center",
+                  folder="Sprites/ui")
+    gm_new.sprite("spr_ui_medal_star", md["star"], origin="center",
+                  folder="Sprites/ui")
+    gm_new.sprite("spr_ui_medal_socket", [md["socket_big"]], origin="center",
+                  folder="Sprites/ui")
+    gm_new.sprite("spr_ui_mark_medal", md["marks"], origin="center",
+                  folder="Sprites/ui")
+    gm_new.sprite("spr_ui_mark_socket", [md["socket"]], origin="center",
+                  folder="Sprites/ui")
     # The chain's origin is its top-left: it is tiled downward from a fixed
     # ceiling, so the links' phase stays put while the rail moves.
     gm_new.sprite("spr_ui_chain", [ch], origin="topleft", folder="Sprites/ui")
@@ -875,7 +658,10 @@ def main():
           % (co.width, co.height, ru.width, ru.height,
              mk[0].width, mk[0].height, len(mk), gr.width, gr.height,
              cr.width, cr.height))
-    print("medal %dx%d x%d" % (md[0].width, md[0].height, len(md)))
+    print("medal %dx%d x%d  star %dx%d  mark %dx%d x%d"
+          % (md["front"][0].width, md["front"][0].height, len(md["front"]),
+             md["star"][0].width, md["star"][0].height,
+             md["marks"][0].width, md["marks"][0].height, len(md["marks"])))
     print("chain %dx%d  hanger %dx%d  plaque %dx%d  dial %dx%d"
           % (ch.width, ch.height, hg.width, hg.height, pl.width, pl.height,
              dl.width, dl.height))
@@ -906,37 +692,17 @@ def main():
         stack.paste(ch, (0, ty * ch.height))
 
     A.preview([on_ground(co), on_ground(cr), on_ground(ru),
-               on_ground(mk[0], 2.0), on_ground(mk[1], 2.0),
-               on_ground(mk[2], 2.0), lit,
+               on_ground(mk[0], 2.0), on_ground(mk[1], 2.0), lit,
                on_ground(stack, 2.0), on_ground(hg, 2.0), on_ground(pl),
                on_ground(dl, 2.0)],
               PREVIEW, cols=4, bg=(10, 8, 20),
               labels=["corner", "crest", "rule", "lozenge", "rosette",
-                      "socket", "grain x4", "chain x5", "hanger", "plaque",
-                      "dial"])
+                      "grain x4", "chain x5", "hanger", "plaque", "dial"])
     print("->  %s" % os.path.relpath(PREVIEW, A.ROOT))
 
-    # The medals get their own sheet in their own colours, at full size and at
-    # 34px.
-    tints = [A.STONE, A.BRONZE, A.SILVER, A.GRAZE, A.AMETHYST,
-             A.mix(A.AMETHYST, (255, 255, 255), 0.45)]
-    names = ["STONE", "BRONZE", "SILVER", "GOLD", "AMETHYST", "ABSOLUTE"]
-
-    def tinted(img, col, scale):
-        w = max(1, int(img.width * scale))
-        h = max(1, int(img.height * scale))
-        cell = Image.new("RGBA", (w + 16, h + 16), tuple(ground) + (255,))
-        lay = Image.new("RGBA", img.size, tuple(col) + (0,))
-        lay.putalpha(img.getchannel("A"))
-        cell.alpha_composite(lay.resize((w, h), Image.LANCZOS), (8, 8))
-        return cell
-
-    A.preview([tinted(md[i], tints[i], 1.0) for i in range(len(md))]
-              + [tinted(md[i], tints[i], 0.20) for i in range(len(md))],
-              os.path.join(A.PREVIEW, "ui_medals.png"), cols=6, bg=(10, 8, 20),
-              labels=names + [n.lower() + " @34" for n in names])
-    print("->  %s" % os.path.relpath(os.path.join(A.PREVIEW,
-                                                  "ui_medals.png"), A.ROOT))
+    # The medals get their own sheets: the card's, turned, and the console's.
+    path = medal_art.preview(md)
+    print("->  %s" % os.path.relpath(path, A.ROOT))
 
 
 if __name__ == "__main__":

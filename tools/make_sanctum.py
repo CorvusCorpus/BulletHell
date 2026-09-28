@@ -27,6 +27,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import art_common as A
 import gm_new
+import sanctum_glyphs as SG
+import sanctum_relief as SR
 
 SS = 2
 
@@ -56,7 +58,7 @@ NAVY      = (16, 17, 38)
 # between its shaded and lit faces, plus a narrower, cooler specular. Gold is
 # the same three stops opened further, with a wider highlight.
 CAT_DARK  = (9, 9, 13)
-CAT_LIT   = (54, 56, 70)
+CAT_LIT   = (38, 39, 50)
 CAT_SPEC  = (138, 152, 184)
 AU_DARK   = (36, 26, 10)
 AU_LIT    = (206, 164, 74)
@@ -72,6 +74,14 @@ FLOOR_N = 512
 # at; `check_rotunda_scale_agrees` derives that from `HALL_ROT_HW`,
 # `HALL_ROT_Z` and the lens and checks the two agree.
 HALL_ROT_HW_SCREEN = 401.0
+
+# The texture group the hall's sprites are packed in: mipmapped, with a wide
+# border so the small mips don't take colour from their neighbours, and not
+# cropped (the default group crops transparent borders, which the flame strip
+# and the statue's rim can't have: their frames and alignment are measured
+# from the whole image). The flame strip's frames have wide empty margins, so
+# its small mips don't blend one frame into the next.
+HALL_TEXGROUP = "Hall"
 
 
 # ---------------------------------------------------------------------------
@@ -454,219 +464,256 @@ def wall_bay(kind):
 
 
 # ---------------------------------------------------------------------------
-# The floor: black marble, gilded
-# ---------------------------------------------------------------------------
-def floor_tile():
-    im, d = canvas(FLOOR_N, FLOOR_N, MARBLE)
-    N = FLOOR_N * SS
-    s = SS
-    veining(d, N, N, 11, n=54)
-
-    # the inlay: a hairline of gold with a dark line inside it, so it reads
-    # as let into the stone
-    def inlay(box, w=2.0, a=225):
-        d.rectangle(box, outline=rgba(GILT, a), width=int(w * s))
-        d.rectangle([box[0] + w * s, box[1] + w * s,
-                     box[2] - w * s, box[3] - w * s],
-                    outline=(0, 0, 0, 150), width=max(1, int(s * 0.7)))
-
-    m = 11 * s
-    inlay([m, m, N - m, N - m], 2.4)
-    m2 = 30 * s
-    d.rectangle([m2, m2, N - m2, N - m2], outline=rgba(GILT_DIM, 180),
-                width=s)
-
-    c = N / 2
-    # a winged disc at the tile's heart
-    d.ellipse([c - 31 * s, c - 31 * s, c + 31 * s, c + 31 * s],
-              outline=rgba(GILT, 235), width=int(2.6 * s))
-    d.ellipse([c - 15 * s, c - 15 * s, c + 15 * s, c + 15 * s],
-              fill=rgba(GILT_DARK, 210))
-    d.ellipse([c - 15 * s, c - 15 * s, c + 15 * s, c + 15 * s],
-              outline=rgba(GILT, 200), width=int(1.2 * s))
-    for sgn in (-1, 1):
-        for i in range(6):
-            t = i / 5.0
-            d.line([(c + sgn * 35 * s, c - 3 * s + i * 3.2 * s),
-                    (c + sgn * (35 + 62 * (1 - t * 0.45)) * s,
-                     c + (5 + i * 7.4) * s)],
-                   fill=rgba(GILT, int(215 - i * 26)), width=int(1.8 * s))
-        # the tail feathers under it
-        d.line([(c + sgn * 8 * s, c + 22 * s),
-                (c + sgn * 16 * s, c + 58 * s)],
-               fill=rgba(GILT, 190), width=int(1.6 * s))
-    # ankhs at the corners of the field
-    for (ax, ay) in ((m2 + 36 * s, m2 + 36 * s), (N - m2 - 36 * s, m2 + 36 * s),
-                     (m2 + 36 * s, N - m2 - 36 * s),
-                     (N - m2 - 36 * s, N - m2 - 36 * s)):
-        d.ellipse([ax - 11 * s, ay - 20 * s, ax + 11 * s, ay + 2 * s],
-                  outline=rgba(GILT, 200), width=int(2.0 * s))
-        d.rectangle([ax - 2 * s, ay - 1 * s, ax + 2 * s, ay + 22 * s],
-                    fill=rgba(GILT, 200))
-        d.rectangle([ax - 14 * s, ay + 5 * s, ax + 14 * s, ay + 9 * s],
-                    fill=rgba(GILT, 200))
-
-    # a polish: a faint broad sheen, so the stone reads as wet-looking even
-    # before the hall's own reflection is laid over it
-    sh, shd = mask(FLOOR_N, FLOOR_N)
-    shd.ellipse([-N * 0.2, N * 0.1, N * 0.7, N * 0.55], fill=40)
-    sh = sh.filter(ImageFilter.GaussianBlur(30 * s))
-    a = np.asarray(im).astype(np.float32) + np.asarray(sh)[:, :, None] * 0.45
-    im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGB")
-    out = grain(down(im, FLOOR_N, FLOOR_N), 3, 7).convert("RGBA")
-    out.putalpha(255)
-    return out
-
-
-
-# ---------------------------------------------------------------------------
-# ...and the rest of the pavement
+# The pavement and the carved stone (`sanctum_relief`)
 #
-# Three courses: a runner down the middle that the player flies along, an
-# ornamented border either side of it, and the marble field out at the walls.
-# `bg_sanctum` sinks the runner below the other two and faces the step in
-# gilt, so the joins converge on the vanishing point. Both tiles here are
-# periodic along the hall and not across it.
+# Every surface here is ornament worked into stone: gold inlaid flush in the
+# floors, sunk relief with gilded floors on the walls, raised relief on the
+# plinths. Each is drawn as masks (filled forms of varying weight, not
+# outlines), and `Plate.finish` models the relief and writes the gloss into
+# the alpha, which `sh_hall` reads (`HALL_MAT_*` with the gloss-map flag).
+#
+# Each texture is made at the proportions of the surface it is laid on, so
+# its ornament isn't stretched.
 # ---------------------------------------------------------------------------
-def _coil(d, x0, x1, y0, y1, n, col=GILT, a=190, t=1.4):
-    """A running spiral frieze: round spirals joined by a wave (the Egyptian
-    border, rather than a Greek key).
-    """
-    s = SS
-    w = x1 - x0
-    step = (y1 - y0) / n
-    r = w * 0.40
-    cx = (x0 + x1) * 0.5
-    for i in range(n):
-        cy = y0 + (i + 0.5) * step
-        d.ellipse([cx - r, cy - r, cx + r, cy + r],
-                  outline=rgba(col, a), width=int(t * s))
-        d.ellipse([cx - r * 0.42, cy - r * 0.42, cx + r * 0.42,
-                   cy + r * 0.42], outline=rgba(col, int(a * 0.8)),
-                  width=max(1, int(t * s * 0.7)))
-        # The wave joining this coil to the next, sampled as a curve
-        # (straight joins read as a chain).
-        sgn = 1 if (i % 2 == 0) else -1
-        pts = []
-        for k in range(21):
-            u = k / 20.0
-            pts.append((cx + sgn * math.cos(u * math.pi) * w * 0.46,
-                        cy + u * step))
-        d.line(pts, fill=rgba(col, int(a * 0.85)), width=max(1, int(t * s)))
+
+# The runner is one tile a bay long and the runner's width across
+# (`HALL_RUNNER_HW` * 2 by `HALL_BAY_Z`, 528 by 560).
+RUNNER_W, RUNNER_H = 768, 816
+# The border course, one of `HALL_BORDER_NZ` along a bay (92 by 251).
+BORDER_W, BORDER_H = 160, 436
+# A pilaster's face, floor to wall head (`HALL_PIL_W` by `HALL_CEIL_H`).
+PIL_W, PIL_H = 104, 1624
 
 
-def _cartouche(d, cx, cy, hw, hh, seed):
-    """A name-ring: the motif a processional way is paved with."""
-    s = SS
-    d.rounded_rectangle([cx - hw, cy - hh, cx + hw, cy + hh],
-                        radius=hw, outline=rgba(GILT, 230), width=int(2.2 * s))
-    d.rounded_rectangle([cx - hw + 4 * s, cy - hh + 4 * s,
-                         cx + hw - 4 * s, cy + hh - 4 * s],
-                        radius=hw, outline=rgba(GILT_DIM, 170), width=s)
-    # the tie across the foot, which is what makes a ring a cartouche
-    d.rectangle([cx - hw * 0.55, cy + hh - 2 * s, cx + hw * 0.55,
-                 cy + hh + 3 * s], fill=rgba(GILT, 220))
-    glyph_run(d, cx, cy - hh + 13 * s, cy + hh - 13 * s, hw * 1.05, seed,
-              col=GILT, alpha=205)
+def runner_tile():
+    """The processional way: polished obsidian with its ornament let in as
+    fine strip gold, as a floor's inlay is: a rule and a string of beads
+    down each edge, and down the middle a winged sun at each bay's joint
+    (half at each end of the tile, so a joint lands on one whole), a
+    cartouche between, and a lotus between those. Forms are drawn in
+    outline; only small parts (the sun, the glyphs, the beads) are solid.
+    Everything faces the far end, which is the tile's top."""
+    w, h = RUNNER_W, RUNNER_H
+    p = SR.Plate(w, h, ss=2, gloss=0.62)
+    W, H = p.W, p.H
+    p.tint_stone(SR.marble(W, H, 23, base=(13, 13, 18), vein=(46, 46, 58),
+                           scale=1.4))
 
+    lines, ld = p.mask()        # drawn as strip: outlined
+    solid, sd = p.mask()        # set whole
+    for side in (0, 1):
+        def X(u):
+            return u * W if side == 0 else W - u * W
 
-def _winged_disc(d, cx, cy, size, col=GILT, a=215):
-    """The sun with its wings out, spread along x for a floor read along z."""
-    s = SS
-    d.ellipse([cx - size * 0.30, cy - size * 0.30, cx + size * 0.30,
-               cy + size * 0.30], outline=rgba(col, a), width=int(2.2 * s))
-    d.ellipse([cx - size * 0.14, cy - size * 0.14, cx + size * 0.14,
-               cy + size * 0.14], fill=rgba(GILT_DARK, 210))
-    for sgn in (-1, 1):
-        for i in range(6):
-            t = i / 5.0
-            d.line([(cx + sgn * size * 0.34, cy - size * 0.03 + i * size * 0.031),
-                    (cx + sgn * size * (0.34 + 0.60 * (1 - t * 0.45)),
-                     cy + size * (0.05 + i * 0.072))],
-                   fill=rgba(col, max(40, a - i * 24)), width=int(1.8 * s))
-
-
-def runner_tile(w=384, h=512):
-    """The processional runner: obsidian, one tile across and many along, with
-    everything on it laid out along the direction of flight.
-    """
-    im, d = canvas(w, h, OBSIDIAN)
-    W, H = w * SS, h * SS
-    s = SS
-    veining(d, W, H, 23, n=20, col=(26, 27, 38))
-
-    # The rules run the whole length unbroken: they are the lines the eye
-    # follows to the vanishing point.
-    for x in (16 * s, W - 16 * s):
-        d.rectangle([x - 2.2 * s, 0, x + 2.2 * s, H], fill=rgba(GILT, 225))
-    # the dark line inboard of the bright one: the moulding rule, laid flat,
-    # which is what makes an inlay read as let *into* the stone
-    for x in (21 * s, W - 22 * s):
-        d.rectangle([x, 0, x + s, H], fill=(0, 0, 0, 150))
-    for x in (46 * s, W - 46 * s):
-        d.rectangle([x - s, 0, x + s, H], fill=rgba(GILT_DIM, 175))
-
-    # the coil frieze, in the channel between the two rules
-    _coil(d, 52 * s, 98 * s, 0, H, 8)
-    _coil(d, W - 98 * s, W - 52 * s, 0, H, 8)
-
-    # The chain down the middle, periodic in h: cartouches at a quarter and
-    # three quarters, and the disc at both ends, so the joint between bays
-    # lands on one motif.
+        def band(u0, u1, dr):
+            dr.rectangle([min(X(u0), X(u1)), 0, max(X(u0), X(u1)), H],
+                         fill=255)
+        band(0.022, 0.027, sd)
+        band(0.036, 0.038, sd)
+        band(0.160, 0.163, sd)
+        SR.bead_chain(sd, min(X(0.088), X(0.114)), max(X(0.088), X(0.114)),
+                      0, H, 11)
     cx = W * 0.5
-    d.rectangle([cx - 0.9 * s, 0, cx + 0.9 * s, H], fill=rgba(GILT_DIM, 110))
-    _cartouche(d, cx, H * 0.25, 44 * s, 78 * s, 41)
-    _cartouche(d, cx, H * 0.75, 44 * s, 78 * s, 42)
     for y in (0, H):
-        _winged_disc(d, cx, y, 116 * s)
+        SR.winged_disc(ld, cx, y, W * 0.64)
+    SR.cartouche(ld, cx - W * 0.105, H * 0.285, W * 0.21, H * 0.43, 41,
+                 glyphs=False)
+    SG.column(sd, cx - W * 0.056, H * 0.285 + W * 0.075, W * 0.112,
+              H * 0.43 - W * 0.19, 41, gap=0.06)
+    for y in (H * 0.175, H * 0.845):
+        SR.lotus_bouquet(ld, cx, y, W * 0.13)
+    p.inlay(p.outline(lines, 1.6), bevel=0.5, lift=0.25)
+    p.inlay(solid, bevel=0.6, lift=0.25)
+    return p.finish(relief=0.8, seed=23)
 
-    # a broad sheen, off centre, so the stone reads as polished
-    sh, shd = mask(w, h)
-    shd.ellipse([-W * 0.3, H * 0.05, W * 0.8, H * 0.5], fill=32)
-    sh = sh.filter(ImageFilter.GaussianBlur(26 * s))
-    a = np.asarray(im).astype(np.float32) + np.asarray(sh)[:, :, None] * 0.45
-    im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGB")
-    return solid(grain(down(im, w, h), 3, 9), w, h)
+
+def border_course():
+    """The band between the runner and the marble: the lotus frieze in
+    strip gold between two fine rules, on basalt."""
+    w, h = BORDER_W, BORDER_H
+    p = SR.Plate(w, h, ss=3, gloss=0.50)
+    W, H = p.W, p.H
+    p.tint_stone(SR.basalt(W, H, 31, base=(20, 20, 26)))
+    solid, sd = p.mask()
+    sd.rectangle([W * 0.06, 0, W * 0.085, H], fill=255)
+    sd.rectangle([W * 0.915, 0, W * 0.94, H], fill=255)
+    lines, ld = p.mask()
+    SR.lotus_chain(ld, W * 0.18, 0, W * 0.64, H, 4)
+    p.inlay(solid, bevel=0.5, lift=0.25)
+    p.inlay(p.outline(lines, 1.5), bevel=0.5, lift=0.25)
+    return p.finish(relief=0.8, seed=31)
 
 
-def border_course(w=96, h=288):
-    """The band between the runner and the marble, and the bay's threshold: one
-    frieze, used along the hall and across it.
-    """
-    im, d = canvas(w, h, STONE)
-    W, H = w * SS, h * SS
-    s = SS
-    veining(d, W, H, 31, n=9, col=(30, 31, 42))
-    for x in (7 * s, W - 7 * s):
-        d.rectangle([x - 1.6 * s, 0, x + 1.6 * s, H], fill=rgba(GILT, 215))
-    d.rectangle([11 * s, 0, 12 * s, H], fill=(0, 0, 0, 160))
-    d.rectangle([W - 12 * s, 0, W - 11 * s, H], fill=(0, 0, 0, 160))
+def floor_tile():
+    """A slab of the marble field: nero marquina, a fine strip of gold let
+    in round it with a hairline inside, and at its heart a scarab rolling
+    the sun, drawn in the same strip."""
+    n = FLOOR_N
+    p = SR.Plate(n, n, ss=2, gloss=0.55)
+    W = p.W
+    p.tint_stone(SR.marble(W, W, 11))
+    solid, sd = p.mask()
+    for (m0, t) in ((0.032, 0.0065), (0.052, 0.0028)):
+        sd.rectangle([W * m0, W * m0, W * (1 - m0), W * (1 - m0)], fill=255)
+        sd.rectangle([W * (m0 + t), W * (m0 + t), W * (1 - m0 - t),
+                      W * (1 - m0 - t)], fill=0)
+    p.inlay(solid, bevel=0.5, lift=0.25)
+    lines, ld = p.mask()
+    SR.scarab(ld, W * 0.5, W * 0.5, W * 0.15)
+    p.inlay(p.outline(lines, 1.3), bevel=0.5, lift=0.25)
+    return p.finish(relief=0.8, seed=11)
 
-    # A lotus frieze: an open flower and a closed bud, alternating.
-    n = 8
-    step = H / n
+
+def _pil_marks(d, W, H):
+    """The pilaster's ornament: a small winged disc for a capital, a sunk
+    panel with a column of glyphs, and a base band. Only the stretch the
+    cornice and the dado leave uncovered is worked (see `HALL_CASE_TOP`,
+    `HALL_PLINTH_H`)."""
+    top = H * 0.172          # under the cornice's face
+    bot = H * 0.892          # over the dado
     cx = W * 0.5
-    for i in range(n):
-        cy = i * step
-        open_ = (i % 2 == 0)
-        r = 24 * s if open_ else 15 * s
-        a = 205 if open_ else 170
-        if open_:
-            # the cup, and the petals standing out of it. `d.arc` measures
-            # from three o'clock going clockwise, so the *lower* half is
-            # 0 to 180 -- the other way round draws a lotus upside down.
-            d.arc([cx - r, cy - r * 0.55, cx + r, cy + r * 1.25],
-                  0, 180, fill=rgba(GILT, a), width=int(1.7 * s))
-            for k, tip in ((-1, 0.74), (0, 1.0), (1, 0.74)):
-                d.line([(cx + k * r * 0.20, cy + r * 0.50),
-                        (cx + k * r * 0.92, cy - r * tip)],
-                       fill=rgba(GILT, a), width=int(1.6 * s))
-        else:
-            d.ellipse([cx - r * 0.55, cy - r, cx + r * 0.55, cy + r * 0.55],
-                      outline=rgba(GILT_DIM, a), width=int(1.4 * s))
-            d.line([(cx, cy + r * 0.4), (cx, cy + step * 0.42)],
-                   fill=rgba(GILT_DIM, 150), width=int(1.2 * s))
-    return solid(grain(down(im, w, h), 3, 13), w, h)
+    SR.winged_disc(d, cx, top + W * 0.20, W * 0.92, feathers=4)
+    d.rectangle([W * 0.10, top + W * 0.40, W * 0.90, top + W * 0.45],
+                fill=255)
+    d.rectangle([W * 0.10, bot - W * 0.12, W * 0.90, bot - W * 0.07],
+                fill=255)
+    return top + W * 0.55, bot - W * 0.22
+
+
+def pilaster_face():
+    """A pilaster: basalt, with a column of hieroglyphs cut into it in sunk
+    relief and their floors gilded, under a winged disc. Returns the face
+    and its glow: the same glyphs as light, which the hall wakes and pulses
+    (`hall_glyph_glow`)."""
+    w, h = PIL_W, PIL_H
+    p = SR.Plate(w, h, ss=3, gloss=0.40)
+    W, H = p.W, p.H
+    p.tint_stone(SR.basalt(W, H, 41, base=(24, 24, 31)))
+
+    m, d = p.mask()
+    y0, y1 = _pil_marks(d, W, H)
+    p.inlay(m, bevel=1.0, lift=0.4)
+
+    # the sunk panel's frame: a raised fillet
+    m, d = p.mask()
+    d.rectangle([W * 0.10, y0 - W * 0.04, W * 0.90, y1 + W * 0.04], fill=255)
+    d.rectangle([W * 0.16, y0 + W * 0.02, W * 0.84, y1 - W * 0.02], fill=0)
+    p.raise_(m, height=1.2, bevel=1.0, gild=True)
+
+    gm, gd = p.mask()
+    SG.column(gd, W * 0.18, y0 + W * 0.06, W * 0.64, y1 - y0 - W * 0.12, 771,
+              gap=0.10)
+    p.carve(gm, depth=2.4, bevel=1.1)
+    face = p.finish(relief=1.0, seed=41, tile=False)
+
+    glow = gm.filter(ImageFilter.GaussianBlur(p.ss * 0.8))
+    glow = glow.resize((w, h), Image.LANCZOS)
+    out = Image.new("RGBA", (w, h), (255, 255, 255, 0))
+    out.putalpha(glow)
+    return face, out
+
+
+def dado_band():
+    """The foundation the cases stand on: basalt between a fine gilt
+    moulding and a fillet, with djed pillars and tyet knots cut into it in
+    sunk relief, gilded. Four to a tile; the plinth takes two
+    tiles a bay."""
+    w, h = 512, 238
+    p = SR.Plate(w, h, ss=2, gloss=0.40)
+    W, H = p.W, p.H
+    p.tint_stone(SR.basalt(W, H, 97, base=(20, 20, 26)))
+    m, d = p.mask()
+    d.rectangle([0, H * 0.07, W, H * 0.11], fill=255)
+    d.rectangle([0, H * 0.88, W, H * 0.90], fill=255)
+    p.raise_(m, height=1.2, bevel=0.9, gild=True)
+    m, d = p.mask()
+    for i in range(4):
+        cx = W * (i + 0.5) / 4
+        name = "djed" if i % 2 == 0 else "tyet"
+        SG.draw_glyph(d, name, cx - H * 0.26, H * 0.24, H * 0.52, H * 0.54)
+    p.carve(m, depth=2.0, bevel=1.0)
+    return p.finish(relief=1.0, seed=97)
+
+
+def cornice_band():
+    """The head of the wall: an Egyptian gorge (a cavetto of upright leaves
+    bending out at the top) over a torus roll bound with cord, gilt along
+    its edges."""
+    w, h = 384, 288
+    p = SR.Plate(w, h, ss=2, gloss=0.40)
+    W, H = p.W, p.H
+    p.tint_stone(SR.basalt(W, H, 103, base=(19, 19, 25)))
+    ys = np.arange(H, dtype=np.float32)[:, None] / H
+    # the gorge's curve, as height: it swells out toward the top
+    gorge = np.clip((0.76 - ys) / 0.62, 0, 1)
+    p.hgt += (gorge ** 2.2) * 5.0 * np.ones((1, W), np.float32)
+    # the leaves, grooved into the gorge
+    m, d = p.mask()
+    n = 10
+    for i in range(n + 1):
+        x = W * i / n
+        d.polygon([(x - W * 0.006, H * 0.72), (x + W * 0.006, H * 0.72),
+                   (x + W * 0.012, H * 0.10), (x - W * 0.012, H * 0.10)],
+                  fill=255)
+    p.groove(m, 1.6)
+    # the fillet over the leaves
+    m, d = p.mask()
+    d.rectangle([0, 0, W, H * 0.07], fill=255)
+    p.raise_(m, height=1.0, bevel=0.9, gild=True)
+    # the torus roll, with its binding
+    m, d = p.mask()
+    d.rectangle([0, H * 0.76, W, H * 0.94], fill=255)
+    p.raise_(m, height=3.0, bevel=3.0, gild=True)
+    m, d = p.mask()
+    for i in range(12):
+        x = W * i / 12
+        d.polygon([(x, H * 0.76), (x + W * 0.012, H * 0.76),
+                   (x + W * 0.052, H * 0.94), (x + W * 0.040, H * 0.94)],
+                  fill=255)
+    p.groove(m, 1.4)
+    return p.finish(relief=0.9, seed=103)
+
+
+def plinth_face():
+    """A plinth's face: a sunk panel inside a fine gilt fillet, and cut into
+    it an ankh between two was sceptres over the basket of 'all', gilded."""
+    w, h = 256, 384
+    p = SR.Plate(w, h, ss=2, gloss=0.42)
+    W, H = p.W, p.H
+    p.tint_stone(SR.basalt(W, H, 83, base=(23, 23, 30)))
+    m, d = p.mask()
+    d.rectangle([W * 0.09, H * 0.065, W * 0.91, H * 0.935], fill=255)
+    d.rectangle([W * 0.11, H * 0.078, W * 0.89, H * 0.922], fill=0)
+    p.raise_(m, height=1.0, bevel=0.7, gild=True)
+    m, d = p.mask()
+    d.rectangle([W * 0.14, H * 0.10, W * 0.86, H * 0.90], fill=255)
+    p.carve(m, depth=1.2, bevel=1.6, gild=False)
+    m, d = p.mask()
+    SG.draw_glyph(d, "ankh", W * 0.37, H * 0.22, W * 0.26, H * 0.44)
+    for s_ in (0, 1):
+        SG.draw_glyph(d, "was", W * (0.20 if s_ == 0 else 0.62), H * 0.18,
+                      W * 0.18, H * 0.54, flip=(s_ == 1))
+    SG.draw_glyph(d, "basket", W * 0.22, H * 0.74, W * 0.56, H * 0.10)
+    p.carve(m, depth=2.0, bevel=1.1)
+    return p.finish(relief=1.0, seed=83, tile=False)
+
+
+def desk_face():
+    """A pedestal's side: a fine gilt rail and panel, with a lotus and two
+    buds cut into the panel, gilded."""
+    w, h = 256, 340
+    p = SR.Plate(w, h, ss=2, gloss=0.42)
+    W, H = p.W, p.H
+    p.tint_stone(SR.basalt(W, H, 71, base=(22, 22, 29)))
+    m, d = p.mask()
+    d.rectangle([0, H * 0.02, W, H * 0.05], fill=255)
+    d.rectangle([W * 0.11, H * 0.15, W * 0.89, H * 0.91], fill=255)
+    d.rectangle([W * 0.13, H * 0.165, W * 0.87, H * 0.895], fill=0)
+    p.raise_(m, height=1.0, bevel=0.7, gild=True)
+    m, d = p.mask()
+    SR.lotus_bouquet(d, W * 0.5, H * 0.56, W * 0.46)
+    p.carve(m, depth=1.8, bevel=1.0)
+    return p.finish(relief=1.0, seed=71, tile=False)
 
 
 # ---------------------------------------------------------------------------
@@ -928,269 +975,608 @@ def rotunda(w=1152, h=376):
 
 
 # ---------------------------------------------------------------------------
+# Fire
+# ---------------------------------------------------------------------------
+FLAME_FRAMES = 16
+FLAME_W, FLAME_H = 64, 128
+
+
+def periodic_noise(w, h, seed, scale):
+    """Noise that tiles in both directions: white noise low-passed in the
+    frequency domain, which is periodic by construction. `scale` is the size
+    of its features in pixels. Normalised to 0..1.
+    """
+    r = np.random.default_rng(seed)
+    f = np.fft.fft2(r.normal(0, 1, (h, w)))
+    fy = np.fft.fftfreq(h)[:, None]
+    fx = np.fft.fftfreq(w)[None, :]
+    k = np.hypot(fx, fy) * scale
+    f *= np.exp(-k * k * 4.0)
+    n = np.real(np.fft.ifft2(f))
+    n -= n.min()
+    return (n / max(1e-6, n.max())).astype(np.float32)
+
+
+def flame_strip():
+    """A fire's tongues as a looping strip of `FLAME_FRAMES` frames, side by
+    side in one image (the hall draws a frame by its span of the strip, so
+    the whole animation is one texture).
+
+    Three tongues rise from one seat, their heights breathing and their bodies
+    swaying at whole multiples of the loop, and a turbulence field scrolls up
+    through them exactly one period per loop, so the last frame runs into the
+    first. White-hot at the root, through gold and orange to a red tip. Drawn
+    for additive blending: the colour is the light, the alpha how much of it.
+    """
+    s = SS * 2
+    fw, fh = FLAME_W * s, FLAME_H * s
+    period = fh
+    turb = periodic_noise(fw, period, 811, 9.0 * s)
+    fine = periodic_noise(fw, period, 812, 3.5 * s)
+    ys, xs = np.mgrid[0:fh, 0:fw].astype(np.float32)
+    u = (xs - fw * 0.5) / (fw * 0.5)          # -1..1 across
+    v = 1.0 - ys / fh                         # 0 at the seat, 1 at the top
+    tongues = [  # centre, width, height, breath rate and phase
+        (0.00, 0.34, 0.92, 1, 0.0),
+        (-0.30, 0.22, 0.58, 2, 1.7),
+        (0.28, 0.24, 0.66, 3, 4.1),
+        (0.08, 0.16, 0.78, 2, 2.9),
+    ]
+    frames = []
+    for f in range(FLAME_FRAMES):
+        ph = 2 * math.pi * f / FLAME_FRAMES
+        # the turbulence, scrolled up one period over the loop
+        off = int(round(period * f / FLAME_FRAMES))
+        tr = np.roll(turb, -off, axis=0)
+        fn = np.roll(fine, -off * 2 % period, axis=0)
+        sway = ((tr - 0.5) * 0.55 + 0.10 * np.sin(v * 7.0 - ph * 2 + 0.4)) \
+            * np.clip(v, 0, 1) ** 1.3
+        dens = np.zeros_like(u)
+        for (cx, w, hgt, rate, p0) in tongues:
+            hh = hgt * (1 + 0.13 * math.sin(ph * rate + p0))
+            t = np.clip(v / hh, 0, 1.2)
+            width = w * (0.30 + 0.70 * np.clip(1 - t, 0, 1) ** 0.55) \
+                * np.clip(1 - t, 0, 1) ** 0.25 \
+                * (0.40 + 0.60 * np.clip(v / 0.22, 0, 1) ** 0.6)
+            d =(u - cx - sway * (0.6 + 0.4 * hgt)) / np.maximum(width, 1e-3)
+            body = np.exp(-d * d * 1.6)
+            env = np.clip(v / 0.10, 0, 1) ** 0.7 * (1 - np.clip((t - 0.55) / 0.45, 0, 1)) ** 1.4
+            dens += body * env * (0.72 + 0.28 * hgt)
+        dens *= 0.70 + 0.45 * fn + 0.25 * (tr - 0.5)
+        dens = np.clip(dens, 0, 1.6)
+        # temperature: hottest low and in the thick of it
+        temp = np.clip(dens * (1.05 - 0.55 * v), 0, 1.3)
+        stops = [(0.00, (60, 8, 2)), (0.18, (150, 30, 6)),
+                 (0.38, (235, 88, 18)), (0.60, (255, 158, 46)),
+                 (0.82, (255, 222, 120)), (1.05, (255, 248, 226))]
+        rgb = np.zeros(u.shape + (3,), np.float32)
+        xs_ = [p for p, _ in stops]
+        for c in range(3):
+            rgb[..., c] = np.interp(temp, xs_, [col[c] for _, col in stops])
+        a = np.clip(dens * 1.25, 0, 1) ** 1.1
+        img = Image.fromarray(np.dstack([np.clip(rgb, 0, 255),
+                                         a * 255]).astype(np.uint8), "RGBA")
+        frames.append(img.resize((FLAME_W, FLAME_H), Image.LANCZOS))
+    strip = Image.new("RGBA", (FLAME_W * FLAME_FRAMES, FLAME_H), (0, 0, 0, 0))
+    for i, fr in enumerate(frames):
+        strip.paste(fr, (i * FLAME_W, 0))
+    return strip
+
+
+# ---------------------------------------------------------------------------
 # The things that stand in it
 # ---------------------------------------------------------------------------
-# The Bastet's outline, in figure coordinates and facing +u (across the
-# nave). `hall_bastet` mirrors the card on the far side, so a pair face each
-# other. The proportions are a seated Egyptian cat's: a tall column of a
-# neck, straight forelegs, and one large rounded haunch.
-BASTET_OUTLINE = [
-    (0.724, 0.100), (0.760, 0.046),
-    (0.806, 0.002), (0.828, 0.014),                   # near ear, tip
-    (0.856, 0.056), (0.876, 0.090),
-    (0.902, 0.106), (0.920, 0.124),                   # forehead, brow
-    (0.948, 0.148), (0.972, 0.168),                   # the bridge
-    (0.984, 0.178), (0.988, 0.188),                   # the nose, blunt
-    (0.980, 0.199),                                   # the lip
-    (0.962, 0.209), (0.948, 0.219),                   # the chin
-    (0.916, 0.232), (0.874, 0.252),                   # jaw
-    (0.828, 0.276), (0.808, 0.308),                   # throat
-    (0.800, 0.352), (0.804, 0.428), (0.801, 0.512),   # chest
-    (0.794, 0.620), (0.790, 0.742), (0.792, 0.826),   # foreleg
-    (0.806, 0.868), (0.848, 0.888),                   # ankle, toes
-    (0.892, 0.902), (0.928, 0.916),
-    (0.944, 0.936), (0.946, 0.982), (0.926, 0.999),   # base, front
-    (0.500, 1.000),
-    (0.064, 0.999), (0.044, 0.982), (0.046, 0.936),
-    (0.066, 0.916),                                   # base, rear
-    (0.064, 0.856), (0.030, 0.766),                   # rump
-    (0.016, 0.664), (0.040, 0.566), (0.104, 0.498),
-    (0.198, 0.452), (0.308, 0.410), (0.420, 0.356),   # the back
-    (0.502, 0.298), (0.552, 0.244), (0.592, 0.192),   # neck
-    (0.616, 0.156), (0.646, 0.126), (0.680, 0.110),
+# The Bastet, seated in profile and facing +u (across the nave). `hall_bastet`
+# mirrors the card on the far side, so a pair face each other.
+#
+# Her outline follows the owner's reference statue (a Bastet in black bronze,
+# the Gayer-Anderson type), read off its silhouette and written down here as
+# points: in the reference's own frame (u across, v down, 0..1 over the
+# photograph's crop), mirrored so she faces right. `BASTET_BOX` maps that frame
+# onto the figure. What makes her a cat rather than a hare or a hound: a big
+# upright ear with a broad base set well back on the skull, a short wedge of a
+# muzzle under a full brow, a long thick neck, the chest carried high and
+# forward, and an open arch between the foreleg and the haunch.
+BASTET_BOX = (0.075, 0.012, 0.965, 0.995)      # u0, v0, u1, v1 of the figure
+
+BASTET_REF = [
+    # the ear, leaning a little forward, its tip over the brow
+    (0.708, 0.108), (0.742, 0.078), (0.776, 0.052), (0.806, 0.030),
+    (0.832, 0.016), (0.846, 0.012), (0.854, 0.022), (0.852, 0.045),
+    (0.842, 0.070), (0.838, 0.092),
+    # brow, bridge, nose, mouth, chin
+    (0.864, 0.106), (0.890, 0.120), (0.905, 0.136), (0.909, 0.155),
+    (0.914, 0.178), (0.924, 0.196), (0.938, 0.210), (0.944, 0.222),
+    (0.938, 0.234), (0.924, 0.242), (0.910, 0.250), (0.894, 0.257),
+    # under the jaw and down the throat into the collar
+    (0.860, 0.262), (0.822, 0.270), (0.808, 0.285), (0.811, 0.310),
+    # the chest, carried forward
+    (0.822, 0.340), (0.836, 0.372), (0.843, 0.405), (0.840, 0.445),
+    (0.838, 0.485), (0.828, 0.525), (0.808, 0.560),
+    # the foreleg, straight down, to the paw
+    (0.798, 0.610), (0.793, 0.690), (0.794, 0.770), (0.800, 0.840),
+    (0.812, 0.872), (0.842, 0.884), (0.870, 0.892), (0.884, 0.904),
+    (0.886, 0.914),
+    # the base slab, its corners rounded
+    (0.950, 0.916), (0.963, 0.930), (0.965, 0.975), (0.952, 0.995),
+    (0.520, 0.996),
+    (0.092, 0.995), (0.077, 0.978), (0.076, 0.930), (0.090, 0.916),
+    # the haunch, round and full, up into the back
+    (0.180, 0.914), (0.166, 0.880), (0.158, 0.830), (0.157, 0.780),
+    (0.162, 0.730), (0.176, 0.680), (0.192, 0.635), (0.210, 0.595),
+    (0.232, 0.556), (0.256, 0.518), (0.290, 0.478), (0.340, 0.440),
+    (0.410, 0.408), (0.480, 0.380), (0.520, 0.356), (0.540, 0.330),
+    # the back of the neck, up to the skull behind the ear
+    (0.560, 0.300), (0.584, 0.270), (0.602, 0.250), (0.620, 0.228),
+    (0.638, 0.208), (0.650, 0.180), (0.662, 0.155), (0.680, 0.132),
 ]
 
-
-# The far ear: only its tip shows, and its base ends inside the skull.
-BASTET_FAR_EAR = [
-    (0.660, 0.136), (0.688, 0.078), (0.720, 0.034), (0.748, 0.022),
-    (0.784, 0.060), (0.816, 0.100), (0.752, 0.132),
+# The opening between the foreleg and the haunch, as it is seen past the far
+# foreleg: a tall arch whose foot is the hind paw.
+BASTET_ARCH = [
+    (0.598, 0.588), (0.625, 0.610), (0.660, 0.700), (0.690, 0.790),
+    (0.700, 0.866), (0.600, 0.868), (0.540, 0.866), (0.530, 0.790),
+    (0.540, 0.700), (0.565, 0.630),
 ]
 
+# Her parts, in the reference's frame, used twice: for the relief on the
+# card (`BASTET_PARTS`) and for the solid she is swept into
+# (`BASTET_SOLIDS`). The far ear and the far foreleg are the pair's other
+# halves, set back and showing only past the near ones, which is what makes
+# the card read as a body with two sides.
+BASTET_FAR_EAR = [(0.706, 0.124), (0.716, 0.086), (0.736, 0.050),
+                  (0.758, 0.026), (0.776, 0.020), (0.786, 0.040),
+                  (0.790, 0.076), (0.786, 0.110), (0.750, 0.124)]
+# The far foreleg, as the reference shows it: its back edge slants forward
+# from under the belly to its paw, which is tucked in behind the near paw.
+BASTET_FAR_LEG = [(0.604, 0.576), (0.640, 0.556), (0.700, 0.546),
+                  (0.736, 0.552), (0.738, 0.620), (0.740, 0.700),
+                  (0.744, 0.800), (0.748, 0.850), (0.772, 0.862),
+                  (0.790, 0.880), (0.788, 0.912), (0.702, 0.912),
+                  (0.694, 0.890), (0.696, 0.856), (0.684, 0.800),
+                  (0.666, 0.750), (0.648, 0.700), (0.630, 0.650),
+                  (0.612, 0.600)]
+BASTET_HAUNCH = [(0.200, 0.560), (0.320, 0.522), (0.450, 0.548),
+                 (0.540, 0.608), (0.576, 0.700), (0.566, 0.792),
+                 (0.530, 0.852), (0.450, 0.884), (0.300, 0.896),
+                 (0.200, 0.884), (0.160, 0.800), (0.156, 0.680)]
+BASTET_HIND_PAW = [(0.450, 0.852), (0.540, 0.866), (0.600, 0.878),
+                   (0.626, 0.892), (0.622, 0.912), (0.450, 0.914)]
+BASTET_CHEST = [(0.690, 0.300), (0.790, 0.296), (0.822, 0.340),
+                (0.842, 0.405), (0.840, 0.470), (0.800, 0.520),
+                (0.730, 0.520), (0.690, 0.440)]
+# The near foreleg: a straight column from under the chest, narrowing a
+# little to the wrist, and a large rounded paw.
+BASTET_NEAR_LEG = [(0.720, 0.520), (0.740, 0.470), (0.790, 0.450),
+                   (0.832, 0.468), (0.834, 0.505), (0.822, 0.535),
+                   (0.808, 0.562), (0.799, 0.600), (0.795, 0.640),
+                   (0.793, 0.690),
+                   (0.794, 0.770), (0.799, 0.830), (0.806, 0.858),
+                   (0.826, 0.866), (0.856, 0.872), (0.880, 0.884),
+                   (0.891, 0.898), (0.888, 0.914), (0.750, 0.914),
+                   (0.742, 0.896), (0.740, 0.860), (0.735, 0.800),
+                   (0.729, 0.700), (0.725, 0.620), (0.722, 0.580)]
+# The tail, lying along the base round her near side, its tip between the
+# hind paw and the forepaws.
+BASTET_TAIL = [(0.420, 0.884), (0.520, 0.874), (0.620, 0.866),
+               (0.700, 0.864), (0.752, 0.868), (0.770, 0.884),
+               (0.762, 0.902), (0.720, 0.910), (0.620, 0.912),
+               (0.520, 0.912), (0.420, 0.910)]
+# Where the body stops, so the forelegs stand clear of it: from the top of
+# the arch along the underside of the belly and chest.
+BASTET_LEGCUT = [(0.600, 0.600), (0.625, 0.585), (0.650, 0.565),
+                 (0.700, 0.552), (0.745, 0.540), (0.800, 0.528),
+                 (1.0, 0.528), (1.0, 0.866), (0.600, 0.866)]
+BASTET_HEAD = [(0.668, 0.150), (0.700, 0.114), (0.760, 0.098),
+               (0.830, 0.100), (0.880, 0.116), (0.906, 0.140),
+               (0.912, 0.172), (0.926, 0.196), (0.944, 0.222),
+               (0.930, 0.240), (0.896, 0.258), (0.840, 0.270),
+               (0.770, 0.262), (0.712, 0.240), (0.676, 0.200)]
+BASTET_NEAR_EAR = [(0.708, 0.110), (0.742, 0.078), (0.776, 0.052),
+                   (0.806, 0.030), (0.832, 0.016), (0.846, 0.012),
+                   (0.854, 0.024), (0.852, 0.046), (0.842, 0.072),
+                   (0.836, 0.100), (0.790, 0.116)]
+# The base slab is straight-sided (a spline would overshoot its corners).
+BASTET_BASE = [(0.090, 0.916), (0.950, 0.916), (0.963, 0.930),
+               (0.965, 0.975), (0.952, 0.995), (0.092, 0.995),
+               (0.077, 0.978), (0.076, 0.930)]
 
-# The collar's bands, each as the two ends of an arc round the neck.
-BASTET_COLLAR = [
-    ((0.596, 0.196), (0.868, 0.248)), ((0.584, 0.213), (0.854, 0.260)),
-    ((0.570, 0.230), (0.842, 0.270)), ((0.552, 0.248), (0.832, 0.280)),
+# She is carved as a relief is: each part a rounded form of its own, laid
+# over the ones behind it. Each is `(outline, base, swell, join, emerge)`,
+# back to front: `base` is how far forward its edge stands and `swell` how
+# much it rounds up from there. `emerge` (heights, or `None`) is a stretch
+# over which a part rises out of what is above it, as a leg does out of the
+# chest, rather than stopping in an end of its own. A part that crosses another (a leg over the body) has
+# a crease where it does (`join` "crease"); one that grows out of what is
+# behind it (an ear out of the head, the head out of the neck) blends into it
+# ("blend").
+BASTET_PARTS = [
+    (BASTET_FAR_EAR, 0.10, 0.16, "crease", None),
+    (None, 0.22, 0.46, "crease", None),           # the body (see below)
+    (BASTET_TAIL, 0.30, 0.12, "crease", None),
+    (BASTET_HAUNCH, 0.36, 0.58, "crease", None),
+    (BASTET_HIND_PAW, 0.40, 0.18, "crease", None),
+    (BASTET_FAR_LEG, 0.34, 0.16, "crease", (0.550, 0.630)),
+    (BASTET_NEAR_LEG, 0.54, 0.22, "crease", (0.470, 0.610)),
+    (BASTET_CHEST, 0.34, 0.36, "blend", None),
+    (BASTET_HEAD, 0.40, 0.46, "blend", None),
+    (BASTET_NEAR_EAR, 0.40, 0.20, "blend", None),
+    (BASTET_BASE, 0.18, 0.10, "crease", None),
 ]
 
+# ...and the solid she is swept into (`hall_bastet_sweep`): each part swept
+# round its own axis and set to her near side (-) or far side (+), so seen
+# from above her legs are legs with space between them. Each is `(name,
+# outline, heights kept (v0, v1), cut away, added, side, half-depth)`:
+# `None` for her whole outline; `cut` is a region taken out and `added` one
+# put back; side and half-depth are shares of the card's width, the
+# half-depth a number or `[(v, d), ...]`.
+BASTET_SOLIDS = [
+    # the torso: head, neck, chest, back and haunch. The ears come off it (the
+    # head, whole, is put back) and the legs stand apart from it.
+    ("torso", None, (0.105, 0.914),
+     BASTET_LEGCUT[:6] + [(1.0, 0.528), (1.0, 1.0), (0.600, 1.0)],
+     BASTET_HEAD,
+     0.0, [(0.095, 0.040), (0.140, 0.078), (0.240, 0.068), (0.340, 0.080),
+           (0.450, 0.094), (0.550, 0.110), (0.650, 0.134), (0.800, 0.146),
+           (0.914, 0.140)]),
+    ("near ear", BASTET_NEAR_EAR, (0.0, 0.118), None, None, -0.050, 0.013),
+    ("far ear", BASTET_FAR_EAR, (0.0, 0.124), None, None, 0.050, 0.013),
+    ("near foreleg", BASTET_NEAR_LEG, (0.505, 0.916), None, None, -0.072,
+     0.040),
+    ("far foreleg", BASTET_FAR_LEG, (0.540, 0.914), None, None, 0.072, 0.038),
+    ("tail", BASTET_TAIL, (0.860, 0.914), None, None, -0.105, 0.020),
+    ("near hind paw", BASTET_HIND_PAW, (0.850, 0.914), None, None, -0.100,
+     0.030),
+    ("far hind paw", BASTET_HIND_PAW, (0.850, 0.914), None, None, 0.100,
+     0.030),
+    ("base", BASTET_BASE, (0.914, 0.996), None, None, 0.0, 0.200),
+]
 
-# The light's direction: above, and out of the nave. Mirroring the card
-# mirrors it, so both statues are lit from the middle of the room.
-BASTET_LIGHT = (0.50, -0.70, 0.51)
+# The broad collar, as the two curves bounding it: its top edge under the
+# jaw, and its lower edge round the chest. Its rows run between them.
+BASTET_COLLAR_TOP = [(0.618, 0.214), (0.690, 0.236), (0.760, 0.258),
+                     (0.816, 0.272)]
+BASTET_COLLAR_BOT = [(0.536, 0.320), (0.640, 0.352), (0.745, 0.382),
+                     (0.838, 0.404)]
+
+# The light that models her: from above and toward the camera, a little from
+# her front. A second, cold light rims her from above and behind.
+BASTET_LIGHT = (0.42, -0.70, 0.58)
+BASTET_RIM = (-0.70, -0.55, 0.20)
+
+# Lapis, for the collar's inlaid rows.
+LAPIS = (24, 44, 122)
+LAPIS_HOT = (84, 118, 214)
 
 
-def bastet(w=384, h=768):
-    """A seated Bastet, in profile, as one card.
+def _bastet_ref_to_fig(p):
+    u0, v0, u1, v1 = BASTET_BOX
+    return ((p[0] - u0) / (u1 - u0), (p[1] - v0) / (v1 - v0))
 
-    In profile because `hall_bastet` hangs her on a quad facing down the hall,
-    so the card shows what faces across the nave, and a pair look at each
-    other.
 
-    She is built as a height field, a dome per mass (haunch, ribs, chest, neck,
-    skull), lit through its gradient by one lamp. The ornament goes into the
-    same field: the collar's bands are raised and the eye, mouth and ear's
-    conch are cut in, so the lamp shades them with the body. Gold is a mask
-    over that one field, with a wider gap between shaded and lit and a broader
-    highlight.
+def _curve_at(curve, t):
+    """A point along a polyline, by its share of the length."""
+    seg = []
+    tot = 0.0
+    for i in range(len(curve) - 1):
+        l = math.hypot(curve[i + 1][0] - curve[i][0],
+                       curve[i + 1][1] - curve[i][1])
+        seg.append(l)
+        tot += l
+    d = t * tot
+    for i, l in enumerate(seg):
+        if d <= l or i == len(seg) - 1:
+            f = 0 if l == 0 else min(1, d / l)
+            return (curve[i][0] + (curve[i + 1][0] - curve[i][0]) * f,
+                    curve[i][1] + (curve[i + 1][1] - curve[i][1]) * f)
+        d -= l
+    return curve[-1]
 
-    Returns the figure and its moonward rim: a body and the light on it, tinted
-    at draw time.
+
+def bastet(w=512, h=768):
+    """A seated Bastet, in profile, as one card: black basalt, polished; a
+    broad collar of gold and lapis with a row of gold drops; a gilt eye with
+    Ashiah's red in it, glowing, and a kohl line; a gold hoop in her ear.
+
+    She is modelled as a relief (`BASTET_PARTS`): each part rounds up from
+    its own edge and stands over the parts behind it, so her ears, legs,
+    haunch and chest each have an edge and a shadowed crease where they cross.
+
+    Returns the figure; its rim (the upward edges and the glow of her eye,
+    drawn additively); and the outlines of the parts she is swept into
+    (`BASTET_SOLIDS`), as masks in the figure's own box.
     """
+    from scipy import ndimage as _nd
     W, H = w * SS, h * SS
     size = (W, H)
     fh = 0.94 * H
-    fw = 0.50 * fh
+    u0, v0, u1, v1 = BASTET_BOX
+    fw = fh * (u1 - u0) / (v1 - v0) * (1220.0 / 1700.0)
     fx = (W - fw) / 2
     fy = 0.03 * H
     s = SS
 
-    def X(u):
-        return fx + u * fw
-
-    def Y(v):
-        return fy + v * fh
-
     def pt(p):
-        return (X(p[0]), Y(p[1]))
+        f = _bastet_ref_to_fig(p)
+        return (fx + f[0] * fw, fy + f[1] * fh)
 
-    def sil_of(pts, blur):
-        """A silhouette, smoothed. Blur-and-threshold takes the corners
-        off the spline's own control points without rounding the ear tips
-        away, which a wider spline alone would."""
-        im = Image.new("L", size, 0)
-        ImageDraw.Draw(im).polygon([pt(p) for p in spline(pts)], fill=255)
-        im = im.filter(ImageFilter.GaussianBlur(blur))
-        return im.point(lambda v: 255 if v > 128 else 0)
+    def shape(pts, n=10):
+        pp = pts if pts is BASTET_BASE else spline(pts, n=n)
+        m = Image.new("L", size, 0)
+        ImageDraw.Draw(m).polygon([pt(p) for p in pp], fill=255)
+        return m
 
-    def lobe(cu, cv, ru, rv, rot=0.0):
-        im = Image.new("L", size, 0)
-        pts = []
-        for k in range(72):
-            a = 2 * math.pi * k / 72
-            x, y = ru * math.cos(a), rv * math.sin(a)
-            pts.append((X(cu + x * math.cos(rot) - y * math.sin(rot)),
-                        Y(cv + x * math.sin(rot) + y * math.cos(rot))))
-        ImageDraw.Draw(im).polygon(pts, fill=255)
-        return im
+    # --- the silhouette: her outline, the far ear, the far foreleg --------
+    body = shape(BASTET_REF)
+    ImageDraw.Draw(body).polygon([pt(p) for p in spline(BASTET_ARCH, n=10)],
+                                 fill=0)
+    sil = body.copy()
+    for (pts, _, _, _, _) in BASTET_PARTS:
+        if pts is not None:
+            sil = ImageChops.lighter(sil, shape(pts))
+    sil = sil.filter(ImageFilter.GaussianBlur(1.0 * s)).point(
+        lambda v: 255 if v > 128 else 0)
+    a = np.asarray(sil, np.float32) / 255.0
 
-    body = sil_of(BASTET_OUTLINE, 1.1 * s)
-    far_ear = sil_of(BASTET_FAR_EAR, 1.1 * s)
-    sil = ImageChops.lighter(body, far_ear)
-
-    # --- the height field: one dome per mass -----------------------------
+    # --- the relief: each part rounded up from its edge, nearer over farther
+    legcut = Image.new("L", size, 0)
+    ImageDraw.Draw(legcut).polygon([pt(p) for p in BASTET_LEGCUT], fill=255)
+    legcut = np.asarray(legcut, np.float32) / 255.0 > 0.5
     hgt = np.zeros((H, W), np.float32)
-    lobes = [
-        (far_ear, 0.22),
-        (lobe(0.500, 0.962, 0.450, 0.038), 0.38),            # the base slab
-        (lobe(0.260, 0.660, 0.238, 0.208), 1.00),            # the haunch
-        (lobe(0.470, 0.782, 0.240, 0.096, -0.07), 0.58),     # the hind leg
-        (lobe(0.590, 0.470, 0.195, 0.150, -0.42), 0.76),     # the ribs
-        (lobe(0.762, 0.418, 0.108, 0.128, -0.10), 0.66),     # the chest
-        (lobe(0.746, 0.706, 0.056, 0.152), 0.50),            # the foreleg
-        (lobe(0.672, 0.258, 0.098, 0.088, -0.62), 0.56),     # the neck
-        (lobe(0.836, 0.156, 0.110, 0.050, -0.18), 0.66),     # the skull
-        (lobe(0.950, 0.190, 0.032, 0.019, -0.16), 0.40),     # the muzzle
-        (lobe(0.800, 0.052, 0.040, 0.050, -0.04), 0.42),     # the near ear
-    ]
-    # The masses are joined with a smooth union rather than `max`, which
-    # would leave a crease where two domes cross.
-    k = 0.07
-    for m, amp in lobes:
-        b = np.sqrt(np.clip(A.depth_field(m), 0, 1)) * amp
-        t = np.clip(0.5 + 0.5 * (b - hgt) / k, 0, 1)
-        hgt = hgt * (1 - t) + b * t + k * t * (1 - t)
-    hgt = np.asarray(
-        Image.fromarray((np.clip(hgt, 0, 1) * 255).astype(np.uint8), "L")
-        .filter(ImageFilter.GaussianBlur(8.0 * s)), np.float32) / 255.0
+    own = np.full((H, W), -1, np.int32)      # which part is on top, per pixel
+    vs = (np.arange(H, dtype=np.float32)[:, None] - fy) / fh
+    vs = v0 + vs * (v1 - v0)                 # each row's height, ref frame
+    for k, (pts, base, swell, join, emerge) in enumerate(BASTET_PARTS):
+        m = body if pts is None else shape(pts)
+        ma = (np.asarray(m, np.float32) / 255.0 > 0.5) & (a > 0.5)
+        d = _nd.distance_transform_edt(ma)
+        r = max(1.0, float(d.max()))
+        # rounded over from the edge, and smoothed within the part so its
+        # crown has no ridge down the middle
+        prof = np.sqrt(np.clip(d / r, 0, 1))
+        prof = _nd.gaussian_filter(prof, 0.10 * r) * ma
+        if pts is None:
+            # The body stops above the forelegs, which are forms of their
+            # own. It keeps the whole outline's rounding, so the belly
+            # overhangs them rather than tapering down to meet them.
+            ma = ma & ~legcut
+        ph = base + swell * prof
+        if emerge is not None:
+            e = np.clip((vs - emerge[0]) / (emerge[1] - emerge[0]), 0, 1)
+            ph = ph * (0.45 + 0.55 * e * e * (3 - 2 * e))
+        ph = np.where(ma, ph, 0)
+        if join == "blend":
+            # grown out of what is behind: a smooth union, no edge
+            kb = 0.10
+            t = np.clip(0.5 + 0.5 * (ph - hgt) / kb, 0, 1)
+            hgt = np.where(ma, hgt * (1 - t) + ph * t + kb * t * (1 - t),
+                           hgt)
+            continue
+        own = np.where(ma & (ph >= hgt), k, own)
+        hgt = np.maximum(hgt, ph)
+    # The creases: at the foot of each step where one part stands over the
+    # part beside it, on the lower side. Found once every part is down, so
+    # the outline of a part another covers leaves no line.
+    rr = int(3 * s)
+    edge = np.zeros((H, W), np.float32)
+    for k in range(len(BASTET_PARTS)):
+        mine = own == k
+        if not mine.any():
+            continue
+        other = np.where((own != k) & (own >= 0), hgt, -1.0)
+        hm = _nd.maximum_filter(other, size=2 * rr + 1)
+        edge = np.where(mine, np.clip(hm - hgt - 0.02, 0, None), edge)
+    # Round the steps into tight creases rather than cut-outs.
+    hgt = _nd.gaussian_filter(hgt, 1.6 * s) * a
+    # A fine grain in the stone, so its polish isn't the smooth sheen of a
+    # moulding.
+    grain = _nd.gaussian_filter(
+        np.random.default_rng(17).normal(0, 1, (H, W)).astype(np.float32),
+        0.9 * s)
+    hgt = hgt + grain * 0.0006
 
-    # --- relief: what is cut into the stone and what stands out of it ----
-    rel = Image.new("L", size, 128)
+    # --- ornament ------------------------------------------------------------
+    rel = Image.new("L", size, 128)          # +/- relief
     dr = ImageDraw.Draw(rel)
     gold = Image.new("L", size, 0)
     dg = ImageDraw.Draw(gold)
+    lapis = Image.new("L", size, 0)
+    dl = ImageDraw.Draw(lapis)
 
-    def ridge(pts, up, wd, gilt=False):
-        ln = [pt(p) for p in pts]
-        dr.line(ln, fill=up, width=max(1, int(wd * s)), joint="curve")
-        if gilt:
-            dg.line(ln, fill=255, width=max(1, int(wd * s)), joint="curve")
+    # The collar: rows between its two bounding curves, alternating gold and
+    # lapis, then a row of gold drops along its lower edge; it stands a
+    # little proud of the neck.
+    def row(r0, r1, n=40):
+        top = [_curve_at(BASTET_COLLAR_TOP, i / n) for i in range(n + 1)]
+        bot = [_curve_at(BASTET_COLLAR_BOT, i / n) for i in range(n + 1)]
+        ra = [(t[0] + (b[0] - t[0]) * r0, t[1] + (b[1] - t[1]) * r0)
+              for t, b in zip(top, bot)]
+        rb = [(t[0] + (b[0] - t[0]) * r1, t[1] + (b[1] - t[1]) * r1)
+              for t, b in zip(top, bot)]
+        return [pt(p) for p in ra + rb[::-1]]
 
-    # the collar: four raised bands and a row of beads under them, with a
-    # groove above and below the lot so the band sits *in* the neck
-    ridge(bow((0.602, 0.188), (0.874, 0.242), 0.013), 76, 2.2)
-    ridge(bow((0.542, 0.258), (0.826, 0.292), 0.013), 76, 2.2)
-    for a, b in BASTET_COLLAR:
-        ridge(bow(a, b, 0.013), 190, 3.4, gilt=True)
-    for i in range(10):
-        t = i / 9.0
-        u = 0.538 + t * 0.278
-        v = 0.266 + t * 0.028 + 0.026 * math.sin(math.pi * t)
-        r = 0.0062
-        box = [X(u - r), Y(v - r * 1.9), X(u + r), Y(v + r * 1.9)]
-        dr.ellipse(box, fill=208)
-        dg.ellipse(box, fill=255)
+    for (r0, r1, kind) in ((0.00, 0.07, "g"), (0.07, 0.24, "l"),
+                           (0.24, 0.31, "g"), (0.31, 0.50, "l"),
+                           (0.50, 0.57, "g"), (0.57, 0.64, "l")):
+        poly = row(r0, r1)
+        (dg if kind == "g" else dl).polygon(poly, fill=255)
+        dr.polygon(poly, fill=170 if kind == "g" else 156)
+    for i in range(1, 14):
+        t = i / 14.0
+        tp = _curve_at(BASTET_COLLAR_TOP, t)
+        bp = _curve_at(BASTET_COLLAR_BOT, t)
+        c = pt((tp[0] + (bp[0] - tp[0]) * 0.405,
+                tp[1] + (bp[1] - tp[1]) * 0.405))
+        r = fw * 0.0065
+        for dd, v in ((dg, 255), (dr, 196)):
+            dd.ellipse([c[0] - r, c[1] - r * 1.4, c[0] + r, c[1] + r * 1.4],
+                       fill=v)
+    for i in range(15):
+        t = (i + 0.5) / 15.0
+        tp = _curve_at(BASTET_COLLAR_TOP, t)
+        bp = _curve_at(BASTET_COLLAR_BOT, t)
+        p0 = pt((tp[0] + (bp[0] - tp[0]) * 0.66,
+                 tp[1] + (bp[1] - tp[1]) * 0.66))
+        p1 = pt(bp)
+        wdt = fw * 0.011
+        drop = [(p0[0] - wdt * 0.5, p0[1]), (p0[0] + wdt * 0.5, p0[1])]
+        for kk in range(9):
+            ang = math.pi * kk / 8
+            drop.append((p1[0] + math.cos(ang) * wdt,
+                         p1[1] - wdt * 0.6 + math.sin(ang) * wdt))
+        dg.polygon(drop, fill=255)
+        dr.polygon(drop, fill=186)
 
-    # the hoop in the near ear
-    hoop = [X(0.800), Y(0.078), X(0.838), Y(0.114)]
-    dr.ellipse(hoop, outline=198, width=int(2.6 * s))
-    dg.ellipse(hoop, outline=255, width=int(2.6 * s))
-
-    # the eye: cut in, with a lid standing over it, in stone rather than gold
+    # the near ear's bowl, cut in, and the gold hoop in it
     dr.polygon([pt(p) for p in spline(
-        [(0.852, 0.150), (0.878, 0.140), (0.904, 0.148), (0.878, 0.157)])],
-        fill=58)
-    dr.line([pt(p) for p in spline(
-        [(0.848, 0.148), (0.878, 0.137), (0.907, 0.146)], closed=False)],
-        fill=200, width=int(1.7 * s), joint="curve")
-    # ...and the cosmetic line back from its outer corner, which is the one
-    # mark on her that is Egyptian rather than feline
-    dr.line([pt(p) for p in ((0.848, 0.150), (0.812, 0.144))],
-            fill=78, width=int(1.4 * s))
-    # the nose, the mouth, the ear's hollow
-    dr.line([pt(p) for p in ((0.972, 0.178), (0.980, 0.186), (0.972, 0.193))],
-            fill=56, width=int(1.6 * s), joint="curve")
-    dr.line([pt(p) for p in ((0.972, 0.196), (0.952, 0.200))],
-            fill=84, width=int(1.4 * s))
-    # the ear is a bowl: the conch is cut well in and its two edges stand
-    # round it
-    dr.polygon([pt(p) for p in spline(
-        [(0.762, 0.084), (0.784, 0.046), (0.806, 0.022), (0.826, 0.052),
-         (0.834, 0.080), (0.798, 0.092)])], fill=20)
-    dr.line([pt(p) for p in spline(
-        [(0.752, 0.094), (0.782, 0.042), (0.810, 0.012)], closed=False)],
-        fill=214, width=int(2.8 * s), joint="curve")
-    dr.line([pt(p) for p in spline(
-        [(0.816, 0.014), (0.840, 0.052), (0.860, 0.086)], closed=False)],
-        fill=206, width=int(2.8 * s), joint="curve")
-    # the far ear gets no hollow; only its tip shows
+        [(0.762, 0.090), (0.792, 0.058), (0.822, 0.034), (0.834, 0.060),
+         (0.828, 0.090), (0.792, 0.100)])], fill=44)
+    hx, hy = pt((0.790, 0.094))
+    hr = fw * 0.018
+    dg.ellipse([hx - hr, hy - hr, hx + hr, hy + hr], outline=255,
+               width=int(fw * 0.0075))
+    dr.ellipse([hx - hr, hy - hr, hx + hr, hy + hr], outline=206,
+               width=int(fw * 0.0075))
 
-    # the tail, lying round the near side of the base
-    ridge(spline([(0.098, 0.842), (0.126, 0.882), (0.250, 0.901),
-                  (0.430, 0.906), (0.610, 0.901), (0.712, 0.890),
-                  (0.744, 0.872)], closed=False), 178, 4.0)
-    for i in range(3):
-        u0 = 0.830 + i * 0.030
-        dr.line([pt((u0, 0.874)), pt((u0 + 0.004, 0.898))], fill=84,
-                width=int(1.5 * s))
-    # the top of the base slab
-    ridge([(0.058, 0.920), (0.500, 0.926), (0.938, 0.920)], 188, 2.0)
-    # the far foreleg, and the groove between the shoulder and the near one
-    dr.polygon([pt(p) for p in spline(
-        [(0.690, 0.560), (0.706, 0.680), (0.708, 0.796), (0.726, 0.860),
-         (0.768, 0.880), (0.754, 0.832), (0.746, 0.680), (0.734, 0.560)])],
-        fill=96)
-    ridge([(0.742, 0.500), (0.752, 0.580), (0.754, 0.700)], 88, 2.6)
-    ridge(spline([(0.190, 0.740), (0.330, 0.786), (0.474, 0.820),
-                  (0.580, 0.840), (0.642, 0.866), (0.690, 0.880)],
-                 closed=False), 92, 2.4)
+    # the eye: a gilt rim, a red iris, a slit pupil; the kohl line back
+    ex, ey = pt((0.872, 0.173))
+    ew, eh = fw * 0.030, fw * 0.014
+    eye = [(ex + math.cos(t) * ew,
+            ey + math.sin(t) * eh * (1.0 if math.sin(t) > 0 else 0.8))
+           for t in np.linspace(0, 2 * math.pi, 40)]
+    dg.polygon(eye, fill=255)
+    dr.polygon(eye, fill=150)
+    iris = Image.new("L", size, 0)
+    ImageDraw.Draw(iris).ellipse([ex - ew * 0.62, ey - eh * 0.72,
+                                  ex + ew * 0.62, ey + eh * 0.72], fill=255)
+    dr.ellipse([ex - ew * 0.62, ey - eh * 0.72, ex + ew * 0.62,
+                ey + eh * 0.72], fill=110)
+    pupil = Image.new("L", size, 0)
+    ImageDraw.Draw(pupil).ellipse([ex - ew * 0.13, ey - eh * 0.66,
+                                   ex + ew * 0.13, ey + eh * 0.66], fill=255)
+    k0, k1 = (ex - ew * 0.95, ey + eh * 0.1), pt((0.830, 0.165))
+    dg.line([k0, k1], fill=255, width=int(fw * 0.007))
+    dr.line([k0, k1], fill=180, width=int(fw * 0.007))
+    dr.line([pt((0.850, 0.159)), pt((0.876, 0.154)), pt((0.898, 0.161))],
+            fill=176, width=int(fw * 0.008), joint="curve")
 
-    rel = rel.filter(ImageFilter.GaussianBlur(1.3 * s))
-    hgt = hgt + (np.asarray(rel, np.float32) - 128.0) / 128.0 * 0.052
-    gold = np.asarray(gold.filter(ImageFilter.GaussianBlur(0.6 * s)),
+    # the nose and mouth, cut in; the whisker pad standing
+    dr.line([pt((0.936, 0.214)), pt((0.941, 0.221)), pt((0.934, 0.228))],
+            fill=50, width=int(fw * 0.007), joint="curve")
+    dr.line([pt((0.930, 0.236)), pt((0.906, 0.242))], fill=70,
+            width=int(fw * 0.005))
+    dr.ellipse(list(pt((0.900, 0.214))) + list(pt((0.926, 0.236))), fill=160)
+    # the toes of the near forepaw and of the hind paw, and the rings on
+    # the tail where it shows between them
+    for (u0, v0, n) in ((0.848, 0.886, 3), (0.588, 0.892, 2)):
+        for i in range(n):
+            u = u0 + i * 0.014
+            dr.line([pt((u, v0)), pt((u + 0.003, 0.911))], fill=66,
+                    width=int(fw * 0.005))
+    for u in (0.642, 0.662, 0.682):
+        dr.line([pt((u, 0.868)), pt((u - 0.006, 0.908))], fill=84,
+                width=int(fw * 0.004))
+
+    rel = rel.filter(ImageFilter.GaussianBlur(1.0 * s))
+    hgt = hgt + (np.asarray(rel, np.float32) - 128.0) / 128.0 * 0.035
+    gold = np.asarray(gold.filter(ImageFilter.GaussianBlur(0.5 * s)),
                       np.float32) / 255.0
+    lap = np.asarray(lapis.filter(ImageFilter.GaussianBlur(0.5 * s)),
+                     np.float32) / 255.0 * (1 - gold)
+    iri = np.asarray(iris.filter(ImageFilter.GaussianBlur(0.4 * s)),
+                     np.float32) / 255.0
+    pup = np.asarray(pupil.filter(ImageFilter.GaussianBlur(0.3 * s)),
+                     np.float32) / 255.0
 
-    # --- light it --------------------------------------------------------
-    # The height is in units of the figure's own width, so the normals don't
-    # depend on the canvas size.
-    gy, gx = np.gradient(hgt * fw * 0.176)
+    # --- light it ---------------------------------------------------------------
+    gy, gx = np.gradient(hgt * fw * 0.22)
     nx, ny, nz = -gx, -gy, np.ones_like(hgt)
     ln = np.sqrt(nx * nx + ny * ny + nz * nz)
     nx, ny, nz = nx / ln, ny / ln, nz / ln
 
-    lv = np.array(BASTET_LIGHT, np.float64)
-    lv /= np.linalg.norm(lv)
-    hv = lv + np.array([0.0, 0.0, 1.0])
-    hv /= np.linalg.norm(hv)
+    def unit(v):
+        v = np.array(v, np.float64)
+        return v / np.linalg.norm(v)
 
+    lv, rv = unit(BASTET_LIGHT), unit(BASTET_RIM)
+    hv = unit(lv + np.array([0.0, 0.0, 1.0]))
     lam = np.clip(nx * lv[0] + ny * lv[1] + nz * lv[2], 0, 1)
+    rim = np.clip(nx * rv[0] + ny * rv[1] + nz * rv[2], 0, 1) ** 3
     spec = np.clip(nx * hv[0] + ny * hv[1] + nz * hv[2], 0, 1)
+    # The creases where one part crosses another, and the hollows of the
+    # carving, hold shadow.
+    cav = np.clip(_nd.gaussian_filter(hgt, 5 * s) - hgt, 0, None)
+    crease = _nd.gaussian_filter(edge, 1.5 * s)
+    occl = np.clip(1 - cav * 10.0 - crease * 0.9, 0.35, 1)
 
-    def material(dark, lit, sp, gamma, shine, power):
+    def material(dark, lit, sp, gamma, shine, power, amb=0.12):
         d0 = np.array(dark, np.float32)[None, None, :]
         d1 = np.array(lit, np.float32)[None, None, :]
         d2 = np.array(sp, np.float32)[None, None, :]
-        return (d0 + (d1 - d0) * (lam ** gamma)[..., None]
+        k_ = amb + (1 - amb) * lam ** gamma
+        return (d0 + (d1 - d0) * k_[..., None]
                 + d2 * ((spec ** power) * shine)[..., None])
 
-    stone = material(CAT_DARK, CAT_LIT, CAT_SPEC, 1.70, 0.46, 26)
-    metal = material(AU_DARK, AU_LIT, AU_SPEC, 1.05, 0.70, 15)
-    rgb = stone + (metal - stone) * gold[..., None]
-
-    rgb += np.random.default_rng(7).normal(0, 2.6, (H, W, 1))
+    stone = material(CAT_DARK, CAT_LIT, CAT_SPEC, 1.8, 0.55, 70)
+    stone += np.array([34, 42, 62], np.float32)[None, None, :] * rim[..., None]
+    metal = material(AU_DARK, AU_LIT, AU_SPEC, 1.0, 0.65, 14, amb=0.35)
+    blue = material(tuple(c * 0.35 for c in LAPIS), LAPIS, LAPIS_HOT, 1.2,
+                    0.35, 24)
+    # Her eyes are Ashiah's red.
+    ruby = material((60, 4, 6), (214, 28, 26), (255, 150, 120), 0.8, 0.5,
+                    10, amb=0.6)
+    rgb = stone
+    rgb = rgb + (blue - rgb) * lap[..., None]
+    rgb = rgb + (metal - rgb) * gold[..., None]
+    rgb = rgb + (ruby - rgb) * iri[..., None]
+    rgb = rgb * (1 - pup[..., None] * 0.92)
+    rgb = rgb * occl[..., None]
 
     img = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8),
                           "RGB").convert("RGBA")
     img.putalpha(sil)
     img = down(img, w, h)
     box = img.split()[3].getbbox()
-    if box is not None:
-        m = 3
-        img = img.crop((max(0, box[0] - m), max(0, box[1] - m),
-                        min(img.width, box[2] + m),
-                        min(img.height, box[3] + m)))
-    rim = A.rim_light(img.split()[3], ORB, drop=3, blur=2.0, strength=1.0)
-    return img, rim
+    m = 3
+    box = (max(0, box[0] - m), max(0, box[1] - m),
+           min(img.width, box[2] + m), min(img.height, box[3] + m))
+    img = img.crop(box)
+    # Her colour is carried out past her outline (each clear texel takes the
+    # nearest of hers), so where the solid samples just outside it, it shows
+    # stone rather than a gap (the hall draws her ignoring the alpha).
+    arr = np.asarray(img).copy()
+    clear = arr[..., 3] < 128
+    if clear.any():
+        _, idx = _nd.distance_transform_edt(clear, return_indices=True)
+        arr[..., :3] = arr[idx[0], idx[1], :3]
+        img = Image.fromarray(arr, "RGBA")
+
+    # the rim: a faint cold edge along her upper surfaces, and her eye's glow
+    rim_img = A.rim_light(img.split()[3], ORB, drop=3, blur=2.0, strength=0.40)
+    glow = Image.new("L", size, 0)
+    ImageDraw.Draw(glow).ellipse([ex - ew * 0.75, ey - eh * 0.9,
+                                  ex + ew * 0.75, ey + eh * 0.9], fill=255)
+    glow = down(glow.filter(ImageFilter.GaussianBlur(ew * 0.35)), w, h).crop(box)
+    red = Image.new("RGBA", glow.size, (255, 40, 30, 0))
+    red.putalpha(glow)
+    rim_img.alpha_composite(red)
+
+    # the parts she is swept into, as masks in the same box
+    solids = []
+    for (name, pts, keep, cut, added, side, depth) in BASTET_SOLIDS:
+        mm = body.copy() if pts is None else shape(pts)
+        dm = ImageDraw.Draw(mm)
+        if keep is not None:
+            dm.rectangle([0, 0, W, pt((0, keep[0]))[1]], fill=0)
+            dm.rectangle([0, pt((0, keep[1]))[1], W, H], fill=0)
+        if cut is not None:
+            dm.polygon([pt(q) for q in cut], fill=0)
+        if added is not None:
+            mm = ImageChops.lighter(mm, shape(added))
+        mm = ImageChops.multiply(mm, sil)
+        solids.append((name, down(mm, w, h).crop(box), side, depth))
+    return img, rim_img, solids
 
 
 def _densify(pts, step):
@@ -1603,34 +1989,6 @@ def pale_tile(n=64):
     return out
 
 
-def plinth_face(n=160):
-    """The face of a plinth: a recessed panel in a gilt border, with a mark in
-    the recess. Every plinth, desk side and pedestal in the hall takes this.
-    """
-    im, d = canvas(n, n, STONE)
-    N = n * SS
-    s_ = SS
-    r = np.random.default_rng(83)
-    for _ in range(60):
-        x, y = r.uniform(0, N), r.uniform(0, N)
-        rr = r.uniform(5, 22) * s_
-        v = int(r.uniform(-12, 14))
-        d.ellipse([x - rr, y - rr, x + rr, y + rr],
-                  fill=rgba((STONE[0] + v, STONE[1] + v, STONE[2] + v), 80))
-    # the recessed panel, with its own lit top edge and shadowed underside
-    m = 17 * s_
-    d.rectangle([m, m, N - m, N - m], fill=(0, 0, 0, 120))
-    d.rectangle([m, m, N - m, m + 2 * s_], fill=(0, 0, 0, 175))
-    d.rectangle([m, N - m - 2 * s_, N - m, N - m], fill=rgba(STONE_LIT, 150))
-    d.rectangle([m, m, N - m, N - m], outline=rgba(GILT_DIM, 210),
-                width=max(1, int(1.4 * s_)))
-    glyph_run(d, N * 0.5, m + 9 * s_, N - m - 9 * s_, N * 0.30, 611,
-              col=GILT_DIM, alpha=180)
-    out = grain(down(im, n, n), 3, 67).convert("RGBA")
-    out.putalpha(255)
-    return out
-
-
 def board_edge(w=64, h=32):
     """The front edge of a shelf board: mostly shadow, with one lit row for the
     arris.
@@ -1645,78 +2003,6 @@ def board_edge(w=64, h=32):
     return out
 
 
-def dado_band(w=256, h=128):
-    """The foundation the bookcases stand on: a dark ground between two gilt
-    mouldings, with a row of oval inlays. Periodic in x, since the plinth is
-    one quad per bay and the tile repeats along it.
-    """
-    im, d = canvas(w, h, (13, 13, 18))
-    W, H = w * SS, h * SS
-    s_ = SS
-    r = np.random.default_rng(97)
-    for _ in range(40):
-        x, y = r.uniform(0, W), r.uniform(0, H)
-        rr = r.uniform(6, 26) * s_
-        v = int(r.uniform(-8, 12))
-        d.ellipse([x - rr, y - rr, x + rr, y + rr],
-                  fill=rgba((17 + v, 17 + v, 23 + v), 90))
-    # the moulding at its head, and the dimmer one at its foot
-    moulding(d, 0, 0, W, H * 0.17, t=1.7)
-    moulding(d, 0, H * 0.80, W, H * 0.90, lit=GILT_DIM, shade=(24, 20, 12),
-             t=1.1)
-    # the inlaid ovals, four to a tile, each a ring with a dark eye in it
-    for i in range(4):
-        bx = W * (i + 0.5) / 4.0
-        d.ellipse([bx - 20 * s_, H * 0.32, bx + 20 * s_, H * 0.68],
-                  outline=rgba(GILT_DIM, 215), width=max(1, int(1.6 * s_)))
-        d.ellipse([bx - 12 * s_, H * 0.40, bx + 12 * s_, H * 0.60],
-                  outline=rgba(GILT_DARK, 200), width=max(1, int(1.2 * s_)))
-        d.ellipse([bx - 4 * s_, H * 0.46, bx + 4 * s_, H * 0.54],
-                  fill=rgba(GILT_DIM, 190))
-    out = grain(down(im, w, h), 3, 101).convert("RGBA")
-    out.putalpha(255)
-    return out
-
-
-def cornice_band(w=256, h=96):
-    """The head of the wall: two mouldings over a dark frieze."""
-    im, d = canvas(w, h, (12, 12, 17))
-    W, H = w * SS, h * SS
-    moulding(d, 0, H * 0.62, W, H * 0.82, t=1.8)
-    moulding(d, 0, H * 0.24, W, H * 0.36, lit=GILT_DIM, shade=(24, 20, 12),
-             t=1.1)
-    for i in range(8):
-        bx = W * (i + 0.5) / 8.0
-        d.rectangle([bx - 3 * SS, H * 0.40, bx + 3 * SS, H * 0.58],
-                    fill=rgba(GILT_DARK, 190))
-    out = grain(down(im, w, h), 2, 103).convert("RGBA")
-    out.putalpha(255)
-    return out
-
-
-def desk_face(w=192, h=128):
-    """A desk's side: two fielded panels under a moulded top rail."""
-    im, d = canvas(w, h, STONE)
-    W, H = w * SS, h * SS
-    s_ = SS
-    d.rectangle([0, 0, W, H * 0.17], fill=rgba(STONE_LIT, 120))
-    d.rectangle([0, H * 0.16, W, H * 0.19], fill=(0, 0, 0, 165))
-    for i in range(2):
-        x0 = W * (0.07 + i * 0.47)
-        x1 = x0 + W * 0.39
-        d.rectangle([x0, H * 0.28, x1, H * 0.88], fill=(0, 0, 0, 115))
-        d.rectangle([x0, H * 0.28, x1, H * 0.31], fill=(0, 0, 0, 170))
-        d.rectangle([x0, H * 0.85, x1, H * 0.88], fill=rgba(STONE_LIT, 140))
-        d.rectangle([x0, H * 0.28, x1, H * 0.88],
-                    outline=rgba(GILT_DIM, 195), width=max(1, int(1.3 * s_)))
-        d.ellipse([(x0 + x1) / 2 - 7 * s_, H * 0.52, (x0 + x1) / 2 + 7 * s_,
-                   H * 0.66], outline=rgba(GILT_DIM, 175),
-                  width=max(1, int(1.2 * s_)))
-    out = grain(down(im, w, h), 3, 71).convert("RGBA")
-    out.putalpha(255)
-    return out
-
-
 def books_tile(seed, w=256, h=168):
     """One shelf's worth of spines, periodic in x (a shelf is a quad whose
     texture repeats along it): the run is laid out twice and the middle kept.
@@ -1726,21 +2012,6 @@ def books_tile(seed, w=256, h=168):
     books(d, 0, W, H * 0.04, H, seed)
     full = down(im, w * 2, h)
     out = full.crop((w // 2, 0, w // 2 + w, h)).convert("RGBA")
-    out.putalpha(255)
-    return out
-
-
-def pilaster_face(w=96, h=1024):
-    """The face of a pilaster: a shaft with a cartouche running up it."""
-    im, d = canvas(w, h, STONE)
-    W, H = w * SS, h * SS
-    s = SS
-    # modelled across its width: a lit edge, a broad face, a shadowed return
-    d.rectangle([0, 0, W * 0.16, H], fill=(0, 0, 0, 120))
-    d.rectangle([W * 0.16, 0, W * 0.62, H], fill=rgba(STONE_LIT, 80))
-    d.rectangle([W * 0.84, 0, W, H], fill=(0, 0, 0, 150))
-    glyph_run(d, W * 0.45, H * 0.05, H * 0.95, W * 0.52, 771)
-    out = grain(down(im, w, h), 3, 41).convert("RGBA")
     out.putalpha(255)
     return out
 
@@ -1780,40 +2051,38 @@ def orb(n=192):
 # The statue's third dimension
 #
 # `bg_sanctum` sweeps the Bastet into a solid (a flat card reads as paper
-# from above). The sweep's cross-section is measured off the shipped PNG's
-# alpha rather than restated in GML, so the card and the solid share one
-# outline. The one thing a profile can't give is width, so that is authored:
-# a half-depth per height, as a fraction of the card's width. A seated cat is
-# narrow at the ears, widest across the haunch, and stands on a base wider
-# than she is.
-BASTET_DEPTH = [
-    (0.000, 0.052), (0.090, 0.086), (0.170, 0.106), (0.262, 0.088),
-    (0.360, 0.126), (0.500, 0.150), (0.660, 0.176), (0.840, 0.170),
-    (0.906, 0.150), (0.926, 0.224), (1.000, 0.228),
-]
-BASTET_SLICES = 34
+# from above), part by part (`BASTET_SOLIDS`): each part is swept round its
+# own axis and set to her near or far side. Its cross-section at each height
+# is measured off the part's outline in the shipped sprite's own box, so the
+# card and the solid agree. The one thing a profile can't give is width, so
+# that is authored: each part's half-depth, as a share of the card's width.
+# ---------------------------------------------------------------------------
+BASTET_ROWS = {"torso": 30, "base": 5}
+BASTET_ROWS_PART = 10
 
 BASTET_TABLE_GML = '''/// @desc The Gilded Sanctum's measured numbers -- GENERATED by
 ///       tools/make_sanctum.py. Do not edit.
 ///
-/// How wide the Bastet is at each height, so `bg_sanctum` can sweep her into
-/// a solid. Her outline is read row by row off the shipped sprite's alpha, so
-/// the card and the solid agree. Each row is `[v, u0, u1, d]` in the sprite's
-/// own box, 0..1 from its top-left: the height, the back and the front of her
-/// at that height, and her half-depth. The half-depth is authored (a profile
-/// can't say how wide a thing is), as a fraction of the card's width.
+/// The parts the Bastet is swept into (`hall_bastet_sweep`): her torso, her
+/// ears, her legs and paws, and her base, each swept round its own axis.
+/// Each part is `{name, z, rows}`: `z` is how far to her near (-) or far (+)
+/// side it stands, as a share of the card's width; each row is `[v, u0, u1,
+/// d]` in the sprite's own box, 0..1 from its top-left: the height, the back
+/// and the front of the part at that height (read off its outline, so the
+/// card and the solid agree), and its half-depth (authored: a profile can't
+/// say how wide a thing is), as a share of the card's width.
 
 function sanctum_table_init() {
-    global.bastet_slice = [
+    global.bastet_parts = [
 %s
     ];
 }
 
-/// @desc Her cross-section at height `_v`, as `[centre, half-length,
-///       half-depth]` in the sprite's own box, interpolated between the
-///       measured rows.
-function bastet_at(_v) {
-    var _t = global.bastet_slice;
+/// @desc Part `_p`'s cross-section at height `_v`, as `[centre, half-length,
+///       half-depth]` in the sprite's own box, interpolated between its
+///       measured rows (and held at its ends).
+function bastet_part_at(_p, _v) {
+    var _t = _p.rows;
     var _n = array_length(_t);
     var _i = 0;
     while (_i < _n - 2 && _t[_i + 1][0] < _v) _i++;
@@ -1827,55 +2096,61 @@ function bastet_at(_v) {
 '''
 
 
-def _bastet_depth_at(v):
-    """The authored half-depth, interpolated."""
-    pts = BASTET_DEPTH
-    if v <= pts[0][0]:
-        return pts[0][1]
-    for i in range(len(pts) - 1):
-        a, b = pts[i], pts[i + 1]
+def _depth_at(depth, v):
+    """A part's authored half-depth at height `v`: a number, or a table of
+    `(v, d)` interpolated."""
+    if not isinstance(depth, (list, tuple)):
+        return depth
+    if v <= depth[0][0]:
+        return depth[0][1]
+    for i in range(len(depth) - 1):
+        a, b = depth[i], depth[i + 1]
         if v <= b[0]:
-            t = (v - a[0]) / (b[0] - a[0])
-            return a[1] + (b[1] - a[1]) * t
-    return pts[-1][1]
+            return a[1] + (b[1] - a[1]) * (v - a[0]) / (b[0] - a[0])
+    return depth[-1][1]
 
 
-def bastet_slices(img, n=BASTET_SLICES):
-    """Read her outline off the shipped alpha, one row per slice. A row with no
-    ink takes the nearest row that has some, rather than a zero-length slice
-    (which would put a spike over her head and a funnel under the base).
-    """
-    a = np.asarray(img.split()[3])
-    h, w = a.shape
-    rows = []
-    for y in range(h):
-        xs = np.nonzero(a[y] > 40)[0]
-        rows.append(None if len(xs) == 0 else
-                    (float(xs[0]) / w, float(xs[-1] + 1) / w))
-    have = [y for y, r in enumerate(rows) if r is not None]
-    if not have:
-        raise SystemExit("bastet: the sprite has no ink in it")
+def bastet_solid_rows(solids):
+    """Each part's rows, read off its mask. A row with no ink takes the
+    nearest that has some, rather than a zero-length slice."""
     out = []
-    for i in range(n):
-        v = i / (n - 1.0)
-        y = min(h - 1, max(0, int(round(v * (h - 1)))))
-        if rows[y] is None:
-            y = min(have, key=lambda q: abs(q - y))
-        u0, u1 = rows[y]
-        out.append((v, u0, u1, _bastet_depth_at(v)))
+    for (name, mask, side, depth) in solids:
+        a = np.asarray(mask) > 100
+        h, w = a.shape
+        ys = [y for y in range(h) if a[y].any()]
+        if not ys:
+            raise SystemExit("bastet: part %s has no ink" % name)
+        y0, y1 = ys[0], ys[-1]
+        n = BASTET_ROWS.get(name, BASTET_ROWS_PART)
+        rows = []
+        for i in range(n):
+            y = int(round(y0 + (y1 - y0) * i / (n - 1.0)))
+            if not a[y].any():
+                y = min(ys, key=lambda q: abs(q - y))
+            xs = np.nonzero(a[y])[0]
+            v = (y + 0.5) / h
+            # heights in the reference's frame, for the authored depth
+            vr = BASTET_BOX[1] + v * (BASTET_BOX[3] - BASTET_BOX[1])
+            rows.append((v, float(xs[0]) / w, float(xs[-1] + 1) / w,
+                         _depth_at(depth, vr)))
+        out.append((name, side, rows))
     return out
 
 
-def write_bastet_table(slices):
-    rows = "\n".join("        [%.4f, %.4f, %.4f, %.4f]," % r for r in slices)
+def write_bastet_table(parts):
+    blocks = []
+    for (name, side, rows) in parts:
+        body = "\n".join("            [%.4f, %.4f, %.4f, %.4f]," % r
+                         for r in rows)
+        blocks.append("        { name: \"%s\", z: %.4f, rows: [\n%s\n"
+                      "        ] }," % (name, side, body))
     path = os.path.join(A.ROOT, "scripts", "sanctum_table",
                         "sanctum_table.gml")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    gm_new.write(path, BASTET_TABLE_GML % rows)
+    gm_new.write(path, BASTET_TABLE_GML % "\n".join(blocks))
     gm_new.script("sanctum_table")
-    print("sanctum_table.gml: %d bastet slices, %.3f..%.3f long"
-          % (len(slices), min(r[2] - r[1] for r in slices),
-             max(r[2] - r[1] for r in slices)))
+    print("sanctum_table.gml: the bastet in %d parts, %d rows"
+          % (len(parts), sum(len(r) for (_, _, r) in parts)))
 
 
 def main():
@@ -1889,32 +2164,33 @@ def main():
                   "spr_hall_shaft", "spr_hall_pool"):
         gm_new.delete(stale, "sprites")
     bays = [wall_bay(k)[0] for k in range(3)]
-    gm_new.sprite("spr_hall_floor", [floor_tile()], origin="topleft", folder=f)
-    gm_new.sprite("spr_hall_runner", [runner_tile()], origin="topleft",
-                  folder=f)
-    gm_new.sprite("spr_hall_border", [border_course()], origin="topleft",
-                  folder=f)
+    # The pavement and the carved stone carry their gloss in the alpha
+    # (`sanctum_relief`).
+    slab, runner, border = floor_tile(), runner_tile(), border_course()
+    gm_new.sprite("spr_hall_floor", [slab], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_runner", [runner], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_border", [border], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
 
     # the sky, and the instrument hanging in it
     gm_new.sprite("spr_hall_star", [star_point(0), star_point(1),
                                     star_point(2)],
-                  origin="center", folder=f)
+                  origin="center", folder=f, texgroup=HALL_TEXGROUP)
     gm_new.sprite("spr_hall_neb", [nebula(301), nebula(302), nebula(303)],
-                  origin="center", folder=f)
+                  origin="center", folder=f, texgroup=HALL_TEXGROUP)
     gm_new.sprite("spr_hall_zodiac", [zodiac_band()], origin="topleft",
-                  folder=f)
+                  folder=f, texgroup=HALL_TEXGROUP)
     rot, rot_lit = rotunda()
-    gm_new.sprite("spr_hall_rot", [rot], origin="topleft", folder=f)
-    gm_new.sprite("spr_hall_rot_lit", [rot_lit], origin="topleft", folder=f)
+    gm_new.sprite("spr_hall_rot", [rot], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_rot_lit", [rot_lit], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
 
-    cat, cat_rim = bastet()
-    gm_new.sprite("spr_hall_bastet", [cat], origin="topleft", folder=f)
-    gm_new.sprite("spr_hall_bastet_rim", [cat_rim], origin="topleft", folder=f)
-    write_bastet_table(bastet_slices(cat))
+    cat, cat_rim, cat_solids = bastet()
+    gm_new.sprite("spr_hall_bastet", [cat], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_bastet_rim", [cat_rim], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
+    write_bastet_table(bastet_solid_rows(cat_solids))
 
     b0, r0 = banner(0)
     b1, r1 = banner(1)
-    gm_new.sprite("spr_hall_banner", [b0, b1], origin="topleft", folder=f)
+    gm_new.sprite("spr_hall_banner", [b0, b1], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
     gm_new.sprite("spr_hall_banner_rim", [r0, r1], origin="topleft", folder=f)
 
     d0, dr0 = desk(0)
@@ -1923,22 +2199,27 @@ def main():
     gm_new.sprite("spr_hall_desk_rim", [dr0, dr1], origin="topleft", folder=f)
 
     gm_new.sprite("spr_hall_stone", [stone_tile()], origin="topleft",
-                  folder=f)
-    gm_new.sprite("spr_hall_pale", [pale_tile()], origin="topleft", folder=f)
-    gm_new.sprite("spr_hall_plinth", [plinth_face()], origin="topleft",
-                  folder=f)
-    gm_new.sprite("spr_hall_deskface", [desk_face()], origin="topleft",
-                  folder=f)
+                  folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_pale", [pale_tile()], origin="topleft", folder=f,
+                  texgroup=HALL_TEXGROUP)
+    plinth, deskf = plinth_face(), desk_face()
+    dado, cornice = dado_band(), cornice_band()
+    gm_new.sprite("spr_hall_plinth", [plinth], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_deskface", [deskf], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
     gm_new.sprite("spr_hall_board", [board_edge()], origin="topleft",
-                  folder=f)
-    gm_new.sprite("spr_hall_dado", [dado_band()], origin="topleft", folder=f)
-    gm_new.sprite("spr_hall_cornice", [cornice_band()], origin="topleft",
-                  folder=f)
+                  folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_dado", [dado], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_cornice", [cornice], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
     gm_new.sprite("spr_hall_books",
                   [books_tile(701), books_tile(702), books_tile(703)],
-                  origin="topleft", folder=f)
-    gm_new.sprite("spr_hall_pil", [pilaster_face()], origin="topleft",
-                  folder=f)
+                  origin="topleft", folder=f,
+                  texgroup=HALL_TEXGROUP)
+    pil, pil_glow = pilaster_face()
+    gm_new.sprite("spr_hall_pil", [pil], origin="topleft", folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_pil_glow", [pil_glow], origin="topleft",
+                  folder=f, texgroup=HALL_TEXGROUP)
+    gm_new.sprite("spr_hall_flame", [flame_strip()], origin="topleft",
+                  folder=f, texgroup=HALL_TEXGROUP)
     ob, ob_lit = orb()
     gm_new.sprite("spr_hall_orb", [ob], origin="topleft", folder=f)
     gm_new.sprite("spr_hall_orb_lit", [ob_lit], origin="topleft", folder=f)
@@ -1950,17 +2231,24 @@ def main():
     A.preview(bays, os.path.join(A.PREVIEW, "sanctum_wall.png"),
               cols=3, bg=(10, 10, 14),
               labels=["bay: shelves", "bay: ladder", "bay: alcove"])
-    A.preview([floor_tile(), cat, b0, b1, d0, d1, lamp],
-              os.path.join(A.PREVIEW, "sanctum_parts.png"), cols=4,
+    A.preview([cat, b0, b1],
+              os.path.join(A.PREVIEW, "sanctum_parts.png"), cols=3,
               bg=(10, 10, 14),
-              labels=["floor", "bastet", "banner: crest",
-                      "banner: eye", "desk: glass", "desk: armillary",
-                      "lamp"])
-    # The three courses side by side, at the proportions they are laid at.
-    A.preview([runner_tile(), border_course(), floor_tile()],
+              labels=["bastet", "banner: crest", "banner: eye"])
+    # The courses and the carved stone, as colour and as gloss. They are
+    # dark: the hall's lights take them well past what is painted here.
+    fl = [runner, border, slab]
+    A.preview([SR.flat_view(i) for i in fl] + [SR.gloss_view(i) for i in fl],
               os.path.join(A.PREVIEW, "sanctum_floor.png"), cols=3,
               bg=(8, 8, 12),
-              labels=["the runner", "the border course", "the marble field"])
+              labels=["the runner", "the border course", "the marble field",
+                      "gloss", "gloss", "gloss"])
+    SG.specimen(os.path.join(A.PREVIEW, "sanctum_glyphs.png"), size=96)
+    cs = [plinth, deskf, dado, cornice]
+    A.preview([SR.flat_view(i) for i in cs],
+              os.path.join(A.PREVIEW, "sanctum_carved.png"), cols=4,
+              bg=(8, 8, 12),
+              labels=["plinth", "pedestal", "dado", "cornice"])
     A.preview([star_point(0), star_point(1), star_point(2),
                nebula(301), nebula(302), zodiac_band()],
               os.path.join(A.PREVIEW, "sanctum_sky.png"), cols=3,
@@ -1974,7 +2262,7 @@ def main():
               os.path.join(A.PREVIEW, "sanctum_light.png"), cols=2,
               bg=(8, 8, 12), labels=["orb", "orb light"])
     A.preview([stone_tile(), books_tile(701), books_tile(702),
-               pilaster_face()],
+               SR.flat_view(pil)],
               os.path.join(A.PREVIEW, "sanctum_mat.png"), cols=4,
               bg=(8, 8, 12),
               labels=["stone", "books", "books", "pilaster"])

@@ -21,6 +21,8 @@ function bg_new(_ground, _rock, _near, _air, _speed) {
         f_step: undefined,
         f_back: undefined,
         f_front: undefined,
+        // Frees what the background holds outside the struct (`bg_free`).
+        f_free: undefined,
 
         // The mid-stage turn: `bg_set_omen` sets `omen_on`, and `omen` eases
         // 0 -> 1 over `BG_OMEN_TIME`. Backgrounds without a turn ignore it.
@@ -89,6 +91,15 @@ function bg_step(_b, _aim = 0) {
         return;
     }
     _b.t++;
+}
+
+/// @desc Free what a background holds outside its struct (vertex buffers,
+///       surfaces), which the garbage collector doesn't reach. Its owner calls
+///       this from Clean Up.
+function bg_free(_b) {
+    if (!is_struct(_b)) return;
+    var _f = _b[$ "f_free"];
+    if (!is_undefined(_f)) _f(_b);
 }
 
 /// @desc Start the mid-stage turn (from a stage's timeline via

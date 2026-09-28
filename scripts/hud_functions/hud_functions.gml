@@ -74,7 +74,7 @@ function hud_mark_xy(_i, _total) {
     var _per = max(1, floor(HUD_COL_W / 46));
     var _pitch = HUD_COL_W / min(max(_total, 1), _per);
     return [HUD_COL_X + _pitch * ((_i mod _per) + 0.5),
-            HUD_ROW_MARKS + 64 + (_i div _per) * 42];
+            HUD_ROW_MARKS + 66 + (_i div _per) * 48];
 }
 
 // ---------------------------------------------------------------------------
@@ -381,34 +381,38 @@ function hud_draw_marks(_h, _g) {
     // ---- the sockets ------------------------------------------------------
     //
     // `max`, so a stage that files more marks than it counted grows the row.
+    // A mark's medal is seated in its socket (spells on their star) once the
+    // rank card has carried it there, and pops as it lands.
     var _got = rank_count(_led);
     var _stage = _g[$ "stage"];
     var _want = (_stage != undefined)
         ? _stage.encounters : (_g.def[$ "encounters"] ?? _got);
     var _total = max(_got, _want);
-    if (_total > 0) {
-        for (var _i = 0; _i < _total; _i++) {
-            var _at = hud_mark_xy(_i, _total);
-            var _mx = _at[0];
-            var _cy2 = _at[1];
+    var _card = _h.card;
+    for (var _i = 0; _i < _total; _i++) {
+        var _at = hud_mark_xy(_i, _total);
+        var _mx = _at[0];
+        var _cy2 = _at[1];
 
-            if (_i < _got) {
-                var _m = _led.marks[_i];
-                var _mc = mark_colour(_m.tier);
-                // The newest mark glows while the ledger's flare lasts.
-                var _new = (_i == _got - 1) ? _flare : 0;
-                if (_m.tier >= Mark.Gold) {
-                    draw_bloom(_mx, _cy2, 44, _mc, 0.18 + _new * 0.5);
-                }
-                var _s = 1 + _new * 0.35;
-                draw_sprite_ext(spr_ui_mark, _m.spell ? 1 : 0, _mx, _cy2,
-                                _s, _s, 0,
-                                merge_colour(_mc, c_white, _new * 0.6), 1);
-            } else {
-                // An empty socket.
-                draw_sprite_ext(spr_ui_mark, 2, _mx, _cy2, 1, 1, 0,
-                                merge_colour(COL_GILT, COL_ARCANE, 0.4), 0.85);
-            }
+        draw_sprite_ext(spr_ui_mark_socket, 0, _mx, _cy2, 1, 1, 0, c_white, 1);
+        if (_i >= _got) continue;
+        if (rank_card_live(_card) && _card.slot == _i) continue;
+
+        var _m = _led.marks[_i];
+        var _pop = (_card.slot == _i) ? _card.land : 0;
+        if (_m.tier >= Mark.Gold || _pop > 0) {
+            draw_bloom(_mx, _cy2, 48 + 40 * _pop, mark_colour(_m.tier),
+                       0.14 + 0.5 * _pop);
+        }
+        var _f = _m.tier + (_m.spell ? Mark.Count : 0);
+        var _s = 1 + 0.3 * _pop * _pop;
+        draw_sprite_ext(spr_ui_mark_medal, _f, _mx, _cy2, _s, _s, 0,
+                        c_white, 1);
+        if (_pop > 0) {
+            gpu_set_blendmode(bm_add);
+            draw_sprite_ext(spr_ui_mark_medal, _f, _mx, _cy2, _s, _s, 0,
+                            c_white, 0.7 * _pop);
+            gpu_set_blendmode(bm_normal);
         }
     }
 
@@ -1100,21 +1104,23 @@ function hud_draw_practice_result(_g) {
     draw_text_fit(FIELD_CX, FIELD_Y0 + 292, string_upper(_g.def.name),
                   FIELD_W - 260, COL_PARCHMENT, _t, 2);
 
-    // ---- the mark (the console's mark sprite, at 3x) ---------------------
+    // ---- the mark: its medal, spun in as the panel appears ---------------
     var _my = FIELD_Y0 + 396;
+    var _ms = 0.54;
     if (_r != undefined && _r.tier >= 0) {
         var _mc = mark_colour(_r.tier);
         draw_bloom(FIELD_CX, _my, 260, _mc, _t * 0.3);
-        draw_sprite_ext(spr_ui_mark, _r.spell ? 1 : 0, FIELD_CX, _my,
-                        3, 3, 0, _mc, _t);
+        var _sf = 1 - clamp(_g.result_t / 40, 0, 1);
+        medal_draw(_r.tier, _r.spell, FIELD_CX, _my, _ms,
+                   540 * _sf * _sf, _t);
         draw_set_font(fnt_head());
-        draw_text_outline(FIELD_CX, _my + 82, mark_name(_r.tier), _mc, _t, 2);
+        draw_text_outline(FIELD_CX, _my + 96, mark_name(_r.tier), _mc, _t, 2);
     } else {
-        // Dying leaves no mark.
-        draw_sprite_ext(spr_ui_mark, 2, FIELD_CX, _my, 3, 3, 0,
-                        merge_colour(COL_GILT, COL_ARCANE, 0.4), _t * 0.8);
+        // Dying leaves no mark: an empty socket.
+        draw_sprite_ext(spr_ui_medal_socket, 0, FIELD_CX, _my, _ms, _ms, 0,
+                        c_white, _t * 0.9);
         draw_set_font(fnt_head());
-        draw_text_outline(FIELD_CX, _my + 82, "UNMARKED",
+        draw_text_outline(FIELD_CX, _my + 96, "UNMARKED",
                           merge_colour(COL_PARCHMENT, COL_ARCANE_LIT, 0.5),
                           _t * 0.8, 2);
     }

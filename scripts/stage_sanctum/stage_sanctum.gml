@@ -22,6 +22,10 @@
 // The radius his formations sit at.
 #macro MIKA_ORBIT 300
 
+// Frames of the hall waking before the first wave (every event is pushed back
+// by it).
+#macro SANCTUM_OPENING 240
+
 // ---------------------------------------------------------------------------
 // The stage
 // ---------------------------------------------------------------------------
@@ -105,6 +109,9 @@ function stage_sanctum_script() {
     array_push(_e, ev(1320, wave_sweep_field()));
     array_push(_e, ev(1380, wave_boss(mika_spawn)));
 
+    // Everything waits for the hall to start waking (`hall_step`): the dark
+    // lifts and the first torches catch before the first wave flies in.
+    for (var _i = 0; _i < array_length(_e); _i++) _e[_i].at += SANCTUM_OPENING;
     return _e;
 }
 

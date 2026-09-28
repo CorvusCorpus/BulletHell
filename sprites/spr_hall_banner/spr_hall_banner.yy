@@ -87,8 +87,8 @@
   "swatchColours":null,
   "swfPrecision":0.5,
   "textureGroupId":{
-    "name":"Default",
-    "path":"texturegroups/Default",
+    "name":"Hall",
+    "path":"texturegroups/Hall",
   },
   "type":0,
   "VTile":false,

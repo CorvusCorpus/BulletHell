@@ -37,6 +37,7 @@ EVENT_FILE_TO_KEY = {
     "Draw_0": (8, 0),
     "Draw_64": (8, 64),  # Draw GUI
     "Draw_73": (8, 73),  # Draw End
+    "CleanUp_0": (12, 0),
 }
 
 problems = []
@@ -1301,6 +1302,27 @@ def check_scrub_covers_horizon():
 IDENT = "[A-Za-z_][A-Za-z_0-9]*"
 
 
+def check_medal_sizes_agree():
+    """The rank medals are drawn at sizes `tools/medal_art.py` renders them
+    for: the card's medal at scale 1, its edge as thick as it was painted, and
+    the card landing at exactly the socket medal's size. If the two drift
+    apart, the medal lands a different size from the one it becomes.
+    """
+    src_path = os.path.join(ROOT, "tools", "medal_art.py")
+    with open(src_path, encoding="utf-8") as fh:
+        src = fh.read()
+    for py, gml in (("MEDAL_D", "MEDAL_D"), ("MEDAL_THICK", "MEDAL_THICK"),
+                    ("MARK_D", "MARK_D"), ("STAR_AXIS", "MEDAL_STAR_AXIS")):
+        match = re.search(r"^%s\s*=\s*([\d.]+)" % py, src, re.M)
+        if match is None:
+            fail("medal_art.py has no %s" % py)
+            continue
+        want = read_macro_number(gml)
+        if abs(float(match.group(1)) - want) > 1e-6:
+            fail("medal_art.py's %s is %s but constants.gml's %s is %g"
+                 % (py, match.group(1), gml, want))
+
+
 def check_bands_are_rooted():
     """A grove scenery band's sideways position must follow the camera.
 
@@ -1508,7 +1530,7 @@ def check_hall_frame_textures():
 _HALL_WRITERS = {
     "hall_tiles": 5, "hall_quad": 5, "hall_face": 1, "hall_face_u": 1,
     "hall_face_z": 1, "hall_cross": 1, "hall_taper": 9, "hall_sphere": 7,
-    "hall_ring": 9, "hall_lathe": 6,
+    "hall_ring": 9, "hall_lathe": 6, "hall_card": 8,
 }
 
 
@@ -1700,6 +1722,7 @@ def main():
     check_bg_keepout()
     check_scrub_covers_horizon()
     check_rotunda_scale_agrees()
+    check_medal_sizes_agree()
     check_bands_are_rooted()
     check_font_accessors_called()
     check_sprite_draws_are_explicit()

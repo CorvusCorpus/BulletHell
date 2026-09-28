@@ -72,5 +72,8 @@ scroll_want = (array_length(picks) > 0)
     : 0;
 scroll = scroll_want;
 
-// The stage's own background (unbuilt stages have no `make_bg`).
+// The stage's own background (unbuilt stages have no `make_bg`). The hall's
+// opening is half a minute of it waking in the dark, which belongs to the
+// stage; the list shows it awake.
 bg = (stage.make_bg != undefined) ? stage.make_bg() : bg_brimstone();
+if (bg.kind == BGKIND_SANCTUM) bg.intro = 1;

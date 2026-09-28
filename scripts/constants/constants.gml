@@ -287,17 +287,30 @@
 
 // The rank card (see `rank_card`). Its length fits inside `BOSS_PHASE_PAUSE`.
 #macro RANK_CARD_TIME 80
-#macro RANK_CARD_STRIKE 6          // the medal arrives oversized and settles
-#macro RANK_CARD_SETTLE 24         // ...with a small elastic under it
-#macro RANK_CARD_GLINT_END 40      // the glint crossing its face
-#macro RANK_CARD_FLY 24            // and it leaves for its socket
+#macro RANK_CARD_FLASH 18          // the flash and shockwave as it arrives
+#macro RANK_CARD_SPIN 32           // the medal spins in and comes to rest
+#macro RANK_CARD_TURNS 2           // ...turning this many times
+#macro RANK_CARD_ROCK 20           // then rocks once as it stops
+#macro RANK_CARD_GLINT_END 52      // the glint crossing its face
+#macro RANK_CARD_FLY 24            // and it leaves for its socket, turning once
 
 // Where the card is shown: above the player's half, below the boss's station.
 #macro RANK_CARD_Y (FIELD_Y0 + FIELD_H * 0.38)
 
-#macro RANK_CARD_SCALE 1.25        // the medal is authored at 176
-#macro RANK_CARD_HOME_S 0.17       // ...and a socket is 30
-#macro RANK_CARD_FRAMES 6          // five rungs and the perfect standing
+// The medals' sizes, as `tools/medal_art.py` renders them
+// (`check_medal_sizes_agree`).
+#macro MEDAL_D 216                 // the card's medal, drawn at scale 1
+#macro MEDAL_THICK 15              // its edge, which shows as it turns
+#macro MEDAL_STAR_AXIS 1.16        // a spell's star, above and below, in radii
+#macro MARK_D 32                   // a console socket's medal
+
+// The card's scale when it lands: the socket medal's size.
+#macro RANK_CARD_HOME_S (MARK_D / MEDAL_D)
+
+// Where a turning medal's face throws the light's reflection at the viewer:
+// its heading, in degrees from facing the viewer (negative is turned to the
+// left, toward the light).
+#macro MEDAL_SHEEN_AT -35
 
 // ---------------------------------------------------------------------------
 // Enemies and bosses
@@ -897,6 +910,8 @@ enum BossMove {
 // bay can be is `(HALL_BAYS - 1)` bays out, which must be beyond
 // `HALL_FADE_END` so it arrives invisible (`test_hall_sky` checks).
 #macro HALL_BAYS 16
+// ...and behind it, which the opening's steep look down takes in.
+#macro HALL_BAYS_BEHIND 2
 
 // The pavement's three courses, from the centre line out: a sunken runner,
 // an ornamented border, and the marble field at the walls.
@@ -934,11 +949,7 @@ enum BossMove {
 #macro HALL_PITCH_B -2
 
 #macro HALL_SPEED 9.0
-// The arrival: the stage opens dark and nearly still and the lights come up
-// as the flight gathers. Phase A flies slower because nothing is near the
-// lens up there.
-#macro HALL_INTRO_TIME 165
-#macro HALL_INTRO_SPD 0.16
+// Phase A flies slower because nothing is near the lens up there.
 #macro HALL_SPEED_A 5.2
 #macro HALL_SWELL 0.055
 #macro HALL_SWELL_P 260
@@ -961,11 +972,9 @@ enum BossMove {
 #macro HALL_ALCOVE_EVERY 4
 #macro HALL_ALCOVE_AT 2
 #macro HALL_BOARD_T 6
-#macro HALL_BOARD_COL make_colour_rgb(92, 86, 76)
 #macro HALL_GILT make_colour_rgb(104, 80, 32)
 // Tints for surfaces drawn on the pale albedo `spr_hall_pale` (a vertex
 // colour multiplies its texture).
-#macro HALL_CAT make_colour_rgb(46, 46, 60)     // the statues: black basalt
 #macro HALL_MASONRY make_colour_rgb(27, 28, 36)
 #macro HALL_GLASS make_colour_rgb(72, 78, 104)
 #macro HALL_ORB_COL make_colour_rgb(120, 186, 255)
@@ -984,36 +993,12 @@ enum BossMove {
 #macro HALL_ORB_R 48
 #macro HALL_ORB_Y 470
 #macro HALL_ORB_GLOW 0.95
-#macro HALL_ORB_POWER 1.55
-#macro HALL_ORB_LIGHT_R 420
 // How far into the recess the orb stands. `hall_orb_x` is the one place that
 // turns this into a position, for both the geometry and the light
 // (`test_hall_orb`).
 #macro HALL_ORB_STAND 84
-#macro HALL_ORB_STEM_H 262    // the pedestal, from the alcove sill upward
 #macro HALL_ORB_CRADLE 28     // ...and the gilt cup it sits in
 #macro HALL_ORB_BLOOM 5.2     // the bloom card's radius, in orb radii
-
-// Baked light. `AMB` is what a surface gets with nothing near it; the powers
-// are how much each source adds at its own centre.
-#macro HALL_WALL_AMB 0.46
-#macro HALL_LAMP_Y 360
-#macro HALL_LAMP_POWER 0.62
-#macro HALL_LIGHT_R 680
-
-#macro HALL_WALL_LIGHT 1.00
-#macro HALL_FLOOR_LIGHT 0.86
-// The pavement is lit by both walls at once (`hall_floor_light`):
-// `HALL_FLOOR_AMB` is what a point far from everything gets, and the bounce is
-// how much of a lamp reaches the stone under it.
-#macro HALL_FLOOR_AMB 0.26
-#macro HALL_FLOOR_BOUNCE 0.74
-// A vignette on top: the share of the light the centre line keeps, so the
-// floor under the player is the darkest part of it.
-#macro HALL_FLOOR_DIM 0.42
-// Where the lamps sit up the wall, as a share of its height from the cornice
-// down (where `tools/make_sanctum.py` draws them).
-#macro HALL_LAMP_V 0.46
 
 // Steering, as the grove's lean: an ease and a per-frame cap.
 #macro HALL_LEAN 92
@@ -1024,18 +1009,13 @@ enum BossMove {
 #macro HALL_STATUE_X 548
 // The statue figure's height, standing on `HALL_STATUE_BASE`.
 #macro HALL_STATUE_H 300
-// How strongly the statue's lit edge is drawn in the additive pass.
-#macro HALL_STATUE_RIM 0.42
-// Facets round the statue's swept cross-section.
+// How strongly the statue's additive layer (her lit edge and her eyes' glow)
+// is drawn.
+#macro HALL_STATUE_RIM 0.85
+// Facets round each part of the statue's swept cross-section.
 #macro HALL_STATUE_STEPS 16
-// What the statue's swept form adds to the sprite's baked light: a lift where
-// the surface faces up and a fall where it faces away down the hall. Both are
-// zero on the face toward the camera.
-#macro HALL_STATUE_TOP 0.34
-#macro HALL_STATUE_AWAY 0.32
 // The pedestals stand on the statue line, midway between two statues.
 #macro HALL_DESK_X 548
-#macro HALL_DESK_H 165
 
 // The instruments on the pedestals (an hourglass and a small armillary). They
 // are built at the origin and drawn under a matrix, so they can move; the rest
@@ -1062,18 +1042,156 @@ enum BossMove {
 #macro HALL_BANNER_H 620
 // Its top hangs this far under the wall head's coping.
 #macro HALL_BANNER_DROP 6
-#macro HALL_LAMP_X 606
-#macro HALL_LAMP_H 340
 
-// How hard the additive emissive pass is driven, so the lamps stay dimmer
-// than the bullets.
-#macro HALL_EMISSIVE_K 0.50
-// A prop's own light: a flat value rather than the wall's falloff.
+// A prop's colour: the share of its texture it shows.
 #macro HALL_PROP_LIGHT 0.88
 // Alpha test threshold. Cut-out sprites on quads have transparent corners
 // that would otherwise write depth.
 #macro HALL_ALPHA_REF 96
-#macro HALL_LAMP_EMISSIVE make_colour_rgb(96, 96, 96)
+
+// ---------------------------------------------------------------------------
+// The hall's light (`sh_hall`, set by `hall_shader`)
+//
+// Lit per pixel by the night through the open roof and by the fires and orbs,
+// which repeat with the bays. Colours are `[r, g, b]` multipliers on a
+// texture (1 shows it as painted), so near its source a light can drive a
+// surface past its own colour. All first guesses, tuned by eye.
+// ---------------------------------------------------------------------------
+
+// What every surface gets with nothing lighting it.
+#macro HALL_AMB [0.040, 0.048, 0.090]
+// The night through the roof: its light on a surface that sees all of it, and
+// what a polished surface reflects of it.
+#macro HALL_SKYLIGHT [0.46, 0.60, 1.15]
+#macro HALL_SKYSHINE [0.16, 0.22, 0.44]
+// The moon, off to one side and behind the camera (it isn't in the painted
+// sky): the direction toward it, and its light.
+#macro HALL_MOON_DIR [-0.42, 0.86, -0.28]
+#macro HALL_MOONLIGHT [0.40, 0.54, 1.00]
+// The sky's share at the very start of the opening, and after the reveal.
+#macro HALL_SKY_DAWN 0.55
+#macro HALL_SKY_REVEAL 1.25
+// How much of the fog a light (the light pass) takes: less than a surface,
+// so a far fire still shows through the haze.
+#macro HALL_LIGHT_FOG 0.55
+// How much of the fires' light the air holds (fog near a fire glows).
+#macro HALL_SCATTER 0.12
+
+// Baked occlusion (`hall_wall_light`, `hall_floor_light`): what the foot of a
+// wall keeps, over what height, and the width of floor it darkens.
+#macro HALL_AO_FOOT 0.55
+#macro HALL_AO_FOOT_H 240
+#macro HALL_AO_FLOOR_W 110
+
+// Surfaces, as `[gloss, shininess, metal, gloss map]` (`hall_mat`). A gloss
+// map is the texture's alpha, on opaque tiles.
+#macro HALL_MAT_STONE [0.10, 14, 0, 0]
+#macro HALL_MAT_CARVED [0.45, 30, 0, 1]
+#macro HALL_MAT_BOOKS [0.06, 10, 0, 0]
+#macro HALL_MAT_GILT [0.70, 34, 1, 0]
+#macro HALL_MAT_GLASS [0.90, 60, 0, 0]
+#macro HALL_MAT_MARBLE [0.80, 70, 0, 1]
+#macro HALL_MAT_RUNNER [1.00, 110, 0, 1]
+#macro HALL_MAT_BORDER [0.80, 70, 0, 1]
+// The statue's alpha is a gloss map too, so her solid has no holes where it
+// samples just outside her outline (`bastet` carries her colour out there).
+#macro HALL_MAT_STATUE [0.40, 90, 0, 1]
+#macro HALL_MAT_CLOTH [0.04, 8, 0, 0]
+
+// The torches: a gilt stand at every bay joint, both sides, just in from the
+// wall (`hall_torch`). Its fire is a light in `sh_hall` and a card
+// (`hall_draw_flames`).
+#macro HALL_TORCH_X 612
+#macro HALL_TORCH_H 290          // the stand, floor to the bowl's lip
+#macro HALL_TORCH_Y 318          // the fire's heart: its light and its card
+#macro HALL_TORCH_R 1000         // how far its light reaches
+#macro HALL_TORCH_COL [1.00, 0.62, 0.30]
+#macro HALL_TORCH_POW 3.2
+#macro HALL_TORCH_TINT make_colour_rgb(255, 150, 70)
+#macro HALL_TORCH_EMBER make_colour_rgb(230, 84, 24)
+#macro HALL_TORCH_FLAME 70       // a fire card's size
+
+// The pilasters' glyphs as light (`hall_glyph_glow`): their colour, their
+// steady level, how much the torches' catching flares them, and the pulse
+// that runs down the hall: how often, how fast (world units a frame), how
+// long a stretch it lights, and how bright.
+#macro HALL_GLYPH_COL make_colour_rgb(110, 196, 255)
+#macro HALL_GLYPH_BASE 0.16
+#macro HALL_GLYPH_FLARE 2.0
+#macro HALL_GLYPH_PULSE_P 720
+#macro HALL_GLYPH_PULSE_V 70
+#macro HALL_GLYPH_PULSE_W 700
+#macro HALL_GLYPH_PULSE_A 0.75
+
+// The orbs' light and the braziers'.
+#macro HALL_ORB_REACH 1000
+#macro HALL_ORB_LIGHT [0.32, 0.60, 1.00]
+#macro HALL_ORB_POW 2.2
+#macro HALL_BRAZIER_REACH 820
+#macro HALL_BRAZIER_LIGHT [1.00, 0.64, 0.32]
+#macro HALL_BRAZIER_POW 2.2
+#macro HALL_BRAZIER_FLAME 110
+
+// The fire cards: the halo's two layers, and the flame strip's frames and
+// rate (frames a hall frame).
+#macro HALL_HALO_WIDE 4.2
+#macro HALL_HALO_WIDE_A 0.20
+#macro HALL_HALO_CORE_A 0.55
+#macro HALL_FLAME_FRAMES 16
+#macro HALL_FLAME_RATE 0.22
+
+// The pavement's reflection of a fire (`hall_draw_reflections`): the smear's
+// size in fire sizes, and how bright it is.
+#macro HALL_REFL_W 1.6
+#macro HALL_REFL_H 5.5
+#macro HALL_REFL_A 0.30
+#macro HALL_REFL_CORE_A 0.45
+// The Fresnel reflectance at which a reflection is at full strength (a level
+// look down the hall reaches it; from above it is a tenth of it).
+#macro HALL_REFL_FRESNEL 0.30
+
+// The post-process (`hall_post`): what brightness blooms, how much, the
+// vignette, and the floor the shadows are lifted to.
+#macro HALL_BLOOM_THRESH 0.42
+#macro HALL_BLOOM_A 0.85
+#macro HALL_VIGNETTE 0.55
+#macro HALL_LIFT [0.010, 0.012, 0.024]
+
+// ---------------------------------------------------------------------------
+// The opening (`hall_step`)
+//
+// The hall wakes over `HALL_INTRO_TIME` frames. The parts are placed within
+// it in frames; a `[from, to]` pair is a stretch it eases across.
+// ---------------------------------------------------------------------------
+#macro HALL_INTRO_TIME 1800
+#macro HALL_WAKE_VEIL [0, 90]      // the black lifts
+#macro HALL_WAKE_TORCH 170         // the first torches catch
+#macro HALL_WAKE_ORB 560           // ...and the orbs
+#macro HALL_WAKE_BEAM [360, 1100]  // the moonbeam fades as they take over
+#macro HALL_WAKE_TILT [200, 1500]  // the camera tilts forward and sinks
+#macro HALL_WAKE_GO [120, 1740]    // ...and gathers speed
+// The share of phase A's speed it starts at.
+#macro HALL_INTRO_SPD 0.06
+// The opening's first camera: high and looking nearly straight down.
+#macro HALL_CAM_OPEN 1230
+#macro HALL_PITCH_OPEN -84
+// A front of lights catching (`hall_front`): how far behind the start it
+// begins, and its speed and acceleration (world units a frame, and a frame
+// squared).
+#macro HALL_FRONT_BACK 160
+#macro HALL_FRONT_V 11
+#macro HALL_FRONT_A 0.045
+#macro HALL_FRONT_ALL 100000000
+// The moonbeam the opening starts in: a shaft falling straight down onto the
+// first bays, where the first camera looks. Where along the hall it falls,
+// the radius of its pool, its colour and its strength at full.
+#macro HALL_BEAM_Y 0
+#macro HALL_BEAM_Z 200
+#macro HALL_BEAM_R 760
+#macro HALL_BEAM_COL [0.50, 0.66, 1.00]
+#macro HALL_BEAM_POW 1.5
+// Frames into the reveal before the braziers begin to catch.
+#macro HALL_BRAZIER_WAKE 40
 
 // ---------------------------------------------------------------------------
 // The open roof
@@ -1208,6 +1326,14 @@ enum BossMove {
 #macro HALL_SAND_N 130
 #macro HALL_SAND_COL make_colour_rgb(206, 180, 142)
 #macro HALL_SAND_A 0.30
+// ...and how it catches the light (`hall_dust_light`): what it shows with
+// nothing lighting it, how far from a torch it glints, how much, and the
+// colours it takes from a torch and from the moonbeam.
+#macro HALL_SAND_DARK 0.30
+#macro HALL_SAND_GLOW_R 520
+#macro HALL_SAND_GLINT 2.2
+#macro HALL_SAND_WARM make_colour_rgb(255, 196, 128)
+#macro HALL_SAND_COLD make_colour_rgb(176, 206, 255)
 // The volume it blows through, in world units: how near a grain may come
 // before it is gone, how deep the cloud runs, how far out either side of the
 // nave it starts, and how high the drift reaches.

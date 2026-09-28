@@ -46,6 +46,15 @@
   },
   "name":"Bullet Hell",
   "resources":[
+    {"id":{"name":"spr_ui_mark_socket","path":"sprites/spr_ui_mark_socket/spr_ui_mark_socket.yy",},},
+    {"id":{"name":"spr_ui_mark_medal","path":"sprites/spr_ui_mark_medal/spr_ui_mark_medal.yy",},},
+    {"id":{"name":"spr_ui_medal_socket","path":"sprites/spr_ui_medal_socket/spr_ui_medal_socket.yy",},},
+    {"id":{"name":"spr_ui_medal_star","path":"sprites/spr_ui_medal_star/spr_ui_medal_star.yy",},},
+    {"id":{"name":"spr_ui_medal_edge","path":"sprites/spr_ui_medal_edge/spr_ui_medal_edge.yy",},},
+    {"id":{"name":"spr_ui_medal_back","path":"sprites/spr_ui_medal_back/spr_ui_medal_back.yy",},},
+    {"id":{"name":"spr_hall_pil_glow","path":"sprites/spr_hall_pil_glow/spr_hall_pil_glow.yy",},},
+    {"id":{"name":"spr_hall_flame","path":"sprites/spr_hall_flame/spr_hall_flame.yy",},},
+    {"id":{"name":"sh_hall_post","path":"shaders/sh_hall_post/sh_hall_post.yy",},},
     {"id":{"name":"obj_boot","path":"objects/obj_boot/obj_boot.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},
     {"id":{"name":"obj_practice","path":"objects/obj_practice/obj_practice.yy",},},
@@ -265,5 +274,6 @@
   "templateType":"game",
   "TextureGroups":[
     {"$GMTextureGroup":"","%Name":"Default","autocrop":true,"border":2,"compressFormat":"bz2","customOptions":"","directory":"","groupParent":null,"isScaled":true,"loadType":"default","mipsToGenerate":0,"name":"Default","resourceType":"GMTextureGroup","resourceVersion":"2.0","targets":-1,},
+    {"$GMTextureGroup":"","%Name":"Hall","autocrop":false,"border":16,"compressFormat":"bz2","customOptions":"","directory":"","groupParent":null,"isScaled":false,"loadType":"default","mipsToGenerate":5,"name":"Hall","resourceType":"GMTextureGroup","resourceVersion":"2.0","targets":-1,},
   ],
 }

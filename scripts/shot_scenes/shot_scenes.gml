@@ -474,7 +474,7 @@ function shot_pose(_scene, _g) {
 
         case "sanctum":
             // The early wave with two idle rings.
-            _g.stage.t = 420;
+            _g.stage.t = 420 + SANCTUM_OPENING;
             _g.player.x = FIELD_CX - 90;
             _g.player.y = FIELD_Y1 - 200;
             _g.bg.intro = 1;

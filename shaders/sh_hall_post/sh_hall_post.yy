@@ -1,0 +1,12 @@
+{
+  "$GMShader":"",
+  "%Name":"sh_hall_post",
+  "name":"sh_hall_post",
+  "parent":{
+    "name":"Shaders",
+    "path":"folders/Shaders.yy",
+  },
+  "resourceType":"GMShader",
+  "resourceVersion":"2.0",
+  "type":1,
+}
