@@ -579,5 +579,7 @@ Known gaps:
 - `bullet_clear_circle` turns every Nth cleared bullet into an item in the
   order it sweeps them, not by position.
 - Frame cost: the grove is the expensive stage, at roughly 10 ms a frame,
-  because it draws hundreds of billboards from GML every frame. Stage one and
-  the hall take about 6 ms.
+  because it draws hundreds of billboards from GML every frame. Stage one
+  takes about 6 ms, and the hall about 5 ms with an empty field (the hall's
+  flames, reflections and sand build their vertices without allocating, so
+  the garbage collector stays quiet).

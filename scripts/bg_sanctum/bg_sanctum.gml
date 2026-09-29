@@ -76,6 +76,9 @@ function bg_sanctum() {
     _b.vb_flame = vertex_create_buffer();
     _b.vb_halo = vertex_create_buffer();
     _b.vb_refl = vertex_create_buffer();
+    // The fires in view this frame (`hall_fires`), rewritten in place.
+    _b.fires = [];
+    _b.fire_n = 0;
 
     hall_build(_b);
     // Every buffer the build froze, for `hall_free`.
@@ -149,6 +152,14 @@ function hall_bay_kind(_i) {
 ///       from sprite space), inset half a texel from every edge so bilinear
 ///       sampling doesn't pick up neighbouring art on the page.
 function hall_uv(_spr, _frame, _u, _v) {
+    var _m = hall_uv_frame(_spr, _frame);
+    return [hall_uv_across(_m, _u), hall_uv_down(_m, _v)];
+}
+
+/// @desc The constants `hall_uv` works from for one sprite frame. Anything
+///       that maps the same frame every frame (the flames) works them out once
+///       and uses `hall_uv_across` and `hall_uv_down` directly.
+function hall_uv_frame(_spr, _frame) {
     var _q = sprite_get_uvs(_spr, _frame);
     var _w = max(1, sprite_get_width(_spr));
     var _h = max(1, sprite_get_height(_spr));
@@ -160,12 +171,20 @@ function hall_uv(_spr, _frame, _u, _v) {
     // frame of the flame strip a little further off its flame.)
     var _kw = max(1, _w * _q[6]);
     var _kh = max(1, _h * _q[7]);
-    var _ku = clamp((_u * _w - _q[4]) / _kw, 0, 1);
-    var _kv = clamp((_v * _h - _q[5]) / _kh, 0, 1);
     var _hu = 0.5 / _kw * (_q[2] - _q[0]);
     var _hv = 0.5 / _kh * (_q[3] - _q[1]);
-    return [lerp(_q[0] + _hu, _q[2] - _hu, _ku),
-            lerp(_q[1] + _hv, _q[3] - _hv, _kv)];
+    return { u0: _q[0] + _hu, u1: _q[2] - _hu, v0: _q[1] + _hv, v1: _q[3] - _hv,
+             w: _w, h: _h, cx: _q[4], cy: _q[5], kw: _kw, kh: _kh };
+}
+
+/// @desc `hall_uv`'s page u for `_u`, a share of the sprite's width.
+function hall_uv_across(_m, _u) {
+    return lerp(_m.u0, _m.u1, clamp((_u * _m.w - _m.cx) / _m.kw, 0, 1));
+}
+
+/// @desc `hall_uv`'s page v for `_v`, a share of the sprite's height.
+function hall_uv_down(_m, _v) {
+    return lerp(_m.v0, _m.v1, clamp((_v * _m.h - _m.cy) / _m.kh, 0, 1));
 }
 
 /// @desc The vertex format everything in the hall is built in. The normal is
@@ -1015,6 +1034,8 @@ function hall_draw_back(_b, _fill) {
     }
 
     // --- what it mirrors ------------------------------------------------
+    // The fires in view, for the reflections and the flames both.
+    hall_fires(_b);
     hall_draw_reflections(_b);
 
     // --- the joinery ----------------------------------------------------
@@ -1241,28 +1262,30 @@ function hall_emit(_k) {
 // smeared downward (`hall_draw_reflections`).
 // ---------------------------------------------------------------------------
 
-/// @desc Every fire in view, as `[x, y, z, size, level, colour, seed,
-///       seat]`: the torch pair at each bay joint and the braziers over each
-///       alcove. `y` is the fire's heart, where its light is; `seat` is the
-///       height its flame stands on (the embers in its bowl). `level` is the
-///       flicker times the waking (0 is out). `seed` belongs to the fire
-///       itself, not to its place in this list, which shifts as bays come
-///       into view.
+/// @desc Every fire in view, into `_b.fires` as rows of `[x, y, z, size,
+///       level, colour, seed, seat]`, `_b.fire_n` of them this frame: the torch
+///       pair at each bay joint and the braziers over each alcove. `y` is the
+///       fire's heart, where its light is; `seat` is the height its flame
+///       stands on (the embers in its bowl). `level` is the flicker times the
+///       waking (0 is out). `seed` belongs to the fire itself, not to its place
+///       in this list, which shifts as bays come into view. The rows are kept
+///       and rewritten each frame rather than made anew, since this runs every
+///       frame. Needs this frame's light (`hall_light_frame`).
 function hall_fires(_b) {
     var _l = hall_light_state();
     var _r = hall_bay_range(_b);
-    var _out = [];
+    _b.fire_n = 0;
     for (var _i = _r[0]; _i <= _r[1]; _i++) {
         var _z = _i * HALL_BAY_Z;
         var _on = hall_ignite(_l.front[0], _z);
         if (_on > 0) {
             for (var _j = 0; _j < 2; _j++) {
                 var _s = _j * 2 - 1;
-                array_push(_out, [hall_torch_x(_s), HALL_TORCH_Y, _z,
-                                  HALL_TORCH_FLAME,
-                                  _on * hall_flicker(_i * 2 + _j, _l.time),
-                                  HALL_TORCH_TINT, _i * 2 + _j,
-                                  HALL_TORCH_H - 3]);
+                hall_fire_put(_b, hall_torch_x(_s), HALL_TORCH_Y, _z,
+                              HALL_TORCH_FLAME,
+                              _on * hall_flicker(_i * 2 + _j, _l.time),
+                              HALL_TORCH_TINT, _i * 2 + _j,
+                              HALL_TORCH_H - 3);
             }
         }
         if (hall_bay_kind(_i) != 2) continue;
@@ -1270,43 +1293,94 @@ function hall_fires(_b) {
         if (_bon <= 0) continue;
         for (var _j = 0; _j < 2; _j++) {
             var _s = _j * 2 - 1;
-            array_push(_out, [hall_brazier_x(_s), hall_brazier_y(), _z,
-                              HALL_BRAZIER_FLAME,
-                              _bon * hall_flicker(_i * 5 + _j + 0.5, _l.time),
-                              HALL_TORCH_TINT, _i * 5 + _j + 0.5,
-                              hall_brazier_y() - 6]);
+            hall_fire_put(_b, hall_brazier_x(_s), hall_brazier_y(), _z,
+                          HALL_BRAZIER_FLAME,
+                          _bon * hall_flicker(_i * 5 + _j + 0.5, _l.time),
+                          HALL_TORCH_TINT, _i * 5 + _j + 0.5,
+                          hall_brazier_y() - 6);
         }
     }
-    return _out;
+    return _b.fire_n;
 }
 
-/// @desc One card into a buffer: centred on `[_x, _y, _z]`, spanning `_w`
-///       along `_r` and `_h` along `_u` (both unit vectors), with the
-///       sprite frame's `[_u0.._u1]` across it.
-function hall_card(_vb, _x, _y, _z, _r, _u, _w, _h, _spr, _u0, _u1, _col,
+/// @desc Write the next row of `_b.fires` (see `hall_fires`), adding a row
+///       only when every kept one is in use.
+function hall_fire_put(_b, _x, _y, _z, _size, _level, _col, _seed, _seat) {
+    if (_b.fire_n >= array_length(_b.fires)) {
+        array_push(_b.fires, array_create(8, 0));
+    }
+    var _e = _b.fires[_b.fire_n];
+    _e[0] = _x;
+    _e[1] = _y;
+    _e[2] = _z;
+    _e[3] = _size;
+    _e[4] = _level;
+    _e[5] = _col;
+    _e[6] = _seed;
+    _e[7] = _seat;
+    _b.fire_n++;
+}
+
+/// @desc One card into a buffer: centred on `(_x, _y, _z)`, spanning `_w`
+///       along `_r` and `_h` along `_u` (both unit vectors), with the sprite
+///       frame `_m` (`hall_uv_frame`) mapped from `_u0` to `_u1` across it.
+///       Every fire and reflection is a card rebuilt every frame, so this works
+///       in plain numbers rather than making arrays.
+function hall_card(_vb, _x, _y, _z, _r, _u, _w, _h, _m, _u0, _u1, _col,
                    _a) {
     var _hw = _w * 0.5;
     var _hh = _h * 0.5;
-    var _p = [
-        [_x - _r[0] * _hw + _u[0] * _hh, _y - _r[1] * _hw + _u[1] * _hh,
-         _z - _r[2] * _hw + _u[2] * _hh],
-        [_x + _r[0] * _hw + _u[0] * _hh, _y + _r[1] * _hw + _u[1] * _hh,
-         _z + _r[2] * _hw + _u[2] * _hh],
-        [_x + _r[0] * _hw - _u[0] * _hh, _y + _r[1] * _hw - _u[1] * _hh,
-         _z + _r[2] * _hw - _u[2] * _hh],
-        [_x - _r[0] * _hw - _u[0] * _hh, _y - _r[1] * _hw - _u[1] * _hh,
-         _z - _r[2] * _hw - _u[2] * _hh],
-    ];
-    var _q = [hall_uv(_spr, 0, _u0, 0), hall_uv(_spr, 0, _u1, 0),
-              hall_uv(_spr, 0, _u1, 1), hall_uv(_spr, 0, _u0, 1)];
-    var _order = [0, 1, 2, 0, 2, 3];
-    for (var _i = 0; _i < 6; _i++) {
-        var _k = _order[_i];
-        vertex_position_3d(_vb, _p[_k][0], _p[_k][1], _p[_k][2]);
-        vertex_normal(_vb, 0, 0, -1);
-        vertex_colour(_vb, _col, _a);
-        vertex_texcoord(_vb, _q[_k][0], _q[_k][1]);
-    }
+    var _rx = _r[0] * _hw;
+    var _ry = _r[1] * _hw;
+    var _rz = _r[2] * _hw;
+    var _ux = _u[0] * _hh;
+    var _uy = _u[1] * _hh;
+    var _uz = _u[2] * _hh;
+
+    // The corners: 0 top left, 1 top right, 2 bottom right, 3 bottom left.
+    var _x0 = _x - _rx + _ux;
+    var _y0 = _y - _ry + _uy;
+    var _z0 = _z - _rz + _uz;
+    var _x1 = _x + _rx + _ux;
+    var _y1 = _y + _ry + _uy;
+    var _z1 = _z + _rz + _uz;
+    var _x2 = _x + _rx - _ux;
+    var _y2 = _y + _ry - _uy;
+    var _z2 = _z + _rz - _uz;
+    var _x3 = _x - _rx - _ux;
+    var _y3 = _y - _ry - _uy;
+    var _z3 = _z - _rz - _uz;
+
+    var _s0 = hall_uv_across(_m, _u0);
+    var _s1 = hall_uv_across(_m, _u1);
+    var _t0 = hall_uv_down(_m, 0);
+    var _t1 = hall_uv_down(_m, 1);
+
+    // Two triangles: 0 1 2, then 0 2 3.
+    vertex_position_3d(_vb, _x0, _y0, _z0);
+    vertex_normal(_vb, 0, 0, -1);
+    vertex_colour(_vb, _col, _a);
+    vertex_texcoord(_vb, _s0, _t0);
+    vertex_position_3d(_vb, _x1, _y1, _z1);
+    vertex_normal(_vb, 0, 0, -1);
+    vertex_colour(_vb, _col, _a);
+    vertex_texcoord(_vb, _s1, _t0);
+    vertex_position_3d(_vb, _x2, _y2, _z2);
+    vertex_normal(_vb, 0, 0, -1);
+    vertex_colour(_vb, _col, _a);
+    vertex_texcoord(_vb, _s1, _t1);
+    vertex_position_3d(_vb, _x0, _y0, _z0);
+    vertex_normal(_vb, 0, 0, -1);
+    vertex_colour(_vb, _col, _a);
+    vertex_texcoord(_vb, _s0, _t0);
+    vertex_position_3d(_vb, _x2, _y2, _z2);
+    vertex_normal(_vb, 0, 0, -1);
+    vertex_colour(_vb, _col, _a);
+    vertex_texcoord(_vb, _s1, _t1);
+    vertex_position_3d(_vb, _x3, _y3, _z3);
+    vertex_normal(_vb, 0, 0, -1);
+    vertex_colour(_vb, _col, _a);
+    vertex_texcoord(_vb, _s0, _t1);
 }
 
 /// @desc The camera's up vector (it never yaws or rolls, so its right is
@@ -1319,8 +1393,8 @@ function hall_cam_up(_b) {
 ///       light pass (depth-tested against the hall, so a statue hides a fire
 ///       behind it).
 function hall_draw_flames(_b) {
-    var _fires = hall_fires(_b);
-    var _n = array_length(_fires);
+    var _fires = _b.fires;
+    var _n = _b.fire_n;
     if (_n == 0) return;
     var _f = hall_format();
     var _right = [1, 0, 0];
@@ -1332,6 +1406,8 @@ function hall_draw_flames(_b) {
     _tu = [_tu[0] / _tl, _tu[1] / _tl, _tu[2] / _tl];
     var _frames = HALL_FLAME_FRAMES;
     var _t = hall_light_state().time;
+    static _halo_uv = hall_uv_frame(spr_fx_bloom, 0);
+    static _flame_uv = hall_uv_frame(spr_hall_flame, 0);
 
     vertex_begin(_b.vb_halo, _f);
     vertex_begin(_b.vb_flame, _f);
@@ -1344,10 +1420,10 @@ function hall_draw_flames(_b) {
         hall_card(_b.vb_halo, _e[0], _e[1], _e[2], _right, _up,
                   _sz * HALL_HALO_WIDE * (0.9 + 0.1 * _lv),
                   _sz * HALL_HALO_WIDE * (0.9 + 0.1 * _lv),
-                  spr_fx_bloom, 0, 1, _e[5], HALL_HALO_WIDE_A * _g);
+                  _halo_uv, 0, 1, _e[5], HALL_HALO_WIDE_A * _g);
         hall_card(_b.vb_halo, _e[0], _e[1] + _sz * 0.15, _e[2], _right, _up,
                   _sz * 1.5 * _lv, _sz * 1.5 * _lv,
-                  spr_fx_bloom, 0, 1, _e[5], HALL_HALO_CORE_A * _g);
+                  _halo_uv, 0, 1, _e[5], HALL_HALO_CORE_A * _g);
         // The tongue: its foot pinned to the seat and its height growing
         // along its own up (so a taller flame reaches higher rather than
         // lifting off its bowl). The animation runs at its own pace per fire
@@ -1365,10 +1441,10 @@ function hall_draw_flames(_b) {
         var _cz = _e[2] + _tu[2] * _mid;
         var _fa = min(1, 0.55 + 0.45 * _lv);
         hall_card(_b.vb_flame, _cx, _cy, _cz, _right, _tu, _sz * 0.62, _fh,
-                  spr_hall_flame, _f0 / _frames, (_f0 + 1) / _frames, c_white,
+                  _flame_uv, _f0 / _frames, (_f0 + 1) / _frames, c_white,
                   _fa * (1 - _k));
         hall_card(_b.vb_flame, _cx, _cy, _cz, _right, _tu, _sz * 0.62, _fh,
-                  spr_hall_flame, _f1 / _frames, (_f1 + 1) / _frames, c_white,
+                  _flame_uv, _f1 / _frames, (_f1 + 1) / _frames, c_white,
                   _fa * _k);
     }
     vertex_end(_b.vb_halo);
@@ -1386,12 +1462,14 @@ function hall_draw_flames(_b) {
 ///       depth test off, since it is under the floor; everything that stands
 ///       on the floor draws after it and covers it.
 function hall_draw_reflections(_b) {
-    var _fires = hall_fires(_b);
-    var _n = array_length(_fires);
+    var _fires = _b.fires;
+    var _n = _b.fire_n;
     if (_n == 0) return;
     var _f = hall_format();
     var _up = hall_cam_up(_b);
     var _l = hall_light_state();
+    static _right = [1, 0, 0];
+    static _glow_uv = hall_uv_frame(spr_fx_bloom, 0);
     vertex_begin(_b.vb_refl, _f);
     for (var _i = 0; _i < _n; _i++) {
         var _e = _fires[_i];
@@ -1406,11 +1484,11 @@ function hall_draw_reflections(_b) {
         var _fr = 0.04 + 0.96 * power(1 - _cos, 5);
         var _g = min(1, _e[4]) * min(1, _fr / HALL_REFL_FRESNEL);
         if (_g <= 0.01) continue;
-        hall_card(_b.vb_refl, _e[0], -_e[1] - _sz * 0.2, _e[2], [1, 0, 0], _up,
-                  _sz * HALL_REFL_W, _sz * HALL_REFL_H, spr_fx_bloom, 0, 1,
+        hall_card(_b.vb_refl, _e[0], -_e[1] - _sz * 0.2, _e[2], _right, _up,
+                  _sz * HALL_REFL_W, _sz * HALL_REFL_H, _glow_uv, 0, 1,
                   _e[5], HALL_REFL_A * _g);
-        hall_card(_b.vb_refl, _e[0], -_e[1], _e[2], [1, 0, 0], _up,
-                  _sz * 1.1 * _e[4], _sz * 2.4 * _e[4], spr_fx_bloom, 0, 1,
+        hall_card(_b.vb_refl, _e[0], -_e[1], _e[2], _right, _up,
+                  _sz * 1.1 * _e[4], _sz * 2.4 * _e[4], _glow_uv, 0, 1,
                   _e[5], HALL_REFL_CORE_A * _g);
     }
     vertex_end(_b.vb_refl);
@@ -2812,24 +2890,27 @@ function hall_eye(_b, _x0, _y0, _w, _h, _back) {
     };
 }
 
-/// @desc Project a world point to the screen as `[x, y, scale]`, or
-///       `undefined` if it is behind the eye. The same projection the hall is
-///       drawn with, done in GML for the sand, which is drawn in the 2D front
-///       pass after the 3D state has been reset.
-function hall_project(_e, _wx, _wy, _wz) {
+/// @desc Project a world point to the screen, writing `[x, y, scale]` into
+///       `_out`; false (and `_out` untouched) if it is behind the eye. The same
+///       projection the hall is drawn with, done in GML for the sand, which is
+///       drawn in the 2D front pass after the 3D state has been reset.
+function hall_project(_e, _wx, _wy, _wz, _out) {
     var _dy = _wy - _e.y;
     var _dz = _wz - _e.z;
     var _vz = _dy * _e.sp + _dz * _e.cp;
-    if (_vz < HALL_SAND_ZNEAR) return undefined;
+    if (_vz < HALL_SAND_ZNEAR) return false;
     var _k = _e.foc / _vz;
-    return [_e.mx + (_wx - _e.x) * _k,
-            _e.my - (_dy * _e.cp - _dz * _e.sp) * _k, _k];
+    _out[0] = _e.mx + (_wx - _e.x) * _k;
+    _out[1] = _e.my - (_dy * _e.cp - _dz * _e.sp) * _k;
+    _out[2] = _k;
+    return true;
 }
 
-/// @desc The light on a grain of dust at a world point, as `[warm, cold]`:
-///       the nearer torch pair's, and the opening's moonbeam's. The same
-///       lights as `sh_hall`'s, from the same state (`hall_light_state`).
-function hall_dust_light(_x, _y, _z) {
+/// @desc The light on a grain of dust at a world point, written into `_out`
+///       as `[warm, cold]`: the nearer torch pair's, and the opening's
+///       moonbeam's. The same lights as `sh_hall`'s, from the same state
+///       (`hall_light_state`).
+function hall_dust_light(_x, _y, _z, _out) {
     var _l = hall_light_state();
     var _kz = round(_z / HALL_BAY_Z) * HALL_BAY_Z;
     var _on = hall_ignite(_l.front[0], _kz);
@@ -2847,7 +2928,8 @@ function hall_dust_light(_x, _y, _z) {
         var _r = point_distance(_x, _z, 0, HALL_BEAM_Z);
         _cold = sqr(max(0, 1 - _r / HALL_BEAM_R)) * _l.beam / HALL_BEAM_POW;
     }
-    return [_warm * HALL_SAND_GLINT, _cold * HALL_SAND_GLINT];
+    _out[0] = _warm * HALL_SAND_GLINT;
+    _out[1] = _cold * HALL_SAND_GLINT;
 }
 
 /// @desc The front pass, over the field: drifting sand, additive only (so it
@@ -2871,6 +2953,11 @@ function hall_draw_front(_b, _spell, _fill) {
     // (`HALL_SAND_TOP`).
     var _eye = hall_eye(_b, _x0, _y0, _w, _h, 0);
     var _was = hall_eye(_b, _x0, _y0, _w, _h, _b.rush * HALL_SAND_TRAIL);
+    // Written by `hall_project` and `hall_dust_light` for each grain in
+    // turn (hundreds a frame), rather than made new each time.
+    static _p = [0, 0, 0];
+    static _q = [0, 0, 0];
+    static _lit = [0, 0];
 
     gpu_set_blendmode(bm_add);
     for (var _i = 0; _i < HALL_SAND_N; _i++) {
@@ -2893,18 +2980,17 @@ function hall_draw_front(_b, _spell, _fill) {
 
         var _wx = _sx + _wind * _l;
         var _wy = _top * (1 - _l);
-        var _p = hall_project(_eye, _wx, _wy, _wz);
-        if (is_undefined(_p)) continue;
+        if (!hall_project(_eye, _wx, _wy, _wz, _p)) continue;
         if (_p[0] < _x0 - 48 || _p[0] > _x0 + _w + 48
             || _p[1] < _y0 - 48 || _p[1] > _y0 + _h + 48) continue;
 
         // The streak: the same grain projected from where the camera and the
         // grain were a few frames ago.
         var _lb = max(0, _l - _rate * HALL_SAND_TRAIL);
-        var _q = hall_project(_was, _sx + _wind * _lb, _top * (1 - _lb), _wz);
         var _len = 0;
         var _ang = 0;
-        if (!is_undefined(_q)) {
+        if (hall_project(_was, _sx + _wind * _lb, _top * (1 - _lb), _wz,
+                         _q)) {
             var _ex = _p[0] - _q[0];
             var _ey = _p[1] - _q[1];
             _len = min(sqrt(_ex * _ex + _ey * _ey), HALL_SAND_TRAIL_MAX);
@@ -2918,7 +3004,7 @@ function hall_draw_front(_b, _spell, _fill) {
         if (_fade <= 0.01) continue;
 
         // The light on it.
-        var _lit = hall_dust_light(_wx, _wy, _wz);
+        hall_dust_light(_wx, _wy, _wz, _lit);
         var _k = _lit[0] + _lit[1] + HALL_SAND_DARK;
         if (_k * _fade <= 0.02) continue;
         var _col = merge_colour(merge_colour(HALL_SAND_COL, HALL_SAND_WARM,

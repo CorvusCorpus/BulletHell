@@ -1526,7 +1526,8 @@ def check_hall_frame_textures():
 
 
 # The geometry writers in `bg_sanctum`, and which argument of each carries the
-# sprite its texture coordinates are read from.
+# sprite its texture coordinates are read from (for `hall_card`, the sprite's
+# `hall_uv_frame`).
 _HALL_WRITERS = {
     "hall_tiles": 5, "hall_quad": 5, "hall_face": 1, "hall_face_u": 1,
     "hall_face_z": 1, "hall_cross": 1, "hall_taper": 9, "hall_sphere": 7,
@@ -1580,6 +1581,12 @@ def check_hall_buffer_textures():
         alias[m.group(1)] = m.group(2)
     for m in re.finditer(
             r"\bvar\s+(_\w+)\s*=\s*sprite_get_texture\s*\(\s*(spr_\w+)",
+            src):
+        alias[m.group(1)] = m.group(2)
+    # ...or through its texture coordinates, worked out once (`hall_card`
+    # takes a `hall_uv_frame` rather than the sprite)
+    for m in re.finditer(
+            r"\b(?:var|static)\s+(_\w+)\s*=\s*hall_uv_frame\s*\(\s*(spr_\w+)",
             src):
         alias[m.group(1)] = m.group(2)
 

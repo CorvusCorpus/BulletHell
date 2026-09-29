@@ -1111,31 +1111,24 @@ BASTET_REF = [
     (0.638, 0.208), (0.650, 0.180), (0.662, 0.155), (0.680, 0.132),
 ]
 
-# The opening between the foreleg and the haunch, as it is seen past the far
-# foreleg: a tall arch whose foot is the hind paw.
+# The opening between the foreleg and the haunch: a tall arch whose front
+# edge is the foreleg's back edge (`BASTET_FORELEG`) and whose foot is the
+# tail and the hind paw.
 BASTET_ARCH = [
-    (0.598, 0.588), (0.625, 0.610), (0.660, 0.700), (0.690, 0.790),
-    (0.700, 0.866), (0.600, 0.868), (0.540, 0.866), (0.530, 0.790),
+    (0.598, 0.588), (0.622, 0.598), (0.655, 0.620), (0.688, 0.652),
+    (0.710, 0.690), (0.722, 0.740), (0.728, 0.790), (0.732, 0.840),
+    (0.736, 0.866), (0.620, 0.868), (0.540, 0.866), (0.530, 0.790),
     (0.540, 0.700), (0.565, 0.630),
 ]
 
 # Her parts, in the reference's frame, used twice: for the relief on the
 # card (`BASTET_PARTS`) and for the solid she is swept into
-# (`BASTET_SOLIDS`). The far ear and the far foreleg are the pair's other
-# halves, set back and showing only past the near ones, which is what makes
-# the card read as a body with two sides.
+# (`BASTET_SOLIDS`). The far ear is the pair's other half, set back and
+# showing past the near one, which is what makes the card read as a head with
+# two sides.
 BASTET_FAR_EAR = [(0.706, 0.124), (0.716, 0.086), (0.736, 0.050),
                   (0.758, 0.026), (0.776, 0.020), (0.786, 0.040),
                   (0.790, 0.076), (0.786, 0.110), (0.750, 0.124)]
-# The far foreleg, as the reference shows it: its back edge slants forward
-# from under the belly to its paw, which is tucked in behind the near paw.
-BASTET_FAR_LEG = [(0.604, 0.576), (0.640, 0.556), (0.700, 0.546),
-                  (0.736, 0.552), (0.738, 0.620), (0.740, 0.700),
-                  (0.744, 0.800), (0.748, 0.850), (0.772, 0.862),
-                  (0.790, 0.880), (0.788, 0.912), (0.702, 0.912),
-                  (0.694, 0.890), (0.696, 0.856), (0.684, 0.800),
-                  (0.666, 0.750), (0.648, 0.700), (0.630, 0.650),
-                  (0.612, 0.600)]
 BASTET_HAUNCH = [(0.200, 0.560), (0.320, 0.522), (0.450, 0.548),
                  (0.540, 0.608), (0.576, 0.700), (0.566, 0.792),
                  (0.530, 0.852), (0.450, 0.884), (0.300, 0.896),
@@ -1145,28 +1138,31 @@ BASTET_HIND_PAW = [(0.450, 0.852), (0.540, 0.866), (0.600, 0.878),
 BASTET_CHEST = [(0.690, 0.300), (0.790, 0.296), (0.822, 0.340),
                 (0.842, 0.405), (0.840, 0.470), (0.800, 0.520),
                 (0.730, 0.520), (0.690, 0.440)]
-# The near foreleg: a straight column from under the chest, narrowing a
-# little to the wrist, and a large rounded paw.
-BASTET_NEAR_LEG = [(0.720, 0.520), (0.740, 0.470), (0.790, 0.450),
-                   (0.832, 0.468), (0.834, 0.505), (0.822, 0.535),
-                   (0.808, 0.562), (0.799, 0.600), (0.795, 0.640),
-                   (0.793, 0.690),
-                   (0.794, 0.770), (0.799, 0.830), (0.806, 0.858),
-                   (0.826, 0.866), (0.856, 0.872), (0.880, 0.884),
-                   (0.891, 0.898), (0.888, 0.914), (0.750, 0.914),
-                   (0.742, 0.896), (0.740, 0.860), (0.735, 0.800),
-                   (0.729, 0.700), (0.725, 0.620), (0.722, 0.580)]
+# The forelegs, side by side, so from the side they are one leg. It flows
+# out of the chest: its back edge curves out from under the belly at the
+# elbow (the arch's front edge) and runs down to the wrist, and it ends in a
+# large rounded paw. Its top reaches up into the chest, where it blends away.
+BASTET_FORELEG = [(0.640, 0.560), (0.700, 0.500), (0.760, 0.460),
+                  (0.820, 0.462), (0.838, 0.490), (0.826, 0.530),
+                  (0.810, 0.562), (0.799, 0.600), (0.795, 0.640),
+                  (0.793, 0.690), (0.794, 0.770), (0.799, 0.830),
+                  (0.806, 0.858), (0.826, 0.866), (0.856, 0.872),
+                  (0.880, 0.884), (0.891, 0.898), (0.888, 0.914),
+                  (0.750, 0.914), (0.740, 0.896), (0.736, 0.866),
+                  (0.732, 0.840), (0.728, 0.790), (0.722, 0.740),
+                  (0.710, 0.690), (0.688, 0.652), (0.655, 0.620),
+                  (0.622, 0.598)]
 # The tail, lying along the base round her near side, its tip between the
 # hind paw and the forepaws.
 BASTET_TAIL = [(0.420, 0.884), (0.520, 0.874), (0.620, 0.866),
                (0.700, 0.864), (0.752, 0.868), (0.770, 0.884),
                (0.762, 0.902), (0.720, 0.910), (0.620, 0.912),
                (0.520, 0.912), (0.420, 0.910)]
-# Where the body stops, so the forelegs stand clear of it: from the top of
-# the arch along the underside of the belly and chest.
-BASTET_LEGCUT = [(0.600, 0.600), (0.625, 0.585), (0.650, 0.565),
-                 (0.700, 0.552), (0.745, 0.540), (0.800, 0.528),
-                 (1.0, 0.528), (1.0, 0.866), (0.600, 0.866)]
+# Where the torso's solid stops, so the forelegs' solids stand clear of it:
+# from the top of the arch along the underside of the belly and chest.
+BASTET_TORSO_CUT = [(0.600, 0.600), (0.625, 0.585), (0.650, 0.565),
+                    (0.700, 0.552), (0.745, 0.540), (0.800, 0.528),
+                    (1.0, 0.528), (1.0, 1.0), (0.600, 1.0)]
 BASTET_HEAD = [(0.668, 0.150), (0.700, 0.114), (0.760, 0.098),
                (0.830, 0.100), (0.880, 0.116), (0.906, 0.140),
                (0.912, 0.172), (0.926, 0.196), (0.944, 0.222),
@@ -1185,19 +1181,18 @@ BASTET_BASE = [(0.090, 0.916), (0.950, 0.916), (0.963, 0.930),
 # over the ones behind it. Each is `(outline, base, swell, join, emerge)`,
 # back to front: `base` is how far forward its edge stands and `swell` how
 # much it rounds up from there. `emerge` (heights, or `None`) is a stretch
-# over which a part rises out of what is above it, as a leg does out of the
-# chest, rather than stopping in an end of its own. A part that crosses another (a leg over the body) has
-# a crease where it does (`join` "crease"); one that grows out of what is
-# behind it (an ear out of the head, the head out of the neck) blends into it
-# ("blend").
+# over which a part rises out of what is above it, as the leg does out of the
+# chest, rather than stopping in an end of its own. A part that crosses
+# another (the haunch over the body) has a crease where it does (`join`
+# "crease"); one that grows out of what is behind it (the leg out of the
+# chest, the head out of the neck) blends into it ("blend").
 BASTET_PARTS = [
     (BASTET_FAR_EAR, 0.10, 0.16, "crease", None),
     (None, 0.22, 0.46, "crease", None),           # the body (see below)
     (BASTET_TAIL, 0.30, 0.12, "crease", None),
     (BASTET_HAUNCH, 0.36, 0.58, "crease", None),
     (BASTET_HIND_PAW, 0.40, 0.18, "crease", None),
-    (BASTET_FAR_LEG, 0.34, 0.16, "crease", (0.550, 0.630)),
-    (BASTET_NEAR_LEG, 0.54, 0.22, "crease", (0.470, 0.610)),
+    (BASTET_FORELEG, 0.30, 0.30, "blend", (0.500, 0.660)),
     (BASTET_CHEST, 0.34, 0.36, "blend", None),
     (BASTET_HEAD, 0.40, 0.46, "blend", None),
     (BASTET_NEAR_EAR, 0.40, 0.20, "blend", None),
@@ -1206,31 +1201,41 @@ BASTET_PARTS = [
 
 # ...and the solid she is swept into (`hall_bastet_sweep`): each part swept
 # round its own axis and set to her near side (-) or far side (+), so seen
-# from above her legs are legs with space between them. Each is `(name,
+# from above her legs are legs with space between them. The forelegs start up
+# inside the chest and are deepest there, so from the front and from above
+# they widen into it. Each is `(name,
 # outline, heights kept (v0, v1), cut away, added, side, half-depth)`:
 # `None` for her whole outline; `cut` is a region taken out and `added` one
 # put back; side and half-depth are shares of the card's width, the
 # half-depth a number or `[(v, d), ...]`.
+# A foreleg's half-depth down its length: deepest where it leaves the chest.
+_FORELEG_DEPTH = [(0.460, 0.050), (0.580, 0.048), (0.680, 0.040),
+                  (0.780, 0.036), (0.860, 0.035), (0.900, 0.040),
+                  (0.914, 0.040)]
 BASTET_SOLIDS = [
-    # the torso: head, neck, chest, back and haunch. The ears come off it (the
-    # head, whole, is put back) and the legs stand apart from it.
-    ("torso", None, (0.105, 0.914),
-     BASTET_LEGCUT[:6] + [(1.0, 0.528), (1.0, 1.0), (0.600, 1.0)],
-     BASTET_HEAD,
-     0.0, [(0.095, 0.040), (0.140, 0.078), (0.240, 0.068), (0.340, 0.080),
-           (0.450, 0.094), (0.550, 0.110), (0.650, 0.134), (0.800, 0.146),
-           (0.914, 0.140)]),
-    ("near ear", BASTET_NEAR_EAR, (0.0, 0.118), None, None, -0.050, 0.013),
-    ("far ear", BASTET_FAR_EAR, (0.0, 0.124), None, None, 0.050, 0.013),
-    ("near foreleg", BASTET_NEAR_LEG, (0.505, 0.916), None, None, -0.072,
-     0.040),
-    ("far foreleg", BASTET_FAR_LEG, (0.540, 0.914), None, None, 0.072, 0.038),
-    ("tail", BASTET_TAIL, (0.860, 0.914), None, None, -0.105, 0.020),
-    ("near hind paw", BASTET_HIND_PAW, (0.850, 0.914), None, None, -0.100,
-     0.030),
-    ("far hind paw", BASTET_HIND_PAW, (0.850, 0.914), None, None, 0.100,
-     0.030),
-    ("base", BASTET_BASE, (0.914, 0.996), None, None, 0.0, 0.200),
+    # the torso: head, neck, chest, back and haunch. It carries the skull up
+    # into the ears' bases, where the ears' back edges run into the back of
+    # the head, and the ears stand free above that; the legs stand apart
+    # from it.
+    ("torso", None, (0.080, 0.914),
+     BASTET_TORSO_CUT, BASTET_HEAD,
+     0.0, [(0.080, 0.036), (0.095, 0.052), (0.115, 0.080), (0.140, 0.096),
+           (0.200, 0.102),
+           (0.260, 0.090),
+           (0.340, 0.098), (0.450, 0.112), (0.550, 0.124), (0.650, 0.146),
+           (0.800, 0.158), (0.914, 0.150)]),
+    ("near ear", BASTET_NEAR_EAR, (0.0, 0.118), None, None, -0.034, 0.015),
+    ("far ear", BASTET_FAR_EAR, (0.0, 0.124), None, None, 0.034, 0.015),
+    ("near foreleg", BASTET_FORELEG, (0.460, 0.914), None, None, -0.055,
+     _FORELEG_DEPTH),
+    ("far foreleg", BASTET_FORELEG, (0.460, 0.914), None, None, 0.055,
+     _FORELEG_DEPTH),
+    ("tail", BASTET_TAIL, (0.860, 0.914), None, None, -0.120, 0.022),
+    ("near hind paw", BASTET_HIND_PAW, (0.850, 0.914), None, None, -0.105,
+     0.032),
+    ("far hind paw", BASTET_HIND_PAW, (0.850, 0.914), None, None, 0.105,
+     0.032),
+    ("base", BASTET_BASE, (0.914, 0.996), None, None, 0.0, 0.210),
 ]
 
 # The broad collar, as the two curves bounding it: its top edge under the
@@ -1320,9 +1325,6 @@ def bastet(w=512, h=768):
     a = np.asarray(sil, np.float32) / 255.0
 
     # --- the relief: each part rounded up from its edge, nearer over farther
-    legcut = Image.new("L", size, 0)
-    ImageDraw.Draw(legcut).polygon([pt(p) for p in BASTET_LEGCUT], fill=255)
-    legcut = np.asarray(legcut, np.float32) / 255.0 > 0.5
     hgt = np.zeros((H, W), np.float32)
     own = np.full((H, W), -1, np.int32)      # which part is on top, per pixel
     vs = (np.arange(H, dtype=np.float32)[:, None] - fy) / fh
@@ -1336,11 +1338,6 @@ def bastet(w=512, h=768):
         # crown has no ridge down the middle
         prof = np.sqrt(np.clip(d / r, 0, 1))
         prof = _nd.gaussian_filter(prof, 0.10 * r) * ma
-        if pts is None:
-            # The body stops above the forelegs, which are forms of their
-            # own. It keeps the whole outline's rounding, so the belly
-            # overhangs them rather than tapering down to meet them.
-            ma = ma & ~legcut
         ph = base + swell * prof
         if emerge is not None:
             e = np.clip((vs - emerge[0]) / (emerge[1] - emerge[0]), 0, 1)
@@ -2134,7 +2131,43 @@ def bastet_solid_rows(solids):
             rows.append((v, float(xs[0]) / w, float(xs[-1] + 1) / w,
                          _depth_at(depth, vr)))
         out.append((name, side, rows))
-    return out
+    return [_seat_ear(p, out[0]) if p[0].endswith("ear") else p for p in out]
+
+
+def _torso_at(torso, v):
+    """The torso's section at height `v` as `(centre, half-length,
+    half-depth)`, or None above or below it."""
+    rows = torso[2]
+    if v < rows[0][0] or v > rows[-1][0]:
+        return None
+    for a, b in zip(rows, rows[1:]):
+        if a[0] <= v <= b[0]:
+            t = (v - a[0]) / max(1e-6, b[0] - a[0])
+            u0 = a[1] + (b[1] - a[1]) * t
+            u1 = a[2] + (b[2] - a[2]) * t
+            return ((u0 + u1) / 2, (u1 - u0) / 2, a[3] + (b[3] - a[3]) * t)
+    return None
+
+
+def _seat_ear(ear, torso):
+    """An ear's rows, trimmed where they reach into the head so none of it
+    stands outside the skull: at each height the head has, the ear keeps
+    only the stretch the head's section spans at the ear's depth. Above the
+    skull it stands free."""
+    name, side, rows = ear
+    out = []
+    for (v, u0, u1, d) in rows:
+        sec = _torso_at(torso, v)
+        if sec is not None and abs(side) < sec[2]:
+            c, half, deep = sec
+            k = half * math.sqrt(1 - (side / deep) ** 2)
+            lo, hi = c - k, c + k
+            n0, n1 = max(u0, lo), min(u1, hi)
+            if n1 <= n0:
+                n0 = n1 = min(max((u0 + u1) / 2, lo), hi)
+            u0, u1 = n0, n1
+        out.append((v, u0, u1, d))
+    return (name, side, out)
 
 
 def write_bastet_table(parts):
