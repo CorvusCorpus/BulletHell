@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"title_card",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"title_card",
+  "parent":{
+    "name":"engine",
+    "path":"folders/Scripts/engine.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

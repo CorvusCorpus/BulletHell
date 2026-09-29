@@ -31,6 +31,12 @@ function fx_blank() {
         x: 0, y: 0, vx: 0, vy: 0, drag: 0.94, grav: 0,
         life: 0, life0: 1, size: 8, size_end: 0,
         col: c_white, angle: 0, spin: 0, spr: -1,
+        // The sprite frame, and whether it is added (light) or laid over
+        // (a solid piece: a page, a shard of metal). `fx_alloc` resets these
+        // three, since the structs are reused and not every maker sets them.
+        img: 0, add: true,
+        // How much of its life it spends fading out (1: all of it).
+        fade: 0.625,
     };
 }
 
@@ -42,13 +48,18 @@ function fx_alloc() {
         for (var _j = 1; _j < global.fx_n; _j++) {
             if (global.fx[_j].life < global.fx[_i].life) _i = _j;
         }
-        return global.fx[_i];
+    } else {
+        if (_i >= array_length(global.fx)) {
+            array_push(global.fx, fx_blank());
+        }
+        global.fx_n = _i + 1;
     }
-    if (_i >= array_length(global.fx)) {
-        array_push(global.fx, fx_blank());
-    }
-    global.fx_n = _i + 1;
-    return global.fx[_i];
+    // The fields not every maker sets, back to a spark's.
+    var _p = global.fx[_i];
+    _p.img = 0;
+    _p.add = true;
+    _p.fade = 0.625;
+    return _p;
 }
 
 function fx_kill_at(_i) {
@@ -75,6 +86,46 @@ function fx_spark(_x, _y, _dir, _spd, _col, _life, _size, _spr = -1) {
     _p.angle = _dir;
     _p.spin = 0;
     _p.spr = (_spr == -1) ? spr_fx_spark : _spr;
+    return _p;
+}
+
+/// @desc A solid piece thrown off something breaking (a page, a shard of
+///       gilt): drawn over the field rather than added, turning as it goes,
+///       and fading over the last `_fade` of its life.
+function fx_piece(_x, _y, _vx, _vy, _spr, _img, _life, _size, _spin,
+                  _grav = 0, _drag = 0.95, _col = c_white, _fade = 0.4) {
+    var _p = fx_alloc();
+    _p.x = _x; _p.y = _y;
+    _p.vx = _vx; _p.vy = _vy;
+    _p.drag = _drag;
+    _p.grav = _grav;
+    _p.life = _life; _p.life0 = max(1, _life);
+    _p.size = _size; _p.size_end = _size * 0.6;
+    _p.col = _col;
+    _p.angle = random(360);
+    _p.spin = _spin;
+    _p.spr = _spr;
+    _p.img = _img;
+    _p.add = false;
+    _p.fade = max(0.01, _fade);
+    return _p;
+}
+
+/// @desc A mote of light that drifts and fades: `fx_spark` with its own
+///       sprite, frame, drag and gravity.
+function fx_mote(_x, _y, _vx, _vy, _spr, _col, _life, _size, _grav = 0,
+                 _drag = 0.96) {
+    var _p = fx_alloc();
+    _p.x = _x; _p.y = _y;
+    _p.vx = _vx; _p.vy = _vy;
+    _p.drag = _drag;
+    _p.grav = _grav;
+    _p.life = _life; _p.life0 = max(1, _life);
+    _p.size = _size; _p.size_end = 0;
+    _p.col = _col;
+    _p.angle = 0;
+    _p.spin = 0;
+    _p.spr = _spr;
     return _p;
 }
 
@@ -231,14 +282,26 @@ function fx_clear() {
 // ---------------------------------------------------------------------------
 
 function fx_draw() {
-    gpu_set_blendmode(bm_add);
+    // Solid pieces first, laid over the field; then the light, added.
     for (var _i = 0; _i < global.fx_n; _i++) {
         var _p = global.fx[_i];
+        if (_p.add) continue;
         var _t = _p.life / _p.life0;                  // 1 at birth, 0 at death
         var _size = lerp(_p.size_end, _p.size, _t);
         var _s = _size / max(1, sprite_get_width(_p.spr));
-        draw_sprite_ext(_p.spr, 0, _p.x, _p.y, _s, _s, _p.angle, _p.col,
-                        min(1, _t * 1.6));
+        draw_sprite_ext(_p.spr, _p.img, _p.x, _p.y, _s, _s, _p.angle, _p.col,
+                        min(1, _t / _p.fade));
+    }
+
+    gpu_set_blendmode(bm_add);
+    for (var _i = 0; _i < global.fx_n; _i++) {
+        var _p = global.fx[_i];
+        if (!_p.add) continue;
+        var _t = _p.life / _p.life0;                  // 1 at birth, 0 at death
+        var _size = lerp(_p.size_end, _p.size, _t);
+        var _s = _size / max(1, sprite_get_width(_p.spr));
+        draw_sprite_ext(_p.spr, _p.img, _p.x, _p.y, _s, _s, _p.angle, _p.col,
+                        min(1, _t / _p.fade));
     }
 
     for (var _i = 0; _i < global.bloom_n; _i++) {

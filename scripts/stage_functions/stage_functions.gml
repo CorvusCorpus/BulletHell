@@ -5,6 +5,14 @@
 /// field, so later `at` values stay relative to when the gate released. Stage
 /// time doesn't advance while a boss is up. The stage spawns its bosses; their
 /// phase tables run the fights.
+///
+/// Waves are graded one of two ways. By default a group of waves is the
+/// stretch during which fodder is on the field (`stage_encounter_step`). A
+/// timeline that marks its waves with `ev_wave` is graded wave by wave
+/// instead: each wave opens at its marker and closes when the gate after it
+/// releases, which is when its fodder and any rings it brought have all gone.
+/// What bullets it left are dispelled as it closes, so the medal it throws
+/// never hangs over live fire.
 
 /// @desc Build a run of a stage from its definition.
 function stage_new(_def) {
@@ -17,6 +25,8 @@ function stage_new(_def) {
         gated: false,
         gate_grace: 0,     // frames a gate waits before it starts believing
         done: false,
+        // True when the timeline marks its own waves (`ev_wave`).
+        marked: stage_marks_waves(_events),
         // How many graded encounters the stage holds (a def may override).
         encounters: _def[$ "encounters"] ?? stage_count_encounters(_def, _events),
         // The open encounter, or `undefined` between them
@@ -26,20 +36,31 @@ function stage_new(_def) {
     };
 }
 
+/// @desc Does this timeline mark its own waves (`ev_wave`)?
+function stage_marks_waves(_events) {
+    for (var _i = 0; _i < array_length(_events); _i++) {
+        if (_events[_i].wave) return true;
+    }
+    return false;
+}
+
 /// @desc How many encounters a stage contains, for the console's row of
-///       sockets. Each gate closes a group of waves, except the gates that
-///       follow a boss that is not the last one (those close nothing); each
+///       sockets. In a timeline that marks its waves, each marker is one;
+///       otherwise each gate closes a group of waves, except the gates that
+///       follow a boss that is not the last one (those close nothing). Each
 ///       boss attack is one encounter. A definition may set `encounters`
 ///       itself, as the practice, drafting and preview cards do.
 function stage_count_encounters(_def, _events) {
     var _gates = 0;
+    var _waves = 0;
     for (var _i = 0; _i < array_length(_events); _i++) {
         if (_events[_i].gate) _gates++;
+        if (_events[_i].wave) _waves++;
     }
 
     var _bosses = _def[$ "bosses"] ?? [];
     var _nb = array_length(_bosses);
-    var _total = max(0, _gates - max(0, _nb - 1));
+    var _total = (_waves > 0) ? _waves : max(0, _gates - max(0, _nb - 1));
 
     for (var _i = 0; _i < _nb; _i++) {
         var _mk = _bosses[_i][$ "phases"];
@@ -51,12 +72,23 @@ function stage_count_encounters(_def, _events) {
 
 /// @desc One timed event.
 function ev(_at, _fn) {
-    return { at: _at, fn: _fn, gate: false };
+    return { at: _at, fn: _fn, gate: false, wave: false, survival: false };
 }
 
-/// @desc Hold the clock until every fodder enemy is gone.
+/// @desc Hold the clock until every fodder enemy is gone (and, in a timeline
+///       that marks its waves, every ring).
 function ev_gate(_at) {
-    return { at: _at, fn: undefined, gate: true };
+    return { at: _at, fn: undefined, gate: true, wave: false,
+             survival: false };
+}
+
+/// @desc Open a wave: an encounter of its own, graded when the next gate
+///       releases. `_survival` is a wave with nothing to shoot, only to
+///       outlast (Mika's rings passing through): its score threshold is met
+///       by getting through it.
+function ev_wave(_at, _survival = false) {
+    return { at: _at, fn: undefined, gate: false, wave: true,
+             survival: _survival };
 }
 
 /// @desc Open and close wave-group encounters. A group is the stretch during
@@ -65,6 +97,9 @@ function ev_gate(_at) {
 ///       Detected rather than declared, so any wave shape is graded without
 ///       reporting anything.
 function stage_encounter_step(_s, _g) {
+    // A timeline that marks its waves opens and closes them itself.
+    if (_s.marked) return;
+
     var _live = (_g[$ "boss_ref"] == undefined) && enemy_count_fodder() > 0;
 
     if (_s.enc == undefined) {
@@ -79,11 +114,40 @@ function stage_encounter_step(_s, _g) {
             // what is already on the field belongs to it.
             worth0: global.enemy_worth - enemy_live_worth(),
             n: _s.enc_n,
+            survival: false,
         };
         return;
     }
 
     if (_live) return;
+    stage_encounter_close(_s, _g);
+}
+
+/// @desc Open a marked wave (`ev_wave`). One still open is closed first,
+///       though a well-formed timeline gates every wave before the next.
+function stage_wave_open(_s, _g, _survival) {
+    if (_s.enc != undefined) stage_encounter_close(_s, _g);
+    _s.enc_n++;
+    _s.enc = {
+        tally0: _g.tally,
+        hits0: _g.player.hit_n,
+        bombs0: _g.player.bomb_n,
+        worth0: global.enemy_worth,
+        n: _s.enc_n,
+        survival: _survival,
+    };
+}
+
+/// @desc Close a marked wave as its gate releases: dispel what it left on
+///       the field (every bullet becomes a pop, and some of them shards), then
+///       file its mark.
+function stage_wave_close(_s, _g) {
+    if (_s.enc == undefined) return;
+    if (bullet_count() > 0) {
+        bullet_clear_all(true);
+        sfx(Sfx.WardScatter);
+    }
+    laser_clear_all();
     stage_encounter_close(_s, _g);
 }
 
@@ -97,7 +161,8 @@ function stage_encounter_close(_s, _g) {
     var _hits = _g.player.hit_n - _e.hits0;
     var _bombs = _g.player.bomb_n - _e.bombs0;
     var _worth = global.enemy_worth - _e.worth0;
-    var _target = rank_wave_target(_worth);
+    // A wave with nothing to shoot is met by getting through it.
+    var _target = _e.survival ? 0 : rank_wave_target(_worth);
 
     rank_note(_g[$ "marks"], "WAVE " + string(_e.n),
               rank_for_encounter(_hits, _bombs, _earned >= _target), false,
@@ -121,7 +186,13 @@ function stage_step(_s, _g) {
             return;
         }
         if (enemy_count_fodder() > 0) return;
+        // A marked wave may be rings with nothing to shoot; it is over when
+        // they have gone. (Outside a boss fight every ring is a wave's.)
+        if (_s.marked && _g[$ "boss_ref"] == undefined && ring_count() > 0) {
+            return;
+        }
         _s.gated = false;
+        if (_s.marked) stage_wave_close(_s, _g);
     }
 
     _s.t++;
@@ -134,6 +205,10 @@ function stage_step(_s, _g) {
             _s.gated = true;
             _s.gate_grace = 30;
             return;
+        }
+        if (_e.wave) {
+            stage_wave_open(_s, _g, _e.survival);
+            continue;
         }
         _e.fn(_g);
     }

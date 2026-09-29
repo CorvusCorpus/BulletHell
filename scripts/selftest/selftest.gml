@@ -57,6 +57,10 @@ function selftest_run() {
     test_grove_turn();
     test_marks();
     test_wave_marks();
+    test_marked_waves();
+    test_routes();
+    test_title_card();
+    test_waves_run();
     test_stage_encounters();
     test_rank_card();
     test_practice();
@@ -1750,7 +1754,7 @@ function test_stage_table() {
                 _bad += _def.name + " (out of order) ";
                 break;
             }
-            if (!_e[_i].gate && _e[_i].fn == undefined) {
+            if (!_e[_i].gate && !_e[_i].wave && _e[_i].fn == undefined) {
                 _bad += _def.name + " (an event with no action) ";
                 break;
             }
@@ -1777,8 +1781,10 @@ function st_stage_run(_def, _label) {
     _g.bg = _def.make_bg();
     var _s = stage_new(_def);
     var _boss_seen = false;
-    for (var _i = 0; _i < 12000; _i++) {
+    for (var _i = 0; _i < 24000; _i++) {
         stage_step(_s, _g);
+        // Rings are stepped, so a wave of them plays out and leaves.
+        ring_step(_g);
         if ((_i mod 70) == 0) enemy_sweep_fodder(_g);
         if (_g.boss_ref != undefined) {
             _boss_seen = true;
@@ -2434,6 +2440,151 @@ function st_wave_script() {
                                     5.0, 3, BCOL_EMBER, undefined)));
     array_push(_e, ev_gate(10));
     return _e;
+}
+
+/// @desc A timeline that marks its waves (`ev_wave`) grades each on its own:
+///       opened by its marker, closed by the gate after it once its fodder
+///       and its rings have gone, with its leftover bullets dispelled; a
+///       wave with nothing to shoot meets its threshold by being survived.
+function test_marked_waves() {
+    var _def = {
+        id: "", name: "T", subtitle: "t", needs: 0, make_bg: bg_brimstone,
+        build: st_marked_script,
+    };
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _g.boss_ref = undefined;
+    _g.phase = Phase.Playing;
+    var _s = stage_new(_def);
+    ok("a marked timeline counts its markers", _s.marked && _s.encounters == 2);
+    for (var _i = 0; _i < 20; _i++) stage_step(_s, _g);
+    ok("its marker opens a wave", _s.enc != undefined && _s.enc_n == 1);
+    fire(FIELD_CX, FIELD_CY, 0, 0, BSHAPE_ORB, BCOL_GOLD, 0);
+    for (var _i = 0; _i < 60; _i++) stage_step(_s, _g);
+    ok("which stays open while its fodder is up", _s.enc != undefined
+       && rank_count(_g.marks) == 0);
+    enemy_sweep_fodder(_g);
+    stage_step(_s, _g);
+    ok("and closes when it has gone", rank_count(_g.marks) == 1);
+    ok("dispelling what it left", bullet_count() == 0);
+
+    for (var _i = 0; _i < 80; _i++) {
+        stage_step(_s, _g);
+        ring_step(_g);
+    }
+    ok("the next wave opens with its rings", _s.enc != undefined
+       && ring_count() == 1);
+    for (var _i = 0; _i < 60; _i++) {
+        stage_step(_s, _g);
+        ring_step(_g);
+    }
+    ok("and its gate waits for them", _s.enc != undefined
+       && rank_count(_g.marks) == 1);
+    ring_clear_all();
+    stage_step(_s, _g);
+    ok("closing once they are gone", rank_count(_g.marks) == 2);
+    ok("a clean wave survived meets its threshold",
+       _g.marks.marks[1].tier == Mark.Amethyst);
+    st_reset();
+}
+
+function st_marked_script() {
+    var _e = [];
+    array_push(_e, ev_wave(2));
+    array_push(_e, ev(3, wave_cross(EnemyKind.Wisp, 2, -1, 200, 40, 0, 3,
+                                    BCOL_EMBER, undefined)));
+    array_push(_e, ev_gate(10));
+    array_push(_e, ev_wave(40, true));
+    array_push(_e, ev(41, function(_g) {
+        ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
+    }));
+    array_push(_e, ev_gate(50));
+    return _e;
+}
+
+/// @desc Foes on routes: they get where a leg sends them, mirror to the
+///       other side, never fire from outside the field, and are gone (not
+///       killed) once an exit has taken them off it.
+function test_routes() {
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _route = [leg_to(300, 200, 20, Ease.Linear), leg_hold(10),
+                  leg_exit(90, 10)];
+    var _a = foe_spawn(EnemyKind.HallWisp, 300, -80, 5, _route,
+                       function(_e, _g, _t) {
+        fire(_e.x, _e.y, 1, 270, BSHAPE_PELLET, BCOL_GOLD, 0);
+    });
+    var _b = foe_spawn(EnemyKind.HallWisp, 300, -80, 5, _route, undefined,
+                       { mirror: true });
+    ok("a mirrored foe starts on the other side",
+       abs((_a.x - FIELD_X0) - (FIELD_X1 - _b.x)) < 0.01);
+    enemy_step(_g);
+    ok("nothing fires from outside the field", bullet_count() == 0);
+    for (var _i = 0; _i < 24; _i++) enemy_step(_g);
+    ok("a leg takes it where it says",
+       abs(_a.x - (FIELD_X0 + 300)) < 1 && abs(_a.y - (FIELD_Y0 + 200)) < 1);
+    ok("and it fires once inside", bullet_count() > 0);
+    for (var _i = 0; _i < 200; _i++) enemy_step(_g);
+    ok("an exit takes it off the field and out of the pool",
+       enemy_count() == 0 && item_count() == 0);
+    st_reset();
+}
+
+/// @desc Each of stage three's waves played through on its own, every foe
+///       flying and firing and nothing swept: none throws, none fills the
+///       bullet pool, and each ends (its gate releases).
+function test_waves_run() {
+    var _threw = "";
+    var _flooded = "";
+    var _stuck = "";
+    var _n = array_length(sanctum_wave_table());
+    for (var _w = 1; _w <= _n; _w++) {
+        st_reset();
+        var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+        _g.boss_ref = undefined;
+        _g.phase = Phase.Playing;
+        _g.player.untouchable = true;
+        var _def = { id: "", name: "W", subtitle: "w", needs: 0,
+                     make_bg: bg_brimstone,
+                     build: method({ n: _w }, function() {
+                         return sanctum_one_wave_script(n);
+                     }) };
+        try {
+            var _s = stage_new(_def);
+            for (var _f = 0; _f < 3600 && !_s.done; _f++) {
+                stage_step(_s, _g);
+                enemy_step(_g);
+                ring_step(_g);
+                laser_step();
+                bullet_step(_g.player.x, _g.player.y);
+                fx_step();
+                if (bullet_count() >= BULLET_MAX) {
+                    _flooded += string(_w) + " ";
+                    break;
+                }
+            }
+            if (!_s.done) _stuck += string(_w) + " ";
+        } catch (_err) {
+            _threw += string(_w) + " ("
+                      + (is_struct(_err) ? _err.message : string(_err)) + ") ";
+        }
+    }
+    ok("every wave of stage three plays without throwing " + _threw,
+       _threw == "");
+    ok("and none fills the bullet pool " + _flooded, _flooded == "");
+    ok("and each ends " + _stuck, _stuck == "");
+    st_reset();
+}
+
+/// @desc The title card plays only for a stage with a card, and ends.
+function test_title_card() {
+    var _c = title_card_new();
+    title_card_start(_c, { name: "T" });
+    ok("a stage without a card shows none", !title_card_live(_c));
+    title_card_start(_c, stage_sanctum_def());
+    ok("a stage with one plays it", title_card_live(_c));
+    for (var _i = 0; _i < CARD_TIME; _i++) title_card_step(_c);
+    ok("and it ends", !title_card_live(_c));
 }
 
 /// @desc The console's socket count: a stage counts its groups of waves as

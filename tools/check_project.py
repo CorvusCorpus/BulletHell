@@ -1323,6 +1323,46 @@ def check_medal_sizes_agree():
                  % (py, match.group(1), gml, want))
 
 
+def check_title_cards_agree():
+    """Each stage's title card is lettered in advance by `tools/make_titles.py`
+    from its own copy of the stage's name and subtitle, one frame per stage.
+    A stage def with a `card` must name the frame whose words are its own, or
+    a renamed stage shows its old name.
+    """
+    src_path = os.path.join(ROOT, "tools", "make_titles.py")
+    with open(src_path, encoding="utf-8") as fh:
+        src = fh.read()
+    block = re.search(r"^CARDS = \[(.*?)^\]", src, re.M | re.S)
+    if block is None:
+        fail("make_titles.py has no CARDS table")
+        return
+    cards = re.findall(r'\(\s*"([^"]*)",\s*"([^"]*)",\s*"([^"]*)"\s*\)',
+                       block.group(1))
+    for path in glob.glob(os.path.join(ROOT, "scripts", "*", "*.gml")):
+        with open(path, encoding="utf-8") as fh:
+            gml = fh.read()
+        for m in re.finditer(r"return \{(.*?)\n    \};", gml, re.S):
+            body = m.group(1)
+            card = re.search(r"^\s*card:\s*(\d+)", body, re.M)
+            if card is None:
+                continue
+            name = re.search(r'^\s*name:\s*"([^"]*)"', body, re.M)
+            sub = re.search(r'^\s*subtitle:\s*"([^"]*)"', body, re.M)
+            k = int(card.group(1))
+            where = rel(path)
+            if k >= len(cards):
+                fail("%s: card %d, but make_titles.py letters only %d"
+                     % (where, k, len(cards)))
+                continue
+            if name is None or name.group(1) != cards[k][0]:
+                fail("%s: its name isn't what card %d says (%r); re-run "
+                     "tools/make_titles.py after changing CARDS"
+                     % (where, k, cards[k][0]))
+            if sub is None or sub.group(1) != cards[k][1]:
+                fail("%s: its subtitle isn't what card %d says (%r)"
+                     % (where, k, cards[k][1]))
+
+
 def check_bands_are_rooted():
     """A grove scenery band's sideways position must follow the camera.
 
@@ -1730,6 +1770,7 @@ def main():
     check_scrub_covers_horizon()
     check_rotunda_scale_agrees()
     check_medal_sizes_agree()
+    check_title_cards_agree()
     check_bands_are_rooted()
     check_font_accessors_called()
     check_sprite_draws_are_explicit()

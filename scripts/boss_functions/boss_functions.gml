@@ -91,6 +91,11 @@ function boss_vulnerable(_e) {
 function boss_act(_e, _g) {
     var _b = _e.boss;
 
+    // A boss with a body to animate (the sand golem's fists) steps it here,
+    // every frame, whatever the fight is doing.
+    var _anim = _b.def[$ "step"];
+    if (_anim != undefined) _anim(_e, _g);
+
     if (_b.entry_t > 0) {
         _b.entry_t--;
         enemy_glide(_e, _b.home_x, _b.home_y, 0.06);
@@ -529,6 +534,13 @@ function boss_draw(_e) {
     draw_sprite_ext(spr_fx_bloom, 0, _e.x, _e.y, _gs, _gs, 0, _col,
                     0.24 + 0.06 * dsin(_t * 2.2));
     gpu_set_blendmode(bm_normal);
+
+    // A boss built of parts draws itself (its hit flash included).
+    var _own = _b.def[$ "draw"];
+    if (_own != undefined) {
+        _own(_e);
+        return;
+    }
 
     var _spr = _b.def.sprite;
     var _n = sprite_get_number(_spr);

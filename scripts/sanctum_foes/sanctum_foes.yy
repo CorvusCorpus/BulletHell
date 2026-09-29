@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"sanctum_foes",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"sanctum_foes",
+  "parent":{
+    "name":"content",
+    "path":"folders/Scripts/content.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

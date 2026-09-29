@@ -605,12 +605,17 @@ enum ItemKind {
 }
 
 /// The fodder. None of it is a creature (owner's rule): wisps, grimoires,
-/// gems and sentries are animated objects.
+/// gems and sentries are animated objects. The `Hall` kinds are stage
+/// three's own (a soul-flame, a flying spellbook, an armillary sphere), drawn
+/// in their own colours (`hall_foe_draw`).
 enum EnemyKind {
     Wisp,
     Grimoire,
     Gem,
     Sentry,
+    HallWisp,
+    HallBook,
+    HallSphere,
     Boss,
 }
 

@@ -66,6 +66,10 @@ and is open to change. Earlier agents wrote a great deal of invented
   bright old gold, crescent and four-point-star motifs, cyan as the accent,
   serif type (Cinzel, Spectral). Aimed at old-school danmaku players; never
   mobile-game or match-3 styling.
+- **Gameplay is 2D against a 3D backdrop**, as in Touhou: the 3D look is for
+  stage backgrounds only. Foes, bosses and bullets are 2D sprite art.
+- **The sand golem (stage three's midboss) is a sand elemental**, a body of
+  sand, not a carved-stone construct.
 - **Reference art is reproduced faithfully.** When the owner supplies art for
   a character or prop, match its anatomy, ornament and colours rather than
   reinterpreting it. Mika is cut from the owner's own sheet
@@ -146,6 +150,9 @@ Game logic is plain functions over structs; objects are thin controllers.
 | `boss_functions` | Boss phase machine, movement modes, ceremony timing |
 | `stage_functions` | Stage timeline, gates, wave helpers, encounter windows, `run_clear_field` |
 | `stage_ziggy`, `stage_grove`, `stage_sanctum`, `mika_nonspells`, `mika_storm_cage`, `mika_chakram_blitz` | Stages one to three: timelines, bosses, attacks. `stage_list()`, the roster of all stages, lives in `stage_ziggy`. |
+| `sanctum_waves`, `sanctum_ring_waves`, `sanctum_foes`, `sanctum_golem` | Stage three's way to Mika: its timeline and fodder waves (`sanctum_wave_table()`), the two waves of his rings, its foes' look and deaths, and the sand golem |
+| `enemy_routes` | Fodder flying routes of legs (`leg_curve`, `leg_orbit`, `leg_aim`, `leg_path`, `leg_exit`, `leg_appear`), spawned by `foe_spawn` / `ev_foe` |
+| `title_card` | The stage title card a timeline plays (`wave_title_card`) |
 | `stage_drafts` | The drafting table, plus `rack_list()`: the roster and the extra cards the rack shows |
 | `stage_preview` | The review card, which flies stage three's hall with no enemies |
 | `stage_sanctum_old` | Stage three as it was before Mika's rebuild, frozen on its own rack card. Delete it once his slots are filled, along with its rack line, `test_old_sanctum`, its line in `test_stage_run` and `stage_is_old_draft`. |
@@ -286,9 +293,17 @@ bosses, music?}`.
   freezes stage time until no fodder is on the field, after a short grace so
   a gate placed just after a spawn doesn't release at once.
 - Stage time doesn't advance while a boss is up.
-- A group of waves is graded as the window during which fodder is on the
-  field (`stage_encounter_step`), and `stage_count_encounters` counts a
-  stage's encounters.
+- By default a group of waves is graded as the window during which fodder is
+  on the field (`stage_encounter_step`). A timeline that marks its waves
+  with `ev_wave(at, survival)` (stage three) is graded wave by wave instead:
+  a wave opens at its marker and closes when the gate after it releases,
+  which in such a timeline also waits for rings; closing dispels its
+  leftover bullets, so the medal never hangs over live fire. A `survival`
+  wave (rings only) meets its threshold by being got through.
+  `stage_count_encounters` counts either kind.
+- A timeline plays its title card with `ev(at, wave_title_card())`; the
+  card's art is the def's `card` frame (`tools/make_titles.py`), and a def
+  without one shows none.
 - `bosses` lists `{name, spawn, phases, turned?}` for practice and counting;
   `turned` starts practice in the stage's second-half background.
 - A def whose `id` is empty can never write a clear: `progress_record` refuses
@@ -415,7 +430,10 @@ owner's Mika sheet in `tools/source/`.
 | `make_bullets.py` | Bullet sprites **and** `scripts/bullet_table`: hit radius, default spin, frame counts. A bullet's radius is defined next to its picture. |
 | `make_fx.py`, `make_items.py`, `make_ui.py`, `make_fonts.py` | Effects plus Szuix's shot and sigil; pickups; console furniture, medals and the boss rail; sprite fonts |
 | `medal_art.py` | Imported by `make_ui.py` (run alone, it only writes a preview): the rank medals, rendered in their own colours from height fields shaded as metal, enamel, cut stones and granite. The card's medal with its reverse and edge (for the coin spin, `medal_draw`) and a spell's star; the console's medals and sockets. |
-| `make_enemies.py`, `make_player.py`, `make_boss.py` | Fodder; Szuix from his sheet; Ziggy, whose art is a placeholder. `make_boss.py` states what a painted replacement must keep. |
+| `make_enemies.py`, `make_player.py`, `make_boss.py` | Fodder (stages one and two, tinted); Szuix from his sheet; Ziggy, whose art is a placeholder. `make_boss.py` states what a painted replacement must keep. |
+| `cel_art.py` | Imported by the two below: 2D sprite illustration in code (cel-shaded parts with line work, lit from the upper left) |
+| `make_sanctum_foes.py` | Stage three's foes in their own colours (armillary sphere, spellbook, soul-flame), the sand golem's body, glow and fist, and pieces for deaths (pages, gilt, grit, the summoning glyph) |
+| `make_titles.py` | The stages' title cards, one frame per stage. Its `CARDS` table must match the stage defs' names and subtitles (`check_title_cards_agree`). |
 | `make_mika.py`, `make_rings.py` | Mika from the owner's sheet (a skinned rig; `MIKA_RIG_DEBUG=1` draws its regions over the art); Mika's ring |
 | `make_bg.py`, `make_grove.py`, `make_sanctum.py` | Stage one's layers; stage two's scenery and `scripts/grove_table`; stage three's materials, fire and statue, and `scripts/sanctum_table` |
 | `sanctum_glyphs.py`, `sanctum_relief.py` | Imported by `make_sanctum.py`: a set of hieroglyphs and the column layout that sets them in squares; and the material work (inlay, sunk and raised relief, grooves, worn gilding, marble, basalt) with the larger ornament (the winged sun, cartouche, lotus frieze, scarab) |
@@ -423,8 +441,14 @@ owner's Mika sheet in `tools/source/`.
 | `make_music.py` | The placeholder music, from downloads in `tools/source/music/`: normalised, looped, streamed |
 
 - Most art is luminance and gets tinted at draw time, so one set of fodder
-  serves every stage. Mika's ring, the rank medals and characters taken from
-  reference sheets keep their own colours.
+  serves stages one and two. Mika's ring, the rank medals, stage three's
+  foes and golem, and characters taken from reference sheets keep their own
+  colours.
+- Stage three's foes and golem are 2D illustration drawn in code
+  (`cel_art`): each part cel-shaded (a shade band on the edges away from the
+  light, a lit rim toward it) with its own line work. The golem's sand is
+  ribbons laid along swirling currents over a dark, fire-lit hollow, sliding
+  along them frame to frame; its body and glow are animated in step.
 - A bullet is a bright core in a saturated body with a hard dark contour
   (`cut_finish` in `art_common`). The dark contour is what additive scenery
   can never produce. Each shape is one sprite with one frame per colour; get
@@ -510,6 +534,12 @@ Create every resource through `tools/gm_new.py`.
   photograph it with `python tools/shot.py mika_n3` (there is one scene per
   slot). The picture is taken four seconds into the attack, and `--burst`
   offsets count from there.
+- **A wave of stage three**: a function `(events, t)` in `sanctum_waves` that
+  pushes `ev_foe` spawns (each a kind, a start, health, a route of legs from
+  `enemy_routes`, and a fire function) at `t` plus local frames and returns
+  its length, and a row in `sanctum_wave_table()`. A foe only fires while
+  inside the field. Photograph it alone with `python tools/shot.py
+  sanctum_w3` (seven seconds in; `--burst` offsets count from there).
 - **A ring attack**: `ring_new`, then `ring_attach`, `ring_charge` and
   `ring_link`. Where possible, give the ring its whole behaviour as an `act`
   when it is created.
@@ -530,9 +560,15 @@ What's playable:
 - Stage one: Ziggy, and the Warden as midboss.
 - Stage two: Velka, and the Husk as midboss. The wood turns to blood halfway
   through.
-- Stage three: Mika, and the Proctor as midboss, in the 3D hall: lit per
-  pixel by torches, orbs and the open sky, with a half-minute opening in
-  which the hall wakes.
+- Stage three: in the 3D hall (lit per pixel by torches, orbs and the open
+  sky, with a half-minute opening in which the hall wakes), ten waves each
+  graded on its own, the title card after the first, the sand golem after
+  the fifth, and Mika after the tenth. Waves five and ten are Mika's rings
+  roaming the hall, to be outlasted (`sanctum_ring_waves`). The waves and
+  the golem's three non-spells are placeholders in the intended shape, each
+  to be replaced in turn; each wave has a shot scene (`sanctum_w1` ...
+  `sanctum_w10`), as do the golem's attacks (`golem_n1` ... `golem_n3`) and
+  the card (`title_card`).
 - The result screen and permanent progress.
 - Practice for every attack.
 - The drafting table.
@@ -560,7 +596,7 @@ Known gaps:
   guess.
 - These are placeholders: all attacks except the Hex, Mika's non-spells,
   `Storm Cage` and `Chakram Blitz` (Ziggy's, Velka's first five, the
-  midbosses', every draft), Ziggy's art and
+  midbosses', stage three's ten waves, every draft), Ziggy's art and
   therefore his eye card, the grove's tree art, every sound, and both
   music tracks. Only stage three has music.
 - `Sand Burst` on the drafting table is Mika's sand thrown as a two-stage

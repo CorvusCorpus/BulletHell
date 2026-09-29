@@ -21,6 +21,8 @@ function stage_grove_def() {
         needs: 0,
         make_bg: bg_grove,
         build: stage_grove_script,
+        // Its title card's frame (`tools/make_titles.py`).
+        card: 1,
 
 
         // `turned`: Velka is fought after the wood turns to blood, so she is
@@ -39,6 +41,9 @@ function stage_grove_def() {
 ///       so it fires as soon as the midboss is beaten.
 function stage_grove_script() {
     var _e = [];
+
+    // The title card, as the first wave comes in.
+    array_push(_e, ev(1, wave_title_card()));
 
     // --- the way in ----------------------------------------------------
     array_push(_e, ev(80, wave_cross(EnemyKind.Wisp, 6, -1, 200, 58, 5.4, 3,

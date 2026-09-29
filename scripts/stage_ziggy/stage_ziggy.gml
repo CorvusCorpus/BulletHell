@@ -16,6 +16,8 @@ function stage_ziggy_def() {
         needs: 0,                       // unlocked from the start
         make_bg: bg_brimstone,
         build: stage_ziggy_script,
+        // Its title card's frame (`tools/make_titles.py`).
+        card: 0,
 
 
         // The stage's bosses in order, for attack practice and the encounter
@@ -32,6 +34,9 @@ function stage_ziggy_def() {
 /// @desc The timeline.
 function stage_ziggy_script() {
     var _e = [];
+
+    // The title card, as the first wave comes in.
+    array_push(_e, ev(1, wave_title_card()));
 
     // --- first half: wisps and grimoires -------------------------------
     array_push(_e, ev(70, wave_cross(EnemyKind.Wisp, 6, -1, 180, 62, 5.6, 3,

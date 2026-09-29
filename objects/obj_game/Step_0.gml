@@ -112,6 +112,7 @@ if (phase == Phase.BossDeclare && boss_ref != undefined
 }
 
 fx_step();
+title_card_step(title);
 // The background camera leans toward the player (stage two uses this).
 bg_step(bg, player_field_aim(player));
 

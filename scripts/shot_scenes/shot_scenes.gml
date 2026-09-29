@@ -20,12 +20,38 @@ function shot_scene_list() {
               "grove_boss", "grove_spell",
               "sanctum", "mika_attacks",
               "hall_a", "hall_b", "hall_turn", "hall_arrive",
-              "rope_lab"];
+              "rope_lab", "title_card", "golem_n1", "golem_n2", "golem_n3"];
     var _n = array_length(mika_slots());
     for (var _i = 0; _i < _n; _i++) {
         array_push(_l, shot_mika_scene(_i));
     }
+    for (var _i = 1; _i <= SANCTUM_WAVES; _i++) {
+        array_push(_l, "sanctum_w" + string(_i));
+    }
     return _l;
+}
+
+// Stage three's waves, each with a scene of its own (`sanctum_w1` ... ), and
+// how far into its wave each is photographed. `--burst` offsets count from
+// there.
+#macro SANCTUM_WAVES 10
+#macro SHOT_WAVE_AT (7 * FPS)
+
+/// @desc Which of stage three's waves a scene asks for (1 to 10), or -1.
+function shot_sanctum_wave(_name) {
+    for (var _i = 1; _i <= SANCTUM_WAVES; _i++) {
+        if (_name == "sanctum_w" + string(_i)) return _i;
+    }
+    return -1;
+}
+
+/// @desc Stage three with a timeline of wave `_n` alone.
+function shot_sanctum_wave_def(_n) {
+    var _def = stage_sanctum_def();
+    _def.build = method({ n: _n }, function() {
+        return sanctum_one_wave_script(n);
+    });
+    return _def;
 }
 
 /// @desc The scene name for Mika's slot `_i` (`mika_slot_name`).
@@ -97,6 +123,11 @@ function shot_scene_prepare(_name) {
         global.practice = practice_new(stage_sanctum_def(), 1, _slot);
         return;
     }
+    var _wave = shot_sanctum_wave(_name);
+    if (_wave >= 0) {
+        global.stage_def = shot_sanctum_wave_def(_wave);
+        return;
+    }
 
     switch (_name) {
         case "practice_ready":
@@ -135,6 +166,10 @@ function shot_scene_prepare(_name) {
         case "hall_a":
         case "hall_b":
         case "hall_arrive":
+        case "title_card":
+        case "golem_n1":
+        case "golem_n2":
+        case "golem_n3":
             // Stage three itself (Mika's slots have their own scenes).
             global.stage_def = stage_sanctum_def();
             break;
@@ -227,7 +262,6 @@ function shot_pose(_scene, _g) {
     _g.intro_t = 0;
     _g.player.entry = 0;
     _g.input_override = shot_input(true, false);
-    // Past the stage name splash (`t < 190`).
     _g.t = 400;
 
     // Mika's slots: player low and right of centre, untouchable (a posed
@@ -242,6 +276,23 @@ function shot_pose(_scene, _g) {
         var _spell = (mika_phases()[_slot].kind == AttackKind.Spell);
         return PRACTICE_READY + (_spell ? BOSS_SPELL_LEAD : 0)
                + SHOT_MIKA_AT;
+    }
+
+    // Stage three's waves: the one wave alone, the hall awake (and opened,
+    // after the golem), the player low in the middle, not firing (so the
+    // wave is photographed whole) and untouchable (a hit clears bullets).
+    var _wave = shot_sanctum_wave(_scene);
+    if (_wave >= 0) {
+        _g.input_override = shot_input(false, false);
+        _g.player.x = FIELD_CX + 60;
+        _g.player.y = FIELD_Y1 - 190;
+        _g.player.untouchable = true;
+        _g.bg.intro = 1;
+        if (_wave > 5) {
+            _g.bg.omen_on = true;
+            _g.bg.omen = 1;
+        }
+        return 30 + SHOT_WAVE_AT;
     }
 
     switch (_scene) {
@@ -473,10 +524,34 @@ function shot_pose(_scene, _g) {
             return 150;
 
         case "sanctum":
-            // The early wave with two idle rings.
-            _g.stage.t = 420 + SANCTUM_OPENING;
+            // Stage three from its start, wound past the hall's opening to
+            // the first wave, with the player firing into it.
+            _g.stage.t = SANCTUM_OPENING - 10;
             _g.player.x = FIELD_CX - 90;
             _g.player.y = FIELD_Y1 - 200;
+            _g.player.untouchable = true;
+            _g.bg.intro = 1;
+            return 400;
+
+        case "title_card":
+            // Stage three's title card, played straight away. Best taken as
+            // a burst (it runs `CARD_TIME` frames).
+            _g.stage.t = 0;
+            _g.input_override = shot_input(false, false);
+            _g.player.x = FIELD_CX;
+            _g.player.y = FIELD_Y1 - 200;
+            _g.bg.intro = 1;
+            title_card_start(_g.title, _g.def);
+            return 150;
+
+        case "golem_n1":
+        case "golem_n2":
+        case "golem_n3":
+            // The sand golem's non-spells, five seconds in.
+            shot_boss(_g, real(string_char_at(_scene, 8)) - 1, golem_spawn);
+            _g.player.x = FIELD_CX + 80;
+            _g.player.y = FIELD_Y1 - 230;
+            _g.player.untouchable = true;
             _g.bg.intro = 1;
             return 300;
 
@@ -570,6 +645,14 @@ function shot_tick(_scene, _g, _t) {
     if (_g == undefined) return;
 
     switch (_scene) {
+        case "title_card":
+        case "golem_n1":
+        case "golem_n2":
+        case "golem_n3":
+            // Hold the stage clock, so no wave arrives in the picture.
+            _g.stage.t = 0;
+            break;
+
         case "rope_lab":
             // The stage clock is held at zero, so no wave ever arrives.
             _g.stage.t = 0;

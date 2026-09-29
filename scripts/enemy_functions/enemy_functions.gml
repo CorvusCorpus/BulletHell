@@ -16,6 +16,9 @@ function enemy_init() {
 function enemy_blank() {
     return {
         x: 0, y: 0, vx: 0, vy: 0,
+        // Last frame's position, so a draw can read how it is moving
+        // whatever moved it (`enemy_step` records it before `act`).
+        px: 0, py: 0,
         hp: 10, hp_max: 10, r: 26,
         kind: EnemyKind.Wisp,
         col: BCOL_CYAN,
@@ -27,6 +30,13 @@ function enemy_blank() {
         boss: undefined,         // set only on a boss
         leaving: false,
         touch: true,             // does the body hurt the player?
+        // Can it be shot? False while it is still materialising.
+        shootable: true,
+        // Set by `act` to take it off the field without a death (it has flown
+        // away); `enemy_step` removes it after `act` returns.
+        retire: false,
+        // Drawn opacity, for fading in (`leg_appear`).
+        alpha: 1,
         scale: 1,
     };
 }
@@ -87,6 +97,7 @@ function enemy_spawn(_kind, _x, _y, _hp, _act, _col = BCOL_CYAN,
     var _e = enemy_alloc();
     if (_e == undefined) return undefined;
     _e.x = _x; _e.y = _y;
+    _e.px = _x; _e.py = _y;
     _e.vx = 0; _e.vy = 0;
     _e.hp = _hp; _e.hp_max = _hp;
     _e.r = enemy_radius(_kind);
@@ -105,6 +116,9 @@ function enemy_spawn(_kind, _x, _y, _hp, _act, _col = BCOL_CYAN,
     }
     _e.leaving = false;
     _e.touch = true;
+    _e.shootable = true;
+    _e.retire = false;
+    _e.alpha = 1;
     _e.scale = 1;
     return _e;
 }
@@ -117,6 +131,9 @@ function enemy_radius(_kind) {
         case EnemyKind.Grimoire: return 44;
         case EnemyKind.Gem:      return 36;
         case EnemyKind.Sentry:   return 52;
+        case EnemyKind.HallWisp:   return HALL_WISP_R;
+        case EnemyKind.HallBook:   return HALL_BOOK_R;
+        case EnemyKind.HallSphere: return HALL_SPHERE_R;
         case EnemyKind.Boss:     return 62;
     }
     return 32;
@@ -128,8 +145,18 @@ function enemy_sprite(_kind) {
         case EnemyKind.Grimoire: return spr_foe_grimoire;
         case EnemyKind.Gem:      return spr_foe_gem;
         case EnemyKind.Sentry:   return spr_foe_sentry;
+        case EnemyKind.HallWisp:   return spr_foe_hall_wisp;
+        case EnemyKind.HallBook:   return spr_foe_hall_book;
+        case EnemyKind.HallSphere: return spr_foe_hall_sphere;
     }
     return spr_foe_wisp;
+}
+
+/// @desc Is this one of stage three's foes, which are drawn in their own
+///       colours with their own effects (`hall_foe_draw`)?
+function enemy_is_hall(_kind) {
+    return _kind == EnemyKind.HallWisp || _kind == EnemyKind.HallBook
+           || _kind == EnemyKind.HallSphere;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +209,8 @@ function enemy_step(_g) {
     for (var _i = global.enemy_n - 1; _i >= 0; _i--) {
         var _e = global.enemies[_i];
         if (_e.flash > 0) _e.flash--;
+        _e.px = _e.x;
+        _e.py = _e.y;
 
         if (_e.leaving) {
             _e.x += _e.vx;
@@ -189,9 +218,10 @@ function enemy_step(_g) {
         } else if (_e.act != undefined) {
             _e.act(_e, _g);
         }
+        if (enemy_is_hall(_e.kind)) hall_foe_ambient(_e);
         _e.t++;
 
-        if (_e.x < _l || _e.x > _r || _e.y < _t || _e.y > _b) {
+        if (_e.retire || _e.x < _l || _e.x > _r || _e.y < _t || _e.y > _b) {
             enemy_kill_at(_i);
         }
     }
@@ -206,7 +236,7 @@ function enemy_take_shots(_g) {
         var _sh = global.pshots[_s];
         for (var _i = global.enemy_n - 1; _i >= 0; _i--) {
             var _e = global.enemies[_i];
-            if (_e.leaving) continue;
+            if (_e.leaving || !_e.shootable) continue;
             // A boss can't be damaged during its arrival, a spell
             // declaration or the pause between attacks (`boss_vulnerable`).
             // The shot passes through.
@@ -242,7 +272,7 @@ function enemy_take_seals(_p, _g) {
         if (!_s.live) continue;
         for (var _i = global.enemy_n - 1; _i >= 0; _i--) {
             var _e = global.enemies[_i];
-            if (_e.leaving) continue;
+            if (_e.leaving || !_e.shootable) continue;
             // A boss in ceremony takes nothing, exactly as it takes no shots.
             if (_e.boss != undefined && !boss_vulnerable(_e)) continue;
             if (point_seg_dist(_e.x, _e.y, _s.px, _s.py, _s.x, _s.y)
@@ -269,11 +299,15 @@ function enemy_die(_e, _g) {
         // A boss ends phases instead; `boss_step` handles that.
         return 0;
     }
-    var _col = global.bullet_colour[_e.col];
     sfx(Sfx.EnemyDie);
-    fx_burst(_e.x, _e.y, ENEMY_DEATH_BITS, 2, 8, _col, 26, 16);
-    fx_ring(_e.x, _e.y, 8, 84, 20, _col, 0.8);
-    fx_flash_at(_e.x, _e.y, _col, 0.18);
+    if (enemy_is_hall(_e.kind)) {
+        hall_foe_death(_e);
+    } else {
+        var _col = global.bullet_colour[_e.col];
+        fx_burst(_e.x, _e.y, ENEMY_DEATH_BITS, 2, 8, _col, 26, 16);
+        fx_ring(_e.x, _e.y, 8, 84, 20, _col, 0.8);
+        fx_flash_at(_e.x, _e.y, _col, 0.18);
+    }
     item_drop_spread(_e.x, _e.y, _e.red, _e.blue, _e.gold);
     return TALLY_ENEMY;
 }
@@ -325,6 +359,10 @@ function enemy_draw() {
         var _e = global.enemies[_i];
         if (_e.boss != undefined) {
             boss_draw(_e);
+            continue;
+        }
+        if (enemy_is_hall(_e.kind)) {
+            hall_foe_draw(_e);
             continue;
         }
 

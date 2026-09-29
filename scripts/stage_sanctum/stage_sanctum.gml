@@ -1,9 +1,11 @@
-/// @desc Stage three: the Gilded Sanctum, and Mika at the end of it.
+/// @desc Stage three: the Archive of Bequeathed Memories, and Mika at the
+///       end of it.
 ///
 /// Mika's fight is being rebuilt as fifteen attacks, one slot at a time (see
 /// `mika_slots`). The stage as it was before the rebuild is kept on its own
-/// rack card in `stage_sanctum_old`. The waves and the Proctor are
-/// placeholders and are not part of the rebuild.
+/// rack card in `stage_sanctum_old`. The way to him (ten waves and the sand
+/// golem) is in `sanctum_waves`, `sanctum_ring_waves`, `sanctum_foes` and
+/// `sanctum_golem`.
 ///
 /// The fight is built on rings (`ring_functions`). Every ring is the same
 /// size (`RING_R`; owner's rule).
@@ -33,133 +35,26 @@
 function stage_sanctum_def() {
     return {
         id: "gilded_sanctum",
-        name: "THE GILDED SANCTUM",
+        name: "ARCHIVE OF BEQUEATHED MEMORIES",
+        // Its id keeps the old name, so saved clears and bests still count.
         subtitle: "the death-god's hall of rings",
         needs: 0,                       // unlocked from the start, for now
         make_bg: bg_sanctum,
-        build: stage_sanctum_script,
+        build: stage_sanctum_script,    // `sanctum_waves`
         music: snd_music_sanctum,       // placeholder (`tools/make_music.py`)
+        // Its title card's frame (`tools/make_titles.py`).
+        card: 2,
 
 
         // `turned`: Mika is fought after the hall opens, so practice starts
         // him in the open room (see `practice_begin`).
         bosses: [
-            { name: "THE PROCTOR", spawn: sanctum_midboss_spawn,
-              phases: sanctum_midboss_phases },
+            { name: "THE SAND GOLEM", spawn: golem_spawn,
+              phases: golem_phases },
             { name: "MIKA", spawn: mika_spawn, phases: mika_phases,
               turned: true },
         ],
     };
-}
-
-/// @desc The running order. The second wave group flies in behind two idle
-///       rings, so the player meets a ring before the Proctor uses them.
-function stage_sanctum_script() {
-    var _e = [];
-
-    // --- the way in ----------------------------------------------------
-    array_push(_e, ev(80, wave_cross(EnemyKind.Wisp, 6, -1, 210, 56, 5.6, 3,
-                                     BCOL_GOLD, sanctum_fodder_pellet)));
-    array_push(_e, ev(230, wave_cross(EnemyKind.Wisp, 6, 1, 330, -56, 5.6, 3,
-                                      BCOL_AMBER, sanctum_fodder_pellet)));
-    array_push(_e, ev_gate(280));
-
-    // --- two idle rings --------------------------------------------------
-    array_push(_e, ev(400, wave_sanctum_gateposts()));
-    array_push(_e, ev(430, wave_line(EnemyKind.Grimoire, 5,
-                                     -100, 160, 0, 0,
-                                     420, 260, 270, 0,
-                                     220, 14, BCOL_BONE,
-                                     sanctum_fodder_fan)));
-    array_push(_e, ev_gate(470));
-
-    array_push(_e, ev(600, wave_cross(EnemyKind.Gem, 5, -1, 400, 52, 6.2, 6,
-                                      BCOL_AMBER, sanctum_fodder_aimed)));
-    array_push(_e, ev(620, wave_cross(EnemyKind.Gem, 5, 1, 400, -52, 6.2, 6,
-                                      BCOL_AMBER, sanctum_fodder_aimed)));
-    array_push(_e, ev_gate(670));
-
-    // --- the midboss ---------------------------------------------------
-    array_push(_e, ev(770, wave_boss(sanctum_midboss_spawn)));
-    array_push(_e, ev_gate(790));
-
-    // The hall opens (the camera rises and levels out). Stage time is held
-    // while a boss is up, so this fires right after the Proctor is beaten.
-    array_push(_e, ev(792, wave_bg_omen()));
-
-    array_push(_e, ev(900, wave_line(EnemyKind.Sentry, 3,
-                                     -140, 200, 0, 0,
-                                     500, 300, 440, 0,
-                                     250, 46, BCOL_GOLD,
-                                     sanctum_fodder_sentry)));
-    array_push(_e, ev(960, wave_cross(EnemyKind.Wisp, 8, -1, 500, 42, 6.2, 4,
-                                      BCOL_BONE, sanctum_fodder_pellet, 10)));
-    array_push(_e, ev_gate(1010));
-
-    array_push(_e, ev(1120, wave_sanctum_gateposts()));
-    array_push(_e, ev(1150, wave_cross(EnemyKind.Gem, 6, 1, 250, 64, 6.6, 8,
-                                       BCOL_GOLD, sanctum_fodder_aimed, 11)));
-    array_push(_e, ev(1170, wave_line(EnemyKind.Grimoire, 6,
-                                      FIELD_W + 100, 140, 0, 0,
-                                      320, 220, 250, 40,
-                                      230, 18, BCOL_BONE,
-                                      sanctum_fodder_fan)));
-    array_push(_e, ev_gate(1220));
-
-    array_push(_e, ev(1320, wave_sweep_field()));
-    array_push(_e, ev(1380, wave_boss(mika_spawn)));
-
-    // Everything waits for the hall to start waking (`hall_step`): the dark
-    // lifts and the first torches catch before the first wave flies in.
-    for (var _i = 0; _i < array_length(_e); _i++) _e[_i].at += SANCTUM_OPENING;
-    return _e;
-}
-
-/// @desc Two rings standing in the field for 15 seconds: they block shots and
-///       hurt to touch, and do nothing else.
-function wave_sanctum_gateposts() {
-    return function(_g) {
-        for (var _i = -1; _i <= 1; _i += 2) {
-            var _r = ring_new(FIELD_CX + _i * 260, FIELD_Y0 + 420,
-                              MIKA_RING_COL, 15 * FPS);
-            if (_r != undefined) _r.spin = _i * 0.35;
-        }
-    };
-}
-
-// ---------------------------------------------------------------------------
-// Fodder patterns (placeholders)
-// ---------------------------------------------------------------------------
-
-function sanctum_fodder_pellet(_e, _g, _t) {
-    if ((_t mod 48) != 0) return;
-    fire(_e.x, _e.y, 6.0, aim_at(_e.x, _e.y, _g.player.x, _g.player.y),
-         BSHAPE_PELLET, BCOL_GOLD, 14);
-}
-
-function sanctum_fodder_fan(_e, _g, _t) {
-    if ((_t mod 64) != 20) return;
-    fire_fan(_e.x, _e.y, 5, 5.4,
-             aim_at(_e.x, _e.y, _g.player.x, _g.player.y), 44,
-             BSHAPE_RICE, BCOL_BONE, 16);
-}
-
-function sanctum_fodder_aimed(_e, _g, _t) {
-    if ((_t mod 54) != 30) return;
-    fire_stack(_e.x, _e.y, 3, 5.2, 1.5,
-               aim_at(_e.x, _e.y, _g.player.x, _g.player.y),
-               BSHAPE_CRYSTAL, BCOL_AMBER, 14);
-}
-
-function sanctum_fodder_sentry(_e, _g, _t) {
-    if ((_t mod 86) == 30) {
-        fire_ring(_e.x, _e.y, 14, 4.6, _e.t * 4, BSHAPE_ORB, BCOL_GOLD, 20);
-    }
-    if ((_t mod 86) == 66) {
-        fire_stack(_e.x, _e.y, 4, 6.2, 1.4,
-                   aim_at(_e.x, _e.y, _g.player.x, _g.player.y),
-                   BSHAPE_DART, BCOL_BONE, 16);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -220,90 +115,6 @@ function mika_link(_f, _a, _b, _frames) {
     if (ring_valid(_f.ring[_a], _f.gen[_a])
         && ring_valid(_f.ring[_b], _f.gen[_b])) {
         ring_link(_f.ring[_a], _f.ring[_b], _frames);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// The Proctor (midboss; placeholder)
-// ---------------------------------------------------------------------------
-
-function sanctum_midboss_def() {
-    return {
-        name: "THE PROCTOR",
-        title: "one of the lesser hands",
-        // Placeholder art: stage one's sentry.
-        sprite: spr_foe_sentry,
-        eye: spr_eye_mika,
-        col: BCOL_GOLD,
-        radius: 46,
-        spell_bg: SPELLBG_SIGIL,
-        final: false,
-    };
-}
-
-function sanctum_midboss_phases() {
-    return [
-        { kind: AttackKind.NonSpell, name: "", col: BCOL_GOLD, bg: -1,
-          hp_end: 0.45, time: 24 * FPS, attack: proctor_marking },
-        { kind: AttackKind.Spell, name: "Second Reading",
-          col: BCOL_AMBER, bg: BCOL_INDIGO,
-          hp_end: 0.0, time: 30 * FPS, attack: proctor_second_reading },
-    ];
-}
-
-function sanctum_midboss_spawn(_g) {
-    var _b = boss_spawn(FIELD_CX, FIELD_Y0 - 140, 300,
-                        sanctum_midboss_phases(), sanctum_midboss_def());
-    if (_b != undefined) {
-        _b.boss.home_y = BOSS_HOME_Y - 30;
-        _b.boss.declare_t = 40;      // a midboss gets no name splash
-    }
-    return _b;
-}
-
-/// @desc Two rings circling him, throwing bullets off their rims.
-function proctor_marking(_e, _g, _t) {
-    if (_t == 0) {
-        mika_formation(_e, 2, 210, 1.05, BCOL_GOLD, proctor_rim, 0, 0.7);
-    }
-    if ((_t mod 84) == 40) {
-        fire_fan_stack(_e.x, _e.y, 7, 2, 5.0, 1.1,
-                       aim_at(_e.x, _e.y, _g.player.x, _g.player.y), 46,
-                       BSHAPE_RICE, BCOL_BONE, 20);
-    }
-}
-
-function proctor_rim(_ring, _g, _t) {
-    if ((_t mod 58) != 24) return;
-    ring_fire_rim(_ring, 8, 3.6, _t * 2.7, BSHAPE_ORB, BCOL_GOLD, 18);
-}
-
-/// @desc Three rings walking down the field, each with a beam through it.
-function proctor_second_reading(_e, _g, _t) {
-    var _cycle = _t mod 220;
-    if (_cycle == 0) {
-        for (var _i = 0; _i < 3; _i++) {
-            var _r = mika_place_ring(FIELD_X0 + FIELD_W * (0.25 + _i * 0.25),
-                                     FIELD_Y0 + 150, BCOL_AMBER,
-                                     proctor_walker, 200);
-            if (_r == undefined) break;
-            _r.vy = 2.4;
-            _r.vx = (_i - 1) * 0.9;
-            _r.spin = ((_i mod 2) ? -1 : 1) * 1.1;
-        }
-    }
-    if ((_t mod 26) == 12) {
-        fire_ring(_e.x, _e.y, 8, 3.8, _t * 4.6, BSHAPE_PELLET, BCOL_GOLD, 16);
-    }
-}
-
-function proctor_walker(_ring, _g, _t) {
-    if (_t == 26) {
-        ring_beam(_ring, 90, 2200, 26, BCOL_AMBER, 60, 90, 20);
-    }
-    if ((_t mod 46) == 20) {
-        ring_fire_tangent(_ring, 6, 3.4, _t * 3.1, BSHAPE_MOTE, BCOL_AMBER,
-                          1, 16);
     }
 }
 

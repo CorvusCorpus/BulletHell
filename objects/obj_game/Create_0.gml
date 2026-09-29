@@ -24,6 +24,9 @@ player.entry = 80;
 
 hud = hud_new();
 
+// The stage's title card, idle until its timeline plays it.
+title = title_card_new();
+
 // This attempt's marks (`rank_functions`).
 marks = rank_ledger_new();
 bg = def.make_bg();
@@ -91,10 +94,9 @@ on_player_hit = function() {
 // by the screenshot harness).
 input_override = undefined;
 
-// Practice: skip the intro, fly-in and name splash (`t` is wound past it,
-// since the splash would repeat the attack's name the spell banner shows),
-// and put the boss on the field. Last, because `practice_begin` reads the
-// player, ledger and spell state set up above.
+// Practice: skip the intro and fly-in, and put the boss on the field (its
+// empty timeline never plays the title card). Last, because
+// `practice_begin` reads the player, ledger and spell state set up above.
 if (practice != undefined) {
     phase = Phase.Playing;
     intro_t = 0;

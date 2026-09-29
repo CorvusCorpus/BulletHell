@@ -34,21 +34,8 @@ player_draw_card(player);
 
 fx_draw_text();
 
-// The stage name splash over the field for the first 190 frames (the console
-// shows the name after that).
-if (t < 190) {
-    var _a = min(1, t / 24) * min(1, (190 - t) / 34);
-    draw_band(FIELD_CY, 260, 0.55 * _a);
-    draw_set_halign(fa_center);
-    draw_set_valign(fa_middle);
-    draw_set_font(fnt_title());
-    draw_text_outline(FIELD_CX, FIELD_CY - 34, def.name, COL_GRAZE, _a, 3);
-    draw_set_font(fnt_head());
-    draw_text_outline(FIELD_CX, FIELD_CY + 60, def.subtitle, COL_SILVER,
-                      _a * 0.8, 2);
-    draw_set_halign(fa_left);
-    draw_set_valign(fa_top);
-}
+// The stage's title card, when its timeline plays it (`title_card`).
+title_card_draw(title);
 
 if (phase == Phase.Paused) hud_draw_pause(self);
 if (_over) {

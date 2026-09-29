@@ -71,7 +71,7 @@ SCENES = (
     "grove_blood",   # ...with the wavefront part way down the corridor
     "grove_boss",    # Velka over the turned wood, danmaku across the moon
     "grove_spell",   # her caster's background: bone circle, antlers, wash
-    "sanctum",       # stage three: two gateposts standing in a live wave
+    "sanctum",       # stage three from the start: its first wave, firing
     "mika_attacks",  # its attack list, scrolled half way down Mika's fifteen
 
     # Stage three's hall: before the reveal, after it, partway, and the
@@ -83,7 +83,17 @@ SCENES = (
 
     # Temporary: Chakram Blitz rope variants side by side.
     "rope_lab",
+
+    "title_card",    # stage three's title card, played at once (use --burst)
+    "golem_n1",      # the sand golem's three non-spells, five seconds in
+    "golem_n2",
+    "golem_n3",
 )
+
+# One scene per wave of stage three (`sanctum_w1` ... `sanctum_w10`): that
+# wave alone, seven seconds in, the player not firing (`--burst` offsets
+# count from there).
+SCENES += tuple("sanctum_w%d" % k for k in range(1, 11))
 
 # One scene per slot of Mika's table (`mika_n1`, `mika_s1`, ... `mika_s8`),
 # generated as the game generates them: his attack in that slot, practised,
