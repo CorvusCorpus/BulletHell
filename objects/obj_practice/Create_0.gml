@@ -1,44 +1,86 @@
-/// @desc The attack list for attack practice: every attack of every boss on
-///       the stage chosen on the rack (`global.stage_def`), as one scrolling
-///       list with a heading per boss.
+/// @desc The practice list: everything on the stage chosen on the rack
+///       (`global.stage_def`) that can be played alone, in stage order, as
+///       one scrolling list. Each run of waves gets a heading, and so does
+///       each boss, whose whole fight is listed above its attacks.
 
 stage = global.stage_def ?? stage_ziggy_def();
 bosses = practice_bosses(stage);
 
-// Headings and attacks in one array of rows.
+// Headings and entries in one array of rows. `sec` is the heading a row sits
+// under, for jumping between them. `kind` is what Z plays: "attack",
+// "fight" or "wave".
 rows = [];
 picks = [];        // which entries in `rows` the cursor may land on
-for (var _b = 0; _b < array_length(bosses); _b++) {
+var _sec = -1;
+var _segs = practice_segments(stage);
+for (var _s = 0; _s < array_length(_segs); _s++) {
+    var _seg = _segs[_s];
+
+    if (_seg.kind == "wave") {
+        // One heading over each run of waves.
+        if (_s == 0 || _segs[_s - 1].kind != "wave") {
+            _sec++;
+            array_push(rows, { header: true, sec: _sec, label: "WAVES" });
+        }
+        array_push(picks, array_length(rows));
+        array_push(rows, {
+            header: false, sec: _sec, kind: "wave",
+            boss_i: -1, phase_i: -1, wave_n: _seg.n,
+            label: "WAVE " + string(_seg.n),
+            spell: false, tint: COL_PARCHMENT, note: "",
+        });
+        continue;
+    }
+
+    var _b = _seg.boss_i;
     var _boss = bosses[_b];
     var _phases = _boss.phases();
-    array_push(rows, { header: true, boss_i: _b, phase_i: -1,
-                       label: _boss.name, spell: false, col: BCOL_EMBER,
-                       time: 0, hp_from: 1, hp_to: 1 });
+    _sec++;
+    array_push(rows, { header: true, sec: _sec, label: _boss.name });
+
+    array_push(picks, array_length(rows));
+    array_push(rows, {
+        header: false, sec: _sec, kind: "fight",
+        boss_i: _b, phase_i: -1, wave_n: 0,
+        label: "WHOLE FIGHT",
+        spell: false, tint: COL_GILT,
+        note: string(array_length(_phases)) + " ATTACKS",
+    });
+
     var _from = 1.0;
     for (var _i = 0; _i < array_length(_phases); _i++) {
         var _p = _phases[_i];
         array_push(picks, array_length(rows));
         array_push(rows, {
-            header: false, boss_i: _b, phase_i: _i,
+            header: false, sec: _sec, kind: "attack",
+            boss_i: _b, phase_i: _i, wave_n: 0,
             label: practice_attack_label(_boss, _phases, _i),
             spell: (_p.kind == AttackKind.Spell),
-            col: _p.col,
-            time: _p.time,
-            // The span of the boss's health bar this attack occupies.
-            hp_from: _from,
-            hp_to: _p.hp_end,
+            tint: global.bullet_colour[_p.col],
+            // The attack's clock and the span of the boss's health bar it
+            // occupies.
+            note: string(floor(_p.time / FPS)) + "s",
+            span: string(round(_from * 100)) + "% - "
+                  + string(round(_p.hp_end * 100)) + "%",
         });
         _from = _p.hp_end;
     }
 }
+sections = _sec + 1;
 
-// Start on the attack practised last, if any.
+// Start on the entry practised last, if any.
 pick = 0;
 var _was = global.practice;
 if (_was != undefined) {
+    var _want = "attack";
+    if (_was.mode == PracticeMode.Wave) _want = "wave";
+    if (_was.mode == PracticeMode.Fight) _want = "fight";
     for (var _i = 0; _i < array_length(picks); _i++) {
         var _r = rows[picks[_i]];
-        if (_r.boss_i == _was.boss_i && _r.phase_i == _was.phase_i) pick = _i;
+        if (_r.kind == _want && _r.boss_i == _was.boss_i
+            && _r.phase_i == _was.phase_i && _r.wave_n == _was.wave_n) {
+            pick = _i;
+        }
     }
 }
 cursor = pick;

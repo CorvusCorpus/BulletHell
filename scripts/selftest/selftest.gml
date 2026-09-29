@@ -2803,6 +2803,54 @@ function test_practice() {
     ok("two cards with no id keep separate bests",
        practice_key(draft_stage_def(), 0, 0)
        != practice_key(old_stage_sanctum_def(), 0, 0));
+
+    // Whole fights and single waves, cut from each stage's timeline.
+    var _built = [stage_ziggy_def(), stage_grove_def(), stage_sanctum_def(),
+                  old_stage_sanctum_def()];
+    for (var _s = 0; _s < array_length(_built); _s++) {
+        var _def = _built[_s];
+        var _segs = practice_segments(_def);
+        var _waves = 0;
+        var _seen = array_create(array_length(_def.bosses), 0);
+        var _clean = true;
+        for (var _i = 0; _i < array_length(_segs); _i++) {
+            if (_segs[_i].kind == "boss") {
+                _seen[_segs[_i].boss_i]++;
+                continue;
+            }
+            _waves++;
+            var _ev = practice_wave_events(_def, _segs[_i].n);
+            if (array_length(_ev) == 0 || _ev[0].at != 30) _clean = false;
+            for (var _k = 0; _k < array_length(_ev); _k++) {
+                if (ev_role(_ev[_k]) != "") _clean = false;
+            }
+        }
+        var _phases = 0;
+        var _once = true;
+        for (var _b = 0; _b < array_length(_def.bosses); _b++) {
+            _phases += array_length(_def.bosses[_b].phases());
+            if (_seen[_b] != 1) _once = false;
+        }
+        var _enc = stage_count_encounters(_def, _def.build());
+        ok(_def.name + ": its waves are numbered as the stage grades them",
+           _waves == _enc - _phases);
+        ok("...each boss is listed once", _once);
+        ok("...and a wave replays alone, from frame 30", _clean);
+    }
+
+    // A whole fight's timeline brings its boss on as the stage does.
+    st_reset();
+    _g = st_game_at(GAME_CX, GAME_H - 300);
+    _g.practice = practice_new_fight(_stage, 0);
+    var _fight = _g.practice.def.build();
+    _fight[0].fn(_g);
+    ok("a whole fight brings its boss on",
+       _g.boss_ref != undefined && !boss_is_final(_g.boss_ref));
+    ok("and its rail spans the whole fight",
+       hud_boss_span(_g, _g.boss_ref)[0] == 1
+       && hud_boss_span(_g, _g.boss_ref)[1] == 0);
+    ok("a fight and its attacks keep separate bests",
+       _g.practice.key != practice_new(_stage, 0, 0).key);
     st_reset();
 }
 

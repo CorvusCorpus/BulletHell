@@ -62,7 +62,9 @@ fade = 0;
 
 /// @desc Called by `boss_finish`.
 on_boss_beaten = function(_e) {
-    if (boss_is_final(_e)) {
+    // Practising a whole fight: any boss beaten ends it, after its death.
+    if (boss_is_final(_e) || (practice != undefined
+                              && practice.mode == PracticeMode.Fight)) {
         // Let the death animation play before the result panel.
         win_pending = 170;
     } else {
@@ -75,7 +77,7 @@ on_boss_beaten = function(_e) {
 ///       normal run. This is the only place that knows broken from timed out,
 ///       since the health is set to the threshold either way.
 on_phase_end = function(_e, _beaten) {
-    if (practice == undefined) return;
+    if (practice == undefined || practice.mode != PracticeMode.Attack) return;
     practice_result = practice_outcome(
         _e, _beaten ? PracticeEnd.Beaten : PracticeEnd.TimedOut, marks);
     practice_note_best(practice, tally);
@@ -94,15 +96,19 @@ on_player_hit = function() {
 // by the screenshot harness).
 input_override = undefined;
 
-// Practice: skip the intro and fly-in, and put the boss on the field (its
-// empty timeline never plays the title card). Last, because
-// `practice_begin` reads the player, ledger and spell state set up above.
+// Practice: skip the intro and fly-in. An attack puts the boss on the field
+// now; a whole fight or a wave is left to its own short timeline. Last,
+// because both read the player, ledger and spell state set up above.
 if (practice != undefined) {
     phase = Phase.Playing;
     intro_t = 0;
     player.entry = 0;
     t = 200;
-    practice_begin(self);
+    if (practice.mode == PracticeMode.Attack) {
+        practice_begin(self);
+    } else {
+        practice_begin_run(self);
+    }
 }
 
 audio_stop_all();

@@ -23,7 +23,8 @@ if (_boss != undefined) {
     if (!(_over && practice != undefined)) hud_draw_spell(_boss);
 
     // The READY count before a practised attack (`phase < 0` only then).
-    if (practice != undefined && !_over && _boss.boss.phase < 0
+    if (practice != undefined && practice.mode == PracticeMode.Attack
+        && !_over && _boss.boss.phase < 0
         && _boss.boss.clear_t > 0) {
         hud_draw_practice_ready(_boss);
     }

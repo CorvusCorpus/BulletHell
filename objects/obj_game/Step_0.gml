@@ -152,7 +152,9 @@ if (!player.alive && phase != Phase.Lost) {
     result_row = 0;
     // Dying in practice: no mark is filed and no best is recorded.
     if (practice != undefined) {
-        practice_result = practice_outcome(boss_ref, PracticeEnd.Died, marks);
+        practice_result = (practice.mode == PracticeMode.Attack)
+            ? practice_outcome(boss_ref, PracticeEnd.Died, marks)
+            : practice_outcome_run(self, PracticeEnd.Died);
     }
     bullet_clear_all(false);
     laser_clear_all();
@@ -162,6 +164,15 @@ if (!player.alive && phase != Phase.Lost) {
 // The stage timeline is held while a boss is on the field.
 if (phase == Phase.Playing && boss_ref == undefined) {
     stage_step(stage, self);
+    // Practising a wave: through once its gate releases.
+    if (practice != undefined && practice.mode == PracticeMode.Wave
+        && practice_wave_done(self)) {
+        practice_result = practice_outcome_run(self, PracticeEnd.Cleared);
+        practice_note_best(practice, tally);
+        phase = Phase.Won;
+        result_t = 0;
+        result_row = 0;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +198,11 @@ if (win_pending > 0) {
         // records (it can't reach here anyway; guarded to be safe).
         if (practice == undefined) {
             progress_record(def.id, tally, player.hit_n == 0, _caught);
+        } else {
+            // Practising a whole fight (the only practice that gets here).
+            practice_result = practice_outcome_run(self, PracticeEnd.Cleared);
+            practice_note_best(practice, tally);
+            result_row = 0;
         }
     }
 }

@@ -134,8 +134,9 @@ function shot_scene_prepare(_name) {
         case "practice_result":
             var _stage = stage_ziggy_def();
             global.stage_def = _stage;
-            // Ziggy's first spell.
-            global.practice = practice_new(_stage, 1, 1);
+            global.practice = (_name == "practice_ready")
+                ? practice_new_wave(stage_sanctum_def(), 6)
+                : practice_new_fight(stage_sanctum_def(), 0);
             break;
 
         case "drafts":

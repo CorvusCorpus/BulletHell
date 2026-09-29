@@ -75,6 +75,17 @@ function ev(_at, _fn) {
     return { at: _at, fn: _fn, gate: false, wave: false, survival: false };
 }
 
+/// @desc What an event does for the stage rather than being a wave: "boss",
+///       "card", "omen", "rewind" or "sweep" (set by those `wave_*`
+///       helpers), or "" for anything else. Practice uses it to cut a
+///       timeline into its waves and its bosses (`practice_segments`).
+function ev_role(_e) {
+    if (_e.fn == undefined || !is_method(_e.fn)) return "";
+    var _self = method_get_self(_e.fn);
+    if (!is_struct(_self)) return "";
+    return _self[$ "role"] ?? "";
+}
+
 /// @desc Hold the clock until every fodder enemy is gone (and, in a timeline
 ///       that marks its waves, every ring).
 function ev_gate(_at) {
@@ -330,7 +341,8 @@ function enemy_act_cross(_e, _g) {
 /// @desc Put a boss on the field.
 function wave_boss(_maker) {
     var _spec = { maker: _maker };
-    return method({ spec: _spec }, function(_g) {
+    // `role` lets practice tell a boss's arrival from a wave (`ev_role`).
+    return method({ spec: _spec, role: "boss" }, function(_g) {
         _g.boss_ref = spec.maker(_g);
         _g.phase = Phase.BossDeclare;
     });
@@ -340,24 +352,24 @@ function wave_boss(_maker) {
 ///       after a midboss's gate, it fires as soon as the midboss is beaten.
 ///       Harmless on a background with no turn.
 function wave_bg_omen() {
-    return function(_g) {
+    return method({ role: "omen" }, function(_g) {
         bg_set_omen(_g.bg);
-    };
+    });
 }
 
 /// @desc Reset the background's turn (`bg_clear_omen`). Only the review card
 ///       uses this.
 function wave_bg_rewind() {
-    return function(_g) {
+    return method({ role: "rewind" }, function(_g) {
         bg_clear_omen(_g.bg);
-    };
+    });
 }
 
 /// @desc Sweep the field so the next section starts clean.
 function wave_sweep_field() {
-    return function(_g) {
+    return method({ role: "sweep" }, function(_g) {
         enemy_sweep_fodder(_g);
-    };
+    });
 }
 
 /// @desc Empty every pool. The pools are globals that outlive a room, so this

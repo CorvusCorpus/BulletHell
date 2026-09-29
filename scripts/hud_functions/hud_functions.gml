@@ -983,10 +983,12 @@ function hud_draw_pause(_g) {
     draw_set_font(fnt_title());
     draw_text_outline(FIELD_CX, FIELD_CY - 170, "PAUSED", COL_SILVER, 1, 3);
 
-    // In practice the middle row restarts the attack rather than the stage.
-    var _practice = (_g[$ "practice"] != undefined);
-    var _rows = _practice ? ["RESUME", "RESTART ATTACK", "BACK TO ATTACKS"]
-                          : ["RESUME", "RESTART STAGE", "ABANDON"];
+    // In practice the middle row restarts the attack, fight or wave rather
+    // than the stage.
+    var _pr = _g[$ "practice"];
+    var _rows = (_pr != undefined)
+        ? ["RESUME", "RESTART " + practice_mode_word(_pr), "BACK TO PRACTICE"]
+        : ["RESUME", "RESTART STAGE", "ABANDON"];
     draw_set_font(fnt_head());
     for (var _i = 0; _i < array_length(_rows); _i++) {
         var _sel = (_g.pause_row == _i);
@@ -1105,6 +1107,7 @@ function hud_draw_practice_result(_g) {
                   FIELD_W - 260, COL_PARCHMENT, _t, 2);
 
     // ---- the mark: its medal, spun in as the panel appears ---------------
+    // (for a whole fight, the lowest of its marks: `practice_outcome_run`)
     var _my = FIELD_Y0 + 396;
     var _ms = 0.54;
     if (_r != undefined && _r.tier >= 0) {
@@ -1148,7 +1151,8 @@ function hud_draw_practice_result(_g) {
     // Placed so the last row clears the hint line.
     // "BACK TO TITLE", not "QUIT TO TITLE": the sprite fonts have no kerning,
     // and a large Cinzel "Q" leaves a gap that reads as "Q UIT".
-    var _menu = ["RETRY ATTACK", "CHOOSE ANOTHER", "BACK TO TITLE"];
+    var _menu = ["RETRY " + practice_mode_word(_g[$ "practice"]),
+                 "CHOOSE ANOTHER", "BACK TO TITLE"];
     for (var _i = 0; _i < array_length(_menu); _i++) {
         var _sel = (_g.result_row == _i);
         draw_text_outline(FIELD_CX, FIELD_Y0 + 724 + _i * 68, _menu[_i],

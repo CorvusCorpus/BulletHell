@@ -52,10 +52,10 @@ function title_card_start(_c, _def) {
 
 /// @desc A timeline event: play the stage's title card now.
 function wave_title_card() {
-    return function(_g) {
+    return method({ role: "card" }, function(_g) {
         var _c = _g[$ "title"];
         if (_c != undefined) title_card_start(_c, _g.def);
-    };
+    });
 }
 
 function title_card_live(_c) {

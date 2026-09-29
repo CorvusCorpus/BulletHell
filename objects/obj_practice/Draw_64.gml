@@ -1,4 +1,4 @@
-/// @desc The attack list, drawn with the same scrim, plate and crest as the
+/// @desc The practice list, drawn with the same scrim, plate and crest as the
 ///       rack.
 
 bg_draw_back(bg, true);
@@ -12,7 +12,7 @@ draw_set_halign(fa_center);
 draw_set_valign(fa_middle);
 
 draw_set_font(fnt_head());
-draw_text_outline(GAME_CX, 96, "ATTACK PRACTICE", COL_GILT_LIT, 1, 3);
+draw_text_outline(GAME_CX, 96, "PRACTICE", COL_GILT_LIT, 1, 3);
 
 var _cw = 460;
 var _cs = _cw / sprite_get_width(spr_ui_crest);
@@ -68,7 +68,7 @@ if (array_length(picks) <= 0) {
         }
 
         var _sel = (picks[pick] == _i);
-        var _bc = global.bullet_colour[_r.col];
+        var _bc = _r.tint;
 
         if (_sel) {
             draw_set_alpha((0.20 + 0.05 * dsin(t * 3)) * _a);
@@ -81,7 +81,8 @@ if (array_length(picks) <= 0) {
             draw_set_colour(c_white);
         }
 
-        // The console's mark sprite in the attack's hue (frame 1 for a spell).
+        // The console's mark sprite in the attack's hue (frame 1 for a
+        // spell); gilt for a whole fight, parchment for a wave.
         draw_sprite_ext(spr_ui_mark, _r.spell ? 1 : 0, _lx + 14, _y,
                         0.72, 0.72, 0, _bc, (_sel ? 1 : 0.75) * _a);
 
@@ -91,19 +92,19 @@ if (array_length(picks) <= 0) {
                           _sel ? COL_GILT_LIT : COL_PARCHMENT,
                           (_sel ? 1 : 0.78) * _a, 2);
 
-        // The attack's clock and its span of the boss's health bar.
+        // An attack's clock and its span of the boss's health bar; a whole
+        // fight's count of attacks.
         draw_set_halign(fa_right);
         draw_set_font(fnt_small());
         var _dim = merge_colour(COL_PARCHMENT, COL_ARCANE_LIT, 0.4);
-        draw_text_outline(_rx - 210, _y,
-                          string(floor(_r.time / FPS)) + "s",
-                          _sel ? COL_PARCHMENT : _dim,
+        var _span = _r[$ "span"];
+        draw_text_outline((_span != undefined) ? _rx - 210 : _rx, _y,
+                          _r.note, _sel ? COL_PARCHMENT : _dim,
                           (_sel ? 0.95 : 0.7) * _a, 2);
-        draw_text_outline(_rx, _y,
-                          string(round(_r.hp_from * 100)) + "% - "
-                          + string(round(_r.hp_to * 100)) + "%",
-                          _sel ? COL_PARCHMENT : _dim,
-                          (_sel ? 0.95 : 0.7) * _a, 2);
+        if (_span != undefined) {
+            draw_text_outline(_rx, _y, _span, _sel ? COL_PARCHMENT : _dim,
+                              (_sel ? 0.95 : 0.7) * _a, 2);
+        }
     }
 
     // Arrows at each end that has more list beyond it.

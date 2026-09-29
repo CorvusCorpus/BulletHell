@@ -8,7 +8,17 @@ if (enter_t > 0) {
     if (enter_t == 0) {
         var _r = rows[picks[pick]];
         // The request is passed to `obj_game` through a global.
-        global.practice = practice_new(stage, _r.boss_i, _r.phase_i);
+        switch (_r.kind) {
+            case "wave":
+                global.practice = practice_new_wave(stage, _r.wave_n);
+                break;
+            case "fight":
+                global.practice = practice_new_fight(stage, _r.boss_i);
+                break;
+            default:
+                global.practice = practice_new(stage, _r.boss_i, _r.phase_i);
+                break;
+        }
         room_goto(room_game);
     }
     exit;
@@ -22,15 +32,14 @@ if (_n > 0) {
     if (keyboard_check_pressed(vk_down)) pick = (pick + 1) mod _n;
     if (keyboard_check_pressed(vk_up))   pick = (pick + _n - 1) mod _n;
 
-    // Left/right jump to the next/previous boss's first attack.
+    // Left/right jump to the first entry under the next/previous heading.
     if (keyboard_check_pressed(vk_right) || keyboard_check_pressed(vk_left)) {
         sfx(Sfx.UiMove);
         var _dir = keyboard_check_pressed(vk_right) ? 1 : -1;
-        var _here = rows[picks[pick]].boss_i;
-        var _want = (_here + _dir + array_length(bosses))
-                    mod array_length(bosses);
+        var _here = rows[picks[pick]].sec;
+        var _want = (_here + _dir + sections) mod sections;
         for (var _i = 0; _i < _n; _i++) {
-            if (rows[picks[_i]].boss_i == _want) {
+            if (rows[picks[_i]].sec == _want) {
                 pick = _i;
                 break;
             }
