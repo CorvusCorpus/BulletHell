@@ -35,8 +35,9 @@ function boss_spawn(_x, _y, _hp, _phases, _def) {
         charged: false,
 
         declare_t: BOSS_DECLARE_TIME,
-        banner_t: 0,
-        eye_t: 0,
+        // Frames since a spell was declared, while its cut-in plays
+        // (`spell_cutin`); -1 otherwise.
+        cutin_t: -1,
         clear_t: 0,
         entry_t: BOSS_ENTRY_TIME,
 
@@ -115,8 +116,7 @@ function boss_act(_e, _g) {
         return;
     }
 
-    if (_b.banner_t > 0) _b.banner_t--;
-    if (_b.eye_t > 0) _b.eye_t--;
+    if (_b.cutin_t >= 0) boss_cutin_step(_b);
 
     if (_b.clear_t > 0) {
         _b.clear_t--;
@@ -344,7 +344,20 @@ function boss_holding(_e) {
     return (_b.drift_t mod _cyc) < BOSS_STEP_HOLD;
 }
 
-/// @desc Start attack `_i`. A spell gets a declaration (banner, eye card,
+/// @desc One frame of a spell's cut-in. It is drawn from `cutin_t`
+///       (`cutin_draw`); this sounds the declaration so its gong lands as the
+///       caster's eyes open, and shakes the field then.
+function boss_cutin_step(_b) {
+    _b.cutin_t++;
+    if (_b.cutin_t == CUTIN_OPEN_AT - CUTIN_CUE_LEAD) sfx(Sfx.SpellDeclare);
+    if (_b.cutin_t == CUTIN_OPEN_AT) {
+        fx_shake(11);
+        fx_flash_screen(c_white, 0.16);
+    }
+    if (_b.cutin_t >= CUTIN_TIME) _b.cutin_t = -1;
+}
+
+/// @desc Start attack `_i`. A spell gets a declaration (the cut-in, its
 ///       background, `BOSS_SPELL_LEAD` of held fire); a non-spell opens at
 ///       once.
 function boss_enter_phase(_e, _g, _i) {
@@ -364,12 +377,10 @@ function boss_enter_phase(_e, _g, _i) {
     _b.lead_t = 0;
     if (_p.kind == AttackKind.Spell) {
         _b.lead_t = BOSS_SPELL_LEAD;
-        _b.banner_t = BOSS_SPELL_BANNER;
-        _b.eye_t = BOSS_EYE_TIME;
-        fx_flash_screen(global.bullet_colour[_p.col], 0.5);
+        _b.cutin_t = 0;
+        sfx(Sfx.SpellCut);
+        fx_flash_screen(global.bullet_colour[_p.col], 0.3);
         fx_ring(_e.x, _e.y, 30, 640, 44, global.bullet_colour[_p.col], 1.0);
-        fx_shake(11);
-        sfx(Sfx.SpellDeclare);
         if (_g != undefined) {
             _g.spell_bg = _p.bg;
             // `[$ ]`: a boss def without `spell_bg` gets the fallback rather
@@ -385,6 +396,7 @@ function boss_enter_phase(_e, _g, _i) {
 function boss_end_phase(_e, _g, _beaten) {
     var _b = _e.boss;
     var _p = boss_phase(_e);
+    _b.cutin_t = -1;
 
     // Pull health down to the threshold even on a timeout, so the bar always
     // matches the attack the boss is on.
@@ -515,6 +527,15 @@ function boss_time_left(_e) {
 // ---------------------------------------------------------------------------
 
 /// @desc The boss: a sigil and glow under it, its sprite, and a hit flash.
+/// @desc The frame of a boss's sprite and how far it bobs this frame, as
+///       `[frame, bob]` (shared by `boss_draw` and the cut-in, which draws the
+///       boss again in front of its band).
+function boss_pose(_e) {
+    var _t = _e.t;
+    return [(_t div 7) mod sprite_get_number(_e.boss.def.sprite),
+            dsin(_t * 1.5) * 9];
+}
+
 ///       Frames advance every 7 game frames whatever the sprite says.
 function boss_draw(_e) {
     var _b = _e.boss;
@@ -543,9 +564,9 @@ function boss_draw(_e) {
     }
 
     var _spr = _b.def.sprite;
-    var _n = sprite_get_number(_spr);
-    var _fr = (_t div 7) mod _n;
-    var _bob = dsin(_t * 1.5) * 9;
+    var _pose = boss_pose(_e);
+    var _fr = _pose[0];
+    var _bob = _pose[1];
     draw_sprite_ext(_spr, _fr, _e.x, _e.y + _bob, 1, 1, 0, c_white, 1);
 
     if (_e.flash > 0) {

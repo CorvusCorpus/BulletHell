@@ -39,6 +39,7 @@ enum Sfx {
 
     BossAppear,
     Charge,
+    SpellCut,
     SpellDeclare,
     SpellBreak,
     SpellSurvive,
@@ -119,6 +120,9 @@ function audio_init(_on = true) {
     _t[Sfx.PlayerDown]  = sfx_cue(snd_player_down,  0.59, 60,  98, 0.00, 0.00);
 
     _t[Sfx.BossAppear]  = sfx_cue(snd_boss_appear,  0.57, 60,  90, 0.00, 0.00);
+    // A spell's cut-in opening, then its declaration (timed by
+    // `boss_cutin_step` to land as the caster's eyes open).
+    _t[Sfx.SpellCut]    = sfx_cue(snd_spell_cut,    0.53, 45,  94, 0.00, 0.00);
     _t[Sfx.SpellDeclare]= sfx_cue(snd_spell_declare,0.66, 45,  94, 0.00, 0.00);
     _t[Sfx.SpellBreak]  = sfx_cue(snd_spell_break,  0.65, 30,  88, 0.00, 0.00);
     _t[Sfx.SpellSurvive]= sfx_cue(snd_spell_survive,0.50, 30,  88, 0.00, 0.00);

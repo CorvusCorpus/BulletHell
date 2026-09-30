@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"cutin_table",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"cutin_table",
+  "parent":{
+    "name":"ui",
+    "path":"folders/Scripts/ui.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

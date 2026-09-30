@@ -64,7 +64,7 @@ function draft_boss_def() {
         title: "a pattern in search of a caster",
         // Placeholder: Ziggy's art.
         sprite: spr_boss_ziggy,
-        eye: spr_eye_ziggy,
+        cutin: spr_cutin_mika,      // placeholder: Mika's, until it has its own
         // `boss_draw` tints only the aura and sigil with this.
         col: BCOL_VIOLET,
         radius: 62,

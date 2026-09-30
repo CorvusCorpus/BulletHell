@@ -726,8 +726,8 @@ function player_draw_bomb(_p) {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc His close-up on the GUI layer while the special goes off, through the
-///       same `draw_eye_card` a boss's spell uses.
+/// @desc His close-up on the GUI layer while the special goes off
+///       (`draw_eye_card`).
 function player_draw_card(_p) {
     if (_p.card_t <= 0) return;
     draw_eye_card(spr_eye_szuix, _p.card_t / PLAYER_CARD_TIME);

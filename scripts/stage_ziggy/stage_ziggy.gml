@@ -135,7 +135,7 @@ function ziggy_midboss_def() {
         name: "THE WARDEN",
         title: "a stone that was told to watch",
         sprite: spr_foe_sentry,
-        eye: spr_eye_ziggy,
+        cutin: spr_cutin_mika,      // placeholder: Mika's, until it has its own
         col: BCOL_AMBER,
         radius: 46,
         spell_bg: SPELLBG_SIGIL,
@@ -213,7 +213,7 @@ function ziggy_def() {
         name: "ZIGGY",
         title: "the imp who never backed down",
         sprite: spr_boss_ziggy,
-        eye: spr_eye_ziggy,
+        cutin: spr_cutin_mika,      // placeholder: Mika's, until it has its own
         col: BCOL_CRIMSON,
         radius: 62,
         spell_bg: SPELLBG_BRIMSTONE,

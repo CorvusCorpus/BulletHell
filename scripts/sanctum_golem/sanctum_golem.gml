@@ -51,7 +51,6 @@ function golem_def() {
         name: "THE SAND GOLEM",
         title: "keeper of the hall's door",
         sprite: spr_golem_body,
-        eye: spr_eye_mika,          // never shown: it casts no spells
         col: BCOL_AMBER,
         radius: 78,
         spell_bg: SPELLBG_SIGIL,

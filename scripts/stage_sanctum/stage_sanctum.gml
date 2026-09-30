@@ -138,7 +138,7 @@ function mika_def() {
         name: "MIKA",
         title: "head mage to the Living God of Death",
         sprite: spr_boss_mika,
-        eye: spr_eye_mika,
+        cutin: spr_cutin_mika,      // the spell cut-in's portrait
         col: BCOL_GOLD,
         radius: 64,
         spell_bg: SPELLBG_SIGIL,

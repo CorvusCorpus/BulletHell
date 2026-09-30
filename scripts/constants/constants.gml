@@ -114,7 +114,7 @@
 #macro BOMB_SIGIL_OUT 116      // the frame the circle has finished fading
 
 // The close-up of Szuix shown as he casts (see `draw_eye_card`).
-#macro PLAYER_CARD_TIME BOSS_EYE_TIME
+#macro PLAYER_CARD_TIME (1.5 * FPS)
 
 // The grace dial round the player (see `player_draw_grace`): its radius at
 // full and at empty, and the share of the grace left when it starts to
@@ -325,12 +325,11 @@
 
 // The READY beat before a practised attack starts.
 #macro PRACTICE_READY (2 * FPS)
-#macro BOSS_SPELL_BANNER (2.6 * FPS)   // how long the spell name holds
-#macro BOSS_EYE_TIME (1.5 * FPS)       // the eye card
 
-// How long a spell declares itself before its pattern opens: the eye card's
-// length. The boss is invulnerable and the phase clock stopped through it.
-#macro BOSS_SPELL_LEAD BOSS_EYE_TIME
+// How long a spell declares itself before its pattern opens: its cut-in's
+// band (`spell_cutin`). The boss is invulnerable and the phase clock stopped
+// through it.
+#macro BOSS_SPELL_LEAD CUTIN_BAND_TIME
 
 // How long before an attack's first shots its boss's charge cue starts
 // (`boss_charge`). The cue is the Hex's 1.8s pull, loudest early and fading
@@ -621,8 +620,8 @@ enum EnemyKind {
 
 /// One entry in a boss's attack table.
 enum AttackKind {
-    NonSpell,   // a basic attack: no banner, no background change
-    Spell,      // named, with a banner, an eye card and the boss's background
+    NonSpell,   // a basic attack: no cut-in, no background change
+    Spell,      // named, with a cut-in and the boss's background
 }
 
 /// How a boss moves during one attack; set per attack with the phase's

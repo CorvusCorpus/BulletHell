@@ -43,7 +43,7 @@ SCENES = (
     "peril",        # one hit from death: the heartbeat warning, in a pattern
     "midboss",      # the midboss and its pattern
     "declare",      # the boss introduction splash
-    "spell",        # a named spell: banner, eye card, changed background
+    "spell",        # a named spell: its cut-in, changed background
     "boss",         # a boss non-spell pattern with the health bar mid-fight
     "laser",        # telegraphed beam lasers, warning lines live
     "rays",         # moving ray lasers
@@ -85,6 +85,7 @@ SCENES = (
     "rope_lab",
 
     "title_card",    # stage three's title card, played at once (use --burst)
+    "cutin",         # Mika declaring a spell: the cut-in (use --burst)
     "golem_n1",      # the sand golem's three non-spells, five seconds in
     "golem_n2",
     "golem_n3",

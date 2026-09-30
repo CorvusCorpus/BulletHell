@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Ziggy (the first boss) and his eye card. Placeholder art drawn from
-primitives.
+"""Ziggy (the first boss). Placeholder art drawn from primitives. (His spells
+show Mika's cut-in portrait until he has his own: see `make_mika.py`.)
 
 Any replacement must keep the contract: the sprite's size, frame count, frame
 order and origin, and drawn facing the player (down the screen; Szuix is a
@@ -299,181 +299,6 @@ def build_frame(i, frames):
     return A.add(result, rim)
 
 
-# ---------------------------------------------------------------------------
-# The eye card
-# ---------------------------------------------------------------------------
-
-def eye_card(w=1280, h=420):
-    """The eye card shown when he declares a spell: a close-up of his face
-    cropped so the horns and ears run off the edges, drawn directly at card
-    size rather than by scaling the sprite.
-    """
-    cx, cy = w / 2.0, h / 2.0
-
-    # The glow is taken from the eyes' own layer (taking it from the whole
-    # card's alpha tinted everything).
-    ground = A.Canvas(w, h, ss=2)
-    ground.rect([0, 0, w, h], fill=A.rgba((14, 6, 9), 255))
-    for i in range(30):
-        t = 1.0 - i / 29.0
-        r = h * (0.20 + 1.7 * t)
-        ground.ellipse([cx - r * 2.2, cy - r, cx + r * 2.2, cy + r],
-                       fill=A.rgba(A.mix((14, 6, 9), SKIN_DARK, 1 - t), 26))
-    for i in range(28):
-        ang = math.radians(i * 12.85 + 6)
-        r0, r1 = h * 0.14, h * 2.4
-        wide = h * 0.048
-        ground.polygon([(cx + math.cos(ang) * r0, cy + math.sin(ang) * r0),
-                        (cx + math.cos(ang) * r1 - math.sin(ang) * wide,
-                         cy + math.sin(ang) * r1 + math.cos(ang) * wide),
-                        (cx + math.cos(ang) * r1 + math.sin(ang) * wide,
-                         cy + math.sin(ang) * r1 - math.cos(ang) * wide)],
-                       fill=A.rgba(SKIN, 26))
-
-    S = 2.0
-
-    def px(v):
-        return v * S
-
-    # ---- the face, as one silhouette so it shades as one head -------------
-    fm = Image.new("L", (int(w * S), int(h * S)), 0)
-    fd = ImageDraw.Draw(fm)
-
-    # The skull is taller than the card, so it crops top and bottom; `hcy`
-    # puts the eyes in the middle of the card.
-    hcx, hcy = cx, cy + h * 0.60
-    hrx, hry = w * 0.215, h * 1.02
-    fd.ellipse([px(hcx - hrx), px(hcy - hry), px(hcx + hrx), px(hcy + hry)],
-               fill=255)
-
-    # Ears, huge and swept back, running off the sides of the frame.
-    for sign in (-1, 1):
-        fd.polygon([(px(hcx + sign * hrx * 0.88), px(cy - h * 0.24)),
-                    (px(hcx + sign * hrx * 1.76), px(cy - h * 0.62)),
-                    (px(hcx + sign * hrx * 1.62), px(cy - h * 0.02)),
-                    (px(hcx + sign * hrx * 0.94), px(cy + h * 0.14))],
-                   fill=255)
-    face = A.shade_shape(fm, SKIN, core=A.shade(SKIN, 0.45), core_frac=0.30,
-                         edge_frac=0.26, spec=False)
-
-    # Horns, over the skull and out of the top of the frame.
-    hm = Image.new("L", (int(w * S), int(h * S)), 0)
-    hd = ImageDraw.Draw(hm)
-    for sign in (-1, 1):
-        p0 = (hcx + sign * hrx * 0.66, cy - h * 0.30)
-        p1 = (hcx + sign * hrx * 1.70, cy - h * 0.78)
-        p2 = (hcx + sign * hrx * 0.90, cy - h * 1.20)
-        for i in range(30):
-            t = i / 29.0
-            u = 1 - t
-            qx = u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0]
-            qy = u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]
-            rr = (h * 0.115) * (1 - t) ** 0.8 + h * 0.012
-            hd.ellipse([px(qx - rr), px(qy - rr), px(qx + rr), px(qy + rr)],
-                       fill=255)
-    horns = A.shade_shape(hm, HORN, core=A.shade(HORN, 0.45), core_frac=0.34,
-                          edge_frac=0.28, spec=False)
-
-    # Hair: a mass across the crown with spikes out of the top of the frame.
-    am = Image.new("L", (int(w * S), int(h * S)), 0)
-    ad = ImageDraw.Draw(am)
-    ad.ellipse([px(hcx - hrx * 1.02), px(cy - h * 0.90),
-                px(hcx + hrx * 1.02), px(cy - h * 0.22)], fill=255)
-    rnd = np.random.default_rng(9)
-    for i in range(11):
-        t = i / 10.0
-        ax = hcx + (t - 0.5) * hrx * 2.1
-        ay = cy - h * 0.52 + abs(t - 0.5) * h * 0.30
-        lift = h * rnd.uniform(0.30, 0.55)
-        lean = w * rnd.uniform(-0.02, 0.02)
-        ad.polygon([(px(ax - w * 0.030), px(ay + h * 0.10)),
-                    (px(ax + lean), px(ay - lift)),
-                    (px(ax + w * 0.030), px(ay + h * 0.10))], fill=255)
-    hair = A.shade_shape(am, (74, 62, 82), core=(120, 108, 132),
-                         core_frac=0.22, edge_frac=0.34, spec=False)
-
-    # ---- the eyes ---------------------------------------------------------
-    eyes = A.Canvas(w, h, ss=2)
-    for sign in (-1, 1):
-        ex = cx + sign * w * 0.132
-        ey = cy + h * 0.02
-        rx, ry = w * 0.100, h * 0.175
-
-        # Built at the right-hand eye and mirrored for the left (building at
-        # `ex`, already the left centre, then mirroring put both on one side).
-        rex = cx + w * 0.132
-        lid = [(rex - rx, ey + ry * 0.12),
-               (rex - rx * 0.42, ey - ry),
-               (rex + rx * 0.58, ey - ry * 0.78),
-               (rex + rx, ey + ry * 0.28),
-               (rex + rx * 0.32, ey + ry),
-               (rex - rx * 0.58, ey + ry * 0.86)]
-        if sign < 0:
-            lid = [(2 * cx - qx, qy) for qx, qy in lid]
-        eyes.polygon(lid, fill=A.rgba(EYE, 255))
-        eyes.polygon(lid + [lid[0]], outline=A.rgba((52, 18, 14), 255))
-        eyes.ellipse([ex - rx * 0.12, ey - ry * 0.88,
-                      ex + rx * 0.12, ey + ry * 0.88],
-                     fill=(14, 7, 10, 255))
-        # The specular is on the lit side, which mirrors with the eye, so the
-        # box is sorted (PIL rejects an inverted box).
-        sx0 = ex - sign * rx * 0.44
-        sx1 = ex - sign * rx * 0.12
-        eyes.ellipse([min(sx0, sx1), ey - ry * 0.56,
-                      max(sx0, sx1), ey - ry * 0.06],
-                     fill=(255, 255, 255, 215))
-
-    # Brows, heavy and angled in, in the hair's colour.
-    brows = A.Canvas(w, h, ss=2)
-    for sign in (-1, 1):
-        ex = cx + sign * w * 0.132
-        ey = cy + h * 0.02
-        rx, ry = w * 0.100, h * 0.175
-        brows.polygon([(ex - sign * rx * 1.05, ey - ry * 1.42),
-                       (ex + sign * rx * 1.10, ey - ry * 2.00),
-                       (ex + sign * rx * 1.12, ey - ry * 1.52),
-                       (ex - sign * rx * 1.00, ey - ry * 1.02)],
-                      fill=A.rgba((32, 24, 36), 255))
-
-    # The grin, low in the frame and running off the bottom.
-    mouth = A.Canvas(w, h, ss=2)
-    mw, mh = w * 0.20, h * 0.20
-    my = cy + h * 0.46
-    mouth.pieslice([cx - mw, my - mh, cx + mw, my + mh], 6, 174,
-                   fill=(40, 12, 16, 255))
-    for i in range(5):
-        t = (i + 0.5) / 5.0
-        fx = cx - mw * 0.78 + t * mw * 1.56
-        drop = h * (0.085 - abs(t - 0.5) * 0.075)
-        mouth.polygon([(fx - w * 0.019, my + h * 0.004),
-                       (fx + w * 0.019, my + h * 0.004),
-                       (fx, my + drop + h * 0.02)], fill=A.rgba(BONE, 255))
-
-    eye_img = eyes.finish()
-    glow = Image.new("RGBA", (w, h), A.rgba(EYE, 0))
-    glow.putalpha(eye_img.getchannel("A")
-                         .filter(ImageFilter.GaussianBlur(30))
-                         .point(lambda v: int(v * 0.62)))
-
-    out = ground.finish()
-    out.alpha_composite(face.resize((w, h), Image.LANCZOS))
-    out.alpha_composite(mouth.finish())
-    out.alpha_composite(hair.resize((w, h), Image.LANCZOS))
-    out.alpha_composite(horns.resize((w, h), Image.LANCZOS))
-    out = A.add(out, glow)
-    out.alpha_composite(eye_img)
-    out.alpha_composite(brows.finish())
-
-    # A vignette, so the card's edges fade.
-    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
-    edge = np.minimum(np.minimum(xs, w - 1 - xs) / (w * 0.13),
-                      np.minimum(ys, h - 1 - ys) / (h * 0.16))
-    fade = np.clip(edge, 0, 1) ** 0.9
-    arr = np.asarray(out, dtype=np.float32)
-    arr[..., 3] *= fade
-    return Image.fromarray(arr.astype(np.uint8), "RGBA")
-
-
 def main():
     gm_new.folder("Sprites/boss")
 
@@ -481,15 +306,9 @@ def main():
     gm_new.sprite("spr_boss_ziggy", frames, origin="center",
                   folder="Sprites/boss", fps=8.0)
 
-    card = eye_card()
-    gm_new.sprite("spr_eye_ziggy", [card], origin="center",
-                  folder="Sprites/boss")
-
     A.preview(frames, os.path.join(A.PREVIEW, "boss_ziggy.png"), cols=6,
               bg=(26, 20, 26))
-    card.save(os.path.join(A.PREVIEW, "eye_ziggy.png"))
-    print("ziggy: %d frames of %dx%d, eye card %dx%d"
-          % (len(frames), W, H, card.width, card.height))
+    print("ziggy: %d frames of %dx%d" % (len(frames), W, H))
 
 
 if __name__ == "__main__":

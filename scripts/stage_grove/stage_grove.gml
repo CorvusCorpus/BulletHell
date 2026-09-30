@@ -144,7 +144,7 @@ function grove_midboss_def() {
         title: "something she left standing",
         // Placeholder art: stage one's stone sentry.
         sprite: spr_foe_sentry,
-        eye: spr_eye_ziggy,
+        cutin: spr_cutin_mika,      // placeholder: Mika's, until it has its own
         col: BCOL_JADE,
         radius: 46,
         spell_bg: SPELLBG_GROVE,
@@ -212,7 +212,7 @@ function velka_def() {
         name: "VELKA",
         title: "the fox who keeps the grove's dead",
         sprite: spr_boss_ziggy,       // placeholder art
-        eye: spr_eye_ziggy,
+        cutin: spr_cutin_mika,      // placeholder: Mika's, until it has its own
         col: BCOL_VIOLET,
         radius: 62,
         spell_bg: SPELLBG_GROVE,

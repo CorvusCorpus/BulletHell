@@ -569,10 +569,10 @@ function draw_arc_band(_x, _y, _r_in, _r_out, _from, _to, _colour, _a_from,
     draw_primitive_end();
 }
 
-/// @desc The eye card (a close-up of the caster's face), used for both a
-///       boss's spell declaration and Szuix's sigil. Drawn translucent in the
-///       upper part of the field, not full-screen, so it doesn't hide the
-///       pattern. `_t` runs from 1 down to 0.
+/// @desc The eye card (a close-up of Szuix's face) shown as he spends a
+///       sigil. Drawn translucent in the upper part of the field, not
+///       full-screen, so it doesn't hide the pattern. `_t` runs from 1 down
+///       to 0. (A boss's spell has its cut-in instead: `spell_cutin`.)
 function draw_eye_card(_spr, _t) {
     if (_t <= 0) return;
     var _a = min(1, _t * 2.4) * 0.80;

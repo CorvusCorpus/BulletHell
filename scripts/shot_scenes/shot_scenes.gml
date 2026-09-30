@@ -20,7 +20,8 @@ function shot_scene_list() {
               "grove_boss", "grove_spell",
               "sanctum", "mika_attacks",
               "hall_a", "hall_b", "hall_turn", "hall_arrive",
-              "rope_lab", "title_card", "golem_n1", "golem_n2", "golem_n3"];
+              "rope_lab", "title_card", "cutin",
+              "golem_n1", "golem_n2", "golem_n3"];
     var _n = array_length(mika_slots());
     for (var _i = 0; _i < _n; _i++) {
         array_push(_l, shot_mika_scene(_i));
@@ -168,6 +169,7 @@ function shot_scene_prepare(_name) {
         case "hall_b":
         case "hall_arrive":
         case "title_card":
+        case "cutin":
         case "golem_n1":
         case "golem_n2":
         case "golem_n3":
@@ -375,7 +377,7 @@ function shot_pose(_scene, _g) {
             return 2 + BOSS_DECLARE_TIME - 70;
 
         case "spell":
-            // During the spell's banner and eye card (the field is empty,
+            // During the spell's cut-in (the field is empty,
             // since a spell doesn't fire until the declaration ends).
             shot_boss(_g, 1, ziggy_spawn);
             _g.player.x = FIELD_CX + 80;
@@ -545,6 +547,18 @@ function shot_pose(_scene, _g) {
             title_card_start(_g.title, _g.def);
             return 150;
 
+        case "cutin":
+            // Mika declaring his first spell, the shutter on the declaration
+            // itself. Best taken as a burst (it runs `CUTIN_TIME` frames).
+            _g.bg.intro = 1;
+            shot_boss(_g, 1, mika_spawn);
+            _g.hud.rig = 1;
+            _g.hud.rig_seen = 1;
+            _g.player.x = FIELD_CX + 120;
+            _g.player.y = FIELD_Y1 - 240;
+            _g.player.untouchable = true;
+            return 0;
+
         case "golem_n1":
         case "golem_n2":
         case "golem_n3":
@@ -647,6 +661,7 @@ function shot_tick(_scene, _g, _t) {
 
     switch (_scene) {
         case "title_card":
+        case "cutin":
         case "golem_n1":
         case "golem_n2":
         case "golem_n3":

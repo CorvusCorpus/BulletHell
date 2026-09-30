@@ -20,7 +20,7 @@ if (_boss != undefined) {
     }
     // Hidden under the practice result panel, which already names the attack
     // (the phase index doesn't change until `clear_t` runs out).
-    if (!(_over && practice != undefined)) hud_draw_spell(_boss);
+    if (!(_over && practice != undefined)) cutin_draw(hud, _boss);
 
     // The READY count before a practised attack (`phase < 0` only then).
     if (practice != undefined && practice.mode == PracticeMode.Attack
@@ -30,7 +30,7 @@ if (_boss != undefined) {
     }
 }
 
-// Szuix's eye card when he bombs; after the boss's so it is on top.
+// Szuix's eye card when he bombs; after the boss's cut-in so it is on top.
 player_draw_card(player);
 
 fx_draw_text();

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Mika, stage three's boss, cut out of the owner's own reference sheet, plus
-his eye card and an idle GIF.
+his spell cut-in portrait and an idle GIF.
 
 The source is `tools/source/mika_ref.png` (the owner's drawing; reproduce it
 faithfully). The work is extraction: key out the flat background, find the
@@ -27,6 +27,8 @@ from collections import deque
 
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from scipy import ndimage
+from scipy.spatial import ConvexHull
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -44,7 +46,15 @@ H = 208
 # Twelve frames: `boss_draw` holds each frame for seven game frames, so this
 # is an idle loop of about 1.4 seconds.
 FRAMES = 12
-CARD_W, CARD_H = 1280, 420
+
+# The spell cut-in's portrait (`scripts/spell_cutin`): his face from the
+# sheet, scaled by `CUTIN_SCALE` game pixels per sheet pixel. Its centre (the
+# origin) sits on the band's centre line, `CUTIN_LIFT` sheet pixels above the
+# midpoint of his eyes, so the band shows his forehead ring down to his nose.
+# It is larger than the band so the band can slide and zoom over it.
+CUTIN_W, CUTIN_H = 1500, 640
+CUTIN_SCALE = 1.22
+CUTIN_LIFT = 40
 
 # Keying. `KEY_TOL` is how far a pixel may be from the sheet's background
 # colour and still count as background; `KEY_SOFT` is the band above it that
@@ -147,14 +157,22 @@ def largest_mass(alpha, scale=8):
     return np.asarray(grown, dtype=np.float32) / 255.0
 
 
-def cut_out():
-    """The sheet, keyed and masked to the figure, cropped tight."""
+def keyed_sheet():
+    """The whole sheet as a float array, its alpha keyed and masked to the
+    figure (not cropped, so it keeps the sheet's coordinates), and the
+    background colour that was keyed out."""
     sheet = load_sheet()
     alpha = key_background(sheet)
     alpha = alpha * largest_mass(alpha)
 
     arr = np.asarray(sheet, dtype=np.float32).copy()
     arr[..., 3] = alpha * 255.0
+    return arr, arr[0, 0, :3].copy()
+
+
+def cut_out():
+    """The sheet, keyed and masked to the figure, cropped tight."""
+    arr, _ = keyed_sheet()
     cut = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
 
     box = cut.getbbox()
@@ -481,97 +499,256 @@ BLINK = {8: 0.55, 9: 1.0, 10: 0.5}
 
 
 # ---------------------------------------------------------------------------
-# The eye card
+# The spell cut-in
+#
+# Two frames of his face for `scripts/spell_cutin`: frame 0 with his eyes shut,
+# frame 1 as the sheet draws him. The cut-in snaps from one to the other, as
+# anime does, so a commissioned pair can replace these one for one. Each
+# frame is transparent round his head, where the band's own ground shows.
 # ---------------------------------------------------------------------------
 
-def head_crop(cut):
-    """His head from the full figure, and where his eyes are in it. The head's
-    horizontal span is taken from the ears (the topmost ink; a plain top slice
-    also catches the tail), and the eye line is the centroid of the strongly
-    blue pixels.
-    """
-    a = np.asarray(cut.getchannel("A"), dtype=np.float32)
-    h, w = a.shape
+LID_INK = (14, 10, 18)       # the sheet's line work
 
-    ear_rows = a[:max(1, int(h * 0.07))]
-    cols = np.nonzero(ear_rows.sum(axis=0) > 0)[0]
-    if len(cols) == 0:
-        x0, x1 = 0, w
-    else:
-        span = cols[-1] - cols[0]
-        pad = span * 0.28
-        x0 = int(max(0, cols[0] - pad))
-        x1 = int(min(w, cols[-1] + pad))
 
-    y1 = int(h * 0.34)
-    head = cut.crop((x0, 0, x1, y1))
-
-    arr = np.asarray(head, dtype=np.float32)
+def find_eyes(arr):
+    """His two eyes on the keyed sheet, left one first: each the connected
+    mass of strongly blue pixels (nothing else on him is blue, and the
+    legend's swatch is keyed away with the page). Each is `{box, mask, c}`:
+    its bounding box, its pixels inside that box, and its centre."""
     blue = ((arr[..., 2] > 140) & (arr[..., 2] - arr[..., 0] > 60)
             & (arr[..., 2] - arr[..., 1] > 25) & (arr[..., 3] > 128))
-    if blue.any():
-        ys, xs = np.nonzero(blue)
-        eye = (float(xs.mean()), float(ys.mean()))
-    else:
-        eye = (head.width * 0.5, head.height * 0.62)
-    return head, eye
+    lab, n = ndimage.label(blue)
+    if n < 2:
+        raise SystemExit("couldn't find both of his eyes on the sheet")
+    sizes = ndimage.sum(blue, lab, range(1, n + 1))
+    eyes = []
+    for sl, i in ((ndimage.find_objects(lab)[k], k + 1)
+                  for k in np.argsort(sizes)[::-1][:2]):
+        m = lab[sl] == i
+        ys, xs = np.nonzero(m)
+        eyes.append({
+            "box": (sl[1].start, sl[0].start, sl[1].stop, sl[0].stop),
+            "mask": m,
+            "c": (sl[1].start + xs.mean(), sl[0].start + ys.mean()),
+        })
+    eyes.sort(key=lambda e: e["c"][0])
+    return eyes
 
 
-def eye_card(cut):
-    """His eye card: a crop of his own face at the resolution it was drawn,
-    centred on his eyes, over a dark ground with gold rays and rings, fading at
-    the edges.
+def eye_glow_colour(arr, eyes):
+    """The blue his eyes glow: the mean of their brightest pixels."""
+    px = []
+    for e in eyes:
+        x0, y0, x1, y1 = e["box"]
+        px.append(arr[y0:y1, x0:x1, :3][e["mask"]])
+    px = np.concatenate(px)
+    lum = px.sum(axis=1)
+    return tuple(int(v) for v in px[lum >= np.percentile(lum, 75)].mean(0))
+
+
+def shut_eye(arr, eye, outer_left, glow):
+    """Paint one eye shut, in place.
+
+    The eye, the line round it and the blue haze it throws are painted over
+    with fur: a plane fitted to the fur round the eye (gold and line work left
+    out of the fit), feathered in. The closed lid is then one bold tapered
+    line low across the eye, heaviest toward the outer corner and flicking up
+    past it. His fur is nearly as dark as the line, so the lid's fold is lit
+    above it and a thread of his eyes' glow shows in the seam under it.
+    `outer_left` says which end is the outer corner.
     """
-    cx, cy = CARD_W / 2.0, CARD_H / 2.0
-    head, eye = head_crop(cut)
+    pad = 34
+    x0, y0, x1, y1 = eye["box"]
+    patch = arr[y0 - pad:y1 + pad, x0 - pad:x1 + pad]
+    rgb = patch[..., :3]
+    ph, pw = rgb.shape[:2]
 
-    scale = (CARD_H * 1.75) / head.height
-    head = head.resize((max(1, int(head.width * scale)),
-                        max(1, int(head.height * scale))), Image.LANCZOS)
-    eye = (eye[0] * scale, eye[1] * scale)
+    # The eye's whole almond: the convex hull of its blue, since the slit
+    # pupil isn't blue and opens onto the rim.
+    ey, ex = np.nonzero(eye["mask"])
+    hull = ConvexHull(np.stack([ex, ey], 1))
+    ss = 4
+    hm = Image.new("L", (pw * ss, ph * ss), 0)
+    ImageDraw.Draw(hm).polygon(
+        [((ex[v] + pad + 0.5) * ss, (ey[v] + pad + 0.5) * ss)
+         for v in hull.vertices], fill=255)
+    em = np.asarray(hm.resize((pw, ph), Image.BOX)) > 127
 
-    # The ground and its ornament are separate layers, then composited:
-    # `ImageDraw` on RGBA replaces pixels rather than blending, so drawing
-    # translucent rings directly on the ground would punch holes in it.
-    ground = A.Canvas(CARD_W, CARD_H, ss=2)
-    ground.rect([0, 0, CARD_W, CARD_H], fill=A.rgba((7, 6, 11), 255))
-    for i in range(30):
-        t = 1.0 - i / 29.0
-        r = CARD_H * (0.20 + 1.7 * t)
-        ground.ellipse([cx - r * 2.2, cy - r, cx + r * 2.2, cy + r],
-                       fill=A.rgba(A.mix((7, 6, 11), (34, 26, 12), 1 - t),
-                                   255))
+    # Gold, and the warm edge where gold is anti-aliased into the fur.
+    gold = rgb[..., 0] - rgb[..., 2] > 22
+    lum = rgb.mean(axis=2)
+    bluish = rgb[..., 2] - rgb[..., 0] > 14
+    # Everything near the eye but gold: the line round it is thick under the
+    # markings, and a remnant of it outlines the almond again.
+    region = ((ndimage.binary_dilation(em, iterations=12)
+               | (ndimage.binary_dilation(em, iterations=18) & bluish))
+              & ~gold)
+    feather = np.clip(ndimage.distance_transform_edt(region) / 3.0, 0, 1)
 
-    # Rays and concentric rings (his ring motif).
-    deco = A.Canvas(CARD_W, CARD_H, ss=2)
-    for i in range(24):
-        a = math.radians(i * 15 + 7)
-        r0, r1 = CARD_H * 0.30, CARD_H * 2.2
-        wide = CARD_H * 0.030
-        deco.polygon([(cx + math.cos(a) * r0, cy + math.sin(a) * r0),
-                      (cx + math.cos(a) * r1 - math.sin(a) * wide,
-                       cy + math.sin(a) * r1 + math.cos(a) * wide),
-                      (cx + math.cos(a) * r1 + math.sin(a) * wide,
-                       cy + math.sin(a) * r1 - math.cos(a) * wide)],
-                     fill=A.rgba(GOLD, 60))
-    for i in range(9):
-        r = CARD_H * (0.30 + i * 0.30)
-        deco.ellipse([cx - r * 1.5, cy - r, cx + r * 1.5, cy + r],
-                     outline=A.rgba(GOLD, 150),
-                     width=max(1, int(CARD_H * 0.008)))
+    ring = (ndimage.binary_dilation(region, iterations=10) & ~region & ~gold
+            & ~bluish & (lum >= 16) & (lum < 70))
+    ry, rx = np.nonzero(ring)
+    basis = np.stack([rx, ry, np.ones_like(rx)], 1).astype(np.float32)
+    coef = np.linalg.lstsq(basis, rgb[ring], rcond=None)[0]
+    gy, gx = np.mgrid[0:ph, 0:pw].astype(np.float32)
+    fur = gx[..., None] * coef[0] + gy[..., None] * coef[1] + coef[2]
+    # A little grain, or the patch is smoother than the painted fur round it.
+    rnd = np.random.default_rng(int(x0))
+    fur += (ndimage.gaussian_filter(rnd.normal(0, 1, (ph, pw)), 1.3)
+            * 3.0)[..., None]
+    rgb[...] = rgb * (1 - feather[..., None]) + fur * feather[..., None]
 
-    out = ground.finish()
-    out.alpha_composite(deco.finish())
-    # Placed so his eyes are at the card's centre.
-    out.alpha_composite(head, (int(cx - eye[0]), int(cy - eye[1])))
+    # The lid line: a smooth curve across the middle of the eye, a little
+    # nearer its lower rim, corner to corner.
+    ys, xs = np.nonzero(em)
+    cols = np.arange(xs.min(), xs.max() + 1).astype(np.float32)
+    top = np.array([ys[xs == c].min() for c in cols.astype(int)], np.float32)
+    bot = np.array([ys[xs == c].max() for c in cols.astype(int)], np.float32)
+    line_y = np.polyval(np.polyfit(cols, bot - 0.40 * (bot - top), 2), cols)
+    pts = np.stack([cols, line_y], 1)
+    u = np.linspace(0.0, 1.0, len(cols))
+    along = u if outer_left else 1 - u          # 0 at the outer corner
+    w = 1.6 + 8.5 * np.sin(np.pi * along) ** 0.65 * (1.0 - 0.4 * along)
 
-    ys, xs = np.mgrid[0:CARD_H, 0:CARD_W].astype(np.float32)
-    edge = np.minimum(np.minimum(xs, CARD_W - 1 - xs) / (CARD_W * 0.13),
-                      np.minimum(ys, CARD_H - 1 - ys) / (CARD_H * 0.16))
-    fade = np.clip(edge, 0, 1) ** 0.9
-    arr = np.asarray(out, dtype=np.float32)
-    arr[..., 3] *= fade
-    return Image.fromarray(arr.astype(np.uint8), "RGBA")
+    d = np.gradient(pts, axis=0)
+    d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-6)
+    nrm = np.stack([-d[:, 1], d[:, 0]], 1)
+    stroke = [tuple(p) for p in pts + nrm * (w / 2)[:, None]] +              [tuple(p) for p in (pts - nrm * (w / 2)[:, None])[::-1]]
+
+    # The flick: on past the outer corner, turning upward, tapering out.
+    k = 0 if outer_left else len(pts) - 1
+    end = pts[k]
+    back = pts[min(len(pts) - 1, max(0, k + (10 if outer_left else -10)))]
+    fd = (end - back) / max(np.linalg.norm(end - back), 1e-6)
+    fd = fd + np.array([0.0, -0.6])
+    fd /= np.linalg.norm(fd)
+    fn = np.array([-fd[1], fd[0]])
+    flick = [tuple(end + fn * 2.0), tuple(end - fn * 2.0),
+             tuple(end + fd * 26.0)]
+
+    m = Image.new("L", (pw * ss, ph * ss), 0)
+    dr = ImageDraw.Draw(m)
+    for poly in (stroke, flick):
+        dr.polygon([(x * ss, y * ss) for x, y in poly], fill=255)
+    line = np.asarray(m.resize((pw, ph), Image.BOX), np.float32) / 255.0
+
+    def shifted(a, dy):
+        return ndimage.shift(a, (dy, 0.0), order=1)
+
+    fold = np.clip(ndimage.gaussian_filter(shifted(line, -5.0), 2.5) - line,
+                   0, 1) * 0.55 * feather
+    # The glow is strongest mid-eye and gone at the corners.
+    across = np.zeros(pw, np.float32)
+    ci = cols.astype(int)
+    across[ci] = np.sin(np.pi * u) ** 0.8
+    seam = np.clip(shifted(line, 1.8) - line, 0, 1) * across[None, :]
+    halo = ndimage.gaussian_filter(seam, 3.5) * 0.45
+    lit = np.asarray(fur.mean(axis=(0, 1)), np.float32) + (38, 36, 54)
+    hot = np.asarray(glow, np.float32)
+    thread = hot + (255 - hot) * 0.35
+
+    def over(col, a):
+        rgb[...] = rgb * (1 - a[..., None]) + np.asarray(col) * a[..., None]
+
+    over(lit, fold)
+    rgb[...] = rgb + hot * halo[..., None]
+    over(np.array(LID_INK, np.float32), line)
+    rgb[...] = rgb + thread * (seam * 0.8)[..., None]
+    np.clip(rgb, 0, 255, out=rgb)
+
+
+def clean_edge(arr, bg):
+    """Take the page's colour out of his outline. The key gives full alpha to
+    anything much darker than the page, so the outline's anti-aliasing comes
+    out brown. There the foreground is always his black line work, so each
+    pixel near the edge is re-matted as a mix of line and page."""
+    a = arr[..., 3] / 255.0
+    near = (ndimage.binary_dilation(a < 0.5, iterations=4) & (a > 0.0))
+    ink = np.array(LID_INK, np.float32)
+    axis = ink - bg
+    c = arr[..., :3] - bg[None, None, :]
+    t = (c @ axis) / float(axis @ axis)
+    off = np.linalg.norm(c - t[..., None] * axis[None, None, :], axis=2)
+    # His fur lies on the same line, most of the way to the ink, so only
+    # pixels clearly paler than it are re-matted.
+    fix = near & (off < 48) & (t < 0.8)
+    arr[..., 3] = np.where(fix, np.clip(t / 0.8, 0, 1) * 255.0, arr[..., 3])
+    arr[..., :3] = np.where(fix[..., None], ink[None, None, :], arr[..., :3])
+
+
+def cutin_frames(arr, bg):
+    """The two frames, eyes shut then open, and his eyes measured in the
+    frame: `(frames, eyes, glow)` where each eye is `(x, y, rx, ry)` from the
+    frame's centre in game pixels."""
+    eyes = find_eyes(arr)
+    mx = (eyes[0]["c"][0] + eyes[1]["c"][0]) * 0.5
+    my = (eyes[0]["c"][1] + eyes[1]["c"][1]) * 0.5
+    ax, ay = mx, my - CUTIN_LIFT
+    hw, hh = CUTIN_W / CUTIN_SCALE * 0.5, CUTIN_H / CUTIN_SCALE * 0.5
+    x0, y0 = int(math.floor(ax - hw)) - 2, int(math.floor(ay - hh)) - 2
+    x1, y1 = int(math.ceil(ax + hw)) + 2, int(math.ceil(ay + hh)) + 2
+    box = (ax - hw - x0, ay - hh - y0, ax + hw - x0, ay + hh - y0)
+
+    glow = eye_glow_colour(arr, eyes)
+    open_ = arr[y0:y1, x0:x1].copy()
+    clean_edge(open_, bg)
+    shut = open_.copy()
+    for k, e in enumerate(eyes):
+        ex0, ey0, ex1, ey1 = e["box"]
+        local = dict(e, box=(ex0 - x0, ey0 - y0, ex1 - x0, ey1 - y0))
+        shut_eye(shut, local, (k == 0), glow)
+
+    frames = []
+    for src in (shut, open_):
+        a = src[..., 3:4] / 255.0
+        pre = np.concatenate([src[..., :3] * a, src[..., 3:4]], axis=2)
+        chans = [Image.fromarray(pre[..., i].astype(np.float32), "F")
+                 .resize((CUTIN_W, CUTIN_H), Image.LANCZOS, box=box)
+                 for i in range(4)]
+        out = np.stack([np.asarray(c, np.float32) for c in chans], axis=2)
+        oa = np.clip(out[..., 3:4], 0, 255)
+        out[..., :3] = np.clip(out[..., :3] / np.maximum(oa, 1.0) * 255.0,
+                               0, 255)
+        out[..., 3:4] = oa
+        frames.append(Image.fromarray(out.astype(np.uint8), "RGBA"))
+
+    measured = []
+    for e in eyes:
+        ex0, ey0, ex1, ey1 = e["box"]
+        measured.append(((e["c"][0] - ax) * CUTIN_SCALE,
+                         (e["c"][1] - ay) * CUTIN_SCALE,
+                         (ex1 - ex0) * 0.5 * CUTIN_SCALE,
+                         (ey1 - ey0) * 0.5 * CUTIN_SCALE))
+    return frames, measured, glow
+
+
+CUTIN_TABLE = """/// @desc The spell cut-in's portraits -- GENERATED by tools/make_mika.py. Do
+///       not edit: these are measured from the art.
+///
+/// `cutin_art(_spr)`: where a portrait's eyes are, for the light the cut-in
+/// puts on them as they open. Each eye is `[x, y, rx, ry]`: its centre in
+/// pixels from the sprite's origin, and its half-width and half-height.
+/// `glow` is the colour they shine.
+
+function cutin_art(_spr) {
+    if (_spr == spr_cutin_mika) {
+        return {
+            eyes: [%s],
+            glow: %s,
+        };
+    }
+    return { eyes: [], glow: c_white };
+}
+"""
+
+
+def write_cutin_table(eyes, glow):
+    rows = ", ".join("[%d, %d, %d, %d]" % tuple(int(round(v)) for v in e)
+                     for e in eyes)
+    path = os.path.join(A.ROOT, "scripts", "cutin_table", "cutin_table.gml")
+    gm_new.script("cutin_table", CUTIN_TABLE % (rows, A.gm_hex(glow)),
+                  folder="Scripts/ui")
+    return path
 
 
 def write_gif(frames, path, scale=2, ground=(28, 20, 48)):
@@ -619,18 +796,22 @@ def main():
     if RIG_DEBUG:
         rig["debug"].save(os.path.join(A.PREVIEW, "mika_rig.png"))
 
-    card = eye_card(cut)
-    gm_new.sprite("spr_eye_mika", [card], origin="center",
+    sheet, bg = keyed_sheet()
+    cutin, eyes, glow = cutin_frames(sheet, bg)
+    gm_new.sprite("spr_cutin_mika", cutin, origin="center",
                   folder="Sprites/boss")
+    write_cutin_table(eyes, glow)
 
     A.preview(frames, os.path.join(A.PREVIEW, "boss_mika.png"), cols=6,
               bg=(18, 16, 22))
     gif = write_gif(frames, os.path.join(A.PREVIEW, "mika_idle.gif"))
-    card.save(os.path.join(A.PREVIEW, "eye_mika.png"))
+    A.preview(cutin, os.path.join(A.PREVIEW, "cutin_mika.png"), cols=1,
+              bg=(40, 22, 58), labels=["eyes shut", "eyes open"])
     print("mika: %d rigged frames of %dx%d cut from the sheet, "
-          "origin %d,%d, eye card %dx%d, loop %dx%d"
+          "origin %d,%d, loop %dx%d; cut-in %dx%d, eyes %s"
           % (len(frames), frames[0].width, frames[0].height,
-             origin[0], origin[1], card.width, card.height, gif[0], gif[1]))
+             origin[0], origin[1], gif[0], gif[1], cutin[0].width,
+             cutin[0].height, [tuple(int(v) for v in e) for e in eyes]))
 
 
 if __name__ == "__main__":

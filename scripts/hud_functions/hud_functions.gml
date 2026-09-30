@@ -23,7 +23,8 @@ function hud_new() {
         mana_shown: 0,
         boss_shown: 1,
         tally_shown: 0,
-        spell_a: 0,              // the nameplate easing in behind the banner
+        spell_a: 0,              // the spell's name under the rail
+        cutin_seen: -1,          // the boss's `cutin_t` last frame
 
         // How hard each meter's liquid is sloshing: kicked when the value
         // jumps, decaying each frame.
@@ -213,15 +214,20 @@ function hud_step(_h, _g) {
         _h.boss_phase_seen = _ph_now;
     }
 
-    // The spell name under the rail fades in once the banner is gone.
+    // The spell's name under the rail is shown once its cut-in is over. The
+    // cut-in ends by flying the name there, so when it has just ended the
+    // name is shown at once; otherwise it eases in.
     var _want_spell = 0;
+    var _cut = (_boss == undefined) ? -1 : _boss.boss.cutin_t;
     if (_boss != undefined && _boss.boss.started && !_boss.boss.beaten) {
         var _ph = boss_phase(_boss);
         if (_ph != undefined && _ph.kind == AttackKind.Spell
-            && _boss.boss.clear_t <= 0 && _boss.boss.banner_t <= 0) {
+            && _boss.boss.clear_t <= 0 && _cut < 0) {
             _want_spell = 1;
         }
     }
+    if (_want_spell > 0 && _h.cutin_seen >= 0) _h.spell_a = 1;
+    _h.cutin_seen = _cut;
     _h.spell_a += (_want_spell - _h.spell_a) * 0.10;
 }
 
@@ -916,62 +922,36 @@ function hud_draw_declare(_boss) {
     draw_set_valign(fa_top);
 }
 
-/// @desc The spell banner and the eye card, both fading out over their own
-///       lifetimes.
-function hud_draw_spell(_boss) {
-    var _b = _boss.boss;
-    var _p = boss_phase(_boss);
-    if (_p == undefined || _p.kind != AttackKind.Spell) return;
-
-    var _col = global.bullet_colour[_p.col];
-
-    if (_b.eye_t > 0) draw_eye_card(_b.def.eye, _b.eye_t / BOSS_EYE_TIME);
-
-    if (_b.banner_t > 0) {
-        var _t = _b.banner_t / BOSS_SPELL_BANNER;
-        var _in = min(1, (1 - _t) * 6);
-        var _a = _in * min(1, _t * 3.2);
-
-        // The banner is shown across the field and slides out to the right
-        // as it fades.
-        var _slide = (1 - _in) * 280;
-        var _y = FIELD_CY + 260;
-
-        draw_band(_y, 200, 0.6 * _a);
-        draw_set_halign(fa_center);
-        draw_set_valign(fa_middle);
-        draw_set_font(fnt_spell());
-        draw_text_fit(FIELD_CX + _slide, _y, _p.name,
-                      FIELD_W - 120, _col, _a, 3);
-        draw_set_halign(fa_left);
-        draw_set_valign(fa_top);
-    }
-}
-
 /// @desc The spell's name under the left end of the rail, for as long as the
-///       spell lasts. `spell_a` only starts rising once the banner has gone,
-///       so the name isn't shown in two places at once.
+///       spell lasts. `spell_a` only rises once the spell's cut-in is over (the
+///       cut-in flies the name here itself), so the name isn't shown twice.
 function hud_draw_spell_name(_h, _boss, _p, _dy = 0, _alpha = 1) {
     if (_h.spell_a <= 0.02 || _boss == undefined || _p == undefined) return;
 
     var _a = _h.spell_a * _alpha;
     var _col = global.bullet_colour[_p.col];
 
-    // Fitted to `BOSS_SPELL_W` (a long name shrinks rather than running into
-    // the middle). The scale is computed here because centring by ink needs
-    // it.
-    draw_set_font(fnt_ui());
-    var _w = string_width(_p.name);
-    var _s = (_w > BOSS_SPELL_W && _w > 0) ? (BOSS_SPELL_W / _w) : 1;
+    var _at = hud_spell_name_at(_p.name, _dy);
     draw_set_valign(fa_bottom);
     draw_set_halign(fa_left);
-    draw_text_fit(FIELD_X0 + BOSS_BAR_INSET,
-                  text_cap_middle_y(BOSS_SPELL_Y + _dy, _s), _p.name,
-                  BOSS_SPELL_W, _col, _a, 3);
+    draw_text_fit(_at[0], _at[1], _p.name, BOSS_SPELL_W, _col, _a, 3);
 
     draw_set_halign(fa_left);
     draw_set_valign(fa_top);
     draw_set_alpha(1);
+}
+
+/// @desc Where the spell's name is drawn under the rail, `_dy` from home:
+///       `[x, y, scale]` for `fa_left`, `fa_bottom` in `fnt_ui()`, which this
+///       sets. Fitted to `BOSS_SPELL_W` (a long name shrinks rather than
+///       running into the middle); the scale is worked out here because
+///       centring by ink needs it.
+function hud_spell_name_at(_name, _dy) {
+    draw_set_font(fnt_ui());
+    var _w = string_width(_name);
+    var _s = (_w > BOSS_SPELL_W && _w > 0) ? (BOSS_SPELL_W / _w) : 1;
+    return [FIELD_X0 + BOSS_BAR_INSET,
+            text_cap_middle_y(BOSS_SPELL_Y + _dy, _s), _s];
 }
 
 /// @desc The pause menu. The scrim covers the whole screen; the text is

@@ -876,6 +876,24 @@ def cue_spell_declare(g):
     return tail_off(reverb(hp(x, 30), 0.38, room=0.88, damp=0.4, tail=1.2))
 
 
+def cue_spell_cut(g):
+    """A spell's cut-in opening (`scripts/spell_cutin`): air split by the
+    cut running across the field, a low whump as the band slams open behind
+    it, and the rush of the face sliding in, receding before the declaration's
+    in-breath (`cue_spell_declare`, which starts 0.37s in) begins."""
+    n = n_of(0.60)
+    blade = unit(svf(pink(n, g), glide(1200, 5000, n, 0.11, 0.7), 2.6, "bp")
+                 * env_rise(n, 0.08, 0.10, 1.4))
+    m = n - n_of(0.06)
+    whump = soft_clip(mix(unit(thump(m, 150, 42, 0.05, 0.13, attack=0.012)),
+                          unit(svf(pink(m, g), settle(2400, 260, m, 0.05), 0.8)
+                               * env_exp(m, 0.01, 0.07)) * 0.5), 1.4)
+    rush = unit(svf(pink(n, g), glide(2600, 380, n, 0.36), 1.2, "bp")
+                * env_rise(n, 0.10, 0.28, 1.2))
+    x = hp(mix(blade * 0.5, at(unit(whump), 0.06, n), rush * 0.5), 40)
+    return tail_off(reverb(x, 0.26, room=0.7, damp=0.5, tail=0.45))
+
+
 def cue_spell_break(g):
     """An attack broken: its bullets swept away in a burst of air and a
     rising rush, with weight under it. The rank card's medal
@@ -1049,6 +1067,7 @@ CUES = (
     ("snd_player_down", cue_player_down, 0.240),
 
     ("snd_boss_appear", cue_boss_appear, 0.210),
+    ("snd_spell_cut", cue_spell_cut, 0.160),
     ("snd_spell_declare", cue_spell_declare, 0.230),
     ("snd_spell_break", cue_spell_break, 0.160),
     ("snd_spell_survive", cue_spell_survive, 0.120),

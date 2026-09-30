@@ -235,7 +235,7 @@ function old_sanctum_midboss_def() {
         title: "one of the lesser hands",
         // Placeholder art: stage one's stone sentry.
         sprite: spr_foe_sentry,
-        eye: spr_eye_mika,
+        cutin: spr_cutin_mika,      // placeholder: Mika's, until it has its own
         col: BCOL_GOLD,
         radius: 46,
         spell_bg: SPELLBG_SIGIL,
@@ -320,7 +320,7 @@ function old_mika_def() {
         name: "MIKA",
         title: "head mage to the Living God of Death",
         sprite: spr_boss_mika,
-        eye: spr_eye_mika,
+        cutin: spr_cutin_mika,
         col: BCOL_GOLD,
         radius: 64,
         spell_bg: SPELLBG_SIGIL,
