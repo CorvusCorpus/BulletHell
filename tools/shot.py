@@ -42,7 +42,7 @@ SCENES = (
     "hit",          # the player struck: iframe flicker, shards scattering
     "peril",        # one hit from death: the heartbeat warning, in a pattern
     "midboss",      # the midboss and its pattern
-    "declare",      # the boss introduction splash
+    "declare",      # a boss with nothing to say being named: its card
     "spell",        # a named spell: its cut-in, changed background
     "boss",         # a boss non-spell pattern with the health bar mid-fight
     "laser",        # telegraphed beam lasers, warning lines live
@@ -86,6 +86,8 @@ SCENES = (
 
     "title_card",    # stage three's title card, played at once (use --burst)
     "cutin",         # Mika declaring a spell: the cut-in (use --burst)
+    "talk",          # Mika and Szuix talking before the fight (use --burst)
+    "talk_card",     # ...and Mika's name card in the middle of it
     "golem_n1",      # the sand golem's three non-spells, five seconds in
     "golem_n2",
     "golem_n3",

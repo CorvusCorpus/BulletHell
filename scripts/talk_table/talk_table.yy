@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"talk_table",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"talk_table",
+  "parent":{
+    "name":"ui",
+    "path":"folders/Scripts/ui.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

@@ -326,7 +326,7 @@ function practice_wave_done(_g) {
 /// @desc Put the boss on the field, about to start the chosen attack. The boss
 ///       is made by its own spawner and the attack is entered through the
 ///       normal between-attacks pause, so the spell ceremony runs as in a
-///       fight; the arrival glide and name splash are skipped. Health starts
+///       fight; the arrival glide and name card are skipped. Health starts
 ///       where the attack starts in the full fight (the HUD shows the attack's
 ///       own span as 100 to 0; see `hud_boss_span`).
 function practice_begin(_g) {

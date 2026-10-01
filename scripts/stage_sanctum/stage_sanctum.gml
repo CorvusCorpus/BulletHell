@@ -139,6 +139,10 @@ function mika_def() {
         title: "head mage to the Living God of Death",
         sprite: spr_boss_mika,
         cutin: spr_cutin_mika,      // the spell cut-in's portrait
+        // What he says before the fight, and the portrait he says it with
+        // (`talk_functions`). Both placeholders.
+        talk: mika_talk_lines,
+        portrait: spr_talk_mika,
         col: BCOL_GOLD,
         radius: 64,
         spell_bg: SPELLBG_SIGIL,

@@ -9,6 +9,7 @@ system's Microsoft fonts, whose licences don't allow shipping them.
 
     fnt_small   Spectral Regular 26
     fnt_ui      Spectral SemiBold 36
+    fnt_talk    Spectral Medium 40
     fnt_num     Cinzel Bold 56
     fnt_head    Cinzel Bold 66
     fnt_spell   Cinzel Bold 84
@@ -43,6 +44,7 @@ FONTS = [
     # name,       file,             size, weight
     ("fnt_small", A.SPECTRAL, 26, None),
     ("fnt_ui", A.SPECTRAL_SEMI, 36, None),
+    ("fnt_talk", A.SPECTRAL_MED, 40, None),
     ("fnt_num", A.CINZEL, 56, 700),
     ("fnt_head", A.CINZEL, 66, 700),
     ("fnt_spell", A.CINZEL, 84, 700),

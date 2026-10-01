@@ -1029,6 +1029,33 @@ def cue_ui_deny(g):
     return lp(mix(at(buzz(), 0.0, n), at(buzz() * 0.85, 0.095, n), knock * 0.3), 1200)
 
 
+def cue_talk_enter(g):
+    """A speaker stepping into a conversation (`talk_functions`): cloth and
+    air sweeping in from the side, and a little weight as they come to
+    rest."""
+    n = n_of(0.46)
+    sweep = unit(svf(pink(n, g), glide(420, 2300, n, 0.20, 0.8), 1.5, "bp")
+                 * env_rise(n, 0.17, 0.26, 1.6))
+    cloth = unit(svf(brown(n, g), glide(900, 380, n, 0.30), 0.8)
+                 * env_rise(n, 0.12, 0.22, 1.2))
+    m = n - n_of(0.16)
+    rest = unit(thump(m, 120, 62, 0.03, 0.07, attack=0.006))
+    x = hp(mix(sweep * 0.8, cloth * 0.45, at(rest, 0.16, n) * 0.5), 50)
+    return tail_off(reverb(x, 0.18, room=0.6, damp=0.55, tail=0.3))
+
+
+def cue_talk_next(g):
+    """A conversation moving on to its next line: a page turned, a short dry
+    brush of paper with a soft tap under it. No pitch of its own, since it
+    sounds once a line."""
+    n = n_of(0.150)
+    leaf = unit(svf(pink(n, g), glide(3400, 1300, n, 0.09), 1.6, "bp")
+                * env_rise(n, 0.022, 0.085, 1.3))
+    rasp = unit(crackle(n, g, 600.0, 1800, 6000) * env_exp(n, 0.004, 0.03))
+    tap = unit(thump(n, 210, 130, 0.012, 0.022, attack=0.003))
+    return lp(hp(mix(leaf, rasp * 0.22, tap * 0.32), 90), 6500)
+
+
 def cue_pause(g):
     """The pause menu opening or closing: a muted knock, with the hoop
     sounding faintly under it."""
@@ -1084,6 +1111,9 @@ CUES = (
     ("snd_ui_back", cue_ui_back, 0.090),
     ("snd_ui_deny", cue_ui_deny, 0.090),
     ("snd_pause", cue_pause, 0.090),
+
+    ("snd_talk_enter", cue_talk_enter, 0.090),
+    ("snd_talk_next", cue_talk_next, 0.060),
 )
 
 # Each WAV is written at twice its mix loudness (so its gain is about 0.5),

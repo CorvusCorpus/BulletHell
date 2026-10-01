@@ -60,6 +60,7 @@ function selftest_run() {
     test_marked_waves();
     test_routes();
     test_title_card();
+    test_talk();
     test_waves_run();
     test_stage_encounters();
     test_rank_card();
@@ -2587,6 +2588,136 @@ function test_title_card() {
     ok("and it ends", !title_card_live(_c));
 }
 
+/// @desc A conversation holds its boss until it has been had, the keys end
+///       it, and a script uses only what its plate can show. A boss with
+///       nothing to say is named by its own declaration.
+function test_talk() {
+    // Every script on the rack: lines the font has the glyphs for, wrapped
+    // into no more rows than the plate holds.
+    var _rack = rack_list();
+    var _bad = "";
+    var _read = 0;
+    draw_set_font(fnt_talk());
+    for (var _s = 0; _s < array_length(_rack); _s++) {
+        var _bosses = _rack[_s][$ "bosses"];
+        if (_bosses == undefined) continue;
+        for (var _b = 0; _b < array_length(_bosses); _b++) {
+            st_reset();
+            var _who = _bosses[_b].spawn(st_game_at(FIELD_CX, FIELD_Y1 - 200));
+            var _make = _who.boss.def[$ "talk"];
+            if (_make == undefined) continue;
+            var _lines = _make();
+            for (var _i = 0; _i < array_length(_lines); _i++) {
+                var _l = _lines[_i];
+                if (_l.kind != TalkKind.Say) continue;
+                _read++;
+                var _fits = (string_length(_l.text) > 0)
+                    && array_length(talk_wrap(_l.text, TALK_TEXT_W))
+                       <= TALK_ROWS;
+                for (var _k = 1; _k <= string_length(_l.text); _k++) {
+                    var _o = ord(string_char_at(_l.text, _k));
+                    if (_o < 32 || _o > 126) _fits = false;
+                }
+                if (!_fits) {
+                    _bad += _bosses[_b].name + " line " + string(_i + 1) + " ";
+                }
+            }
+        }
+    }
+    ok("every line of every conversation can be set on its plate " + _bad,
+       _read > 0 && _bad == "");
+
+    // Left unsaid, it holds the boss.
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _g.talk = talk_new();
+    var _arrive = wave_boss(mika_spawn);
+    _arrive(_g);
+    var _e = _g.boss_ref;
+    ok("a boss with something to say arrives talking",
+       talk_live(_g.talk) && _e.boss.talking);
+    var _idle = input_idle();
+    for (var _i = 0; _i < 600; _i++) {
+        talk_step(_g.talk, _g, _idle);
+        boss_act(_e, _g);
+    }
+    ok("and waits for as long as it is left unsaid",
+       talk_busy(_g.talk) && !_e.boss.started && !boss_vulnerable(_e)
+       && bullet_count() == 0);
+    ok("with its rail stowed until it is named", !boss_announced(_e.boss));
+
+    // Z, pressed and let go, takes it to its end and the fight opens.
+    var _keys = input_idle();
+    var _n = 0;
+    while (talk_live(_g.talk) && _n < 6000) {
+        _keys.shoot = ((_n mod 6) < 3);
+        talk_step(_g.talk, _g, _keys);
+        boss_act(_e, _g);
+        _n++;
+    }
+    ok("the keys take it through to its end", !talk_live(_g.talk));
+    ok("its name card is played on the way",
+       !_e.boss.card_due && _e.boss.named && _e.boss.card_t < 0);
+    for (var _i = 0; _i < TALK_HANDOVER + 5 && !_e.boss.started; _i++) {
+        boss_act(_e, _g);
+    }
+    ok("and the fight opens once it is over",
+       _e.boss.started && _e.boss.phase == 0);
+
+    // X skips to the name card, and out.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _g.talk = talk_new();
+    _arrive(_g);
+    _e = _g.boss_ref;
+    _keys = input_idle();
+    _keys.bomb = true;
+    talk_step(_g.talk, _g, _keys);
+    boss_act(_e, _g);
+    _n = 0;
+    while (talk_live(_g.talk) && _n < 600) {
+        talk_step(_g.talk, _g, _idle);
+        boss_act(_e, _g);
+        _n++;
+    }
+    ok("X skips to the name card and out",
+       !talk_live(_g.talk) && _e.boss.named && !_e.boss.talking);
+
+    // A practised whole fight brings its boss on the same way, so it plays
+    // too; a practised attack puts the boss straight on the attack.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _g.talk = talk_new();
+    _g.practice = practice_new_fight(stage_sanctum_def(), 1);
+    var _fight = _g.practice.def.build();
+    _fight[0].fn(_g);
+    ok("a practised whole fight plays its conversation",
+       talk_live(_g.talk) && _g.boss_ref.boss.talking);
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    _g.talk = talk_new();
+    _g.practice = practice_new(stage_sanctum_def(), 1, 0);
+    var _one = practice_begin(_g);
+    ok("a practised attack has none",
+       !talk_live(_g.talk) && !_one.boss.talking);
+
+    // A final boss with nothing to say gets its card from its declaration.
+    st_reset();
+    _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _z = ziggy_spawn(_g);
+    var _shown = false;
+    for (var _i = 0; _i < BOSS_ENTRY_TIME + BOSS_DECLARE_TIME + 2; _i++) {
+        if (_z.boss.started) break;
+        boss_act(_z, _g);
+        if (_z.boss.card_t >= 0) _shown = true;
+    }
+    ok("a final boss with nothing to say is named as it declares",
+       _shown && _z.boss.named);
+    ok("and its card is gone as its first attack opens",
+       _z.boss.started && _z.boss.card_t < 0);
+    st_reset();
+}
+
 /// @desc The console's socket count: a stage counts its groups of waves as
 ///       well as its attacks.
 function test_stage_encounters() {
@@ -2715,7 +2846,7 @@ function test_practice() {
     _g.player.mp = 0;
     var _b = practice_begin(_g);
     ok("the boss reaches the field", _b != undefined);
-    ok("and past the arrival and the name splash",
+    ok("and past the arrival and the name card",
        _b.boss.entry_t == 0 && _b.boss.declare_t == 0 && _b.boss.started);
     ok("the attack has not started yet", _b.boss.phase < 0);
     ok("but it knows which one is coming", _b.boss.next_phase == _spell);

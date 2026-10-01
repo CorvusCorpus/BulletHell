@@ -14,10 +14,11 @@ hud_draw(hud, self);
 
 var _over = (phase == Phase.Won || phase == Phase.Lost);
 var _boss = enemy_find_boss();
+// A conversation, which draws the boss's name card among its portraits; or
+// the card on its own, for a boss with nothing to say.
+if (talk_live(talk)) talk_draw(talk, self);
 if (_boss != undefined) {
-    if (_boss.boss.declare_t > 0 && _boss.boss.def.final) {
-        hud_draw_declare(_boss);
-    }
+    if (!talk_live(talk)) namecard_draw(hud, _boss);
     // Hidden under the practice result panel, which already names the attack
     // (the phase index doesn't change until `clear_t` runs out).
     if (!(_over && practice != undefined)) cutin_draw(hud, _boss);

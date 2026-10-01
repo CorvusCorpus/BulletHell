@@ -1,5 +1,5 @@
 /// @desc The HUD: the console to the right of the field, the boss's health
-///       rail inside the top of the field, and the ceremony and menu panels.
+///       rail inside the top of the field, and the menu panels.
 ///
 /// The console, top to bottom: the stage name, BEST / SCORE / GRAZE rows, the
 /// LIFE and SIGIL meters, and the MARKS standing with a socket per encounter.
@@ -24,6 +24,7 @@ function hud_new() {
         boss_shown: 1,
         tally_shown: 0,
         spell_a: 0,              // the spell's name under the rail
+        name_a: 0,               // the caster's name on its plate
         cutin_seen: -1,          // the boss's `cutin_t` last frame
 
         // How hard each meter's liquid is sloshing: kicked when the value
@@ -193,9 +194,11 @@ function hud_step(_h, _g) {
     }
 
     // The rig is lowered while a boss is on the field and not beaten (and
-    // not after a practice attempt ends), and raised otherwise.
+    // not after a practice attempt ends), and raised otherwise. A boss in
+    // conversation keeps it stowed until its name card.
     var _over = (_g[$ "phase"] == Phase.Won || _g[$ "phase"] == Phase.Lost);
     var _hung = (_boss != undefined) && !_boss.boss.beaten
+                && boss_announced(_boss.boss)
                 && !(_over && _g[$ "practice"] != undefined);
     _h.rig_v += ((_hung ? 1 : 0) - _h.rig) * BOSS_RIG_K
                 - _h.rig_v * BOSS_RIG_D;
@@ -213,6 +216,13 @@ function hud_step(_h, _g) {
         }
         _h.boss_phase_seen = _ph_now;
     }
+
+    // The caster's name is on its plate once the boss is named. A name card
+    // ends by flying the name there, so while one is up the name is shown at
+    // once; otherwise it eases in.
+    var _named = (_boss != undefined) && boss_named(_boss.boss);
+    if (_named && _boss.boss.card_t >= 0) _h.name_a = 1;
+    _h.name_a += ((_named ? 1 : 0) - _h.name_a) * 0.12;
 
     // The spell's name under the rail is shown once its cut-in is over. The
     // cut-in ends by flying the name there, so when it has just ended the
@@ -582,7 +592,7 @@ function hud_draw_boss_line(_h, _g) {
     hud_draw_boss_dial(_h, _boss, _dx, _cy, _a);
     if (_boss != undefined) {
         hud_draw_boss_pct(_h, _px0, _cy, _col, _a);
-        hud_draw_boss_plate(_boss, _y - BOSS_BAR_Y, _a, _ta);
+        hud_draw_boss_plate(_boss, _y - BOSS_BAR_Y, _a, _ta * _h.name_a);
         hud_draw_boss_caption(_h, _boss, _p, _y - BOSS_BAR_Y, _ta);
     }
 
@@ -859,7 +869,8 @@ function hud_draw_boss_dial(_h, _boss, _cx, _cy, _alpha) {
 }
 
 /// @desc The caster's name on a plate standing on top of the rail. The plate
-///       comes down with the rig (`_hw`); the name fades in later (`_ta`).
+///       comes down with the rig (`_hw`); the name fades in later (`_ta`),
+///       or is flown there by the boss's name card (`name_card`).
 function hud_draw_boss_plate(_boss, _dy, _hw, _ta) {
     if (_hw <= 0.004) return;
 
@@ -891,36 +902,6 @@ function hud_draw_boss_caption(_h, _boss, _p, _dy, _alpha) {
     draw_set_alpha(1);
 }
 
-
-// ---------------------------------------------------------------------------
-// The ceremony
-// ---------------------------------------------------------------------------
-
-/// @desc The boss's name splash: a band, a name, a title, and a ring.
-function hud_draw_declare(_boss) {
-    var _b = _boss.boss;
-    var _t = BOSS_DECLARE_TIME - _b.declare_t;        // frames elapsed
-    var _in = min(1, _t / 18);
-    var _out = min(1, _b.declare_t / 22);
-    var _a = _in * _out;
-    if (_a <= 0.01) return;
-
-    draw_band(FIELD_CY, 320, 0.72 * _a);
-
-    // The name arrives oversized and settles.
-    var _scale = 1 + 0.5 * (1 - _in) * (1 - _in);
-
-    draw_set_halign(fa_center);
-    draw_set_valign(fa_middle);
-    draw_set_font(fnt_title());
-    draw_text_outline_scaled(FIELD_CX, FIELD_CY - 40, _b.def.name,
-                             global.bullet_colour[_b.def.col], _a, _scale, 3);
-    draw_set_font(fnt_head());
-    draw_text_outline(FIELD_CX, FIELD_CY + 80, _b.def.title, COL_SILVER,
-                      _a * 0.9, 2);
-    draw_set_halign(fa_left);
-    draw_set_valign(fa_top);
-}
 
 /// @desc The spell's name under the left end of the rail, for as long as the
 ///       spell lasts. `spell_a` only rises once the spell's cut-in is over (the

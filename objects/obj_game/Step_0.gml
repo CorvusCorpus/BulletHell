@@ -105,6 +105,11 @@ if (phase == Phase.Intro) {
     if (intro_t <= 0) phase = Phase.Playing;
 }
 
+// A conversation takes the keys, and the player holds still while it is
+// had.
+talk_step(talk, self, _in);
+if (talk_busy(talk)) _in = input_idle();
+
 // A declaration holds the stage timeline, not the field: bullets keep moving.
 if (phase == Phase.BossDeclare && boss_ref != undefined
     && boss_ref.boss.started) {

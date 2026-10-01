@@ -15,6 +15,7 @@ function ui_init() {
     // invisible bar so it isn't measured as zero width.)
     global.fnt_small = font_add_sprite_ext(spr_fnt_small, _glyphs, true, 1);
     global.fnt_ui    = font_add_sprite_ext(spr_fnt_ui, _glyphs, true, 1);
+    global.fnt_talk  = font_add_sprite_ext(spr_fnt_talk, _glyphs, true, 1);
     global.fnt_num   = font_add_sprite_ext(spr_fnt_num, _glyphs, true, 2);
     global.fnt_head  = font_add_sprite_ext(spr_fnt_head, _glyphs, true, 2);
     global.fnt_spell = font_add_sprite_ext(spr_fnt_spell, _glyphs, true, 3);
@@ -25,6 +26,7 @@ function ui_init() {
 // (`check_font_accessors_called`).
 function fnt_small()  { return global.fnt_small; }
 function fnt_ui()     { return global.fnt_ui; }
+function fnt_talk()   { return global.fnt_talk; }
 function fnt_num()    { return global.fnt_num; }
 function fnt_head()   { return global.fnt_head; }
 function fnt_spell()  { return global.fnt_spell; }
@@ -167,23 +169,6 @@ function draw_scrim(_alpha, _col = c_black) {
     draw_set_alpha(_alpha);
     draw_set_colour(_col);
     draw_rectangle(0, 0, GAME_W, GAME_H, false);
-    draw_set_alpha(1);
-    draw_set_colour(c_white);
-}
-
-/// @desc A horizontal band, dark in the middle and fading at both ends, for
-///       a caption to sit on. It spans the field only, not the HUD margins.
-function draw_band(_cy, _h, _alpha, _col = c_black) {
-    var _steps = 24;
-    for (var _i = 0; _i < _steps; _i++) {
-        var _t = _i / (_steps - 1);
-        var _a = _alpha * (1 - abs(_t - 0.5) * 2);
-        draw_set_alpha(_a * _a);
-        draw_set_colour(_col);
-        draw_rectangle(FIELD_X0 + FIELD_W * _t, _cy - _h * 0.5,
-                       FIELD_X0 + FIELD_W * (_t + 1.0 / _steps) + 1,
-                       _cy + _h * 0.5, false);
-    }
     draw_set_alpha(1);
     draw_set_colour(c_white);
 }

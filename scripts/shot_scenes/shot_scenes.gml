@@ -20,7 +20,7 @@ function shot_scene_list() {
               "grove_boss", "grove_spell",
               "sanctum", "mika_attacks",
               "hall_a", "hall_b", "hall_turn", "hall_arrive",
-              "rope_lab", "title_card", "cutin",
+              "rope_lab", "title_card", "cutin", "talk", "talk_card",
               "golem_n1", "golem_n2", "golem_n3"];
     var _n = array_length(mika_slots());
     for (var _i = 0; _i < _n; _i++) {
@@ -73,6 +73,13 @@ function shot_mika_slot(_name) {
 // How far into one of Mika's attacks its picture is taken. `--burst` offsets
 // are relative to this.
 #macro SHOT_MIKA_AT (4 * FPS)
+
+// The `talk` scene presses Z once every this many frames, so each line is
+// typed out and read before the next. The conversation starts about
+// `SHOT_TALK_AT` frames into either scene (a practised fight's boss arrives
+// on frame 30 of its timeline).
+#macro SHOT_TALK_BEAT 150
+#macro SHOT_TALK_AT 32
 
 /// @desc Parse `-burst`'s comma-separated frame offsets, sorted (`obj_shot`
 ///       walks them in order).
@@ -168,6 +175,14 @@ function shot_scene_prepare(_name) {
         case "hall_a":
         case "hall_b":
         case "hall_arrive":
+        case "talk":
+        case "talk_card":
+            // Mika's whole fight, practised: he arrives as in the stage, in
+            // the open hall, and says what he has to say.
+            global.stage_def = stage_sanctum_def();
+            global.practice = practice_new_fight(stage_sanctum_def(), 1);
+            break;
+
         case "title_card":
         case "cutin":
         case "golem_n1":
@@ -365,7 +380,7 @@ function shot_pose(_scene, _g) {
             return 190;
 
         case "declare":
-            // The one scene that keeps the boss's arrival ceremony.
+            // A boss with nothing to say being named: its card on its own.
             _g.boss_ref = ziggy_spawn(_g);
             _g.boss_ref.boss.entry_t = 0;
             _g.boss_ref.x = _g.boss_ref.boss.home_x;
@@ -373,7 +388,7 @@ function shot_pose(_scene, _g) {
             _g.phase = Phase.BossDeclare;
             _g.player.x = FIELD_CX;
             _g.player.y = FIELD_Y1 - 200;
-            // Mid-splash: past the arrival bounce, before the fade.
+            // With the name landed and held, before the card is let go.
             return 2 + BOSS_DECLARE_TIME - 70;
 
         case "spell":
@@ -559,6 +574,21 @@ function shot_pose(_scene, _g) {
             _g.player.untouchable = true;
             return 0;
 
+        case "talk":
+        case "talk_card":
+            // Mika arriving and what he and Szuix say. Nothing is posed:
+            // the practice request brings him on, `SHOT_TALK_AT` frames in.
+            // The keys are pressed in `shot_tick`: Z on a beat through
+            // `talk` (its shutter is on Mika's first line; best taken as a
+            // burst), X as it opens in `talk_card`, whose shutter is just
+            // after his name lands.
+            _g.input_override = shot_input(false, false);
+            _g.player.x = FIELD_CX;
+            _g.player.y = FIELD_Y1 - 200;
+            return (_scene == "talk")
+                ? (SHOT_TALK_BEAT * 2 + 80)
+                : (SHOT_TALK_AT + 12 + NAMECARD_SLAM_AT + 36);
+
         case "golem_n1":
         case "golem_n2":
         case "golem_n3":
@@ -667,6 +697,17 @@ function shot_tick(_scene, _g, _t) {
         case "golem_n3":
             // Hold the stage clock, so no wave arrives in the picture.
             _g.stage.t = 0;
+            break;
+
+        case "talk":
+            _g.input_override = shot_input((_t mod SHOT_TALK_BEAT) == 0,
+                                           false);
+            break;
+
+        case "talk_card":
+            var _keys = shot_input(false, false);
+            _keys.bomb = (_t == SHOT_TALK_AT + 8);
+            _g.input_override = _keys;
             break;
 
         case "rope_lab":

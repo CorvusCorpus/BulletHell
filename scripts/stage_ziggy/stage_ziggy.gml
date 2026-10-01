@@ -163,7 +163,7 @@ function ziggy_midboss_spawn(_g) {
                         ziggy_midboss_def());
     if (_b != undefined) {
         _b.boss.home_y = BOSS_HOME_Y - 30;
-        // Shorter declaration: no name splash for a midboss.
+        // Shorter declaration: no name card for a midboss.
         _b.boss.declare_t = 40;
     }
     return _b;

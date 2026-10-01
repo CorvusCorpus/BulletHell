@@ -9,6 +9,11 @@
 /// elapsed. `fire_at` is the frame its first shots come on (`boss_charge`). A
 /// phase ends on health (checked first) or on time; a timeout ends the attack
 /// the same way but awards no capture.
+///
+/// A final boss arrives, is named by its card (`name_card`) and then opens its
+/// first attack. One with something to say (`def.talk`) is held after it
+/// arrives until the conversation ends (`talk_functions`), which plays the card
+/// itself.
 
 /// @desc Attach boss state to an enemy and put it on the field.
 /// @param {array} _phases  the attack table; see the file docstring
@@ -35,6 +40,19 @@ function boss_spawn(_x, _y, _hp, _phases, _def) {
         charged: false,
 
         declare_t: BOSS_DECLARE_TIME,
+        // Held by a conversation (`talk_begin`): it has arrived and waits
+        // for the talk to end before its declaration runs.
+        talking: false,
+        // Its name card (`name_card`): owed to a final boss, played by its
+        // conversation or else by its declaration; `card_t` is the frames
+        // since the card began (-1 when idle), `card_out` the frames since
+        // it was let go (-1 while it holds), `card_go` the asking for that.
+        // `named` once it has put the name on the rail.
+        card_due: _def.final,
+        card_t: -1,
+        card_out: -1,
+        card_go: false,
+        named: false,
         // Frames since a spell was declared, while its cut-in plays
         // (`spell_cutin`); -1 otherwise.
         cutin_t: -1,
@@ -57,7 +75,7 @@ function boss_spawn(_x, _y, _hp, _phases, _def) {
         death_t: 0,
     };
     _e.touch = false;              // the body only hurts once it is fighting
-    // Midbosses get the arrival cue too; only the name splash is the boss's.
+    // Midbosses get the arrival cue too; only the name card is the boss's.
     sfx(Sfx.BossAppear);
     // A boss with a theme brings it in; one without leaves the stage's on.
     var _theme = _def[$ "music"];
@@ -97,15 +115,27 @@ function boss_act(_e, _g) {
     var _anim = _b.def[$ "step"];
     if (_anim != undefined) _anim(_e, _g);
 
+    if (_b.card_t >= 0) boss_namecard_step(_b);
+
     if (_b.entry_t > 0) {
         _b.entry_t--;
         enemy_glide(_e, _b.home_x, _b.home_y, 0.06);
         return;
     }
 
+    // In conversation: it keeps its station and its clocks wait.
+    if (_b.talking) {
+        boss_move_hold(_e);
+        return;
+    }
+
     boss_charge(_b);
 
     if (_b.declare_t > 0) {
+        // A final boss nobody has introduced is named now, and the card is
+        // let go in time to be gone as the fight opens.
+        if (_b.card_due) boss_namecard_start(_b);
+        if (_b.declare_t <= NAMECARD_OUT_TIME + 6) boss_namecard_release(_b);
         _b.declare_t--;
         boss_move(_e, _g, _b.next_phase);
         if (_b.declare_t == 0) {
@@ -173,10 +203,10 @@ function boss_fire_at(_p) {
 }
 
 /// @desc Frames until the next attack's first shots (`boss_fire_at`), from
-///       its name splash, the pause before it or a spell's declaration through
+///       its name card, the pause before it or a spell's declaration through
 ///       to those shots; -1 once they have come, and when no attack follows.
 function boss_frames_to_fire(_b) {
-    if (_b.beaten) return -1;
+    if (_b.beaten || _b.talking) return -1;
     var _n = array_length(_b.phases);
     if (_b.declare_t > 0 || _b.clear_t > 0) {
         if (_b.next_phase >= _n) return -1;
@@ -342,6 +372,62 @@ function boss_holding(_e) {
     // a function named `mod`.
     var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
     return (_b.drift_t mod _cyc) < BOSS_STEP_HOLD;
+}
+
+/// @desc Play the boss's name card (`name_card`): the cut that opens it
+///       sounds now, and the rest follows from `card_t`.
+function boss_namecard_start(_b) {
+    _b.card_due = false;
+    _b.card_t = 0;
+    _b.card_out = -1;
+    _b.card_go = false;
+    sfx(Sfx.SpellCut);
+}
+
+/// @desc Let the name card go: it closes and its name flies to the rail. A
+///       card asked to go before its name has landed goes once it has.
+function boss_namecard_release(_b) {
+    if (_b.card_t >= 0) _b.card_go = true;
+}
+
+/// @desc One frame of the name card. It is drawn from `card_t` and
+///       `card_out` (`namecard_draw`); this sounds the declaration so its
+///       gong lands with the name, shakes the field then, and brings in the
+///       boss's theme (a conversation holds it back until here).
+function boss_namecard_step(_b) {
+    _b.card_t++;
+    if (_b.card_t == NAMECARD_SLAM_AT - CUTIN_CUE_LEAD) sfx(Sfx.SpellDeclare);
+    if (_b.card_t == NAMECARD_SLAM_AT) {
+        fx_shake(11);
+        fx_flash_screen(c_white, 0.16);
+        var _theme = _b.def[$ "music"];
+        if (_theme != undefined) music(_theme);
+    }
+    if (_b.card_go && _b.card_out < 0 && _b.card_t >= NAMECARD_HOLD_MIN) {
+        _b.card_out = 0;
+    }
+    if (_b.card_out >= 0) {
+        _b.card_out++;
+        if (_b.card_out >= NAMECARD_LAND_AT) _b.named = true;
+        if (_b.card_out >= NAMECARD_OUT_TIME) {
+            _b.card_t = -1;
+            _b.card_out = -1;
+            _b.card_go = false;
+        }
+    }
+}
+
+/// @desc Is the boss's name on its rail yet? A final boss's is put there by
+///       its name card; one that never gets a card (a midboss, a practised
+///       attack) has it from the start.
+function boss_named(_b) {
+    return _b.named || !_b.def.final || _b.declare_t <= 0;
+}
+
+/// @desc Has the boss been announced, so its rail can hang? A conversation
+///       keeps the rail stowed until the name card.
+function boss_announced(_b) {
+    return !_b.talking || _b.named || _b.card_t >= 0;
 }
 
 /// @desc One frame of a spell's cut-in. It is drawn from `cutin_t`

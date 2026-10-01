@@ -79,7 +79,7 @@ function golem_spawn(_g) {
                         golem_def());
     if (_b != undefined) {
         _b.boss.home_y = BOSS_HOME_Y - 10;
-        _b.boss.declare_t = 40;      // a midboss gets no name splash
+        _b.boss.declare_t = 40;      // a midboss gets no name card
         _b.mem = golem_body_new();
     }
     return _b;

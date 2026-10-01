@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"name_card",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"name_card",
+  "parent":{
+    "name":"ui",
+    "path":"folders/Scripts/ui.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

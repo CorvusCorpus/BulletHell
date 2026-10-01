@@ -27,6 +27,9 @@ hud = hud_new();
 // The stage's title card, idle until its timeline plays it.
 title = title_card_new();
 
+// The conversation a boss arrives with, idle until one does (`talk_functions`).
+talk = talk_new();
+
 // This attempt's marks (`rank_functions`).
 marks = rank_ledger_new();
 bg = def.make_bg();

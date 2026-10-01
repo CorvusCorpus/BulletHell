@@ -320,16 +320,16 @@
 #macro ENEMY_DEATH_BITS 14
 
 #macro BOSS_ENTRY_TIME (2 * FPS)
-#macro BOSS_DECLARE_TIME (3.4 * FPS)   // the name splash
+#macro BOSS_DECLARE_TIME (3.4 * FPS)   // the name card (`name_card`)
 #macro BOSS_PHASE_PAUSE (1.4 * FPS)    // invulnerable, between attacks
 
 // The READY beat before a practised attack starts.
 #macro PRACTICE_READY (2 * FPS)
 
-// How long a spell declares itself before its pattern opens: its cut-in's
-// band (`spell_cutin`). The boss is invulnerable and the phase clock stopped
-// through it.
-#macro BOSS_SPELL_LEAD CUTIN_BAND_TIME
+// How long a spell declares itself before its pattern opens: its cut-in
+// (`spell_cutin`), whose band is gone a little before the end. The boss is
+// invulnerable and the phase clock stopped through it.
+#macro BOSS_SPELL_LEAD CUTIN_TIME
 
 // How long before an attack's first shots its boss's charge cue starts
 // (`boss_charge`). The cue is the Hex's 1.8s pull, loudest early and fading
@@ -541,7 +541,7 @@
 enum Phase {
     Intro,        // the stage opening; the player is flying in, no input yet
     Playing,
-    BossDeclare,  // the name splash; the field is live but the boss is not
+    BossDeclare,  // the boss arriving, talking and being named; it is not live
     PhaseClear,   // bullets converting to shards, boss invulnerable
     Paused,
     Won,

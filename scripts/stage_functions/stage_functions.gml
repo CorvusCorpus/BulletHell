@@ -338,13 +338,15 @@ function enemy_act_cross(_e, _g) {
     _m.fired_t++;
 }
 
-/// @desc Put a boss on the field.
+/// @desc Put a boss on the field. One with something to say arrives
+///       talking (`talk_begin`).
 function wave_boss(_maker) {
     var _spec = { maker: _maker };
     // `role` lets practice tell a boss's arrival from a wave (`ev_role`).
     return method({ spec: _spec, role: "boss" }, function(_g) {
         _g.boss_ref = spec.maker(_g);
         _g.phase = Phase.BossDeclare;
+        talk_begin(_g, _g.boss_ref);
     });
 }
 

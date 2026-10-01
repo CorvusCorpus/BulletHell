@@ -59,6 +59,11 @@ enum Sfx {
     UiDeny,
     Pause,
 
+    // A conversation (`talk_functions`): a speaker stepping in, and each new
+    // line.
+    TalkEnter,
+    TalkNext,
+
     COUNT
 }
 
@@ -140,6 +145,9 @@ function audio_init(_on = true) {
     _t[Sfx.UiBack]      = sfx_cue(snd_ui_back,      0.50, 10,  80, 0.00, 0.00);
     _t[Sfx.UiDeny]      = sfx_cue(snd_ui_deny,      0.50, 14,  80, 0.00, 0.00);
     _t[Sfx.Pause]       = sfx_cue(snd_pause,        0.50, 10,  85, 0.00, 0.00);
+
+    _t[Sfx.TalkEnter]   = sfx_cue(snd_talk_enter,   0.50, 20,  72, 0.00, 0.03);
+    _t[Sfx.TalkNext]    = sfx_cue(snd_talk_next,    0.50,  4,  71, 0.00, 0.04);
 
     global.sfx_want = array_create(Sfx.COUNT, 0);
     global.sfx_cool = array_create(Sfx.COUNT, 0);
@@ -279,6 +287,15 @@ function music(_snd) {
     music_sync_room();
     global.music_want = _snd;
     global.music_asked = true;
+}
+
+/// @desc Withdraw this frame's request and leave what is playing: a boss
+///       that stops to talk holds its theme back for its name card
+///       (`talk_begin`).
+function music_keep() {
+    music_sync_room();
+    global.music_want = global.music_snd;
+    global.music_asked = false;
 }
 
 /// @desc Fade the music out when the room it was asked for in is left.

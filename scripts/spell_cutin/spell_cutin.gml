@@ -1,5 +1,5 @@
 /// @desc A spell's cut-in: its declaration, played over the field while the
-///       spell holds its fire (`BOSS_SPELL_LEAD`).
+///       spell holds its fire (`BOSS_SPELL_LEAD`, which is its length).
 ///
 /// A bright cut runs across the field (`Sfx.SpellCut`, sounded by
 /// `boss_enter_phase`) and opens into a tilted band. In the band is the
@@ -22,12 +22,14 @@
 /// `cutin_art` says where its eyes are.
 
 // Frames, from the declaration.
-#macro CUTIN_BAND_TIME 96          // the band, from the cut to gone: the lead
-#macro CUTIN_TIME 120              // all of it, the name's flight included
-#macro CUTIN_OPEN_AT 34            // the eyes open
-#macro CUTIN_CLOSE_AT 78           // the band starts to close
-#macro CUTIN_FLY_AT 84             // the name leaves its plate...
-#macro CUTIN_LAND_AT 106           // ...and arrives under the rail
+#macro CUTIN_OPEN_AT 36            // the eyes open
+#macro CUTIN_CLOSE_AT 102          // the band starts to close
+#macro CUTIN_FLY_AT 108            // the name leaves its plate...
+#macro CUTIN_BAND_TIME 120         // the band is gone
+#macro CUTIN_LAND_AT 130           // ...and arrives under the rail
+// All of it. The spell's first frame comes as this runs out, so the field is
+// clear of the band for the last of it, with only the name still in flight.
+#macro CUTIN_TIME 144
 
 // The declaration cue's gong comes this far into it (`cue_spell_declare`'s
 // `hit_at`, 0.2s), so the cue starts this long before the eyes open.
@@ -40,10 +42,9 @@
 #macro CUTIN_TILT -7
 #macro CUTIN_H 400
 
-// The plate the name comes in on: its left end, how far under the band, its
+// The plate the name comes in on, centred under the band: how far under, its
 // height, and how the name is set on it.
-#macro CUTIN_PLATE_X (FIELD_X0 + 64)
-#macro CUTIN_PLATE_GAP 34
+#macro CUTIN_PLATE_GAP 36
 #macro CUTIN_PLATE_H 118
 #macro CUTIN_PLATE_LEAN 0.29       // its ends lean this much x per y
 #macro CUTIN_NAME_S 0.86           // `fnt_spell` at this scale...
@@ -217,35 +218,145 @@ function poly_clip(_subj, _clip) {
     return _out;
 }
 
-/// @desc Fill a convex polygon in one colour.
-function draw_poly(_poly, _col, _alpha) {
-    var _n = array_length(_poly) div 2;
-    if (_n < 3 || _alpha <= 0.004) return;
+/// @desc Fill a convex polygon (a flat `[x, y, ...]` array, either winding)
+///       anti-aliased. A primitive's edge isn't, and on a slant it shows as
+///       steps; every bar, rule and plate of the cut-in, the name card and a
+///       conversation is filled through here so their edges all match. The
+///       fill is drawn half a pixel in from the outline, and a fringe a pixel
+///       wide fades out across it.
+///
+///       `_cols` and `_alphas` are one value for the whole polygon, or an
+///       array with one for each of its points.
+function draw_poly_shaded(_poly, _cols, _alphas) {
+    // Scratch, kept between calls so a frame of these allocates nothing.
+    static _px = [];
+    static _py = [];
+    static _pc = [];
+    static _pa = [];
+    static _nx = [];
+    static _ny = [];
+    static _ix = [];
+    static _iy = [];
+    static _ox = [];
+    static _oy = [];
+
+    var _m = array_length(_poly) div 2;
+    if (_m < 3) return;
+    var _each_c = is_array(_cols);
+    var _each_a = is_array(_alphas);
+
+    // The outline, without the repeated points a clipped polygon can carry.
+    var _n = 0;
+    for (var _i = 0; _i < _m; _i++) {
+        var _x = _poly[_i * 2];
+        var _y = _poly[_i * 2 + 1];
+        if (_n > 0
+            && abs(_x - _px[_n - 1]) + abs(_y - _py[_n - 1]) < 0.01) {
+            continue;
+        }
+        _px[_n] = _x;
+        _py[_n] = _y;
+        _pc[_n] = _each_c ? _cols[_i] : _cols;
+        _pa[_n] = _each_a ? _alphas[_i] : _alphas;
+        _n++;
+    }
+    if (_n > 1
+        && abs(_px[0] - _px[_n - 1]) + abs(_py[0] - _py[_n - 1]) < 0.01) {
+        _n--;
+    }
+    if (_n < 3) return;
+
+    var _area = 0;
+    for (var _i = 0; _i < _n; _i++) {
+        var _j = (_i + 1) mod _n;
+        _area += _px[_i] * _py[_j] - _px[_j] * _py[_i];
+    }
+    if (abs(_area) < 0.01) return;
+    var _sg = (_area > 0) ? 1 : -1;
+
+    // Each edge's outward normal.
+    for (var _i = 0; _i < _n; _i++) {
+        var _j = (_i + 1) mod _n;
+        var _dx = _px[_j] - _px[_i];
+        var _dy = _py[_j] - _py[_i];
+        var _len = max(0.0001, sqrt(_dx * _dx + _dy * _dy));
+        _nx[_i] = _dy / _len * _sg;
+        _ny[_i] = -_dx / _len * _sg;
+    }
+
+    // Each point moved half a pixel in and half a pixel out along its
+    // corner's mitre (held short on a sharp corner).
+    for (var _i = 0; _i < _n; _i++) {
+        var _p = (_i + _n - 1) mod _n;
+        var _bx = _nx[_p] + _nx[_i];
+        var _by = _ny[_p] + _ny[_i];
+        var _bl = sqrt(_bx * _bx + _by * _by);
+        if (_bl < 0.001) {
+            _bx = _nx[_i];
+            _by = _ny[_i];
+            _bl = 1;
+        }
+        _bx /= _bl;
+        _by /= _bl;
+        var _k = 0.5 / max(0.35, _bx * _nx[_i] + _by * _ny[_i]);
+        _ix[_i] = _px[_i] - _bx * _k;
+        _iy[_i] = _py[_i] - _by * _k;
+        _ox[_i] = _px[_i] + _bx * _k;
+        _oy[_i] = _py[_i] + _by * _k;
+    }
+
+    // A shape too thin to bring in keeps its outline, and fades out from
+    // that.
+    var _in = 0;
+    for (var _i = 0; _i < _n; _i++) {
+        var _j = (_i + 1) mod _n;
+        _in += _ix[_i] * _iy[_j] - _ix[_j] * _iy[_i];
+    }
+    if (_in * _sg <= 0) {
+        for (var _i = 0; _i < _n; _i++) {
+            _ix[_i] = _px[_i];
+            _iy[_i] = _py[_i];
+        }
+    }
+
     draw_primitive_begin(pr_trianglelist);
     for (var _i = 1; _i < _n - 1; _i++) {
-        draw_vertex_colour(_poly[0], _poly[1], _col, _alpha);
-        draw_vertex_colour(_poly[_i * 2], _poly[_i * 2 + 1], _col, _alpha);
-        draw_vertex_colour(_poly[_i * 2 + 2], _poly[_i * 2 + 3], _col, _alpha);
+        draw_vertex_colour(_ix[0], _iy[0], _pc[0], _pa[0]);
+        draw_vertex_colour(_ix[_i], _iy[_i], _pc[_i], _pa[_i]);
+        draw_vertex_colour(_ix[_i + 1], _iy[_i + 1], _pc[_i + 1],
+                           _pa[_i + 1]);
+    }
+    for (var _i = 0; _i < _n; _i++) {
+        var _j = (_i + 1) mod _n;
+        draw_vertex_colour(_ix[_i], _iy[_i], _pc[_i], _pa[_i]);
+        draw_vertex_colour(_ix[_j], _iy[_j], _pc[_j], _pa[_j]);
+        draw_vertex_colour(_ox[_j], _oy[_j], _pc[_j], 0);
+        draw_vertex_colour(_ix[_i], _iy[_i], _pc[_i], _pa[_i]);
+        draw_vertex_colour(_ox[_j], _oy[_j], _pc[_j], 0);
+        draw_vertex_colour(_ox[_i], _oy[_i], _pc[_i], 0);
     }
     draw_primitive_end();
+}
+
+/// @desc Fill a convex polygon in one colour (anti-aliased:
+///       `draw_poly_shaded`).
+function draw_poly(_poly, _col, _alpha) {
+    if (_alpha <= 0.004) return;
+    draw_poly_shaded(_poly, _col, _alpha);
 }
 
 /// @desc Fill a convex polygon whose alpha runs from `_a0` to `_a1` along the
 ///       unit direction (`_dx`, `_dy`), over `_len` pixels from (`_x`, `_y`).
 function draw_poly_ramp(_poly, _col, _a0, _a1, _x, _y, _dx, _dy, _len) {
+    static _as = [];
     var _n = array_length(_poly) div 2;
     if (_n < 3 || max(_a0, _a1) <= 0.004) return;
-    draw_primitive_begin(pr_trianglelist);
-    for (var _i = 1; _i < _n - 1; _i++) {
-        for (var _v = 0; _v < 3; _v++) {
-            var _k = (_v == 0) ? 0 : (_i + _v - 1);
-            var _px = _poly[_k * 2];
-            var _py = _poly[_k * 2 + 1];
-            var _f = clamp(((_px - _x) * _dx + (_py - _y) * _dy) / _len, 0, 1);
-            draw_vertex_colour(_px, _py, _col, lerp(_a0, _a1, _f));
-        }
+    for (var _i = 0; _i < _n; _i++) {
+        var _f = clamp(((_poly[_i * 2] - _x) * _dx
+                        + (_poly[_i * 2 + 1] - _y) * _dy) / _len, 0, 1);
+        _as[_i] = lerp(_a0, _a1, _f);
     }
-    draw_primitive_end();
+    draw_poly_shaded(_poly, _col, _as);
 }
 
 /// @desc Draw the part of a sprite frame (placed at `_x`, `_y` by its origin
@@ -803,10 +914,10 @@ function cutin_draw_mark(_x, _y, _s, _a) {
 // The name
 // ---------------------------------------------------------------------------
 
-/// @desc A point on the plate: `_u` along it and `_v` down it from its top-left
-///       corner, with the plate slid `_slide` along its length.
+/// @desc A point on the plate: `_u` along it from its middle and `_v` down it
+///       from its top edge, with the plate slid `_slide` along its length.
 function cutin_plate_at(_g, _u, _v, _slide) {
-    var _px = CUTIN_PLATE_X;
+    var _px = FIELD_CX;
     var _py = cutin_y(_g, _px) + CUTIN_H * 0.5 + CUTIN_PLATE_GAP;
     var _ax = dcos(CUTIN_TILT);
     var _ay = -dsin(CUTIN_TILT);
@@ -827,23 +938,25 @@ function cutin_draw_name(_h, _g, _e, _p, _col) {
     var _ns = min(CUTIN_NAME_S, CUTIN_NAME_MAX / _nw);
     draw_set_font(fnt_small());
     var _cw = text_tracked_width(_cap, 8);
-    var _len = max(_nw * _ns, _cw) + 110;
+    var _len = max(_nw * _ns, _cw) + 150;
 
-    var _slide = -(_len + 260) * (1 - cutin_quint(_t, 12, 16));
+    // It comes in from the field's left side to the middle.
+    var _far = FIELD_W * 0.5 + _len * 0.5 + 80;
+    var _slide = -_far * (1 - cutin_quint(_t, 12, 16));
     var _in = clamp((_t - 12) / 4, 0, 1);
 
     // The plate, sliding back out the way it came as the name leaves it.
     if (_t < CUTIN_FLY_AT + 12) {
         var _back = cutin_smooth(_t, CUTIN_FLY_AT, 12);
-        cutin_draw_plate(_g, _len, _slide - (_len + 260) * _back,
-                         _in * (1 - _back), _cap, _col);
+        cutin_draw_plate(_g, _len, _slide - _far * _back, _in * (1 - _back),
+                         _cap, _cw, _col);
     }
 
     // The name on it: gilt, flashing white as the eyes open, a sheen crossing
     // it after.
     var _lean = CUTIN_PLATE_LEAN;
-    var _from = cutin_plate_at(_g, 36 - CUTIN_NAME_V * _lean, CUTIN_NAME_V,
-                               _slide);
+    var _from = cutin_plate_at(_g, -_nw * _ns * 0.5 - CUTIN_NAME_V * _lean,
+                               CUTIN_NAME_V, _slide);
     if (_t < CUTIN_FLY_AT) {
         var _u = _t - CUTIN_OPEN_AT;
         var _flash = (_u >= 0) ? 0.85 * exp(-_u / 5) : 0;
@@ -915,20 +1028,21 @@ function cutin_draw_name(_h, _g, _e, _p, _col) {
 
 /// @desc The plate: indigo glass with gilt rules along its top and bottom, a
 ///       tab of the spell's colour at its left end, a star at its right, and
-///       the caster's name over the spell's.
-function cutin_draw_plate(_g, _len, _slide, _a, _cap, _col) {
+///       the caster's name (`_cw` wide) centred over the spell's.
+function cutin_draw_plate(_g, _len, _slide, _a, _cap, _cw, _col) {
     if (_a <= 0.01) return;
     var _hgt = CUTIN_PLATE_H;
+    var _hl = _len * 0.5;
 
     // A point on it, `_u` along and `_v` down, its ends leaning.
     var _pt = method({ g: _g, slide: _slide }, function(_u, _v) {
         return cutin_plate_at(g, _u - _v * CUTIN_PLATE_LEAN, _v, slide);
     });
 
-    var _c0 = _pt(0, 0);
-    var _c1 = _pt(_len, 0);
-    var _c2 = _pt(_len, _hgt);
-    var _c3 = _pt(0, _hgt);
+    var _c0 = _pt(-_hl, 0);
+    var _c1 = _pt(_hl, 0);
+    var _c2 = _pt(_hl, _hgt);
+    var _c3 = _pt(-_hl, _hgt);
     var _body = [_c0[0], _c0[1], _c1[0], _c1[1], _c2[0], _c2[1], _c3[0], _c3[1]];
 
     var _shadow = array_create(8, 0);
@@ -939,39 +1053,35 @@ function cutin_draw_plate(_g, _len, _slide, _a, _cap, _col) {
     draw_poly(_shadow, COL_VOID, 0.45 * _a);
 
     var _top = merge_colour(COL_ARCANE, COL_VOID, 0.15);
-    draw_primitive_begin(pr_trianglestrip);
-    draw_vertex_colour(_c0[0], _c0[1], _top, 0.92 * _a);
-    draw_vertex_colour(_c1[0], _c1[1], _top, 0.92 * _a);
-    draw_vertex_colour(_c3[0], _c3[1], COL_VOID, 0.94 * _a);
-    draw_vertex_colour(_c2[0], _c2[1], COL_VOID, 0.94 * _a);
-    draw_primitive_end();
+    draw_poly_shaded(_body, [_top, _top, COL_VOID, COL_VOID],
+                     [0.92 * _a, 0.92 * _a, 0.94 * _a, 0.94 * _a]);
 
     // Its rules, and a thread of cyan under the top one.
     var _rules = [[0, 2.4, COL_GILT_LIT, 0.95], [2.4, 4.2, COL_VOID, 0.8],
                   [_hgt - 2.4, _hgt, COL_GILT, 0.9], [7, 8.2, COL_RUNE, 0.45]];
     for (var _i = 0; _i < array_length(_rules); _i++) {
         var _r = _rules[_i];
-        var _u1 = (_i == 3) ? _len * 0.62 : _len;
-        var _p0 = _pt(0, _r[0]);
+        var _u1 = (_i == 3) ? _len * 0.62 - _hl : _hl;
+        var _p0 = _pt(-_hl, _r[0]);
         var _p1 = _pt(_u1, _r[0]);
         var _p2 = _pt(_u1, _r[1]);
-        var _p3 = _pt(0, _r[1]);
+        var _p3 = _pt(-_hl, _r[1]);
         draw_poly([_p0[0], _p0[1], _p1[0], _p1[1], _p2[0], _p2[1], _p3[0],
                    _p3[1]], _r[2], _r[3] * _a);
     }
 
-    var _t0 = _pt(0, 0);
-    var _t1 = _pt(14, 0);
-    var _t2 = _pt(14, _hgt);
-    var _t3 = _pt(0, _hgt);
+    var _t0 = _pt(-_hl, 0);
+    var _t1 = _pt(14 - _hl, 0);
+    var _t2 = _pt(14 - _hl, _hgt);
+    var _t3 = _pt(-_hl, _hgt);
     draw_poly([_t0[0], _t0[1], _t1[0], _t1[1], _t2[0], _t2[1], _t3[0], _t3[1]],
               _col, 0.95 * _a);
 
-    var _st = _pt(_len - 30, _hgt * 0.5);
+    var _st = _pt(_hl - 30, _hgt * 0.5);
     card_draw_star(_st[0], _st[1], 16 + 10 * dsin(_g.t * 7), 0.7 * _a);
 
     // The caster's name, small and spaced, over the spell's.
-    var _cp = _pt(36, CUTIN_CAPTION_V);
+    var _cp = _pt(-_cw * 0.5, CUTIN_CAPTION_V);
     draw_set_font(fnt_small());
     cutin_draw_tracked_turned(_cp[0], _cp[1], _cap, 8, CUTIN_TILT, COL_RUNE,
                               0.9 * _a);
@@ -1086,8 +1196,8 @@ function cutin_draw_gilt_line(_x, _y, _str, _s, _ang, _a, _flash, _sheen) {
         shader_set_uniform_f(_u.cap,
                              -_cell * (FONT_BASELINE_DROP + FONT_INK_RATIO),
                              _cell * FONT_INK_RATIO);
-        shader_set_uniform_f(_u.bevel, texture_get_texel_width(_tex) * 1.4,
-                             texture_get_texel_height(_tex) * 1.8);
+        shader_set_uniform_f(_u.bevel, texture_get_texel_width(_tex) * 0.8,
+                             texture_get_texel_height(_tex) * 1.0);
         shader_set_uniform_f(_u.sheen, lerp(-160, _w + 160, max(0, _sheen)),
                              90, (_sheen >= 0) ? 0.9 : 0);
         shader_set_uniform_f(_u.flash, _flash);
