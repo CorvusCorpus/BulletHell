@@ -1,4 +1,7 @@
-# Bullet Hell
+# Nexarchon
+
+`Nexarchon` is the working title, shown on the rack. The GameMaker project,
+its window and its save folder are still named `Bullet Hell`.
 
 A Touhou-inspired danmaku shooter in GameMaker (IDE 2024.14, VM runtime). You
 play Szuix, a blue imp who is tired of being everybody's trash mob, flying
