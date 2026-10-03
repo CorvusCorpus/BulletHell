@@ -20,6 +20,11 @@ function fx_init() {
 
     global.blooms = [];          // expanding rings; the loudest thing here
     global.bloom_n = 0;
+
+    // The bullet that last hit the player (`fx_hit_mark`); `t` -1 is none.
+    global.hit_mark = { t: -1, spr: -1, shape: 0, col: 0, life: 0, x: 0,
+                        y: 0, angle: 0, scale: 1, cx: 0, cy: 0, vx: 0, vy: 0,
+                        r: 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +157,68 @@ function fx_bullet_pop(_x, _y, _col) {
     _p.spr = spr_fx_bloom;
 }
 
+/// @desc Leave the hit mark of bullet `_u`, which has just hit a player of
+///       radius `_rad` at (`_x`, `_y`): its look, held where it first
+///       touched him on this frame's move (a long bullet, which moves along
+///       its own length, where it is drawn). One at a time, since a hit
+///       gives grace, and kept out of the particle pool so a full pool or a
+///       clear can't take it. Bullets only: lasers, rings and bodies leave
+///       none.
+function fx_hit_mark(_u, _x, _y, _rad) {
+    var _m = global.hit_mark;
+    _m.t = 0;
+    _m.spr = global.bshape_sprite[_u.shape];
+    _m.shape = _u.shape;
+    _m.col = _u.col;
+    _m.life = _u.life;
+    _m.angle = _u.angle;
+    _m.scale = _u.scale;
+    _m.x = _u.x;
+    _m.y = _u.y;
+    _m.vx = _u.x - _u.px;
+    _m.vy = _u.y - _u.py;
+    // About how far its drawing reaches from its origin.
+    _m.r = max(sprite_get_width(_m.spr), sprite_get_height(_m.spr)) * 0.4
+           * _u.scale;
+
+    // The point on its hitbox nearest him (`cx`, `cy`): on a long bullet's
+    // spine, or a round one's centre, `r` toward him.
+    var _nx = _m.x;
+    var _ny = _m.y;
+    if (global.bshape_long[_u.shape]) {
+        var _ux = dcos(_u.angle);
+        var _uy = -dsin(_u.angle);
+        var _a = global.bshape_spine0[_u.shape] * _u.scale;
+        var _b = global.bshape_spine1[_u.shape] * _u.scale;
+        var _s = clamp((_x - _m.x) * _ux + (_y - _m.y) * _uy, _a, _b);
+        _nx = _m.x + _ux * _s;
+        _ny = _m.y + _uy * _s;
+    } else {
+        // The first point of the move from (px, py) where the two circles
+        // meet: |a + t d| = reach, the smaller root.
+        var _dx = _m.vx;
+        var _dy = _m.vy;
+        var _ax = _u.px - _x;
+        var _ay = _u.py - _y;
+        var _reach = _u.r + _rad;
+        var _qa = _dx * _dx + _dy * _dy;
+        var _qb = 2 * (_ax * _dx + _ay * _dy);
+        var _qc = _ax * _ax + _ay * _ay - _reach * _reach;
+        var _t = 0;
+        if (_qc > 0 && _qa > 0.0001) {
+            var _disc = max(0, _qb * _qb - 4 * _qa * _qc);
+            _t = clamp((-_qb - sqrt(_disc)) / (2 * _qa), 0, 1);
+        }
+        _m.x = _u.px + _dx * _t;
+        _m.y = _u.py + _dy * _t;
+        _nx = _m.x;
+        _ny = _m.y;
+    }
+    var _d = point_direction(_nx, _ny, _x, _y);
+    _m.cx = _nx + lengthdir_x(_u.r, _d);
+    _m.cy = _ny + lengthdir_y(_u.r, _d);
+}
+
 /// @desc An expanding ring (shockwaves). At most 48 at once.
 function fx_ring(_x, _y, _r0, _r1, _life, _col, _thick = 1.0) {
     var _i = global.bloom_n;
@@ -259,6 +326,16 @@ function fx_step() {
         }
     }
 
+    var _m = global.hit_mark;
+    if (_m.t >= 0) {
+        _m.t++;
+        if (_m.t >= HIT_MARK_TIME) {
+            // It goes as a swept bullet does.
+            fx_bullet_pop(_m.x, _m.y, _m.col);
+            _m.t = -1;
+        }
+    }
+
     global.shake *= 0.86;
     if (global.shake < 0.2) global.shake = 0;
     global.shake_x = random_range(-global.shake, global.shake);
@@ -275,6 +352,7 @@ function fx_clear() {
     global.bloom_n = 0;
     global.shake = 0;
     global.flash_a = 0;
+    global.hit_mark.t = -1;
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +397,122 @@ function fx_draw() {
 /// @desc The floating text, drawn on the GUI layer (so it doesn't shake).
 ///       Drawn after the field's mask, so positions are clamped inside the
 ///       field or the text would spill into the HUD margin.
+/// @desc The hit mark (`fx_hit_mark`), drawn as a sequence:
+///       - Impact: the bullet flashes white, shows its own negative for two
+///         frames (`sh_invert`), and comes back as itself under a fading
+///         sheen, swollen a little by the blow. Where it touched him a strike
+///         bursts (`spr_fx_strike` frame 1) and a burst of strokes is thrown
+///         out (frame 2), the longest along the way it was going.
+///       - Its last positions trail behind it as afterimages, so the way it
+///         came reads, and fade.
+///       - The lock (frame 0) closes on it from wide, overshooting a little,
+///         then turns slowly and breathes while it is held, over a soft shade
+///         and a red under-glow that set it off the field.
+///       - Release: the lock opens out and fades as the bullet shrinks away,
+///         and it pops as a swept bullet does (`fx_step`).
+///       Drawn over the bullets and the hit's own sparks, under the player's
+///       hitbox.
+function fx_hit_mark_draw() {
+    var _m = global.hit_mark;
+    if (_m.t < 0) return;
+    var _t = _m.t;
+    var _img = bullet_frame(_m.shape, _m.col, _m.life);
+    var _hot = merge_colour(COL_LIFE, c_white, 0.55);
+    var _bw = sprite_get_width(spr_fx_bloom);
+    // The release: 0 until the last `HIT_MARK_OUT` frames, then easing in to
+    // 1.
+    var _rel = clamp((_t - (HIT_MARK_TIME - HIT_MARK_OUT)) / HIT_MARK_OUT,
+                     0, 1);
+    _rel *= _rel;
+    var _live = 1 - _rel;
+
+    // The shade, and the red under-glow breathing in it.
+    var _gs = _m.r * 4.0 / _bw;
+    draw_sprite_ext(spr_fx_bloom, 0, _m.x, _m.y, _gs, _gs, 0, c_black,
+                    0.4 * _live * min(1, _t / 3));
+    gpu_set_blendmode(bm_add);
+    _gs = _m.r * 3.0 / _bw;
+    draw_sprite_ext(spr_fx_bloom, 0, _m.x, _m.y, _gs, _gs, 0, COL_LIFE,
+                    (0.22 + 0.08 * dsin(_t * 9)) * _live);
+    gpu_set_blendmode(bm_normal);
+
+    // The afterimages, back along the way it came.
+    var _sp = point_distance(0, 0, _m.vx, _m.vy);
+    var _trail = 1 - min(1, _t / 14);
+    if (_sp > 0.5 && _trail > 0) {
+        // In frames of its travel apart, so slow sand still spreads them.
+        var _gap = clamp(_sp * 1.6, 5, 16) / _sp;
+        for (var _k = 4; _k >= 1; _k--) {
+            draw_sprite_ext(_m.spr, _img, _m.x - _m.vx * _gap * _k,
+                            _m.y - _m.vy * _gap * _k, _m.scale, _m.scale,
+                            _m.angle, c_white,
+                            0.4 * (1 - _k / 5) * _trail * _trail);
+        }
+    }
+
+    // The bullet.
+    var _punch = max(0, 1 - _t / 7);
+    var _bs = _m.scale * (1 + 0.2 * _punch * _punch) * lerp(1, 0.5, _rel);
+    if (_t < 2) {
+        gpu_set_fog(true, c_white, 0, 0);
+        draw_sprite_ext(_m.spr, _img, _m.x, _m.y, _bs, _bs, _m.angle,
+                        c_white, 1);
+        gpu_set_fog(false, c_black, 0, 0);
+    } else if (_t < 4) {
+        shader_set(sh_invert);
+        draw_sprite_ext(_m.spr, _img, _m.x, _m.y, _bs, _bs, _m.angle,
+                        c_white, 1);
+        shader_reset();
+    } else {
+        draw_sprite_ext(_m.spr, _img, _m.x, _m.y, _bs, _bs, _m.angle,
+                        c_white, _live);
+        var _sheen = 1 - min(1, (_t - 4) / 8);
+        if (_sheen > 0) {
+            gpu_set_fog(true, c_white, 0, 0);
+            draw_sprite_ext(_m.spr, _img, _m.x, _m.y, _bs, _bs, _m.angle,
+                            c_white, 0.7 * _sheen * _sheen);
+            gpu_set_fog(false, c_black, 0, 0);
+        }
+    }
+
+    gpu_set_blendmode(bm_add);
+
+    // The lock: an ease out that overshoots, then a slow turn and a breath;
+    // its ring sits a little outside the bullet's reach.
+    var _in = min(1, _t / HIT_MARK_CLOSE);
+    var _q = _in - 1;
+    var _back = 1 + 2.70158 * _q * _q * _q + 1.70158 * _q * _q;
+    var _turn = 1 - power(1 - _in, 3);
+    var _ls = (_m.r + 10) / HIT_MARK_LOCK_R * lerp(2.3, 1, _back)
+              * (1 + 0.025 * dsin(_t * 9)) * (1 + 0.5 * _rel);
+    var _la = min(1, _t / 3) * _live;
+    var _rot = lerp(70, 0, _turn) - _t * 0.8 - 30 * _rel;
+    draw_sprite_ext(spr_fx_strike, 0, _m.x, _m.y, _ls * 1.04, _ls * 1.04,
+                    _rot, COL_LIFE, 0.7 * _la);
+    draw_sprite_ext(spr_fx_strike, 0, _m.x, _m.y, _ls, _ls, _rot, _hot, _la);
+
+    // The strike, bursting in two frames and shrinking away by the
+    // sixteenth, and its strokes thrown out.
+    var _sk = (_t < 2) ? lerp(0.4, 1, _t / 2) : max(0, 1 - sqr((_t - 2) / 14));
+    if (_sk > 0) {
+        var _ss = 0.62 * _sk;
+        var _bs2 = 70 * _sk / _bw;
+        draw_sprite_ext(spr_fx_bloom, 0, _m.cx, _m.cy, _bs2, _bs2, 0,
+                        COL_LIFE, 0.55 * _sk);
+        draw_sprite_ext(spr_fx_strike, 1, _m.cx, _m.cy, _ss * 1.25,
+                        _ss * 1.25, _t * 2, COL_LIFE, 0.8 * _sk);
+        draw_sprite_ext(spr_fx_strike, 1, _m.cx, _m.cy, _ss, _ss, _t * 2,
+                        c_white, _sk);
+    }
+    var _bk = min(1, _t / 14);
+    if (_bk < 1) {
+        var _bsc = lerp(0.3, 0.8, 1 - power(1 - _bk, 3));
+        draw_sprite_ext(spr_fx_strike, 2, _m.cx, _m.cy, _bsc, _bsc,
+                        point_direction(0, 0, _m.vx, _m.vy), _hot, 1 - _bk);
+    }
+    gpu_set_blendmode(bm_normal);
+}
+
 function fx_draw_text() {
     draw_set_halign(fa_center);
     draw_set_valign(fa_middle);

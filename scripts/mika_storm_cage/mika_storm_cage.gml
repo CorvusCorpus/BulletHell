@@ -128,9 +128,9 @@
 function storm_sand_looks() {
     static _looks = [
         { shape: BSHAPE_RICE,   col: BCOL_AMBER, scale: 0.85 },
-        { shape: BSHAPE_PELLET, col: BCOL_AMBER, scale: 0.72 },
+        { shape: BSHAPE_PELLET, col: BCOL_AMBER, scale: 1.0 },
         { shape: BSHAPE_RICE,   col: BCOL_EMBER, scale: 0.85 },
-        { shape: BSHAPE_MOTE,   col: BCOL_EMBER, scale: 0.80 },
+        { shape: BSHAPE_MOTE,   col: BCOL_EMBER, scale: 1.0 },
     ];
     return _looks;
 }
@@ -384,7 +384,7 @@ function storm_cage_catch(_c, _t) {
         var _gone = false;
         for (var _i = 0; _i < 3; _i++) {
             if (!_solid[_i]) continue;
-            if (point_seg_dist(_c.nx[_i], _c.ny[_i], _u.px, _u.py, _u.x, _u.y)
+            if (bullet_reach_dist(_u, _c.nx[_i], _c.ny[_i])
                 < STORM_RING_REACH + _u.r) {
                 fx_spark(_u.x, _u.y, _u.dir + 180 + random_range(-50, 50),
                          random_range(1, 2.5), global.bullet_colour[_u.col],

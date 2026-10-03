@@ -46,14 +46,14 @@
 function mika_sand_cycles() {
     static _cycles = [
         // Ring 0: glints.
-        [ { shape: BSHAPE_MOTE, col: BCOL_EMBER, scale: 0.80 },
-          { shape: BSHAPE_MOTE, col: BCOL_AMBER, scale: 0.80 },
-          { shape: BSHAPE_MOTE, col: BCOL_BONE,  scale: 0.80 } ],
+        [ { shape: BSHAPE_MOTE, col: BCOL_EMBER, scale: 1.0 },
+          { shape: BSHAPE_MOTE, col: BCOL_AMBER, scale: 1.0 },
+          { shape: BSHAPE_MOTE, col: BCOL_BONE,  scale: 1.0 } ],
 
         // Ring 1: grains.
-        [ { shape: BSHAPE_PELLET, col: BCOL_EMBER, scale: 0.68 },
-          { shape: BSHAPE_PELLET, col: BCOL_AMBER, scale: 0.68 },
-          { shape: BSHAPE_PELLET, col: BCOL_BONE,  scale: 0.68 } ],
+        [ { shape: BSHAPE_PELLET, col: BCOL_EMBER, scale: 1.0 },
+          { shape: BSHAPE_PELLET, col: BCOL_AMBER, scale: 1.0 },
+          { shape: BSHAPE_PELLET, col: BCOL_BONE,  scale: 1.0 } ],
     ];
     return _cycles;
 }

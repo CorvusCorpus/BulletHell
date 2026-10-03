@@ -34,6 +34,7 @@ function player_new() {
 
         cutin_t: -1,      // frames since he cast, while his cut-in shows
         fire_glow: 0,     // eases up while the shot is held: the muzzles
+        focus_show: 0,    // the focus circle opening (1) and closing (0)
 
         // Visual only: the sprite's bank, eased toward the direction of
         // travel.
@@ -128,6 +129,8 @@ function player_step(_p, _in, _g) {
     }
 
     _p.focus = _in.focus;
+    _p.focus_show = _p.focus ? min(1, _p.focus_show + 1 / FOCUS_OPEN)
+                             : max(0, _p.focus_show - 1 / FOCUS_CLOSE);
 
     var _spd = _p.focus ? PLAYER_SPD_FOCUS : PLAYER_SPD;
     var _dx = (_in.right ? 1 : 0) - (_in.left ? 1 : 0);
@@ -169,16 +172,41 @@ function player_step(_p, _in, _g) {
     _p.fire_glow += ((_in.shoot ? 1 : 0) - _p.fire_glow) * 0.35;
 }
 
-/// @desc One volley: two barrels either side of centre, converging slightly,
-///       born `PSHOT_MUZZLE` above the player so they clear his sprite.
+/// @desc The barrels of a volley, focused or not. Each fires a mirrored pair,
+///       one shot from a muzzle `off` either side of centre, `ang` degrees
+///       outward from straight ahead (negative turns it in), dealing `dmg`.
+///
+///       Focused: three pairs from muzzles across his wings that close in on
+///       the centre line, so the fire narrows onto what is above him and all
+///       of it lands on a boss he is lined up under (`rank_full_fire` prices
+///       par on this volley). Unfocused: a straight pair, a pair fanned a
+///       little and a fainter pair fanned further, from one muzzle each side.
+function pshot_barrels(_focus) {
+    static _focused = [
+        { off: 12, ang: 0.0,  dmg: 0.3 },
+        { off: 26, ang: -1.6, dmg: 0.25 },
+        { off: 40, ang: -3.2, dmg: 0.2 },
+    ];
+    static _open = [
+        { off: 26, ang: 0.0,  dmg: 0.5 },
+        { off: 26, ang: 6.0,  dmg: 0.25 },
+        { off: 26, ang: 13.0, dmg: 0.2 },
+    ];
+    return _focus ? _focused : _open;
+}
+
+/// @desc One volley: a pair for each of `pshot_barrels`, born `PSHOT_MUZZLE`
+///       above the player so they clear his sprite.
 function player_fire(_p) {
-    var _spread = _p.focus ? PSHOT_SPREAD_FOCUS : PSHOT_SPREAD;
-    var _off = _p.focus ? PSHOT_OFFSET * 0.5 : PSHOT_OFFSET;
-    // 90 is straight up in GameMaker's angles, which is forward here.
-    pshot_fire(_p.x - _off, _p.y - PSHOT_MUZZLE, PSHOT_SPD, 90 + _spread,
-               PSHOT_DMG);
-    pshot_fire(_p.x + _off, _p.y - PSHOT_MUZZLE, PSHOT_SPD, 90 - _spread,
-               PSHOT_DMG);
+    var _y = _p.y - PSHOT_MUZZLE;
+    var _b = pshot_barrels(_p.focus);
+    // 90 is straight up in GameMaker's angles, which is forward here; a
+    // positive `ang` turns each side's shot away from the centre line.
+    for (var _i = 0; _i < array_length(_b); _i++) {
+        var _r = _b[_i];
+        pshot_fire(_p.x - _r.off, _y, PSHOT_SPD, 90 + _r.ang, _r.dmg);
+        pshot_fire(_p.x + _r.off, _y, PSHOT_SPD, 90 - _r.ang, _r.dmg);
+    }
     fx_spark(_p.x, _p.y - PSHOT_MUZZLE + 6, 90, 1.4, COL_SZUIX_LIT, 8, 18);
     // One cue for the volley (the vote count sets the cue's size).
     sfx(Sfx.PShot);
@@ -202,7 +230,7 @@ function player_bomb(_p, _g) {
     fx_flash_screen(COL_SIGIL, 0.34);
     fx_shake(15);
     fx_flash_at(_p.x, _p.y, COL_RUNE, 1.1);
-    fx_ring(_p.x, _p.y, 30, BOMB_CLEAR_R * 1.25, 34, COL_SIGIL, 1.0);
+    fx_ring(_p.x, _p.y, 30, 360, 28, COL_SIGIL, 1.0);
     fx_ring(_p.x, _p.y, 12, 240, 18, c_white, 0.8);
     fx_burst(_p.x, _p.y, 26, 6, 18, COL_RUNE, 30, 22);
     sfx(Sfx.Bomb);
@@ -225,14 +253,23 @@ function bomb_mote(_x, _y, _col, _n) {
     _m.drag = _acc;
 }
 
+/// @desc How far the sweep has grown (0 to 1) `_e` frames after the cast:
+///       eased out over `BOMB_GROW`, so it leaves the cast point quickly and
+///       slows toward its edge. The sweep and the circle drawn round it both
+///       read this, so the circle's rim is where bullets are being erased.
+function bomb_grow(_e) {
+    var _f = clamp(_e / BOMB_GROW, 0, 1);
+    return 1 - (1 - _f) * (1 - _f);
+}
+
 /// @desc One frame of the sweep: a circle growing from the cast point to
-///       `BOMB_CLEAR_R` over `BOMB_GROW` frames. Launches the seals at
-///       `BOMB_SEAL_AT`.
+///       `BOMB_CLEAR_R` over `BOMB_GROW` frames (`bomb_grow`). Launches the
+///       seals at `BOMB_SEAL_AT`.
 function player_bomb_sweep(_p) {
     var _elapsed = BOMB_INVULN - _p.bomb_t;
     if (_elapsed == BOMB_SEAL_AT) player_seals_launch(_p);
     if (_elapsed > BOMB_GROW) return;
-    var _r = BOMB_CLEAR_R * (_elapsed / BOMB_GROW);
+    var _r = BOMB_CLEAR_R * bomb_grow(_elapsed);
     bullet_clear_circle(_p.bomb_x, _p.bomb_y, _r, true,
                         method({ cx: _p.bomb_x, cy: _p.bomb_y }, bomb_mote));
     if (_elapsed == BOMB_GROW) laser_clear_all(true);
@@ -414,6 +451,8 @@ function player_collide(_p, _g) {
     if (!player_invulnerable(_p)) {
         var _i = bullet_hit_index(_p.x, _p.y, PLAYER_R);
         if (_i >= 0) {
+            // It leaves a mark where it touched him, so the hit can be read.
+            fx_hit_mark(bullet_get(_i), _p.x, _p.y, PLAYER_R);
             bullet_kill_at(_i);
             player_hit(_p);
             return true;
@@ -467,8 +506,9 @@ function player_heartbeat(_t) {
 }
 
 /// @desc Draw Szuix: a glow under him, muzzle flames while shooting, the
-///       sprite (flickering while invulnerable), a red pulse at one hit from
-///       death, a cyan blaze as he casts, and the focus rings.
+///       focus circle behind him, the sprite (flickering while invulnerable),
+///       a red pulse at one hit from death, a cyan blaze as he casts, and the
+///       focus circle's heart over him.
 function player_draw(_p) {
     if (!_p.alive) return;
 
@@ -495,22 +535,31 @@ function player_draw(_p) {
     draw_sprite_ext(spr_fx_bloom, 0, _p.x, _p.y + 30, _ts, _ts * 1.6, 0,
                     COL_SZUIX_LIT, _p.focus ? 0.34 : 0.55);
 
-    // A flame at each muzzle while the shot is held, eased in and out.
+    // A flame at each muzzle while the shot is held, eased in and out: one
+    // for each place a barrel (`pshot_barrels`) fires from.
     if (_p.fire_glow > 0.02 && _p.entry <= 0) {
-        var _off = _p.focus ? PSHOT_OFFSET * 0.5 : PSHOT_OFFSET;
+        var _bar = pshot_barrels(_p.focus);
         var _my = _p.y - PSHOT_MUZZLE + 10;
         var _mf = (_p.anim div 2) mod sprite_get_number(spr_pshot);
-        for (var _b = -1; _b <= 1; _b += 2) {
-            draw_sprite_ext(spr_fx_bloom, 0, _p.x + _b * _off, _my,
-                            54 / sprite_get_width(spr_fx_bloom),
-                            54 / sprite_get_width(spr_fx_bloom), 0,
-                            COL_FLAME, 0.42 * _p.fire_glow);
-            draw_sprite_ext(spr_pshot, _mf, _p.x + _b * _off, _my,
-                            0.52, 0.52, 90, c_white, 0.75 * _p.fire_glow);
+        var _ms = 54 / sprite_get_width(spr_fx_bloom);
+        for (var _k = 0; _k < array_length(_bar); _k++) {
+            var _off = _bar[_k].off;
+            var _dup = false;
+            for (var _j = 0; _j < _k; _j++) {
+                if (_bar[_j].off == _off) _dup = true;
+            }
+            if (_dup) continue;
+            for (var _b = -1; _b <= 1; _b += 2) {
+                draw_sprite_ext(spr_fx_bloom, 0, _p.x + _b * _off, _my,
+                                _ms, _ms, 0, COL_FLAME, 0.42 * _p.fire_glow);
+                draw_sprite_ext(spr_pshot, _mf, _p.x + _b * _off, _my,
+                                0.52, 0.52, 90, c_white, 0.75 * _p.fire_glow);
+            }
         }
     }
     gpu_set_blendmode(bm_normal);
 
+    player_draw_focus_ring(_p, _p.x, _p.y, 1);
     draw_sprite_ext(spr_szuix, _fr, _p.x, _p.y, 1, 1, -_p.lean * 7,
                     c_white, _a);
 
@@ -532,22 +581,47 @@ function player_draw(_p) {
         gpu_set_blendmode(bm_normal);
     }
 
-    if (_p.focus) {
-        var _spin = _p.anim * 1.6;
-        gpu_set_blendmode(bm_add);
-        var _rs = 74 / sprite_get_width(spr_focus_ring);
-        draw_sprite_ext(spr_focus_ring, 0, _p.x, _p.y, _rs, _rs, _spin,
-                        COL_SZUIX_LIT, 0.85);
-        draw_sprite_ext(spr_focus_ring, 0, _p.x, _p.y, _rs * 0.72, _rs * 0.72,
-                        -_spin * 1.7, c_white, 0.55);
-        gpu_set_blendmode(bm_normal);
-    }
+    player_draw_focus_heart(_p, _p.x, _p.y, 1);
+}
+
+/// @desc The focus circle's rim and script (`spr_focus_sigil` frames 0 and
+///       1), drawn behind him at (`_x`, `_y`). As focus is held
+///       (`focus_show`) they close in from wider, fainter circles, the script
+///       from further out; let go, they widen away. They turn opposite ways.
+///       `_a` scales it (the sigil cut-in draws him again over its band).
+function player_draw_focus_ring(_p, _x, _y, _a) {
+    var _s = _p.focus_show;
+    if (_s <= 0.01 || _a <= 0.01) return;
+    var _e = 1 - power(1 - _s, 3);
+    gpu_set_blendmode(bm_add);
+    var _k = 1.18 - 0.18 * _e;
+    draw_sprite_ext(spr_focus_sigil, 0, _x, _y, _k, _k, _p.anim * 0.35,
+                    COL_SIGIL, 0.85 * _s * _a);
+    _k = 1.32 - 0.32 * _e;
+    draw_sprite_ext(spr_focus_sigil, 1, _x, _y, _k, _k, -_p.anim * 0.6,
+                    COL_RUNE, 0.75 * _s * _a);
+    gpu_set_blendmode(bm_normal);
+}
+
+/// @desc The focus circle's heart (`spr_focus_sigil` frame 2), over him: his
+///       four-pointed star upright round the hitbox, growing out of it as
+///       focus is held.
+function player_draw_focus_heart(_p, _x, _y, _a) {
+    var _s = _p.focus_show;
+    if (_s <= 0.01 || _a <= 0.01) return;
+    var _k = 0.4 + 0.6 * (1 - power(1 - _s, 3));
+    gpu_set_blendmode(bm_add);
+    draw_sprite_ext(spr_focus_sigil, 2, _x, _y, _k, _k, 0,
+                    merge_colour(COL_SIGIL, c_white, 0.75), 0.6 * _s * _a);
+    gpu_set_blendmode(bm_normal);
 }
 
 /// @desc The grace dial round the player: a faint full circle and a bright
 ///       arc for the share of grace left, sweeping back to noon, with a bloom
 ///       on its head. It tightens as it empties and flickers toward the hit
-///       colour inside `GRACE_URGENT`. Additive, never filled.
+///       colour inside `GRACE_URGENT`, and moves out past the focus circle
+///       while he is focused (`GRACE_RING_FOCUS_OUT`). Additive, never
+///       filled.
 function player_draw_grace(_p) {
     if (!_p.alive || _p.grace_show <= 0.01 || _p.untouchable) return;
 
@@ -557,7 +631,8 @@ function player_draw_grace(_p) {
     var _col = _urgent ? merge_colour(COL_RUNE, COL_LIFE, 0.55) : COL_RUNE;
     var _lit = merge_colour(_col, c_white, 0.55);
     var _flick = _urgent ? (0.60 + 0.40 * dsin(_p.anim * 26)) : 1;
-    var _rad = lerp(GRACE_RING_R_EMPTY, GRACE_RING_R_FULL, _frac);
+    var _rad = lerp(GRACE_RING_R_EMPTY, GRACE_RING_R_FULL, _frac)
+             + GRACE_RING_FOCUS_OUT * _p.focus_show;
     var _a = _p.grace_show * _flick;
     var _to = 90 - 360 * _frac;
     var _steps = max(2, ceil(360 * _frac / 6));
@@ -582,12 +657,19 @@ function player_draw_grace(_p) {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc The hitbox, shown only while focused, drawn at exactly `PLAYER_R`.
-///       Its own function because it is drawn after the bullets.
+/// @desc The hitbox, shown only while focused. Its own function because it
+///       is drawn after the bullets.
 function player_draw_hitbox(_p) {
     if (!_p.alive || !_p.focus || _p.entry > 0) return;
-    var _hs = (PLAYER_R * 2) / sprite_get_width(spr_hitbox);
-    draw_sprite_ext(spr_hitbox, 0, _p.x, _p.y, _hs, _hs, 0, c_white, 1);
+    player_draw_hitbox_at(_p.x, _p.y, 1);
+}
+
+/// @desc The hitbox at (`_x`, `_y`) on a cyan glow, its disc at exactly
+///       `PLAYER_R` (`HITBOX_ART_R` is the disc's radius in the sprite).
+function player_draw_hitbox_at(_x, _y, _a) {
+    draw_bloom(_x, _y, 30, COL_RUNE, 0.45 * _a);
+    var _hs = PLAYER_R / HITBOX_ART_R;
+    draw_sprite_ext(spr_hitbox, 0, _x, _y, _hs, _hs, 0, c_white, _a);
 }
 
 /// @desc The player's shots, additive: a bloom under each, then the flame
@@ -613,9 +695,10 @@ function pshot_draw() {
 
 /// @desc The special's visuals: the sigil (its rim is exactly where the sweep
 ///       is erasing bullets, anchored at the cast point), the flaming front of
-///       the sweep, the heart that fills and lets go, and the seals. All
-///       additive.
+///       the sweep, the heart that fills and lets go, and the seals (drawn for
+///       as long as they fly, like their step). All additive.
 function player_draw_bomb(_p) {
+    player_draw_seals(_p);
     if (_p.bomb_t <= 0) return;
     var _e = BOMB_INVULN - _p.bomb_t;         // frames since the cast
     var _bx = _p.bomb_x;
@@ -624,17 +707,19 @@ function player_draw_bomb(_p) {
     gpu_set_blendmode(bm_add);
 
     // ---- the sigil ---------------------------------------------------------
-    // Alpha: up over six frames, held, then gone by `BOMB_SIGIL_OUT`.
-    var _fade = min(1, _e / 6.0)
-              * (1 - clamp((_e - 74) / (BOMB_SIGIL_OUT - 74.0), 0, 1));
+    // Alpha: up over six frames, held, then from `BOMB_SIGIL_FADE` gone by
+    // `BOMB_SIGIL_OUT`.
+    var _going = clamp((_e - BOMB_SIGIL_FADE)
+                       / max(1, BOMB_SIGIL_OUT - BOMB_SIGIL_FADE), 0, 1);
+    var _fade = min(1, _e / 6.0) * (1 - _going);
     if (_fade > 0.01) {
         // The rim follows the sweep while it grows, then drifts out a little
         // as it dissolves...
-        var _grow = min(1, _e / BOMB_GROW);
-        var _rad = BOMB_CLEAR_R * _grow
-                 * (1 + 0.08 * clamp((_e - 74) / 42.0, 0, 1));
+        var _grow = bomb_grow(_e);
+        var _rad = BOMB_CLEAR_R * _grow * (1 + 0.08 * _going);
         // ...and draws in slightly just before the seals leave.
-        _rad *= 1 - 0.035 * clamp((_e - 26) / (BOMB_SEAL_AT - 26.0), 0, 1)
+        _rad *= 1 - 0.035 * clamp((_e - BOMB_GROW)
+                                  / max(1, BOMB_SEAL_AT - BOMB_GROW), 0, 1)
                 * clamp((BOMB_SEAL_AT + 8 - _e) / 8.0, 0, 1);
         // The sprite's outer ring sits 494 of its 512 half-pixels out.
         var _sc = _rad / 494 * (sprite_get_width(spr_fx_sigil) / 1024.0);
@@ -662,7 +747,7 @@ function player_draw_bomb(_p) {
 
     // ---- the front of the sweep ---------------------------------------------
     if (_e <= BOMB_GROW + 8) {
-        var _t = min(1, _e / BOMB_GROW);
+        var _t = bomb_grow(_e);
         var _r = BOMB_CLEAR_R * _t;
         var _out = max(0, 1 - max(0, _e - BOMB_GROW) / 8.0);
         var _rs = _r * 2 / sprite_get_width(spr_fx_ring);
@@ -703,7 +788,13 @@ function player_draw_bomb(_p) {
         }
     }
 
-    // ---- the seals -------------------------------------------------------------
+    gpu_set_blendmode(bm_normal);
+}
+
+/// @desc The seals in the air, additive: a glow, a turning copy of the
+///       sigil's emblem at each one's heart, its flame, and a white core.
+function player_draw_seals(_p) {
+    gpu_set_blendmode(bm_add);
     var _wn2 = sprite_get_number(spr_fx_wisp);
     var _sn = sprite_get_number(spr_fx_sigil);
     for (var _i = 0; _i < array_length(_p.seals); _i++) {

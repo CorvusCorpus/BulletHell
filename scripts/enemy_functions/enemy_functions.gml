@@ -237,6 +237,12 @@ function enemy_take_shots(_g) {
         for (var _i = global.enemy_n - 1; _i >= 0; _i--) {
             var _e = global.enemies[_i];
             if (_e.leaving || !_e.shootable) continue;
+            // The shot moved `spd` this frame, so a target further than that
+            // plus its radius away on either axis is off its path.
+            var _reach = _e.r + _sh.spd;
+            if (abs(_e.x - _sh.x) > _reach || abs(_e.y - _sh.y) > _reach) {
+                continue;
+            }
             // A boss can't be damaged during its arrival, a spell
             // declaration or the pause between attacks (`boss_vulnerable`).
             // The shot passes through.

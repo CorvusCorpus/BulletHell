@@ -38,6 +38,9 @@ bullet_draw();
 
 fx_draw();
 
+// The bullet that just hit the player, held where it touched him.
+fx_hit_mark_draw();
+
 // The hitbox last of all, so it is never behind a bullet.
 player_draw_hitbox(player);
 

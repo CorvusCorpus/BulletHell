@@ -19,6 +19,7 @@ from PIL import ImageChops, Image, ImageDraw, ImageFilter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import art_common as A
+import cel_art as C
 import gm_new
 
 SS = A.SS
@@ -382,47 +383,369 @@ def _alpha_only_glow(img, glow=0.55, radius=5.0):
     return res
 
 
-def make_hitbox(size=32):
-    """The hitbox marker, drawn by the game at exactly `PLAYER_R * 2`: a ring
-    with a dot, since the ring makes the centre easy to find.
+# ---------------------------------------------------------------------------
+# Drawing in circles (the focus circle and the boss's seal)
+# ---------------------------------------------------------------------------
+
+def _at(cx, cy, r, ang):
+    """The point `r` out from (cx, cy) at `ang` degrees (y down)."""
+    a = math.radians(ang)
+    return (cx + math.cos(a) * r, cy + math.sin(a) * r)
+
+
+def _arc(c, cx, cy, r, a0, a1, w_mid, w_end=None, v=255, alpha=255,
+         ease=1.0):
+    """A stroke along a circle from `a0` to `a1` degrees, `w_mid` wide at its
+    middle and `w_end` at its ends (a rule bent round, swelling and tapering).
     """
-    _, _, r = A.grid(size * SS, size * SS)
-    outer = np.clip(1 - np.abs(r - 0.78) / 0.20, 0, 1) ** 1.4
-    core = np.clip(1 - r / 0.34, 0, 1) ** 1.6
-    a = np.clip(outer + core, 0, 1)
-    body = np.zeros((size * SS, size * SS, 3), dtype=np.float32)
-    body[:] = (255, 255, 255)
-    # A pink cast on the ring, so it isn't mistaken for a bullet's white core.
-    body[..., 1] -= (outer * 90)[...]
-    body[..., 2] -= (outer * 40)[...]
-    img = A.from_arrays(body, a)
+    w_end = w_mid if w_end is None else w_end
+    steps = max(8, int(abs(a1 - a0) * 1.5))
+    outer, inner = [], []
+    for i in range(steps + 1):
+        f = i / steps
+        ang = a0 + (a1 - a0) * f
+        w = w_end + (w_mid - w_end) * math.sin(math.pi * f) ** ease
+        outer.append(_at(cx, cy, r + w / 2, ang))
+        inner.append(_at(cx, cy, r - w / 2, ang))
+    c.polygon(outer + inner[::-1], fill=(v, v, v, alpha))
+
+
+def _flare(c, x, y, ang, r_long, r_side, waist, v=255, alpha=255,
+           outline=None):
+    """A four-pointed star with its long tips along `ang`, filled, or traced
+    `outline` wide."""
+    pts = []
+    for i in range(8):
+        a = math.radians(ang + i * 45)
+        if i % 2:
+            rr = waist
+        else:
+            rr = r_long if i % 4 == 0 else r_side
+        pts.append((x + math.cos(a) * rr, y + math.sin(a) * rr))
+    if outline:
+        c.line(pts + [pts[0]], (v, v, v, alpha), outline)
+    else:
+        c.polygon(pts, fill=(v, v, v, alpha))
+
+
+def _bead(c, x, y, ang, half_l, half_w, v=255, alpha=255):
+    """A lozenge, long along `ang` (the beads of the card's rules)."""
+    a = math.radians(ang)
+    ux, uy = math.cos(a), math.sin(a)
+    c.polygon([(x + ux * half_l, y + uy * half_l),
+               (x - uy * half_w, y + ux * half_w),
+               (x - ux * half_l, y - uy * half_l),
+               (x + uy * half_w, y - ux * half_w)], fill=(v, v, v, alpha))
+
+
+def _curl(c, x, y, ang, size, turn, w, v=255, alpha=255):
+    """A small volute from (x, y), heading `ang` and tightening as it turns
+    (`turn` +1 clockwise on screen, -1 anticlockwise)."""
+    n = 26
+    heading = ang
+    pts = [(x, y)]
+    step = size / n * 2.2
+    for i in range(1, n):
+        f = i / (n - 1)
+        heading += turn * (8 + 34 * f)
+        st = step * (1 - 0.55 * f)
+        x += math.cos(math.radians(heading)) * st
+        y += math.sin(math.radians(heading)) * st
+        pts.append((x, y))
+    for i in range(len(pts) - 1):
+        f = i / (len(pts) - 1)
+        c.line([pts[i], pts[i + 1]], (v, v, v, alpha),
+               max(0.5, w * (1 - 0.6 * f)))
+
+
+# ---------------------------------------------------------------------------
+# Szuix's focus circle and hitbox
+# ---------------------------------------------------------------------------
+
+FOCUS_SIZE = 184
+FOCUS_RIM = 72        # the rim's heavy line
+FOCUS_SCRIPT = 63     # where his script runs round
+
+
+def make_focus_frames():
+    """The circle round Szuix while he is focused: a small copy of his
+    sigil's language, as three layers the game turns and tints apart (white
+    ink, value in the alpha, a glow baked round every line):
+
+    0. The rim (his violet): four arcs of a rule that swell and taper, a fine
+       line outside them beaded at the diagonals, and a four-pointed star set
+       into each break, the top one longest.
+    1. His script (cyan): the sigil's inner word eight times round, a dot
+       between.
+    2. The heart (pale): a four-pointed sparkle and a ring round the hitbox,
+       its tips pointing in at it.
+
+    The script runs just outside his body (his wings reach 61px), so the
+    circle hugs him; the grace dial moves out past it while he is focused
+    (`player_draw_grace`).
+    """
+    size = FOCUS_SIZE
+    cx = cy = size / 2.0
+
+    c0 = A.Canvas(size, size)
+    gap = 9.0
+    for g in (-90, 0, 90, 180):
+        a0, a1 = g + gap, g + 90 - gap
+        _arc(c0, cx, cy, FOCUS_RIM, a0, a1, 2.4, 0.5, ease=0.7)
+        _arc(c0, cx, cy, FOCUS_RIM + 5, a0 + 6, a1 - 6, 0.8, v=210,
+             alpha=200)
+        for k in (-1, 0, 1):
+            a = g + 45 + k * 13
+            x, y = _at(cx, cy, FOCUS_RIM + 5, a)
+            if k == 0:
+                _bead(c0, x, y, a, 2.4, 1.3, alpha=235)
+            else:
+                _bead(c0, x, y, a, 1.6, 0.9, alpha=235)
+    for g in (-90, 0, 90, 180):
+        x, y = _at(cx, cy, FOCUS_RIM, g)
+        _flare(c0, x, y, g, 13 if g == -90 else 10, 3.6, 1.2)
+        c0.ellipse([x - 1.5, y - 1.5, x + 1.5, y + 1.5],
+                   fill=(255, 255, 255, 255))
+    rim = _alpha_only_glow(c0.finish(), 0.55, 1.6)
+
+    c1 = A.Canvas(size, size)
+    word = [21, 10, 49, 6]              # the sigil's inner word
+    n = 8 * (len(word) + 1)
+    for i in range(n):
+        ang = math.radians(-90 + (i + 0.5) * 360.0 / n)
+        gx = cx + math.cos(ang) * FOCUS_SCRIPT
+        gy = cy + math.sin(ang) * FOCUS_SCRIPT
+        k = i % (len(word) + 1)
+        if k == len(word):
+            c1.ellipse([gx - 1.1, gy - 1.1, gx + 1.1, gy + 1.1],
+                       fill=(255, 255, 255, 235))
+        else:
+            _glyph(c1, gx, gy, ang, 7.5, word[k], 255, 235, 0.9)
+    script = _alpha_only_glow(c1.finish(), 0.6, 1.4)
+
+    c2 = A.Canvas(size, size)
+    _flare(c2, cx, cy, -90, 30, 22, 4.0, alpha=70)
+    _flare(c2, cx, cy, -90, 30, 22, 4.0, alpha=210, outline=0.9)
+    c2.ellipse([cx - 11.5, cy - 11.5, cx + 11.5, cy + 11.5],
+               outline=(255, 255, 255, 210), width=1.0)
+    heart = _alpha_only_glow(c2.finish(), 0.6, 1.6)
+
+    return [rim, script, heart]
+
+
+HITBOX_SIZE = 20
+# The disc's radius in the sprite's pixels. The game draws it scaled so this
+# is `PLAYER_R` (`HITBOX_ART_R` in constants.gml must match it).
+HITBOX_R = 4.0
+
+
+def make_hitbox(size=HITBOX_SIZE):
+    """The hitbox: a white core in a rim of his cyan, the two filling exactly
+    `HITBOX_R`, inside a dark contour so it reads over anything (amber sand
+    included). Colours baked; drawn untinted, after the bullets.
+    """
+    ss = 8
+    _, _, r = A.grid(size * ss, size * ss)
+    rp = r * size / 2.0                  # final pixels from the centre
+    aa = 1.5 / ss
+
+    def inside(rad):
+        return np.clip((rad - rp) / aa + 0.5, 0, 1)
+
+    disc = inside(HITBOX_R)
+    core = inside(HITBOX_R - 1.35)
+    contour = inside(HITBOX_R + 1.5)
+    col = np.zeros((size * ss, size * ss, 3), np.float32)
+    col[:] = (14, 10, 40)
+    col += (np.array(A.RUNE, np.float32) - col) * disc[..., None]
+    col += (np.array((255, 255, 255), np.float32) - col) * core[..., None]
+    img = A.from_arrays(col, contour * 0.92)
     return img.resize((size, size), Image.LANCZOS)
 
 
-def make_focus_ring(size=96):
-    """The ticked ring shown while focused."""
-    cv = A.Canvas(size, size)
-    c = size / 2.0
-    cv.ellipse([c - size * 0.40, c - size * 0.40, c + size * 0.40, c + size * 0.40],
-               outline=(255, 255, 255, 170), width=1.6)
-    cv.ellipse([c - size * 0.27, c - size * 0.27, c + size * 0.27, c + size * 0.27],
-               outline=(255, 255, 255, 90), width=1.0)
-    for i in range(8):
-        ang = math.radians(i * 45)
-        r0, r1 = size * 0.40, size * 0.49
-        cv.line([(c + math.cos(ang) * r0, c + math.sin(ang) * r0),
-                 (c + math.cos(ang) * r1, c + math.sin(ang) * r1)],
-                fill=(255, 255, 255, 200), width=2.2)
-    return cv.finish()
+# ---------------------------------------------------------------------------
+# The boss's seal
+# ---------------------------------------------------------------------------
+
+SEAL_SIZE = 300
+SEAL_RIM = 126        # the gilt rule
+SEAL_THREAD = 119     # the cyan thread inside it
+SEAL_WEAVE = 104      # the middle of the engraved band
+
+
+def _guilloche(c, cx, cy, r, amp, lobes, strands, w, alpha, turn=0.0):
+    """Guilloche: `strands` waves round a circle of radius `r`, each
+    `r + amp * sin(lobes * a + phase)` with the phases spread evenly, so they
+    cross and weave. Drawn as fine lines."""
+    steps = lobes * 24
+    for j in range(strands):
+        ph = 2 * math.pi * j / strands
+        pts = []
+        for i in range(steps + 1):
+            a = 2 * math.pi * i / steps
+            rr = r + amp * math.sin(lobes * a + ph)
+            pts.append((cx + math.cos(a + turn) * rr, cy + math.sin(a + turn) * rr))
+        c.line(pts, (255, 255, 255, alpha), w, joint="curve")
+
+
+def make_seal_frames():
+    """The seal behind every boss (replacing the old hexagram, `make_sigil`,
+    there): upright, as four layers the game turns apart, each white ink
+    with the value in the alpha and a glow baked round every line.
+
+    0. The gilt rule (tinted gilt): four arcs that swell and taper, a fine
+       beaded line outside them ending in curls, and a long four-pointed star
+       set into each break.
+    1. The outer weave (tinted the boss's colour): a guilloche band, three
+       waves woven round between two fine rings, the outer ring beaded.
+    2. The inner weave (the boss's colour, lighter): a finer guilloche of a
+       different count over the same band, and a ring of ticks inside it.
+       Turned against layer 1, the two weaves shift through each other.
+    3. The thread (tinted cyan): eight tapering dashes just inside the rule.
+    """
+    size = SEAL_SIZE
+    cx = cy = size / 2.0
+
+    c0 = A.Canvas(size, size)
+    gap = 10.0
+    for g in (-90, 0, 90, 180):
+        s0, s1 = g + gap, g + 90 - gap
+        _arc(c0, cx, cy, SEAL_RIM, s0, s1, 3.4, 0.6, ease=0.6)
+        _arc(c0, cx, cy, SEAL_RIM + 6.5, s0 + 7, s1 - 7, 1.0, v=220,
+             alpha=210)
+        n = 9
+        for k in range(1, n):
+            a = s0 + 7 + (s1 - s0 - 14) * k / n
+            x, y = _at(cx, cy, SEAL_RIM + 6.5, a)
+            mid = 1 - abs(k / n - 0.5) * 2
+            _bead(c0, x, y, a, 1.6 + 1.6 * mid, 0.9 + 0.7 * mid, alpha=240)
+        for end, turn in ((s0 + 7, 1), (s1 - 7, -1)):
+            x, y = _at(cx, cy, SEAL_RIM + 6.5, end)
+            _curl(c0, x, y, end - 90 * turn + 180, 6, turn, 1.0, 230, 230)
+        x, y = _at(cx, cy, SEAL_RIM, g)
+        _flare(c0, x, y, g, 18, 5, 1.4)
+        c0.ellipse([x - 3.0, y - 3.0, x + 3.0, y + 3.0],
+                   outline=(255, 255, 255, 255), width=1.0)
+    rule = _alpha_only_glow(c0.finish(), 0.5, 2.0)
+
+    c1 = A.Canvas(size, size)
+    _guilloche(c1, cx, cy, SEAL_WEAVE, 6.5, 14, 3, 0.75, 215)
+    for r, w, a in ((SEAL_WEAVE - 10, 0.9, 170), (SEAL_WEAVE + 10, 0.8, 150)):
+        c1.ellipse([cx - r, cy - r, cx + r, cy + r],
+                   outline=(255, 255, 255, a), width=w)
+    for i in range(48):
+        x, y = _at(cx, cy, SEAL_WEAVE + 10, i * 7.5)
+        c1.ellipse([x - 1.0, y - 1.0, x + 1.0, y + 1.0],
+                   fill=(255, 255, 255, 220))
+    weave_out = _alpha_only_glow(c1.finish(), 0.55, 1.8)
+
+    c2 = A.Canvas(size, size)
+    _guilloche(c2, cx, cy, SEAL_WEAVE, 4.5, 20, 2, 0.6, 170)
+    for i in range(96):
+        a = i * 3.75
+        long = (i % 4 == 0)
+        c2.line([_at(cx, cy, SEAL_WEAVE - 14, a),
+                 _at(cx, cy, SEAL_WEAVE - (20 if long else 17), a)],
+                (255, 255, 255, 190 if long else 120), 0.9 if long else 0.6)
+    weave_in = _alpha_only_glow(c2.finish(), 0.55, 1.6)
+
+    c3 = A.Canvas(size, size)
+    for k in range(8):
+        a0 = k * 45 + 6
+        _arc(c3, cx, cy, SEAL_THREAD, a0, a0 + 33, 1.4, 0.2)
+    thread = _alpha_only_glow(c3.finish(), 0.6, 1.6)
+
+    return [rule, weave_out, weave_in, thread]
 
 
 # ---------------------------------------------------------------------------
-# The boss sigil
+# The strike: the mark of the bullet that hit Szuix
 # ---------------------------------------------------------------------------
+
+STRIKE_SIZE = 128
+STRIKE_LOCK = 44      # the lock's ring; the game scales it to hug the bullet
+STRIKE_STAR = 96      # the strike's canvas
+
+
+def make_strike_frames():
+    """The mark of the bullet that hit Szuix (`fx_hit_mark_draw`): three
+    layers the game moves and tints apart, white ink with the value in the
+    alpha and a glow baked round every line, in the line work of his focus
+    circle and the bosses' seal.
+
+    0. The lock, round the bullet: four arcs on the diagonals that swell and
+       taper, a fine beaded line outside each, and a needle at each cardinal
+       point aimed in at the bullet.
+    1. The strike, where bullet and hitbox touched: a long four-pointed star
+       over a short diagonal one, a fine ring and a bead at its heart.
+    2. The burst, round the strike: fine strokes of uneven length thrown out
+       from it, each swelling and tapering.
+
+    All three are 128px (the strike 96px) and centred.
+    """
+    size = STRIKE_SIZE
+    cx = cy = size / 2.0
+    R = STRIKE_LOCK
+
+    c0 = A.Canvas(size, size)
+    for g in (45, 135, 225, 315):
+        _arc(c0, cx, cy, R, g - 30, g + 30, 2.6, 0.4, ease=0.8)
+        _arc(c0, cx, cy, R + 5.5, g - 17, g + 17, 0.8, v=220, alpha=200)
+        for k, (hl, hw) in ((0, (2.3, 1.3)), (-1, (1.4, 0.8)), (1, (1.4, 0.8))):
+            a = g + k * 11
+            x, y = _at(cx, cy, R + 5.5, a)
+            _bead(c0, x, y, a, hl, hw, alpha=235)
+    for g in (0, 90, 180, 270):
+        a = math.radians(g)
+        ux, uy = math.cos(a), math.sin(a)
+        tip = _at(cx, cy, R - 13, g)
+        back = _at(cx, cy, R + 11, g)
+        wx, wy = -uy * 1.7, ux * 1.7
+        mid = _at(cx, cy, R + 1.5, g)
+        c0.polygon([tip, (mid[0] + wx, mid[1] + wy), back,
+                    (mid[0] - wx, mid[1] - wy)], fill=(255, 255, 255, 255))
+        x, y = _at(cx, cy, R + 15, g)
+        c0.ellipse([x - 1.2, y - 1.2, x + 1.2, y + 1.2],
+                   fill=(255, 255, 255, 230))
+    lock = _alpha_only_glow(c0.finish(), 0.55, 1.8)
+
+    s = STRIKE_STAR
+    c1 = A.Canvas(size, size)
+    _flare(c1, cx, cy, -90, s * 0.42, s * 0.42, 2.2)
+    _flare(c1, cx, cy, -45, s * 0.17, s * 0.17, 1.5, alpha=210)
+    c1.ellipse([cx - 5.5, cy - 5.5, cx + 5.5, cy + 5.5],
+               outline=(255, 255, 255, 220), width=1.0)
+    c1.ellipse([cx - 2.2, cy - 2.2, cx + 2.2, cy + 2.2],
+               fill=(255, 255, 255, 255))
+    strike = _alpha_only_glow(c1.finish(), 0.65, 2.4)
+
+    c2 = A.Canvas(size, size)
+    # Uneven, but fixed: (angle offset, start, length, width) per stroke.
+    strokes = [(0, 16, 30, 1.6), (21, 20, 18, 1.1), (37, 15, 26, 1.4),
+               (64, 22, 14, 1.0), (83, 17, 32, 1.6), (106, 19, 20, 1.2),
+               (127, 15, 24, 1.4), (149, 23, 15, 1.0), (172, 16, 29, 1.5),
+               (196, 20, 19, 1.1), (214, 15, 27, 1.4), (241, 22, 14, 1.0),
+               (262, 17, 31, 1.6), (287, 19, 21, 1.2), (308, 16, 25, 1.4),
+               (333, 22, 16, 1.0)]
+    for ang, r0, ln, w in strokes:
+        a = math.radians(ang)
+        ux, uy = math.cos(a), math.sin(a)
+        p0 = _at(cx, cy, r0, ang)
+        p1 = _at(cx, cy, r0 + ln, ang)
+        pm = _at(cx, cy, r0 + ln * 0.3, ang)
+        wx, wy = -uy * w * 0.5, ux * w * 0.5
+        c2.polygon([p0, (pm[0] + wx, pm[1] + wy), p1,
+                    (pm[0] - wx, pm[1] - wy)], fill=(255, 255, 255, 235))
+    burst = _alpha_only_glow(c2.finish(), 0.5, 1.4)
+
+    return [lock, strike, burst]
+
 
 def make_sigil(size=320):
-    """The magic circle under a boss: rings, ticks, glyph marks and two
-    triangles, tinted per boss and stretched into an ellipse by the game.
+    """The old boss circle: rings, ticks, glyph marks and two triangles, white
+    and tinted at draw time. Bosses now carry their seal
+    (`make_seal_frames`); this is still a motif of the spell backgrounds and
+    the console's watermark.
     """
     cv = A.Canvas(size, size)
     c = size / 2.0
@@ -581,6 +904,31 @@ def make_spell_horn(w=640, h=600, seed=4):
     return out.resize((w, h), Image.LANCZOS)
 
 
+def _preview_marks(focus, seal):
+    """`_preview/marks.png`: the focus circle and the seal, each layer in the
+    colour the game tints it (the seal's moons in Ziggy's red; `None` is
+    drawn as it is), over the dark of a stage, at three times size."""
+    def lay(frames, tints):
+        out = Image.new("RGBA", frames[0].size, (14, 10, 30, 255))
+        for img, tint in zip(frames, tints):
+            if tint is None:
+                out.alpha_composite(img)
+                continue
+            lit = Image.new("RGBA", img.size, A.rgba(tint, 0))
+            lit.putalpha(img.getchannel("A"))
+            out = A.add(out, lit)
+        return out.resize((out.width * 3, out.height * 3), Image.LANCZOS)
+
+    f = lay(focus, (A.SIGIL, A.RUNE, (236, 230, 255)))
+    s = lay(seal, (A.GILT_LIT, A.ZIGGY, A.mix(A.ZIGGY, (255, 255, 255), 0.4),
+                   A.RUNE))
+    sheet = Image.new("RGBA", (f.width + s.width + 30, max(f.height, s.height)),
+                      (14, 10, 30, 255))
+    sheet.paste(f, (0, 0))
+    sheet.paste(s, (f.width + 30, 0))
+    sheet.save(os.path.join(A.PREVIEW, "marks.png"))
+
+
 # The horn's root as a fraction of the sprite's size: the sprite's origin,
 # which the game pins to a bottom corner of the field.
 HORN_ROOT = (0.06, 0.97)
@@ -639,7 +987,15 @@ def main():
     layered.resize((768, 768), Image.LANCZOS).save(
         os.path.join(A.PREVIEW, "sigil.png"))
     emit("spr_hitbox", make_hitbox(), folder="Sprites/ui")
-    emit("spr_focus_ring", make_focus_ring(), folder="Sprites/ui")
+    focus = make_focus_frames()
+    gm_new.sprite("spr_focus_sigil", focus, origin="center",
+                  folder="Sprites/ui")
+    gm_new.delete("spr_focus_ring", "sprites")
+    seal = make_seal_frames()
+    gm_new.sprite("spr_boss_seal", seal, origin="center", folder="Sprites/fx")
+    gm_new.sprite("spr_fx_strike", make_strike_frames(), origin="center",
+                  folder="Sprites/fx")
+    _preview_marks(focus, seal)
     emit("spr_boss_sigil", make_sigil(), folder="Sprites/fx")
     emit("spr_spell_veins", make_spell_veins(), folder="Sprites/fx")
     # Origin at the root of the horn (pinned to a corner of the field).

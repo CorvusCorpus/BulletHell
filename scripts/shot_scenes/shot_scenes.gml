@@ -357,9 +357,13 @@ function shot_pose(_scene, _g) {
             return 236 + BOSS_SPELL_LEAD;   // the sweep is fired in shot_tick
 
         case "hit":
+            // Struck by one bullet (`shot_tick`), a crimson orb (the hit mark
+            // has to show on a red bullet too); untouchable until then, so
+            // the pattern can't hit him first.
             shot_boss(_g, 1, ziggy_spawn);
             _g.player.x = FIELD_CX - 60;
             _g.player.y = FIELD_Y1 - 280;
+            _g.player.untouchable = true;
             return 220 + BOSS_SPELL_LEAD;
 
         case "peril":
@@ -735,9 +739,14 @@ function shot_tick(_scene, _g, _t) {
             break;
 
         case "hit":
+            // About ten frames before the shutter, an orb that reaches him.
             if (_t == 200 + BOSS_SPELL_LEAD) {
-                _g.player.iframe = 0;
-                player_hit(_g.player);
+                var _p = _g.player;
+                _p.untouchable = false;
+                _p.iframe = 0;
+                fire(_p.x - 50, _p.y - 70, 7,
+                     aim_at(_p.x - 50, _p.y - 70, _p.x, _p.y),
+                     BSHAPE_ORB, BCOL_CRIMSON, 0);
             }
             break;
 

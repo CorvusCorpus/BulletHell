@@ -619,7 +619,7 @@ function hex_debris(_h) {
         { shape: BSHAPE_CRYSTAL,  spd: 3.9 },  // r  9.0
         { shape: BSHAPE_RUNE,     spd: 4.5 },  // r  8.0 -- a piece of the ward
         { shape: BSHAPE_ORB,      spd: 5.2 },  // r  7.0 -- the ward's own bead
-        { shape: BSHAPE_MOTE,     spd: 6.0 },  // r  5.6
+        { shape: BSHAPE_MOTE,     spd: 6.0 },  // r  4.3
         { shape: BSHAPE_PELLET,   spd: 6.9 },  // r  4.2
     ];
     var _n = array_length(kinds);

@@ -176,6 +176,16 @@ function test_bullet_table() {
         if (global.bshape_oriented[_s] && global.bshape_spin[_s] != 0) _spun++;
     }
     ok("no oriented shape carries a default spin", _spun == 0);
+
+    // A capsule lies along a bullet's `angle`, which is its heading only on
+    // an oriented shape.
+    var _loose = 0;
+    for (var _s = 0; _s < BSHAPE_COUNT; _s++) {
+        if (global.bshape_long[_s] && !global.bshape_oriented[_s]) _loose++;
+    }
+    ok("every long shape is oriented", _loose == 0);
+    ok("the knife and arrow have capsules",
+       global.bshape_long[BSHAPE_KNIFE] && global.bshape_long[BSHAPE_ARROW]);
     ok("the star shapes turn on their own",
        global.bshape_spin[BSHAPE_STAR] > 0
        && global.bshape_spin[BSHAPE_SHURIKEN] > 0
@@ -527,6 +537,39 @@ function test_collision() {
     ok("a bullet still fading in cannot hit",
        bullet_hit_index(500, 500, PLAYER_R) == -1);
 
+    // A long bullet's hitbox is a capsule down its length (pointing right at
+    // angle 0), so its grip end hurts as its blade does.
+    var _r = global.bshape_radius[BSHAPE_KNIFE];
+    var _s0 = global.bshape_spine0[BSHAPE_KNIFE];
+    var _s1 = global.bshape_spine1[BSHAPE_KNIFE];
+    var _side = _r + PLAYER_R;
+    st_reset();
+    fire(500, 500, 0, 0, BSHAPE_KNIFE, BCOL_CRIMSON, 0);
+    ok("a knife hits beside its grip end",
+       bullet_hit_index(500 + _s0 + 1, 500 + _side - 0.5, PLAYER_R) == 0);
+    ok("and not just clear of its side",
+       bullet_hit_index(500 + _s0 + 1, 500 + _side + 0.5, PLAYER_R) == -1);
+    ok("nor just past its point",
+       bullet_hit_index(500 + _s1 + _side + 0.5, 500, PLAYER_R) == -1);
+
+    st_reset();
+    fire(500, 500, 0, 90, BSHAPE_KNIFE, BCOL_CRIMSON, 0);
+    // Each point is measured against its own end; the knife's two ends are
+    // different lengths from its origin, so one pointing down fails this.
+    ok("a knife turned upright points up",
+       bullet_hit_index(500, 500 - _s1 - _side - 0.5, PLAYER_R) == -1
+       && bullet_hit_index(500, 500 - _s0 + _side - 0.5, PLAYER_R) == 0);
+
+    // Moving further in a frame than its spine is long, it still sweeps
+    // the gap between where it was and where it is.
+    st_reset();
+    var _jump = (_s1 - _s0) * 2;
+    fire(400, 500, _jump, 0, BSHAPE_KNIFE, BCOL_CRIMSON, 0);
+    bullet_step(0, 0);
+    ok("a fast knife cannot step over the player",
+       bullet_hit_index(400 + _s1 + (_jump - (_s1 - _s0)) * 0.5, 500,
+                        PLAYER_R) == 0);
+
     ok_near("a point on a segment is zero away",
             point_seg_dist(5, 0, 0, 0, 10, 0), 0, 0.001);
     ok_near("a point beside a segment measures perpendicular",
@@ -548,6 +591,14 @@ function test_graze() {
     fire(500, 500, 0, 0, BSHAPE_ORB, BCOL_CYAN, 30);
     ok("a bullet still fading in cannot be grazed",
        bullet_graze(500, 500, GRAZE_R) == 0);
+
+    // A long bullet grazes along its capsule, not round its middle.
+    st_reset();
+    fire(500, 500, 0, 0, BSHAPE_ARROW, BCOL_CYAN, 0);
+    ok("an arrow grazes beside its tail",
+       bullet_graze(500 + global.bshape_spine0[BSHAPE_ARROW],
+                    500 + global.bshape_radius[BSHAPE_ARROW] + GRAZE_R - 1,
+                    GRAZE_R) == 1);
     st_reset();
 }
 
@@ -692,8 +743,8 @@ function test_rings() {
     st_reset();
     _ring = ring_new(FIELD_CX, FIELD_CY, BCOL_GOLD, 0);
     for (var _i = 0; _i < RING_FORM + 1; _i++) ring_step(undefined);
-    pshot_fire(FIELD_CX, FIELD_CY + 300, PSHOT_SPD, 90, PSHOT_DMG);
-    pshot_fire(FIELD_CX + 400, FIELD_CY + 300, PSHOT_SPD, 90, PSHOT_DMG);
+    pshot_fire(FIELD_CX, FIELD_CY + 300, PSHOT_SPD, 90, 1);
+    pshot_fire(FIELD_CX + 400, FIELD_CY + 300, PSHOT_SPD, 90, 1);
     var _stopped = 0;
     for (var _i = 0; _i < 40; _i++) {
         pshot_step();
@@ -785,7 +836,7 @@ function test_rings() {
     _deep.behind = true;
     ok("a ring behind its caster does not hurt",
        !ring_any_hit(FIELD_CX, FIELD_CY + RING_R, PLAYER_R));
-    pshot_fire(FIELD_CX, FIELD_CY + 300, PSHOT_SPD, 90, PSHOT_DMG);
+    pshot_fire(FIELD_CX, FIELD_CY + 300, PSHOT_SPD, 90, 1);
     var _through = 0;
     for (var _i = 0; _i < 40; _i++) {
         pshot_step();
@@ -1152,6 +1203,27 @@ function test_hall_lights() {
     ok("...and the braziers too", hall_brazier_front(_h) >= HALL_FRONT_ALL);
     bg_free(_h);
 
+    // A held opening stops short of the torches and carries on when let go.
+    var _hw = bg_sanctum();
+    _hw.wait = true;
+    for (var _f = 0; _f < HALL_WAKE_HOLD + 300; _f++) hall_step(_hw);
+    ok("a held opening waits with the torches out",
+       hall_front(_hw, HALL_WAKE_TORCH) <= -HALL_FRONT_ALL);
+    _hw.wait = false;
+    for (var _f = 0; _f < HALL_INTRO_TIME; _f++) hall_step(_hw);
+    ok("...and finishes once let go", _hw.intro >= 1);
+    bg_free(_hw);
+
+    // Stage three's timeline lets go of every hold it puts on the hall.
+    var _held = 0;
+    var _evs = stage_sanctum_script();
+    for (var _i = 0; _i < array_length(_evs); _i++) {
+        var _role = ev_role(_evs[_i]);
+        if (_role == "wait") _held++;
+        if (_role == "wake" && _held > 0) _held--;
+    }
+    ok("stage three never leaves the hall held", _held == 0);
+
     var _r = hall_bay_range(_h);
     ok("the bays drawn include the one the camera is in",
        _r[0] <= floor(hall_cam_z(_h) / HALL_BAY_Z)
@@ -1314,6 +1386,29 @@ function test_player() {
         _hits++;
     }
     ok("enough hits end the run", !_p.alive && _p.hp <= 0);
+
+    // The bullet that hits him leaves a mark where it touched, which
+    // outlives any clear and goes in its own time.
+    st_reset();
+    _g = st_game_at(GAME_CX, GAME_CY);
+    _p = _g.player;
+    fire(_p.x - 40, _p.y, 8, 0, BSHAPE_ORB, BCOL_CYAN, 0);
+    for (var _f = 0; _f < 8 && global.hit_mark.t < 0; _f++) {
+        bullet_step(_p.x, _p.y);
+        player_collide(_p, _g);
+    }
+    ok("a bullet that hits leaves its mark",
+       global.hit_mark.t == 0
+       && global.hit_mark.spr == global.bshape_sprite[BSHAPE_ORB]);
+    ok_near("where it first touched him",
+            point_distance(global.hit_mark.x, global.hit_mark.y, _p.x, _p.y),
+            global.bshape_radius[BSHAPE_ORB] + PLAYER_R, 0.01);
+    ok("and the bullet itself is gone", bullet_count() == 0);
+    bullet_clear_all(false);
+    fx_step();
+    ok("the mark outlives a clear", global.hit_mark.t == 1);
+    for (var _f = 0; _f < HIT_MARK_TIME; _f++) fx_step();
+    ok("and goes in its time", global.hit_mark.t == -1);
 
     st_reset();
     _g = st_game_at(GAME_CX, GAME_CY);
@@ -2295,11 +2390,26 @@ function test_marks() {
        !rank_attack_expired({ kind: AttackKind.Spell, name: "V",
                               time: 60 * FPS, survival: true }, false));
 
-    // Par is priced on a volley's damage, so the volley has to be what
-    // `rank_full_fire` thinks it is.
+    // Par is priced on the focused volley's barrels, so the volley has to be
+    // what `pshot_barrels` lists.
     st_reset();
-    player_fire(player_new());
-    ok("a volley is PSHOT_BARRELS shots", pshot_count() == PSHOT_BARRELS);
+    var _pl = player_new();
+    _pl.focus = true;
+    player_fire(_pl);
+    var _dealt = 0;
+    for (var _i = 0; _i < pshot_count(); _i++) {
+        _dealt += global.pshots[_i].dmg;
+    }
+    ok("a focused volley is a pair for each of its barrels",
+       pshot_count() == 2 * array_length(pshot_barrels(true)));
+    ok("and deals what par's full fire says it does",
+       rank_full_fire() > 0
+       && abs(rank_full_fire() * PSHOT_PERIOD - _dealt) < 0.0001);
+    st_reset();
+    _pl.focus = false;
+    player_fire(_pl);
+    ok("an unfocused volley is a pair for each of its barrels",
+       pshot_count() == 2 * array_length(pshot_barrels(false)));
 
     ok("a wave is passed by killing most of it, without grazing",
        rank_wave_target(5000) > 0 && rank_wave_target(5000) < 5000);
@@ -3650,35 +3760,41 @@ function test_attacks_run() {
     st_reset();
 }
 
-/// @desc A rough performance guard for the bullet loops.
+/// @desc A rough performance guard for the bullet loops: a screen of round
+///       bullets, then of long ones (capsule hitboxes).
 function test_bullet_cost() {
-    st_reset();
-    var _n = 2000;
-    for (var _i = 0; _i < _n; _i++) {
-        var _b = fire(random(GAME_W), random(GAME_H), 0.2, random(360),
-                      BSHAPE_ORB, BCOL_CYAN, 0);
-        if (_b == undefined) break;
-    }
-    var _live = bullet_count();
-
-    var _best = 999999;
-    for (var _r = 0; _r < 3; _r++) {
-        var _t0 = get_timer();
-        for (var _f = 0; _f < 60; _f++) {
-            bullet_step(GAME_CX, GAME_CY);
-            bullet_graze(GAME_CX, GAME_CY, GRAZE_R);
-            bullet_hit_index(GAME_CX, GAME_CY, PLAYER_R);
+    var _shapes = [BSHAPE_ORB, BSHAPE_KNIFE];
+    for (var _k = 0; _k < array_length(_shapes); _k++) {
+        st_reset();
+        var _n = 2000;
+        for (var _i = 0; _i < _n; _i++) {
+            var _b = fire(random(GAME_W), random(GAME_H), 0.2, random(360),
+                          _shapes[_k], BCOL_CYAN, 0);
+            if (_b == undefined) break;
         }
-        _best = min(_best, get_timer() - _t0);
+        var _live = bullet_count();
+
+        var _best = 999999;
+        for (var _r = 0; _r < 3; _r++) {
+            var _t0 = get_timer();
+            for (var _f = 0; _f < 60; _f++) {
+                bullet_step(GAME_CX, GAME_CY);
+                bullet_graze(GAME_CX, GAME_CY, GRAZE_R);
+                bullet_hit_index(GAME_CX, GAME_CY, PLAYER_R);
+            }
+            _best = min(_best, get_timer() - _t0);
+        }
+
+        var _per = _best / (_live * 60);    // microseconds per bullet-frame
+        var _what = (_k == 0) ? "round" : "long";
+        show_debug_message("SELFTEST INFO bullet cost (" + _what + ") "
+                           + string(_live) + " bullets, "
+                           + string(_best / 1000) + "ms for 60 frames, "
+                           + string(_per) + "us each");
+
+        ok("stepping a full screen of " + _what
+           + " bullets stays under budget", _per < 4.0);
+        ok("and a second of it is well under a second", _best < 600000);
     }
-
-    var _per = _best / (_live * 60);        // microseconds per bullet-frame
-    show_debug_message("SELFTEST INFO bullet cost " + string(_live)
-                       + " bullets, " + string(_best / 1000)
-                       + "ms for 60 frames, " + string(_per) + "us each");
-
-    ok("stepping a full screen of bullets stays under budget", _per < 4.0);
-    ok("and a second of a full screen is well under a second",
-       _best < 600000);
     st_reset();
 }

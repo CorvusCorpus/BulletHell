@@ -82,6 +82,14 @@
 #macro PLAYER_R 4.0
 #macro GRAZE_R 30.0
 
+// The hitbox disc's radius in `spr_hitbox`'s own pixels (`HITBOX_R` in
+// tools/make_fx.py), so it can be drawn at exactly `PLAYER_R`.
+#macro HITBOX_ART_R 4.0
+
+// Frames the focus circle takes to open as focus is held, and to close.
+#macro FOCUS_OPEN 9
+#macro FOCUS_CLOSE 6
+
 // A bullet pays a graze once; a laser pays every this many frames while the
 // player rides it.
 #macro LASER_GRAZE_CD 20
@@ -95,13 +103,14 @@
 #macro MP_PER_BOMB 25
 #macro BOMB_INVULN IFRAME_TIME // grace on a special: as long as a hit's
 #macro BOMB_CLEAR_R 560        // bullets inside this are swept
-#macro BOMB_GROW 26            // frames the sweep takes to reach full radius
+#macro BOMB_GROW 70            // frames the sweep takes to reach full radius
 
-// The special (sigil): the sweep grows from the cast point and erases
-// bullets, then `BOMB_SEAL_AT` frames later `BOMB_SEALS` wisps spiral out,
-// hunt the nearest target and burst, each dealing `BOMB_SEAL_DMG`.
+// The special (sigil), paced round his cut-in (`sigil_cutin`): while it plays
+// the sweep grows from the cast point and erases bullets; as it ends
+// `BOMB_SEALS` wisps spiral out, hunt the nearest target and burst, each
+// dealing `BOMB_SEAL_DMG`; then the circle fades out as his grace runs out.
 #macro BOMB_SEALS 6
-#macro BOMB_SEAL_AT 40         // frames after the cast the seals leave
+#macro BOMB_SEAL_AT SIGIL_CUTIN_TIME   // frames after the cast the seals leave
 #macro BOMB_SEAL_CURL 24       // frames they spiral out before they hunt
 #macro BOMB_SEAL_LIFE 96       // frames a seal lives if it finds nothing
 #macro BOMB_SEAL_SPD0 7.5      // leaving the heart
@@ -111,7 +120,8 @@
 #macro BOMB_SEAL_WAKE 90       // bullets this close to a flying seal are swept
 #macro BOMB_SEAL_BLAST 230     // ...and this close to where it bursts
 #macro BOMB_SEAL_DMG 10
-#macro BOMB_SIGIL_OUT 116      // the frame the circle has finished fading
+#macro BOMB_SIGIL_FADE 120     // the frame the circle starts to fade...
+#macro BOMB_SIGIL_OUT (BOMB_INVULN - 8)   // ...and is gone
 
 // The grace dial round the player (see `player_draw_grace`): its radius at
 // full and at empty, and the share of the grace left when it starts to
@@ -119,18 +129,17 @@
 #macro GRACE_RING_R_FULL 80
 #macro GRACE_RING_R_EMPTY 62
 #macro GRACE_URGENT 0.3
+// How far out it moves while he is focused, to run outside the focus circle
+// (`spr_focus_sigil`, whose stars reach 85px) rather than across it.
+#macro GRACE_RING_FOCUS_OUT 26
 
 // Frames per heartbeat of the one-hit-from-death warning.
 #macro LOW_HP_BEAT 48
 
-// The shot: two converging barrels, narrowed while focused.
+// The shot: a volley of mirrored pairs, one pair per barrel in
+// `pshot_barrels`, which sets each pair's muzzle, angle and damage.
 #macro PSHOT_PERIOD 3          // frames between volleys
 #macro PSHOT_SPD 36
-#macro PSHOT_DMG 0.75
-#macro PSHOT_BARRELS 2          // shots per volley (`player_fire`)
-#macro PSHOT_SPREAD 7.0        // degrees off straight ahead, unfocused
-#macro PSHOT_SPREAD_FOCUS 1.5
-#macro PSHOT_OFFSET 26         // how far either side of centre a barrel sits
 
 // How far in front of the player a bolt is born, so it clears his sprite
 // (his horns are 56px above his origin).
@@ -153,6 +162,15 @@
 #macro RING_MAX 24
 #macro PARTICLE_MAX 1024
 #macro FLOATER_MAX 64          // floating text
+
+// The mark a bullet leaves where it hit the player (`fx_hit_mark`): frames it
+// lasts, frames its lock takes to close on it, frames of its release at the
+// end, and the radius of the lock's ring in `spr_fx_strike` (`STRIKE_LOCK` in
+// tools/make_fx.py).
+#macro HIT_MARK_TIME 46
+#macro HIT_MARK_CLOSE 12
+#macro HIT_MARK_OUT 12
+#macro HIT_MARK_LOCK_R 44
 
 // How many past positions a curved laser keeps, so its length is a number of
 // frames.
@@ -352,6 +370,12 @@
 
 // Where a boss holds station, measured down the field.
 #macro BOSS_HOME_Y (FIELD_Y0 + 250)
+
+// Frames a boss's seal (`boss_draw_seal`) takes to open as the boss appears,
+// and the radius of its gilt rule in `spr_boss_seal`'s pixels (`SEAL_RIM` in
+// tools/make_fx.py), where its stars are.
+#macro BOSS_SEAL_OPEN 40
+#macro BOSS_SEAL_RIM 126
 
 // The tallest ink any boss sprite carries above its origin, measured off the
 // PNGs (Ziggy's horns: 100). The health rail's clearance is measured against
@@ -1166,6 +1190,7 @@ enum BossMove {
 // ---------------------------------------------------------------------------
 #macro HALL_INTRO_TIME 1800
 #macro HALL_WAKE_VEIL [0, 90]      // the black lifts
+#macro HALL_WAKE_HOLD 110          // where it waits while `wait` is set
 #macro HALL_WAKE_TORCH 170         // the first torches catch
 #macro HALL_WAKE_ORB 560           // ...and the orbs
 #macro HALL_WAKE_BEAM [360, 1100]  // the moonbeam fades as they take over

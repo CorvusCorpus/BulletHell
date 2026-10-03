@@ -39,7 +39,7 @@ SCENES = (
     "stage",        # mid-stage: fodder waves, player shooting, items falling
     "focus",        # focused: hitbox shown, slow, grazing
     "bomb",         # the special going off, and his cut-in (use --burst)
-    "hit",          # the player struck: iframe flicker, shards scattering
+    "hit",          # the player struck by a bullet: its red mark, iframe flicker, shards
     "peril",        # one hit from death: the heartbeat warning, in a pattern
     "midboss",      # the midboss and its pattern
     "declare",      # a boss with nothing to say being named: its card

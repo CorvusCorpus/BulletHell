@@ -641,11 +641,42 @@ function point_seg_dist(_px, _py, _x0, _y0, _x1, _y1) {
     return point_distance(_px, _py, _x0 + _dx * _t, _y0 + _dy * _t);
 }
 
+/// @desc How far (`_x`, `_y`) is from the line a long bullet's hitbox is
+///       built on; the hitbox is everything within `r` of it. A long shape
+///       (`global.bshape_long`) has a capsule: a spine along its heading,
+///       `bshape_spine0` to `bshape_spine1` pixels from its origin, scaled
+///       with it. With `_swept`, the spine is stretched back over this
+///       frame's travel, which is along the heading, so a fast bullet can't
+///       step over the player.
+function bullet_spine_dist(_u, _x, _y, _swept = true) {
+    var _ux = dcos(_u.angle);
+    var _uy = -dsin(_u.angle);
+    var _a = global.bshape_spine0[_u.shape] * _u.scale;
+    var _b = global.bshape_spine1[_u.shape] * _u.scale;
+    if (_swept) {
+        var _t = (_u.x - _u.px) * _ux + (_u.y - _u.py) * _uy;
+        if (_t > 0) _a -= _t; else _b -= _t;
+    }
+    return point_seg_dist(_x, _y, _u.x + _ux * _a, _u.y + _uy * _a,
+                          _u.x + _ux * _b, _u.y + _uy * _b);
+}
+
+/// @desc How far (`_x`, `_y`) is from the line any bullet's hitbox is built
+///       on, swept over this frame: a round bullet's path, or a long one's
+///       spine (`bullet_spine_dist`). Touching is closer than `r` plus the
+///       other thing's radius.
+function bullet_reach_dist(_u, _x, _y) {
+    if (global.bshape_long[_u.shape]) return bullet_spine_dist(_u, _x, _y);
+    return point_seg_dist(_x, _y, _u.px, _u.py, _u.x, _u.y);
+}
+
 /// @desc The index of the first bullet that hits a circle at (`_x`, `_y`),
-///       or -1. A cheap bounding-box reject runs before the segment test.
+///       or -1. A cheap bounding-box reject runs before the swept test.
 function bullet_hit_index(_x, _y, _rad) {
     var _n = global.bullet_n;
     var _pool = global.bullets;
+    var _long = global.bshape_long;
+    var _ext = global.bshape_ext;
     for (var _i = 0; _i < _n; _i++) {
         var _u = _pool[_i];
         // Harmless while still a warning mark or while fading out.
@@ -653,15 +684,18 @@ function bullet_hit_index(_x, _y, _rad) {
 
         var _reach = _rad + _u.r;
         // The box covers the whole segment moved, not just the end point, or
-        // a fast bullet would be rejected before the swept test.
-        var _lo_x = min(_u.px, _u.x) - _reach;
-        if (_x < _lo_x) continue;
-        if (_x > max(_u.px, _u.x) + _reach) continue;
-        var _lo_y = min(_u.py, _u.y) - _reach;
-        if (_y < _lo_y) continue;
-        if (_y > max(_u.py, _u.y) + _reach) continue;
+        // a fast bullet would be rejected before the swept test; and a long
+        // bullet's spine reaching out from its origin.
+        var _box = _reach + _ext[_u.shape] * _u.scale;
+        if (_x < min(_u.px, _u.x) - _box) continue;
+        if (_x > max(_u.px, _u.x) + _box) continue;
+        if (_y < min(_u.py, _u.y) - _box) continue;
+        if (_y > max(_u.py, _u.y) + _box) continue;
 
-        if (point_seg_dist(_x, _y, _u.px, _u.py, _u.x, _u.y) < _reach) {
+        if (_long[_u.shape]) {
+            if (bullet_spine_dist(_u, _x, _y) < _reach) return _i;
+        } else if (point_seg_dist(_x, _y, _u.px, _u.py, _u.x, _u.y)
+                   < _reach) {
             return _i;
         }
     }
@@ -673,14 +707,26 @@ function bullet_hit_index(_x, _y, _rad) {
 function bullet_graze(_x, _y, _rad) {
     var _n = global.bullet_n;
     var _pool = global.bullets;
+    var _long = global.bshape_long;
+    var _ext = global.bshape_ext;
     var _count = 0;
     for (var _i = 0; _i < _n; _i++) {
         var _u = _pool[_i];
         if (_u.grazed || _u.delay > 0 || _u.fade_t > 0) continue;
+        var _reach = _rad + _u.r;
         var _dx = _u.x - _x;
         var _dy = _u.y - _y;
-        var _reach = _rad + _u.r;
-        if (_dx * _dx + _dy * _dy < _reach * _reach) {
+        var _d2 = _dx * _dx + _dy * _dy;
+        var _near;
+        if (_long[_u.shape]) {
+            // Out of reach of even its spine's furthest end first, cheaply.
+            var _far = _reach + _ext[_u.shape] * _u.scale;
+            _near = _d2 < _far * _far
+                    && bullet_spine_dist(_u, _x, _y, false) < _reach;
+        } else {
+            _near = _d2 < _reach * _reach;
+        }
+        if (_near) {
             _u.grazed = true;
             _count++;
         }

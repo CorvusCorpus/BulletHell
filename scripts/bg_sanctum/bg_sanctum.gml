@@ -55,6 +55,9 @@ function bg_sanctum() {
     // The opening: 0 is a dark, still hall; 1 is awake and under way
     // (`hall_step`).
     _b.intro = 0;
+    // While set, the opening stops at `HALL_WAKE_HOLD` (`wave_bg_wait`,
+    // `wave_bg_wake`).
+    _b.wait = false;
 
     _b.cam_x = 0;
     _b.cam_y = HALL_CAM_OPEN;
@@ -778,7 +781,14 @@ function hall_step(_b) {
         _b.turn_z = _b.dist;
     }
 
-    if (_b.intro < 1) _b.intro = min(1, _b.intro + 1 / HALL_INTRO_TIME);
+    if (_b.intro < 1) {
+        var _next = min(1, _b.intro + 1 / HALL_INTRO_TIME);
+        // Held short of the torches until the stage lets it go.
+        if (_b.wait) {
+            _next = max(_b.intro, min(_next, HALL_WAKE_HOLD / HALL_INTRO_TIME));
+        }
+        _b.intro = _next;
+    }
     // The glyphs' pulse (`hall_glyph_glow`) sets out from the camera.
     if (_b.intro >= 1 && (_b.t mod HALL_GLYPH_PULSE_P) == 0) {
         _b.pulse_z = _b.dist;
@@ -1902,15 +1912,17 @@ function hall_bastet(_o, _s, _z, _kind) {
 
     // A die, a moulded cap and a foot block, with gilt fillets between. Its
     // width across the nave follows the figure's (her base slab rests on the
-    // cap), so it is measured off her sprite.
+    // cap), so it is measured off her sprite. Only the die carries the carved
+    // face; the cap and foot are plain stone, since each face of a taper takes
+    // the whole sprite.
     var _hw = HALL_STATUE_H * sprite_get_width(spr_hall_bastet)
               / sprite_get_height(spr_hall_bastet) * 0.5;
     hall_taper(_o.plinth, _x, _z, 14, _b - 22, _hw + 2, 68, _hw - 7, 59,
                _pl, 0, _s, _kind, c_white, 1.0);
-    hall_taper(_o.plinth, _x, _z, _b - 22, _b, _hw + 7, 73, _hw + 3, 69,
-               _pl, 0, _s, _kind, c_white, 1.15);
-    hall_taper(_o.plinth, _x, _z, 0, 14, _hw + 10, 76, _hw + 7, 73,
-               _pl, 0, _s, _kind, c_white, 0.92);
+    hall_taper(_o.stone, _x, _z, _b - 22, _b, _hw + 7, 73, _hw + 3, 69,
+               spr_hall_stone, 0, _s, _kind, c_white, 1.15);
+    hall_taper(_o.stone, _x, _z, 0, 14, _hw + 10, 76, _hw + 7, 73,
+               spr_hall_stone, 0, _s, _kind, c_white, 0.92);
     hall_taper(_o.gilt, _x, _z, _b - 26, _b - 19, _hw + 9, 75, _hw + 9, 75,
                _pa, 0, _s, _kind, HALL_GILT, 0.85);
     hall_taper(_o.gilt, _x, _z, 14, 21, _hw + 8, 74, _hw + 8, 74,

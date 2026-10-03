@@ -809,8 +809,8 @@ function cutin_draw_cut(_g, _col) {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc The caster drawn again in front of the band: its sigil under it and a
-///       glow behind it, brighter than `boss_draw` has them, and a rim of the
+/// @desc The caster drawn again in front of the band: its seal and a glow
+///       behind it, brighter than `boss_draw` has them, and a rim of the
 ///       spell's colour round it. It goes as the veil lifts off the boss drawn
 ///       under it; the rim goes first, or the fading boss is washed out in
 ///       it. (A boss drawn in parts casts no spells,
@@ -830,10 +830,8 @@ function cutin_draw_caster(_g, _e, _col) {
     var _by = _e.y + global.shake_y;
     var _y = _by + _pose[1];
 
+    boss_draw_seal(_bx, _by, _e.t, _col, 1.5 * _a);
     gpu_set_blendmode(bm_add);
-    var _rs = 300 / sprite_get_width(spr_boss_sigil);
-    draw_sprite_ext(spr_boss_sigil, 0, _bx, _by, _rs, _rs * 0.42,
-                    _e.t * 0.30, _col, 0.75 * _a);
     var _gs = 380 / sprite_get_width(spr_fx_bloom);
     draw_sprite_ext(spr_fx_bloom, 0, _bx, _by, _gs, _gs, 0, _col, 0.5 * _a);
     gpu_set_fog(true, merge_colour(_col, c_white, 0.4), 0, 0);

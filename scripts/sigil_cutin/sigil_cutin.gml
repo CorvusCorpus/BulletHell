@@ -323,8 +323,9 @@ function sigil_cutin_draw_marks(_g) {
 
 /// @desc Szuix drawn again in front of the band, as a spell's caster is
 ///       (`cutin_draw_caster`): a glow behind him and a rim of his eyes'
-///       colour round him, and his hitbox while he is focused. It goes as the
-///       veil lifts off him as `player_draw` draws him.
+///       colour round him, his focus circle, and his hitbox while he is
+///       focused. It goes as the veil lifts off him as `player_draw` draws
+///       him.
 function sigil_cutin_draw_caster(_g, _p) {
     var _a = min(1, 3 * sigil_cutin_veil(_g.t));
     if (_a <= 0.01 || !_p.alive) return;
@@ -341,10 +342,9 @@ function sigil_cutin_draw_caster(_g, _p) {
     draw_sprite_ext(spr_szuix_aura, _fr, _x, _y, 1, 1, _ang, COL_RUNE,
                     0.6 * _a * _a * _a);
     gpu_set_blendmode(bm_normal);
+    player_draw_focus_ring(_p, _x, _y, _a);
     draw_sprite_ext(spr_szuix, _fr, _x, _y, 1, 1, _ang, c_white, _a * _flicker);
+    player_draw_focus_heart(_p, _x, _y, _a);
 
-    if (_p.focus && _p.entry <= 0) {
-        var _hs = (PLAYER_R * 2) / sprite_get_width(spr_hitbox);
-        draw_sprite_ext(spr_hitbox, 0, _x, _y, _hs, _hs, 0, c_white, _a);
-    }
+    if (_p.focus && _p.entry <= 0) player_draw_hitbox_at(_x, _y, _a);
 }

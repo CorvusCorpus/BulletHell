@@ -107,13 +107,7 @@ and is open to change. Earlier agents wrote a great deal of invented
 - Verify only the blast radius of a change: build, tests and checks, then
   screenshot the one or two scenes the change touches (usually a non-spell
   and a spell of the affected boss). Don't run `shot.py --all` unless asked.
-- Close the GameMaker IDE before running any `tools/make_*.py`. An open IDE
-  writes its cached copy of a sprite back over the regenerated one, silently.
-  Run `check_project.py` after any art pass.
-- The same goes for scripts: an IDE left open saves its cached copy of a
-  `.gml` back over one edited outside it (it did so to `selftest` when the
-  game was run from it), unless the owner reloads when it asks. If the IDE
-  is open, check an edit is still on disk before relying on it.
+- Run `check_project.py` after any art pass.
 - Record what changed and what was measured, not the story of how you got
   there. Git holds the history.
 
@@ -224,7 +218,11 @@ callback. Things that bite:
   current speed silently becomes the current speed.
 - An odd fan puts a bullet on the aim line; an even fan leaves a gap there.
 - A bullet's `r` (hitbox) is set from `bullet_table` for its shape. If you
-  draw a bullet at a different `scale`, change `r` with it.
+  draw a bullet at a different `scale`, change `r` with it. A long shape's
+  hitbox (`bshape_long`: rice, oval, dart, knife, arrow, card, crystal) is a
+  capsule, everything within `r` of a spine along its heading from
+  `bshape_spine0` to `bshape_spine1` pixels from its origin, which follows
+  `scale` by itself.
 
 **Delay and warnings.** For its `delay` frames a bullet is a harmless,
 stationary warning mark, drawn in a second pass above live bullets. Lasers go
@@ -233,7 +231,9 @@ drawn width.
 
 **Collision is swept.** `bullet_hit_index` measures distance to the segment
 the bullet moved this frame, behind a bounding-box reject covering the whole
-segment. Graze pays once per bullet; lasers and ring bands pay on a cooldown.
+segment. A long bullet's spine is stretched back over the frame's travel,
+which is along its heading (`bullet_spine_dist`); `bullet_reach_dist` gives
+either kind. Graze pays once per bullet; lasers and ring bands pay on a cooldown.
 `resist` bullets survive `bullet_clear_circle` (bombs, the clear after a
 hit) but not `bullet_clear_all` (phase changes).
 
@@ -268,8 +268,16 @@ the delay ends. Otherwise bullets appear inside the hole.
 **The player** is a struct. `player_step` takes an input struct, and
 `input_gather` is the only code that reads a device, so tests can drive the
 player. On the same frame, a sigil is checked before shots and hits. A hit
-clears nearby bullets and scatters recoverable shards. The focused hitbox is
-drawn last, at exactly `PLAYER_R`.
+clears nearby bullets and scatters recoverable shards. The bullet that hit
+him is held for a moment where it first touched him, so the hit can be
+read (`fx_hit_mark`): it flashes white and shows its negative (`sh_invert`),
+a strike bursts where it touched, afterimages trail back the way it came,
+and a lock (`spr_fx_strike`) closes on it, then opens and lets it go.
+Lasers, rings and bodies leave no mark. While focused he has
+a small violet circle behind him (`spr_focus_sigil`, opening and closing with
+`focus_show`), and the grace dial moves out past it. The focused hitbox is
+drawn last, at exactly `PLAYER_R` (`HITBOX_ART_R` is its disc in the sprite,
+checked against `make_fx.py`).
 
 Spending a sigil plays his cut-in (`sigil_cutin`, drawn from the player's
 `cutin_t`): a spell's cut-in turned round and quicker, the band tilted the
@@ -278,7 +286,10 @@ plate. It borrows the spell cut-in's drawing where that is
 generic (its ground, face, motes and edges take the timing and tilt as
 optional arguments) and has its own cut, which splits out both ways from
 above where he cast. He is drawn again in front of the band, with his
-hitbox while focused, so it never hides him.
+focus circle and hitbox while focused, so it never hides him. The sigil itself is paced round
+it (owner's request), so the cut-in hides none of it: the sweep's circle
+grows while the cut-in plays, the seals leave as it ends (`BOMB_SEAL_AT`),
+and the circle fades out as his grace (as long as a hit's) runs out.
 
 **The HUD reacts by watching.** Nothing in the game calls the HUD to report
 a hit, a score or a new mark. `hud_step` compares what it is showing with the
@@ -314,6 +325,11 @@ frames elapsed. The last three are for grading (see below).
   come on the attack's first frame unless the row's `fire_at` says later;
   Mika's rows set it, because the rings he puts down first are no threat.
 - `def.final == false` makes a midboss.
+- Every boss has a seal behind it (`boss_draw_seal`, `spr_boss_seal`): a
+  gilt rule, two engraved weaves in the boss's colour and a cyan thread,
+  each turning at its own rate. The cut-in's caster draws it brighter. The
+  old hexagram (`spr_boss_sigil`) is still used by the spell backgrounds,
+  the name card and the console's watermark.
 - A final boss is named by its card (`name_card`) before its first attack:
   the cut-in's band put to a name. A cut opens into a band, the boss's
   `title` comes in along it, its name slams in over that in gilt with the
@@ -474,7 +490,9 @@ and `bg_draw_front`.
     that runs away down the hall, the camera tilting forward and gathering
     speed. The parapet braziers catch on the reveal instead. Stage three's
     timeline is pushed back by `SANCTUM_OPENING` so the first wave arrives
-    after the dark.
+    after the dark, and holds the opening in the moonbeam
+    (`wave_bg_wait`, stopping at `HALL_WAKE_HOLD`) until its title card,
+    where `wave_bg_wake` lets the torches, the tilt and the speed-up go on.
   - The hall's lit textures are in the `Hall` texture group, which is
     mipmapped. The draw turns mipmapping on with `mip_markedonly`; `mip_on`
     mips every texture drawn, every frame, and ran the game at one frame a
@@ -502,8 +520,8 @@ owner's Mika sheet in `tools/source/`.
 |---|---|
 | `art_common.py` | Shared canvas, shading, noise and preview helpers |
 | `make_palette.py` | `scripts/palette` |
-| `make_bullets.py` | Bullet sprites **and** `scripts/bullet_table`: hit radius, default spin, frame counts. A bullet's radius is defined next to its picture. |
-| `make_fx.py`, `make_items.py`, `make_ui.py`, `make_fonts.py` | Effects plus Szuix's shot and sigil; pickups; console furniture, medals and the boss rail; sprite fonts |
+| `make_bullets.py` | Bullet sprites **and** `scripts/bullet_table`: hitbox, default spin, frame counts. A round shape's hit radius is defined next to its picture; a long shape's capsule is fitted to its drawn body (`CAPSULES`), so a hit never comes before the player's hitbox visibly overlaps it. Shapes are drawn through `art_common.Cut`, which centres them exactly on their origins. |
+| `make_fx.py`, `make_items.py`, `make_ui.py`, `make_fonts.py` | Effects plus Szuix's shot, sigil, focus circle and hitbox, the bosses' seal, and the hit mark's lock, strike and burst (`spr_fx_strike`); pickups; console furniture, medals and the boss rail; sprite fonts |
 | `medal_art.py` | Imported by `make_ui.py` (run alone, it only writes a preview): the rank medals, rendered in their own colours from height fields shaded as metal, enamel, cut stones and granite. The card's medal with its reverse and edge (for the coin spin, `medal_draw`) and a spell's star; the console's medals and sockets. |
 | `make_enemies.py`, `make_player.py`, `make_boss.py` | Fodder (stages one and two, tinted); Szuix from his sheet; Ziggy, whose art is a placeholder. `make_boss.py` states what a painted replacement must keep. |
 | `cel_art.py` | Imported by the two below: 2D sprite illustration in code (cel-shaded parts with line work, lit from the upper left) |
@@ -539,11 +557,10 @@ owner's Mika sheet in `tools/source/`.
   the index from `bullet_frame`. Oriented shapes point right at angle 0.
 - Some numbers exist both in a generator and in `constants`.
   `check_project.py` compares the font metrics, the near layer's keep-out,
-  the rotunda's scale and the medals' sizes. Nothing compares `UI_CORNER_DEPTH` or `BOSS_INK_ABOVE`,
+  the rotunda's scale and the medals' sizes. Nothing compares `UI_CORNER_DEPTH`, `BOSS_INK_ABOVE` or `HIT_MARK_LOCK_R` (`STRIKE_LOCK`),
   so re-measure those by hand when their art changes.
-- `check_sprites_not_blank` refuses a sprite with an empty frame, which is how
-  IDE damage shows up. `BLANK_FRAMES_OK` lists the few sprites whose empty
-  frames are intentional.
+- `check_sprites_not_blank` refuses a sprite with an empty frame.
+  `BLANK_FRAMES_OK` lists the few sprites whose empty frames are intentional.
 - Szuix is scaled up by NEAREST to 6x, blurred, then LANCZOS down, all with
   premultiplied alpha: the sheet's transparent pixels are white.
 - The Bastet's outline follows the owner's reference statue, written down as

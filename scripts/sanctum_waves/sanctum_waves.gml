@@ -49,13 +49,16 @@ function stage_sanctum_script() {
     var _e = [];
     var _w = sanctum_wave_table();
 
-    // Everything waits for the hall to start waking (`hall_step`): the dark
-    // lifts and the first torches catch before the first wave flies in.
+    // The first wave waits for the dark to lift (`hall_step`). The hall holds
+    // there, in the moonbeam, until the title card, when the torches catch
+    // and the camera tilts and gathers speed.
+    array_push(_e, ev(0, wave_bg_wait()));
     var _t = SANCTUM_OPENING;
 
     // --- the way in ------------------------------------------------------
     _t = sanctum_add_wave(_e, _t, _w[0].fn, _w[0].survival);
     array_push(_e, ev(_t, wave_title_card()));
+    array_push(_e, ev(_t, wave_bg_wake()));
     _t += SANCTUM_TITLE_LEAD;
     for (var _i = 1; _i < 5; _i++) {
         _t = sanctum_add_wave(_e, _t, _w[_i].fn, _w[_i].survival);

@@ -6,9 +6,11 @@
   index, `colour * frames + tick`, which `bullet_frame` in
   `danmaku_functions` computes.
 - Oriented shapes point right at angle 0, like GameMaker's `direction`.
-- This file is the only source of a bullet's hit radius. The table is written
-  from the same catalogue as the pictures, so the two can't drift apart. (The
-  flame is 66x42 of picture and 9.5 of hitbox; its tail isn't the bullet.)
+- This file is the only source of a bullet's hitbox. The table is written
+  from the same catalogue as the pictures, so the two can't drift apart. A
+  round shape's is a circle given in `SHAPES`; a long shape's is a capsule
+  fitted to its body (`CAPSULES`). (The flame is 66x42 of picture and 9.5 of
+  hitbox, a circle on its head.)
 - Each shape is a cut body (see "Cut bodies" in `art_common`): up to four
   masks (body, groove, bevel, core) rather than a shaded silhouette.
 
@@ -18,6 +20,7 @@ Usage:
 """
 import math
 import os
+import re
 import sys
 
 import numpy as np
@@ -49,11 +52,12 @@ _polar = A.polar
 
 def sh_pellet(w, h, **_):
     """Too small for a hoop: the bezel alone, a cut hexagonal bead with a hot
-    centre.
+    centre. The smallest bullet: 18 px tall with its contour, about Touhou's
+    dot (an 8 px cell on a 448 px field) on this 992 px one.
     """
     c = Cut(w, h)
-    c.ngon("body", c.cx, c.cy, 9.0, 6)
-    c.ngon("core", c.cx, c.cy, 3.4, 6)
+    c.ngon("body", c.cx, c.cy, 7.0, 6)
+    c.ngon("core", c.cx, c.cy, 2.65, 6)
     c.blur("core", 0.30)
     return c
 
@@ -105,33 +109,39 @@ def sh_sphere(w, h, **_):
 # ---------------------------------------------------------------------------
 
 def sh_ring(w, h, **_):
-    """A segmented seal: an annulus with a lit channel, cut through at the
-    diagonals.
+    """A segmented seal, the medium hollow round: an annulus with a lit
+    channel, cut through at the diagonals and ticked at the quarters.
     """
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
-    c.annulus("body", cx, cy, 20.0, 11.5)
-    c.annulus("core", cx, cy, 16.4, 14.4)
+    c.annulus("body", cx, cy, 30.0, 20.5)
+    c.annulus("core", cx, cy, 26.2, 24.2)
     c.blur("core", 0.35)
     for i in range(4):
-        c.spoke("groove", cx, cy, 45.0 + i * 90.0, 10.5, 21.0, 1.7)
+        c.spoke("groove", cx, cy, 45.0 + i * 90.0, 19.5, 31.0, 1.8)
+        c.spoke("groove", cx, cy, i * 90.0, 27.4, 31.0, 1.1)
     return c
 
 
 def sh_bubble(w, h, **_):
-    """A containment circle: two concentric hoops braced by four spokes."""
+    """A containment circle, the large round: two concentric hoops braced by
+    eight spokes, hollow so its size costs little screen.
+    """
     c = Cut(w, h)
     cx, cy = c.cx, c.cy
-    c.annulus("body", cx, cy, 34.0, 27.0)
-    for i in range(4):
-        a = 45.0 + i * 90.0
-        c.line("body", [_polar(cx, cy, a, 18.5), _polar(cx, cy, a, 28.0)], 3.4)
-    c.annulus("body", cx, cy, 21.0, 18.0)
-
-    c.annulus("core", cx, cy, 31.4, 29.6)
-    c.blur("core", 0.35)
+    c.annulus("body", cx, cy, 56.0, 47.0)
     for i in range(8):
-        c.spoke("groove", cx, cy, i * 45.0 + 22.5, 26.0, 35.0, 1.5)
+        a = 22.5 + i * 45.0
+        c.line("body", [_polar(cx, cy, a, 34.5), _polar(cx, cy, a, 48.0)],
+               3.6 if i % 2 == 0 else 2.6)
+    c.annulus("body", cx, cy, 37.0, 32.5)
+
+    c.annulus("core", cx, cy, 52.6, 50.4)
+    c.annulus("core", cx, cy, 35.4, 34.2)
+    c.blur("core", 0.35)
+    for i in range(16):
+        c.spoke("groove", cx, cy, i * 22.5 + 11.25, 46.0,
+                57.0 if i % 2 == 0 else 51.0, 1.5)
     return c
 
 
@@ -160,9 +170,10 @@ def sh_rice(w, h, **_):
     return c
 
 
-# The droplet's round head, in final pixels: the hitbox, and the origin.
+# The droplet's round head, in final pixels: the hitbox, and the origin. On a
+# half pixel, so it lands on a whole-pixel origin (see `ORIGINS`).
 def _drop_head(w, h):
-    return (w - 11.0, (h - 1) / 2.0)
+    return (w - 11.5, (h - 1) / 2.0)
 
 
 def sh_droplet(w, h, **_):
@@ -263,9 +274,10 @@ def sh_knife(w, h, **_):
     return c
 
 
-# The arrowhead's centre, in final pixels: the hitbox, and the origin.
+# The arrowhead's centre, in final pixels: the hitbox, and the origin. On a
+# half pixel, so it lands on a whole-pixel origin (see `ORIGINS`).
 def _arrow_head(w, h):
-    return (w - 9.0, (h - 1) / 2.0)
+    return (w - 9.5, (h - 1) / 2.0)
 
 
 def sh_arrow(w, h, **_):
@@ -427,6 +439,10 @@ def _tongue(x0, x1, cy, half0, half1, amp, freq, phase, n=26, taper=0.85):
     return top + bot[::-1], spine
 
 
+# How much larger the butterfly is than it was laid out (the medium tier).
+BUTTERFLY_K = 1.36
+
+
 def sh_butterfly(w, h, frame=0, frames=4, **_):
     """A moth: one swept wing a side, notched deeply along its trailing edge so
     it reads as a forewing and a hindwing, plus a head and two antennae.
@@ -434,29 +450,34 @@ def sh_butterfly(w, h, frame=0, frames=4, **_):
     c = Cut(w, h)
     cy = c.cy
     s = 1.0 - 0.40 * abs(math.sin(math.pi * frame / frames))
+    # Drawn at `BUTTERFLY_K` times the size the numbers below were laid out
+    # at, from the canvas's left edge and its centre line.
+    k = BUTTERFLY_K
+
+    def P(x, y):
+        return (x * k, cy + y * k)
 
     for sign in (-1, 1):
-        wing = [(40, cy + sign * 2.6),
-                (37, cy + sign * 15.5 * s),
-                (27, cy + sign * 21.5 * s),
-                (18, cy + sign * 16.5 * s),
-                (25, cy + sign * 7.5 * s),
-                (14, cy + sign * 13.5 * s),
-                (11, cy + sign * 4.5 * s),
-                (20, cy + sign * 2.6)]
+        wing = [P(40, sign * 2.6),
+                P(37, sign * 15.5 * s),
+                P(27, sign * 21.5 * s),
+                P(18, sign * 16.5 * s),
+                P(25, sign * 7.5 * s),
+                P(14, sign * 13.5 * s),
+                P(11, sign * 4.5 * s),
+                P(20, sign * 2.6)]
         c.poly("body", wing)
         # The forewing is lit and the hindwing isn't, which is what tells them
         # apart at 1:1.
         c.poly("bevel", wing[0:4] + [wing[4]])
-        c.line("groove", [(39, cy + sign * 3.4), (29, cy + sign * 18.0 * s)],
-               1.3)
-        c.line("body", [(45.5, cy + sign * 1.4), (53, cy + sign * 6.5)], 1.8)
+        c.line("groove", [P(39, sign * 3.4), P(29, sign * 18.0 * s)], 1.5)
+        c.line("body", [P(45.5, sign * 1.4), P(53, sign * 6.5)], 2.2)
 
-    c.poly("body", [(43, cy), (39, cy - 3.0), (15, cy - 3.0),
-                    (11, cy), (15, cy + 3.0), (39, cy + 3.0)])
-    c.disc("body", 43.0, cy, 3.8)
-    c.poly("core", _blade(27.0, cy, 42.0, 14.0, 1.6))
-    c.disc("core", 43.0, cy, 1.9)
+    c.poly("body", [P(43, 0), P(39, -3.0), P(15, -3.0),
+                    P(11, 0), P(15, 3.0), P(39, 3.0)])
+    c.disc("body", 43.0 * k, cy, 3.8 * k)
+    c.poly("core", _blade(27.0 * k, cy, 42.0 * k, 14.0 * k, 1.6 * k))
+    c.disc("core", 43.0 * k, cy, 1.9 * k)
     c.blur("core", 0.30)
     return c
 
@@ -516,8 +537,9 @@ def sh_mote(w, h, frame=0, frames=4, **_):
     return c
 
 
-# How much larger the nova is than the mote.
-NOVA_K = 1.65
+# How much larger the nova is than the mote: the big four-point star beside
+# the small one.
+NOVA_K = 2.28
 
 
 def sh_nova(w, h, frame=0, frames=4, **_):
@@ -541,32 +563,34 @@ def sh_nova(w, h, frame=0, frames=4, **_):
 #
 # w/h are the final sprite size, including the margin the contour and bloom
 # need; `hit` is the collision radius, a property of the drawn body rather
-# than of the canvas.
+# than of the canvas. A long shape's is fitted instead (`CAPSULES`).
 # ---------------------------------------------------------------------------
 
 SHAPES = [
     # name        w   h  hit  orient frames  shape          opts
-    ("pellet",    24, 24, 4.2,  False, 1, sh_pellet,   {}),
+    ("pellet",    20, 20, 3.3,  False, 1, sh_pellet,   {}),
     ("orb",       34, 34, 7.0,  False, 1, sh_orb,      {}),
     ("ball",      54, 54, 15.0, False, 1, sh_ball,     {}),
     ("sphere",    62, 62, 20.5, False, 1, sh_sphere,   {}),
-    ("ring",      46, 46, 12.5, False, 1, sh_ring,     {}),
-    ("bubble",    76, 76, 26.0, False, 1, sh_bubble,   {}),
-    ("rice",      34, 22, 5.6,  True,  1, sh_rice,     {}),
-    ("droplet",   36, 23, 6.0,  True,  1, sh_droplet,  {}),
-    ("oval",      38, 22, 6.8,  True,  1, sh_oval,     {}),
-    ("dart",      46, 30, 7.6,  True,  1, sh_dart,     {}),
-    ("knife",     54, 20, 6.0,  True,  1, sh_knife,    {}),
-    ("arrow",     60, 19, 5.4,  True,  1, sh_arrow,    dict(contour=1.0)),
-    ("card",      46, 30, 9.0,  True,  1, sh_card,     {}),
+    ("ring",      66, 66, 18.5, False, 1, sh_ring,     {}),
+    ("bubble",   124, 124, 42.0, False, 1, sh_bubble,  {}),
+    ("rice",      34, 22, None, True,  1, sh_rice,     {}),
+    ("droplet",   36, 24, 6.0,  True,  1, sh_droplet,  {}),
+    ("oval",      38, 22, None, True,  1, sh_oval,     {}),
+    ("dart",      46, 30, None, True,  1, sh_dart,     {}),
+    ("knife",     54, 20, None, True,  1, sh_knife,    {}),
+    ("arrow",     60, 20, None, True,  1, sh_arrow,    dict(contour=1.0)),
+    ("card",      46, 30, None, True,  1, sh_card,     {}),
     ("star",      44, 44, 10.5, False, 1, sh_star,     dict(contour=1.0)),
     ("shuriken",  42, 42, 9.0,  False, 1, sh_shuriken, {}),
-    ("crystal",   44, 32, 9.0,  True,  1, sh_crystal,  {}),
+    ("crystal",   44, 32, None, True,  1, sh_crystal,  {}),
     ("rune",      30, 30, 8.0,  False, 1, sh_rune,     {}),
-    ("butterfly", 58, 48, 10.5, True,  4, sh_butterfly, dict(contour=1.0)),
+    ("butterfly", 80, 66, 14.0, True,  4, sh_butterfly, dict(contour=1.0)),
     ("flame",     66, 42, 9.5,  True,  4, sh_flame,    {}),
-    ("mote",      30, 30, 5.6,  False, 4, sh_mote,     dict(contour=1.0)),
-    ("nova",      50, 50, 9.2,  False, 4, sh_nova,     dict(contour=1.0,
+    # The mote and nova pulse: their hit radius fits the smallest frame, where
+    # a hitbox touching it in the notch between two arms still overlaps them.
+    ("mote",      30, 30, 4.3,  False, 4, sh_mote,     dict(contour=1.0)),
+    ("nova",      68, 68, 9.0,  False, 4, sh_nova,     dict(contour=1.0,
                                                           bloom_r=3.0)),
 ]
 
@@ -581,13 +605,16 @@ SPIN = {
 }
 
 # Origins other than the centre. The flame, the droplet and the arrow pivot on
-# their heads, which are their hitboxes.
+# their heads, which are their hitboxes. A shape's coordinates put a pixel's
+# centre on its integer coordinate, so a head at `x` is at `x + 0.5` on the
+# sprite, whose origin counts from its corner. A whole-pixel origin needs an
+# even height to sit on the centre line.
 ORIGINS = {
-    "flame": lambda w, h, pad: (int(round(_flame_head(w, h)[0])) + pad,
+    "flame": lambda w, h, pad: (int(round(_flame_head(w, h)[0] + 0.5)) + pad,
                                 h // 2 + pad),
-    "droplet": lambda w, h, pad: (int(round(_drop_head(w, h)[0])) + pad,
+    "droplet": lambda w, h, pad: (int(round(_drop_head(w, h)[0] + 0.5)) + pad,
                                   h // 2 + pad),
-    "arrow": lambda w, h, pad: (int(round(_arrow_head(w, h)[0])) + pad,
+    "arrow": lambda w, h, pad: (int(round(_arrow_head(w, h)[0] + 0.5)) + pad,
                                 h // 2 + pad),
 }
 
@@ -597,6 +624,124 @@ def _shape_pad(opts):
     origin and the table's sprite sizes both depend on it.
     """
     return A.cut_pad(opts.get("contour", 2.0), opts.get("bloom_r", 2.2))
+
+
+def _origin(spec):
+    """Where the sprite's origin is, in sprite pixels from its corner (what
+    `gm_new.sprite` is given, with "center" worked out as it does)."""
+    name, w, h, _hit, _o, _f, _fn, opts = spec
+    pad = _shape_pad(opts)
+    if name in ORIGINS:
+        return ORIGINS[name](w, h, pad)
+    return (w + 2 * pad) // 2, (h + 2 * pad) // 2
+
+
+# ---------------------------------------------------------------------------
+# Long shapes' hitboxes
+#
+# A long shape's hitbox is a capsule rather than a circle: everything within
+# `r` of a spine along its heading, from `spine0` to `spine1` pixels from its
+# origin. It is fitted to the drawn body here, so it follows the art:
+#
+# - Honest: a hit never registers before the player's hitbox (`PLAYER_R`)
+#   overlaps the body, from any direction. Every point `r + PLAYER_R` from the
+#   spine is within `PLAYER_R` of the body.
+# - The whole shape, not one end of it: of the honest capsules, those running
+#   end to end within `CAPSULE_SPAN_SLACK` of the longest possible, and of
+#   those the one covering most of the body. A thin part (a grip, a shaft) so
+#   limits the thickness, and the wider parts are generous.
+#
+# The droplet and the flame keep a circle on their heads: one honest capsule
+# down their tails would be as thin as the tail.
+# ---------------------------------------------------------------------------
+
+CAPSULES = ("rice", "oval", "dart", "knife", "arrow", "card", "crystal")
+CAPSULE_SPAN_SLACK = 0.10
+
+
+def _player_r():
+    """`PLAYER_R`, read from `scripts/constants`."""
+    path = os.path.join(A.ROOT, "scripts", "constants", "constants.gml")
+    with open(path, encoding="utf-8") as f:
+        return float(re.search(r"#macro PLAYER_R ([0-9.]+)", f.read()).group(1))
+
+
+def fit_capsule(spec):
+    """`(r, spine0, spine1)` for a long shape: see "Long shapes' hitboxes"."""
+    from scipy import ndimage
+
+    name, w, h, _hit, _o, frames, shape_fn, opts = spec
+    pr = _player_r()
+    pad = _shape_pad(opts)
+    xo, yo = _origin(spec)
+    step = 0.25
+    grow = 48 * SS
+
+    # Per frame: the distance from every point to the body (final px), and
+    # where the sprite's origin is on the padded supersampled grid.
+    fields = []
+    body0 = None
+    for f in range(frames):
+        body = np.asarray(shape_fn(w, h, frame=f, frames=frames)
+                          .parts()["body"]) >= 128
+        m = np.pad(body, grow)
+        edt = ndimage.distance_transform_edt(~m) / SS
+        ox = (xo - pad) * SS + grow + A.CUT_SHIFT - 0.5
+        oy = (yo - pad) * SS + grow + A.CUT_SHIFT - 0.5
+        fields.append((edt, ox, oy))
+        if body0 is None:
+            ys, xs = np.nonzero(m)
+            body0 = ((xs - ox) / SS, (ys - oy) / SS)
+
+    def near(u, v):
+        """Is every point (u along the heading, v across it) within
+        `PLAYER_R` of the body, on every frame?"""
+        u = np.atleast_1d(u)
+        v = np.atleast_1d(v)
+        return all(np.all(ndimage.map_coordinates(
+                       edt, [oy + v * SS, ox + u * SS], order=1,
+                       mode="constant", cval=1e9) <= pr)
+                   for edt, ox, oy in fields)
+
+    bu, bv = body0
+    lo, hi = float(bu.min()), float(bu.max())
+    us = np.arange(math.floor(lo), math.ceil(hi) + step, step)
+    fwd = np.radians(np.arange(-90, 91, 3))
+    back = np.radians(np.arange(90, 271, 3))
+
+    found = []
+    for r in np.arange(0.5, 20.0, 0.1):
+        d = r + pr
+        side = [near([u, u], [-d, d]) for u in us]
+        cap0 = [near(u + d * np.cos(back), d * np.sin(back)) for u in us]
+        cap1 = [near(u + d * np.cos(fwd), d * np.sin(fwd)) for u in us]
+        any_here = False
+        k = 0
+        while k < len(us):
+            if not side[k]:
+                k += 1
+                continue
+            j = k
+            while j + 1 < len(us) and side[j + 1]:
+                j += 1
+            starts = [i for i in range(k, j + 1) if cap0[i]]
+            ends = [i for i in range(k, j + 1) if cap1[i]]
+            if starts and ends and starts[0] <= ends[-1]:
+                u0, u1 = float(us[starts[0]]), float(us[ends[-1]])
+                span = (min(hi, u1 + r) - max(lo, u0 - r)) / (hi - lo)
+                cover = float(np.mean(np.hypot(bu - np.clip(bu, u0, u1), bv)
+                                      <= r))
+                found.append((round(float(r), 1), u0, u1, span, cover))
+                any_here = True
+            k = j + 1
+        if not any_here:
+            break
+
+    longest = max(c[3] for c in found)
+    r, u0, u1, _span, _cover = max(
+        (c for c in found if c[3] >= longest - CAPSULE_SPAN_SLACK),
+        key=lambda c: c[4])
+    return r, u0, u1
 
 
 def build_shape(spec):
@@ -636,9 +781,15 @@ def main():
             gm_new.sprite(sprite, images, origin=origin,
                           folder="Sprites/bullets", fps=1.0)
 
+        spine = (0.0, 0.0)
+        if name in CAPSULES:
+            hit, s0, s1 = fit_capsule(spec)
+            spine = (s0, s1)
+            print("  %-8s capsule r %.1f, spine %+.2f to %+.2f"
+                  % (name, hit, s0, s1))
         table.append((name, sprite, hit, orient, frames,
                       images[0].width, images[0].height,
-                      0.0 if orient else SPIN.get(name, 0.0)))
+                      0.0 if orient else SPIN.get(name, 0.0)) + spine)
 
         # One row of the preview per shape: every hue, first animation frame.
         for i in range(len(A.BULLET_HUES)):
@@ -715,7 +866,8 @@ TABLE_HEADER = '''/// @desc The bullet catalogue -- GENERATED by tools/make_bull
 def write_table(table):
     lines = [TABLE_HEADER]
 
-    for i, (name, _spr, _hit, _o, _f, _w, _h, _sp) in enumerate(table):
+    for i, rec in enumerate(table):
+        name = rec[0]
         lines.append("#macro BSHAPE_%s %d" % (name.upper(), i))
     lines.append("#macro BSHAPE_COUNT %d" % len(table))
     lines.append("")
@@ -728,26 +880,31 @@ def write_table(table):
     lines.append("/// @desc Fill in the shape table. Called once, from obj_boot.")
     lines.append("function bullet_table_init() {")
     lines.append("    global.bshape_sprite = [")
-    for name, spr, _h, _o, _f, _w, _hh, _sp in table:
-        lines.append("        %s," % spr)
+    for rec in table:
+        lines.append("        %s," % rec[1])
     lines.append("    ];")
 
-    for field, idx, fmt in (("radius", 2, "%s"), ("oriented", 3, "%s"),
-                            ("frames", 4, "%d"), ("w", 5, "%d"), ("h", 6, "%d"),
-                            ("spin", 7, "%s")):
+    def flag(v):
+        return "true" if v else "false"
+
+    # (field, value from a record, format). `long` marks a capsule hitbox;
+    # `spine0`/`spine1` are its spine's ends along the heading from the
+    # origin, and `ext` the further of the two (0 for a circle).
+    fields = (
+        ("radius",   lambda r: "%.1f" % r[2]),
+        ("oriented", lambda r: flag(r[3])),
+        ("frames",   lambda r: "%d" % r[4]),
+        ("w",        lambda r: "%d" % r[5]),
+        ("h",        lambda r: "%d" % r[6]),
+        ("spin",     lambda r: "%.2f" % r[7]),
+        ("long",     lambda r: flag(r[8] != r[9])),
+        ("spine0",   lambda r: "%.2f" % r[8]),
+        ("spine1",   lambda r: "%.2f" % r[9]),
+        ("ext",      lambda r: "%.2f" % max(abs(r[8]), abs(r[9]))),
+    )
+    for field, fmt in fields:
         lines.append("    global.bshape_%s = [" % field)
-        row = []
-        for rec in table:
-            v = rec[idx]
-            if field == "oriented":
-                row.append("true" if v else "false")
-            elif field == "radius":
-                row.append("%.1f" % v)
-            elif field == "spin":
-                row.append("%.2f" % v)
-            else:
-                row.append("%d" % v)
-        lines.append("        " + ", ".join(row) + ",")
+        lines.append("        " + ", ".join(fmt(rec) for rec in table) + ",")
         lines.append("    ];")
 
     lines.append("}")

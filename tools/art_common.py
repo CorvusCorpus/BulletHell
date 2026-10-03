@@ -479,6 +479,11 @@ def polar(cx, cy, ang, r):
             cy + math.sin(math.radians(ang)) * r)
 
 
+# How far, in supersampled pixels, `Cut` draws its masks down and right of
+# where they belong (see `Cut._at`); `cut_finish` resamples it back out.
+CUT_SHIFT = 0.5
+
+
 class Cut:
     """The masks of one cut body: `body` (what exists), `groove` (cut into it),
     `bevel` (what catches the light) and `core` (the hot centre). `body` is
@@ -496,8 +501,20 @@ class Cut:
 
     # -- primitives ---------------------------------------------------------
 
+    @staticmethod
+    def _at(v):
+        """A final-pixel coordinate on the supersampled masks. Shapes put a
+        pixel's centre on its integer coordinate (so `cx` is the canvas
+        centre), and so does PIL, which floors what it is given. A final
+        pixel's centre is the middle of its `SS` x `SS` block, between two
+        mask pixels, so the masks are drawn `CUT_SHIFT` of a pixel down and
+        right of it, on a whole pixel, and `cut_finish` takes that back out.
+        The extra half turns PIL's floor into rounding.
+        """
+        return v * SS + (SS - 1) / 2.0 + CUT_SHIFT + 0.5
+
     def _p(self, pts):
-        return [(x * SS, y * SS) for x, y in pts]
+        return [(self._at(x), self._at(y)) for x, y in pts]
 
     def _w(self, wid):
         return max(1, int(round(wid * SS)))
@@ -506,8 +523,9 @@ class Cut:
         self.D[layer].polygon(self._p(pts), fill=v)
 
     def disc(self, layer, cx, cy, r, v=255):
-        self.D[layer].ellipse([(cx - r) * SS, (cy - r) * SS,
-                               (cx + r) * SS, (cy + r) * SS], fill=v)
+        self.D[layer].ellipse([self._at(cx) - r * SS, self._at(cy) - r * SS,
+                               self._at(cx) + r * SS, self._at(cy) + r * SS],
+                              fill=v)
 
     def annulus(self, layer, cx, cy, r_out, r_in, v=255):
         self.disc(layer, cx, cy, r_out, v)
@@ -519,8 +537,8 @@ class Cut:
         would otherwise sit half a width inside it.
         """
         rr = r + wid / 2.0
-        self.D[layer].ellipse([(cx - rr) * SS, (cy - rr) * SS,
-                               (cx + rr) * SS, (cy + rr) * SS],
+        self.D[layer].ellipse([self._at(cx) - rr * SS, self._at(cy) - rr * SS,
+                               self._at(cx) + rr * SS, self._at(cy) + rr * SS],
                               outline=v, width=self._w(wid))
 
     def line(self, layer, pts, wid, v=255):
@@ -691,7 +709,15 @@ def cut_finish(img, w, h, rim, contour=2.0, bloom=0.30, bloom_r=2.2,
     ww, hh = w + 2 * pad, h + 2 * pad
 
     small = Image.new("RGBA", (ww, hh), (0, 0, 0, 0))
-    small.alpha_composite(img.resize((w, h), Image.LANCZOS), (pad, pad))
+    # Back by `CUT_SHIFT` (see `Cut._at`). PIL won't let the box run past the
+    # image, so the image gets a transparent margin first.
+    src = Image.new("RGBA", (img.width + SS, img.height + SS), (0, 0, 0, 0))
+    src.paste(img, (0, 0))
+    small.alpha_composite(
+        src.resize((w, h), Image.LANCZOS,
+                   box=(CUT_SHIFT, CUT_SHIFT,
+                        CUT_SHIFT + img.width, CUT_SHIFT + img.height)),
+        (pad, pad))
 
     solid = small.getchannel("A").point(lambda v: 255 if v >= threshold else 0)
     body = small.copy()

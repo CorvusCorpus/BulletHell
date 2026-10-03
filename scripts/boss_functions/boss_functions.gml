@@ -615,7 +615,6 @@ function boss_time_left(_e) {
 // Drawing
 // ---------------------------------------------------------------------------
 
-/// @desc The boss: a sigil and glow under it, its sprite, and a hit flash.
 /// @desc The frame of a boss's sprite and how far it bobs this frame, as
 ///       `[frame, bob]` (shared by `boss_draw` and the cut-in, which draws the
 ///       boss again in front of its band).
@@ -625,25 +624,16 @@ function boss_pose(_e) {
             dsin(_t * 1.5) * 9];
 }
 
+/// @desc The boss: its seal and glow behind it, its sprite, and a hit flash.
 ///       Frames advance every 7 game frames whatever the sprite says.
 function boss_draw(_e) {
     var _b = _e.boss;
     var _col = global.bullet_colour[_b.def.col];
     var _t = _e.t;
 
-    // Counter-rotating rings under the boss, which also mark where it is when
-    // its sprite is lost in its own pattern.
-    gpu_set_blendmode(bm_add);
-    var _rs = 300 / sprite_get_width(spr_boss_sigil);
-    draw_sprite_ext(spr_boss_sigil, 0, _e.x, _e.y, _rs, _rs * 0.42,
-                    _t * 0.30, _col, 0.42);
-    draw_sprite_ext(spr_boss_sigil, 0, _e.x, _e.y, _rs * 0.66, _rs * 0.28,
-                    -_t * 0.52, c_white, 0.24);
-
-    var _gs = 420 / sprite_get_width(spr_fx_bloom);
-    draw_sprite_ext(spr_fx_bloom, 0, _e.x, _e.y, _gs, _gs, 0, _col,
-                    0.24 + 0.06 * dsin(_t * 2.2));
-    gpu_set_blendmode(bm_normal);
+    // Its seal behind it, which also marks where it is when its sprite is
+    // lost in its own pattern.
+    boss_draw_seal(_e.x, _e.y, _t, _col, 1);
 
     // A boss built of parts draws itself (its hit flash included).
     var _own = _b.def[$ "draw"];
@@ -664,4 +654,48 @@ function boss_draw(_e) {
                         _e.flash / ENEMY_FLASH * 0.8);
         gpu_set_blendmode(bm_normal);
     }
+}
+
+/// @desc A boss's seal (`spr_boss_seal`) centred at (`_x`, `_y`), `_t` frames
+///       after the boss appeared: a glow of its colour `_col`, two engraved
+///       weaves of that colour turning against each other, the cyan thread
+///       and the gilt rule turning at rates of their own, and a glint passing
+///       from star to star round the rule. The whole seal breathes. It opens
+///       over `BOSS_SEAL_OPEN` frames, growing as its layers spin in. Drawn
+///       before the boss, so it is behind it. `_a` scales it; past 1 it is
+///       brighter (the cut-in draws the caster over its band with it).
+function boss_draw_seal(_x, _y, _t, _col, _a) {
+    var _o = 1 - power(1 - clamp(_t / BOSS_SEAL_OPEN, 0, 1), 3);
+    var _k = _a * _o;
+    if (_k <= 0.01) return;
+    var _s = (0.75 + 0.25 * _o) * (1 + 0.012 * dsin(_t * 1.5));
+    var _in = 1 - _o;
+    // Degrees each layer has turned; the first terms are their rates.
+    var _rule = _t * 0.18 - 90 * _in;
+    var _outer = -_t * 0.30 - 150 * _in;
+    var _inner = _t * 0.45 + 200 * _in;
+    var _thread = _t * 0.60 + 260 * _in;
+
+    gpu_set_blendmode(bm_add);
+    var _gs = 400 / sprite_get_width(spr_fx_bloom);
+    draw_sprite_ext(spr_fx_bloom, 0, _x, _y, _gs, _gs, 0, _col,
+                    (0.20 + 0.05 * dsin(_t * 2.2)) * min(1, _k));
+    draw_sprite_ext(spr_boss_seal, 1, _x, _y, _s, _s, _outer, _col,
+                    min(1, 0.55 * _k));
+    draw_sprite_ext(spr_boss_seal, 2, _x, _y, _s, _s, _inner,
+                    merge_colour(_col, c_white, 0.4), min(1, 0.45 * _k));
+    draw_sprite_ext(spr_boss_seal, 3, _x, _y, _s, _s, _thread, COL_RUNE,
+                    min(1, 0.55 * _k));
+    draw_sprite_ext(spr_boss_seal, 0, _x, _y, _s, _s, _rule, COL_GILT_LIT,
+                    min(1, 0.7 * _k));
+    // The glint: on each of the rule's four stars in turn, 30 frames in 60.
+    var _u = (_t mod 60) / 30;
+    if (_u < 1) {
+        var _tw = dsin(_u * 180);
+        var _at = 90 + _rule + 90 * ((_t div 60) mod 4);
+        card_draw_glint(_x + lengthdir_x(BOSS_SEAL_RIM * _s, _at),
+                        _y + lengthdir_y(BOSS_SEAL_RIM * _s, _at),
+                        26 * _tw, c_white, 0.7 * _tw * min(1, _k));
+    }
+    gpu_set_blendmode(bm_normal);
 }

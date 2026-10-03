@@ -133,9 +133,13 @@ function rank_attack_par(_p, _span) {
     return clamp(max(_span, 0) / rank_full_fire() * RANK_PAR_SLACK, 0, _p.time);
 }
 
-/// @desc The damage a frame of the player's fire deals when every shot lands.
+/// @desc The damage a frame of the player's focused fire deals when every
+///       shot lands (`pshot_barrels`).
 function rank_full_fire() {
-    return PSHOT_BARRELS * PSHOT_DMG / PSHOT_PERIOD;
+    var _b = pshot_barrels(true);
+    var _sum = 0;
+    for (var _i = 0; _i < array_length(_b); _i++) _sum += 2 * _b[_i].dmg;
+    return _sum / PSHOT_PERIOD;
 }
 
 /// @desc The target for one group of waves: `RANK_WAVE_SHARE` of what its

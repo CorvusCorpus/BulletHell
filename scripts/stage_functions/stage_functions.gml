@@ -76,7 +76,7 @@ function ev(_at, _fn) {
 }
 
 /// @desc What an event does for the stage rather than being a wave: "boss",
-///       "card", "omen", "rewind" or "sweep" (set by those `wave_*`
+///       "card", "omen", "rewind", "wait", "wake" or "sweep" (set by those `wave_*`
 ///       helpers), or "" for anything else. Practice uses it to cut a
 ///       timeline into its waves and its bosses (`practice_segments`).
 function ev_role(_e) {
@@ -356,6 +356,21 @@ function wave_boss(_maker) {
 function wave_bg_omen() {
     return method({ role: "omen" }, function(_g) {
         bg_set_omen(_g.bg);
+    });
+}
+
+/// @desc Hold the background's opening short of its waking (the hall's
+///       `wait`), until `wave_bg_wake`. Harmless on a background without one.
+function wave_bg_wait() {
+    return method({ role: "wait" }, function(_g) {
+        if (_g.bg[$ "wait"] != undefined) _g.bg.wait = true;
+    });
+}
+
+/// @desc Let the background's opening carry on from `wave_bg_wait`.
+function wave_bg_wake() {
+    return method({ role: "wake" }, function(_g) {
+        if (_g.bg[$ "wait"] != undefined) _g.bg.wait = false;
     });
 }
 

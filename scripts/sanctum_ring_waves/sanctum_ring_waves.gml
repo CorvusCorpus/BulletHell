@@ -91,8 +91,6 @@ function rite_fling(_r, _col) {
         var _u = fire(ring_rim_at_x(_r, _at, 6), ring_rim_at_y(_r, _at, 6),
                       3.0, _at + 90 * _sign, BSHAPE_PELLET, _col, 6);
         if (_u == undefined) continue;
-        _u.scale = 0.8;
-        _u.r = global.bshape_radius[BSHAPE_PELLET] * 0.8;
         bullet_force(_u, 0, 0.055, BQ_KEEP, 4.6);
     }
 }
@@ -389,8 +387,6 @@ function rite_hg_ring(_r, _g, _t) {
                           BSHAPE_PELLET,
                           ((i mod 2) == 0) ? BCOL_AMBER : BCOL_GOLD, 6);
             if (_u != undefined) {
-                _u.scale = 0.8;
-                _u.r = global.bshape_radius[BSHAPE_PELLET] * 0.8;
                 bullet_force_at(_u, 50, 0, 0.05, BQ_KEEP, 4.2);
             }
         }

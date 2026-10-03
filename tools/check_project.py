@@ -326,14 +326,8 @@ BLANK_FRAMES_OK = {
 
 
 def check_sprites_not_blank():
-    """No sprite frame may be entirely transparent.
-
-    With the project open in the GameMaker IDE, its cached copy of a sprite can
-    be written back over one a `make_*` script just produced, reverting the
-    `.yy` and leaving some or all frames blank, with a clean build. Every frame
-    is checked. The fix is to re-run the generator that owns the sprite with
-    the IDE closed. `BLANK_FRAMES_OK` lists the sprites whose empty frames are
-    intentional.
+    """No sprite frame may be entirely transparent. Every frame is checked.
+    `BLANK_FRAMES_OK` lists the sprites whose empty frames are intentional.
     """
     try:
         from PIL import Image
@@ -374,10 +368,8 @@ def check_sprites_not_blank():
                           % (", ".join(str(b) for b in blank[:8]), len(frames)))
             fail("%s has no ink in %s. Either the generator that owns it never "
                  "draws those frames -- in which case say so in "
-                 "BLANK_FRAMES_OK, with the reason -- or something ate them: "
-                 "the GameMaker IDE writes its cached copy back over generated "
-                 "art when the project is open, which has happened three "
-                 "times. Close it, re-run the generator, and check again."
+                 "BLANK_FRAMES_OK, with the reason -- or something blanked "
+                 "them: re-run the generator and check again."
                  % (rel(yy_path), where))
 
 
@@ -1323,6 +1315,27 @@ def check_medal_sizes_agree():
                  % (py, match.group(1), gml, want))
 
 
+def check_fx_sizes_agree():
+    """Two numbers `tools/make_fx.py` paints into sprites and the game draws
+    them by: the hitbox disc's radius in `spr_hitbox` (scaled so it is drawn
+    at exactly `PLAYER_R`) and the seal's rule radius (where its top star
+    glints). If they drift apart, the drawn hitbox is no longer the real one.
+    """
+    src_path = os.path.join(ROOT, "tools", "make_fx.py")
+    with open(src_path, encoding="utf-8") as fh:
+        src = fh.read()
+    for py, gml in (("HITBOX_R", "HITBOX_ART_R"),
+                    ("SEAL_RIM", "BOSS_SEAL_RIM")):
+        match = re.search(r"^%s\s*=\s*([\d.]+)" % py, src, re.M)
+        if match is None:
+            fail("make_fx.py has no %s" % py)
+            continue
+        want = read_macro_number(gml)
+        if abs(float(match.group(1)) - want) > 1e-6:
+            fail("make_fx.py's %s is %s but constants.gml's %s is %g"
+                 % (py, match.group(1), gml, want))
+
+
 def check_title_cards_agree():
     """Each stage's title card is lettered in advance by `tools/make_titles.py`
     from its own copy of the stage's name and subtitle, one frame per stage.
@@ -1770,6 +1783,7 @@ def main():
     check_scrub_covers_horizon()
     check_rotunda_scale_agrees()
     check_medal_sizes_agree()
+    check_fx_sizes_agree()
     check_title_cards_agree()
     check_bands_are_rooted()
     check_font_accessors_called()
