@@ -1344,6 +1344,7 @@ function test_player() {
     }
     ok("...and holding the key through its grace does not count it again",
        _p.bomb_n == 1);
+    ok("...and his cut-in is over before his grace is", _p.cutin_t < 0);
     st_reset();
 }
 
@@ -1355,7 +1356,7 @@ function test_bomb_seals() {
     player_bomb(_p, _g);
     ok("no seal is in the air on the frame of the cast",
        player_seals_live(_p) == 0);
-    ok("and the close-up is", _p.card_t == PLAYER_CARD_TIME);
+    ok("and his cut-in starts", _p.cutin_t == 0);
     var _launched = -1;
     for (var _f = 0; _f < BOMB_INVULN; _f++) {
         _p.bomb_t--;
@@ -2645,6 +2646,8 @@ function test_talk() {
        talk_busy(_g.talk) && !_e.boss.started && !boss_vulnerable(_e)
        && bullet_count() == 0);
     ok("with its rail stowed until it is named", !boss_announced(_e.boss));
+    ok("and itself out of sight above the field",
+       _e.boss.entry_t == BOSS_ENTRY_TIME && _e.y < FIELD_Y0);
 
     // Z, pressed and let go, takes it to its end and the fight opens.
     var _keys = input_idle();
@@ -2658,11 +2661,13 @@ function test_talk() {
     ok("the keys take it through to its end", !talk_live(_g.talk));
     ok("its name card is played on the way",
        !_e.boss.card_due && _e.boss.named && _e.boss.card_t < 0);
-    for (var _i = 0; _i < TALK_HANDOVER + 5 && !_e.boss.started; _i++) {
+    // (It came down as its name landed, so it may still be arriving.)
+    for (var _i = 0; _i < BOSS_ENTRY_TIME + TALK_HANDOVER + 5
+                     && !_e.boss.started; _i++) {
         boss_act(_e, _g);
     }
-    ok("and the fight opens once it is over",
-       _e.boss.started && _e.boss.phase == 0);
+    ok("and the fight opens once it is over and the boss is down",
+       _e.boss.started && _e.boss.phase == 0 && _e.boss.entry_t == 0);
 
     // X skips to the name card, and out.
     st_reset();

@@ -2,11 +2,11 @@
 ///       Do not edit: these are measured from the art.
 ///
 /// `talk_art(_spr)`: where a portrait's eyes are, for the light put on them
-/// when its owner is named. Each eye is `[x, y, rx, ry]`: its centre in
-/// pixels from the sprite's origin (which is midway between them), and its
-/// half-width and half-height. `glow` is the colour they shine. `tint` is
-/// the colour its owner is lit in while they speak, or -1 for none of its
-/// own.
+/// when its owner is named (and, for Szuix's sigil cut-in, as they open).
+/// Each eye is `[x, y, rx, ry]`: its centre in pixels from the sprite's
+/// origin (which is midway between them), and its half-width and
+/// half-height. `glow` is the colour they shine. `tint` is the colour its
+/// owner is lit in while they speak, or -1 for none of its own.
 
 function talk_art(_spr) {
     if (_spr == spr_talk_szuix) {
@@ -21,6 +21,13 @@ function talk_art(_spr) {
             eyes: [[-41, -4, 18, 14], [41, 4, 20, 13]],
             glow: $FA932B,
             tint: $28BAFF,
+        };
+    }
+    if (_spr == spr_cutin_szuix) {
+        return {
+            eyes: [[-59, -1, 36, 22], [59, 1, 34, 22]],
+            glow: $F1BA71,
+            tint: $FF9654,
         };
     }
     return { eyes: [], glow: c_white, tint: -1 };

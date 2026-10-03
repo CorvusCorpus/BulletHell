@@ -2,8 +2,10 @@
 ///
 /// A boss with something to say names a script in its def (`talk`, a function
 /// returning the lines, and `portrait`, its standing portrait). `wave_boss`
-/// starts it as the boss arrives (`talk_begin`), and the boss waits at its
-/// station until it is over (`boss.talking`). Practising a whole fight
+/// starts it as the boss arrives (`talk_begin`). The boss waits above the
+/// field, out of sight, until its name card, comes down as the card's name
+/// lands, and holds its station until the conversation is over
+/// (`boss.talking`). Practising a whole fight
 /// plays it too, since the boss arrives the same way; practising one attack
 /// doesn't, since the boss is put straight on it.
 ///
@@ -19,7 +21,8 @@
 ///   the field's edge. Whoever is speaking is lit, rimmed in their own
 ///   colour and stood forward; the other is dimmed and stood back. A
 ///   portrait arrives with a cut of light, hops as its line starts,
-///   breathes, and blinks.
+///   breathes, and blinks. The boss is a silhouette until its name card
+///   names it, and comes out of it as the name lands.
 /// - Behind each is a blade: a band of their colour at the cut-in's tilt,
 ///   run in from their side of the field, long while they speak and short
 ///   while they listen.
@@ -68,6 +71,10 @@ enum TalkKind {
 
 // What a listener is dimmed toward.
 #macro TALK_DIM make_colour_rgb(58, 52, 104)
+// What a boss not yet named is shown as: a silhouette. It comes out of it
+// over this many frames as its name lands.
+#macro TALK_SHADOW make_colour_rgb(14, 10, 28)
+#macro TALK_REVEAL_TIME 12
 
 // A blade: its height, and how far past its speaker it runs toward the
 // middle while they listen and while they speak. It fades out over the last
@@ -456,7 +463,9 @@ function talk_draw(_t, _g) {
     var _back = (_front == TalkWho.Player) ? TalkWho.Boss : TalkWho.Player;
     talk_draw_blade(_t, _t.cast[_back]);
     talk_draw_blade(_t, _t.cast[_front]);
-    talk_draw_portrait(_t, _t.cast[_back], undefined);
+    var _shade = talk_shadowed(_boss);
+    talk_draw_portrait(_t, _t.cast[_back], undefined,
+                       (_back == TalkWho.Boss) ? _shade : 0);
 
     var _col = _t.cast[TalkWho.Boss].col;
     var _cg = undefined;
@@ -464,7 +473,8 @@ function talk_draw(_t, _g) {
         _cg = namecard_geom(_boss.boss);
         namecard_draw_band(_cg, _boss, TALK_CARD_X, _col, TALK_CARD_ROOM);
     }
-    talk_draw_portrait(_t, _t.cast[_front], _card ? _boss.boss : undefined);
+    talk_draw_portrait(_t, _t.cast[_front], _card ? _boss.boss : undefined,
+                       (_front == TalkWho.Boss) ? _shade : 0);
 
     talk_draw_plate(_t, _g);
     if (_card) {
@@ -626,13 +636,27 @@ function talk_blade_line(_g, _a, _b, _xs, _fs, _col, _alpha) {
     draw_poly_shaded(_poly, _col, _as);
 }
 
+/// @desc How much of a silhouette the boss `_e`'s portrait is: whole until
+///       its name card names it, and gone `TALK_REVEAL_TIME` frames after
+///       the name lands.
+function talk_shadowed(_e) {
+    if (_e == undefined) return 0;
+    var _b = _e.boss;
+    if (_b.card_t >= 0) {
+        return 1 - clamp((_b.card_t - NAMECARD_SLAM_AT) / TALK_REVEAL_TIME,
+                         0, 1);
+    }
+    return _b.named ? 0 : 1;
+}
+
 /// @desc A speaker's portrait, cut to the field: a shadow behind it, a rim
 ///       of their colour round it while they speak, and the portrait, dimmed
 ///       and stood back while they listen. It slides in from its side with a
 ///       flash, hops as a line starts, breathes and blinks. `_named` is the
 ///       boss while its name card plays: the portrait punches in as the
-///       name lands, with light through its eyes.
-function talk_draw_portrait(_t, _c, _named) {
+///       name lands, with light through its eyes. `_shade` (0 to 1) covers
+///       it with a silhouette (`talk_shadowed`).
+function talk_draw_portrait(_t, _c, _named, _shade = 0) {
     if (!_c.on || _c.spr == undefined) return;
     var _f = talk_focus(_c);
     var _in = cutin_quint(_c.t, 0, TALK_ENTER_TIME);
@@ -684,6 +708,14 @@ function talk_draw_portrait(_t, _c, _named) {
 
     draw_sprite_poly(_spr, _fr, _x, _y, _s, _s, _field,
                      merge_colour(c_white, TALK_DIM, 0.66 * (1 - _f)), _a);
+
+    // Not yet named: a silhouette over it.
+    if (_shade > 0.004) {
+        gpu_set_fog(true, TALK_SHADOW, 0, 0);
+        draw_sprite_poly(_spr, _fr, _x, _y, _s, _s, _field, c_white,
+                         _shade * _a);
+        gpu_set_fog(false, c_black, 0, 0);
+    }
 
     // Arriving: copies trailing behind it, and a flash as it comes to rest.
     gpu_set_blendmode(bm_add);

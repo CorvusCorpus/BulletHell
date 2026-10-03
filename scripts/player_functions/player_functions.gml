@@ -32,7 +32,7 @@ function player_new() {
         grace_max: 1,
         grace_show: 0,    // the dial's own fade in and out; purely visual
 
-        card_t: 0,        // > 0 while his close-up is on screen
+        cutin_t: -1,      // frames since he cast, while his cut-in shows
         fire_glow: 0,     // eases up while the shot is held: the muzzles
 
         // Visual only: the sprite's bank, eased toward the direction of
@@ -111,7 +111,10 @@ function player_step(_p, _in, _g) {
     _p.py = _p.y;
 
     // These run even while flying in.
-    if (_p.card_t > 0) _p.card_t--;
+    if (_p.cutin_t >= 0) {
+        _p.cutin_t++;
+        if (_p.cutin_t >= SIGIL_CUTIN_TIME) _p.cutin_t = -1;
+    }
     var _grace = player_grace_left(_p);
     _p.grace_show += (((_grace > 0 && _p.entry <= 0) ? 1 : 0)
                       - _p.grace_show) * 0.22;
@@ -182,8 +185,8 @@ function player_fire(_p) {
 }
 
 /// @desc Cast the special: spend the meter, take the grace, start the sweep.
-///       All the immediate feedback (flash, shake, rings, close-up, cue) lands
-///       on this frame.
+///       All the immediate feedback (flash, shake, rings, cue, and the start
+///       of his cut-in, `sigil_cutin`) lands on this frame.
 function player_bomb(_p, _g) {
     _p.mp -= MP_PER_BOMB;
     player_grace_begin(_p, BOMB_INVULN);
@@ -191,7 +194,7 @@ function player_bomb(_p, _g) {
     _p.bomb_x = _p.x;
     _p.bomb_y = _p.y;
     _p.bomb_n++;
-    _p.card_t = PLAYER_CARD_TIME;
+    _p.cutin_t = 0;
     for (var _i = 0; _i < array_length(_p.seals); _i++) {
         _p.seals[_i].live = false;
     }
@@ -724,11 +727,4 @@ function player_draw_bomb(_p) {
     }
 
     gpu_set_blendmode(bm_normal);
-}
-
-/// @desc His close-up on the GUI layer while the special goes off
-///       (`draw_eye_card`).
-function player_draw_card(_p) {
-    if (_p.card_t <= 0) return;
-    draw_eye_card(spr_eye_szuix, _p.card_t / PLAYER_CARD_TIME);
 }

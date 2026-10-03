@@ -93,7 +93,7 @@
 
 #macro MP_MAX 100
 #macro MP_PER_BOMB 25
-#macro BOMB_INVULN 150         // grace on a special
+#macro BOMB_INVULN IFRAME_TIME // grace on a special: as long as a hit's
 #macro BOMB_CLEAR_R 560        // bullets inside this are swept
 #macro BOMB_GROW 26            // frames the sweep takes to reach full radius
 
@@ -112,9 +112,6 @@
 #macro BOMB_SEAL_BLAST 230     // ...and this close to where it bursts
 #macro BOMB_SEAL_DMG 10
 #macro BOMB_SIGIL_OUT 116      // the frame the circle has finished fading
-
-// The close-up of Szuix shown as he casts (see `draw_eye_card`).
-#macro PLAYER_CARD_TIME (1.5 * FPS)
 
 // The grace dial round the player (see `player_draw_grace`): its radius at
 // full and at empty, and the share of the grace left when it starts to

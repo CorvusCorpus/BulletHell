@@ -47,6 +47,8 @@
   },
   "name":"Bullet Hell",
   "resources":[
+    {"id":{"name":"sigil_cutin","path":"scripts/sigil_cutin/sigil_cutin.yy",},},
+    {"id":{"name":"spr_cutin_szuix","path":"sprites/spr_cutin_szuix/spr_cutin_szuix.yy",},},
     {"id":{"name":"obj_boot","path":"objects/obj_boot/obj_boot.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},
     {"id":{"name":"obj_practice","path":"objects/obj_practice/obj_practice.yy",},},
@@ -181,7 +183,6 @@
     {"id":{"name":"spr_card_title_lit","path":"sprites/spr_card_title_lit/spr_card_title_lit.yy",},},
     {"id":{"name":"spr_card_title","path":"sprites/spr_card_title/spr_card_title.yy",},},
     {"id":{"name":"spr_cutin_mika","path":"sprites/spr_cutin_mika/spr_cutin_mika.yy",},},
-    {"id":{"name":"spr_eye_szuix","path":"sprites/spr_eye_szuix/spr_eye_szuix.yy",},},
     {"id":{"name":"spr_fnt_head","path":"sprites/spr_fnt_head/spr_fnt_head.yy",},},
     {"id":{"name":"spr_fnt_num","path":"sprites/spr_fnt_num/spr_fnt_num.yy",},},
     {"id":{"name":"spr_fnt_small","path":"sprites/spr_fnt_small/spr_fnt_small.yy",},},

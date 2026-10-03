@@ -366,14 +366,17 @@ function draw_poly_ramp(_poly, _col, _a0, _a1, _x, _y, _dx, _dy, _len) {
 ///
 ///       With `_mirror` (`{x, y, nx, ny, fade}`: a point on a line, its unit
 ///       normal, and a distance) the sprite is drawn reflected in that line
-///       instead, fading to nothing `fade` pixels from it.
+///       instead, fading to nothing `fade` pixels from it. With `_ang` it is
+///       turned that many degrees about its origin, as `draw_sprite_ext`
+///       turns: the polygon is turned back into the sprite's own frame, cut
+///       there, and its points turned out again.
 ///
 ///       UVs run 0..1 across the part of the sprite kept on its page (a
 ///       primitive textured with `sprite_get_texture` reads the sprite's own
 ///       UV space; see `corridor_draw_band_wave`), inset half a texel, and the
 ///       polygon is first cut to that part, so a cropped sprite maps exactly.
 function draw_sprite_poly(_spr, _fr, _x, _y, _xs, _ys, _poly, _col, _alpha,
-                          _mirror = undefined) {
+                          _mirror = undefined, _ang = 0) {
     if (_alpha <= 0.004) return;
     var _q4 = sprite_get_uvs(_spr, _fr);
     var _kx = _q4[4];
@@ -393,6 +396,18 @@ function draw_sprite_poly(_spr, _fr, _x, _y, _xs, _ys, _poly, _col, _alpha,
 
     var _src = _poly;
     if (_mirror != undefined) _src = poly_reflect(_poly, _mirror);
+    var _ca = dcos(_ang);
+    var _sa = dsin(_ang);
+    if (_ang != 0) {
+        var _un = array_create(array_length(_src), 0);
+        for (var _i = 0; _i < array_length(_src); _i += 2) {
+            var _dx = _src[_i] - _x;
+            var _dy = _src[_i + 1] - _y;
+            _un[_i] = _x + _dx * _ca - _dy * _sa;
+            _un[_i + 1] = _y + _dx * _sa + _dy * _ca;
+        }
+        _src = _un;
+    }
     var _q = poly_clip(_src, [_l, _tp, _r, _tp, _r, _bt, _l, _bt]);
     var _n = array_length(_q) div 2;
     if (_n < 3) return;
@@ -405,6 +420,12 @@ function draw_sprite_poly(_spr, _fr, _x, _y, _xs, _ys, _poly, _col, _alpha,
             var _sy = _q[_k * 2 + 1];
             var _u = lerp(_hu, 1 - _hu, (_sx - _l) / (_r - _l));
             var _w = lerp(_hv, 1 - _hv, (_sy - _tp) / (_bt - _tp));
+            if (_ang != 0) {
+                var _dx = _sx - _x;
+                var _dy = _sy - _y;
+                _sx = _x + _dx * _ca + _dy * _sa;
+                _sy = _y - _dx * _sa + _dy * _ca;
+            }
             var _a = _alpha;
             if (_mirror != undefined) {
                 var _d = (_sx - _mirror.x) * _mirror.nx
@@ -547,8 +568,10 @@ function cutin_draw_reflection(_g, _f, _spr) {
 }
 
 /// @desc The band's ground: the spell's colour, darkest at the field's sides
-///       and lit behind the face, with rays drawn out from the eyes.
-function cutin_draw_ground(_g, _f, _band, _col) {
+///       and lit behind the face, with rays drawn out from the eyes. They
+///       flare as the eyes open at `_open_at` (Szuix's cut-in has its own:
+///       `sigil_cutin`).
+function cutin_draw_ground(_g, _f, _band, _col, _open_at = CUTIN_OPEN_AT) {
     var _dark = merge_colour(_col, COL_VOID, 0.84);
     var _mid = merge_colour(_col, COL_VOID, 0.52);
     var _n = 12;
@@ -572,7 +595,7 @@ function cutin_draw_ground(_g, _f, _band, _col) {
 
     // Rays from the eyes, flaring as they open.
     var _t = _g.t;
-    var _u = _t - CUTIN_OPEN_AT;
+    var _u = _t - _open_at;
     var _burst = (_u >= 0) ? exp(-_u / 7) : 0;
     var _a0 = 0.11 * _g.open + 0.5 * _burst;
     var _c = merge_colour(_col, c_white, 0.5);
@@ -595,12 +618,13 @@ function cutin_draw_ground(_g, _f, _band, _col) {
 
 /// @desc The face, cut to the band, with a rim of the spell's colour round
 ///       it (the portrait is dark, and would sink into the band); the glow
-///       gathering behind its shut eyes; and, as they open, the band's flash,
-///       an echo of the face thrown forward, and a streak of light through
-///       each eye.
-function cutin_draw_face(_g, _f, _band, _spr, _col) {
+///       gathering behind its shut eyes; and, as they open at `_open_at`, the
+///       band's flash, an echo of the face thrown forward, and a streak of
+///       light through each eye along the band's tilt, `_ang`.
+function cutin_draw_face(_g, _f, _band, _spr, _col, _open_at = CUTIN_OPEN_AT,
+                         _ang = CUTIN_TILT) {
     var _t = _g.t;
-    var _u = _t - CUTIN_OPEN_AT;
+    var _u = _t - _open_at;
 
     gpu_set_blendmode(bm_add);
     gpu_set_fog(true, merge_colour(_col, c_white, 0.25), 0, 0);
@@ -634,19 +658,19 @@ function cutin_draw_face(_g, _f, _band, _spr, _col) {
         var _x = _f.x + _e[0] * _f.s;
         var _y = _f.y + _e[1] * _f.s;
         var _a = (_u < 0)
-            ? 0.04 + 0.14 * card_ramp(_t, 8, CUTIN_OPEN_AT - 8)
+            ? 0.04 + 0.14 * card_ramp(_t, 8, _open_at - 8)
             : 0.34 + 0.08 * dsin(_t * 9) + 0.9 * exp(-_u / 5);
         var _sz = _e[2] * 3.4 * _f.s / _bw;
         draw_sprite_ext(spr_fx_bloom, 0, _x, _y, _sz, _sz * 0.8, 0, _glow,
                         min(1, _a));
         if (_u >= 0 && _u < 30) {
             var _len = 420 * ((_u < 4) ? (_u + 1) / 5 : exp(-(_u - 4) / 9));
-            cutin_draw_streak(_x, _y - _e[3] * 0.15, _len, 7, CUTIN_TILT,
-                              _glow, 0.9);
-            cutin_draw_streak(_x, _y - _e[3] * 0.15, _len * 0.6, 3,
-                              CUTIN_TILT, c_white, 1);
+            cutin_draw_streak(_x, _y - _e[3] * 0.15, _len, 7, _ang, _glow,
+                              0.9);
+            cutin_draw_streak(_x, _y - _e[3] * 0.15, _len * 0.6, 3, _ang,
+                              c_white, 1);
             cutin_draw_streak(_x, _y - _e[3] * 0.15, _len * 0.3, 3,
-                              CUTIN_TILT + 90, c_white, 0.8);
+                              _ang + 90, c_white, 0.8);
         }
     }
     gpu_set_blendmode(bm_normal);
@@ -689,10 +713,11 @@ function cutin_draw_streaks(_g, _band) {
 }
 
 /// @desc Motes of gold and of the spell's colour rising through the band,
-///       some catching the light.
-function cutin_draw_motes(_g, _col) {
+///       some catching the light, and going as it starts to close at
+///       `_close_at`.
+function cutin_draw_motes(_g, _col, _close_at = CUTIN_CLOSE_AT) {
     var _t = _g.t;
-    var _a0 = _g.open * (1 - cutin_in(_t, CUTIN_CLOSE_AT, 12));
+    var _a0 = _g.open * (1 - cutin_in(_t, _close_at, 12));
     if (_a0 <= 0.01) return;
     gpu_set_blendmode(bm_add);
     var _bw = sprite_get_width(spr_fx_bloom);
@@ -719,8 +744,8 @@ function cutin_draw_motes(_g, _col) {
 /// @desc The band's edges: a gilt line on each with a dark one outside it,
 ///       the field's width, and over them the title card's rules drawn out
 ///       from the middle (the plain one along the top, the one with the
-///       crescent hanging under the band).
-function cutin_draw_edges(_g) {
+///       crescent hanging under the band), turned with it (`_ang`).
+function cutin_draw_edges(_g, _ang = CUTIN_TILT) {
     var _hh = _g.h * 0.5;
     var _a = min(1, _g.h / 40);
     for (var _s = -1; _s <= 1; _s += 2) {
@@ -730,19 +755,18 @@ function cutin_draw_edges(_g) {
         draw_poly(cutin_strip(_g, _e - 1.2, _e + 1.2), COL_GILT_LIT, 0.9 * _a);
     }
     var _w = card_ramp(_g.t, 6, 18);
-    cutin_draw_rule(1, _g, -_hh, _w, _a);
-    cutin_draw_rule(0, _g, _hh, _w, _a);
+    cutin_draw_rule(1, _g, -_hh, _w, _a, _ang);
+    cutin_draw_rule(0, _g, _hh, _w, _a, _ang);
 }
 
 /// @desc Frame `_fr` of `spr_card_rule`, `_f` of it showing from its middle,
 ///       centred on the band's edge `_off` from its centre line and turned
-///       with it.
-function cutin_draw_rule(_fr, _g, _off, _f, _a) {
+///       with it (`_ang`).
+function cutin_draw_rule(_fr, _g, _off, _f, _a, _ang = CUTIN_TILT) {
     if (_f <= 0 || _a <= 0.01) return;
     var _w = sprite_get_width(spr_card_rule);
     var _hgt = sprite_get_height(spr_card_rule);
     var _half = _w * 0.5 * _f;
-    var _ang = CUTIN_TILT;
     // The part's top-left corner, turned about the rule's middle.
     var _x = _g.cx - _half * dcos(_ang) - _hgt * 0.5 * dsin(_ang);
     var _y = _g.cy + _off + _half * dsin(_ang) - _hgt * 0.5 * dcos(_ang);

@@ -554,18 +554,6 @@ function draw_arc_band(_x, _y, _r_in, _r_out, _from, _to, _colour, _a_from,
     draw_primitive_end();
 }
 
-/// @desc The eye card (a close-up of Szuix's face) shown as he spends a
-///       sigil. Drawn translucent in the upper part of the field, not
-///       full-screen, so it doesn't hide the pattern. `_t` runs from 1 down
-///       to 0. (A boss's spell has its cut-in instead: `spell_cutin`.)
-function draw_eye_card(_spr, _t) {
-    if (_t <= 0) return;
-    var _a = min(1, _t * 2.4) * 0.80;
-    var _s = 0.60 + (1 - _t) * 0.09;
-    draw_sprite_ext(_spr, 0, FIELD_CX, FIELD_Y0 + FIELD_H * 0.28,
-                    _s, _s, 0, c_white, _a);
-}
-
 /// @desc Bubbles rising through the liquid from `_bot` to `_surf`, derived
 ///       from the clock rather than simulated.
 function draw_liquid_bubbles(_x0, _x1, _bot, _surf, _seed, _col, _alpha) {

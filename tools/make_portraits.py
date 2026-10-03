@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """The standing portraits a conversation is played with (`talk_functions`):
-Szuix and Mika, cut out of the owner's own drawings.
+Szuix and Mika, cut out of the owner's own drawings. And Szuix's portrait for
+the cut-in he gets when he spends a sigil (`sigil_cutin`), from the same
+drawing.
 
 Both are PLACEHOLDERS: one drawing each, where a finished portrait would have
 a pose per expression. A replacement keeps the contract below and nothing
@@ -18,6 +20,11 @@ blink), transparent round the figure, its origin midway between the eyes.
 The figure runs down to about the knee and fades out there; a conversation
 stands it behind its plate, which hides the fade. `scripts/talk_table` says
 where the eyes are.
+
+The sigil cut-in's portrait (`spr_cutin_szuix`) keeps the spell cut-in's
+contract instead: eyes shut, then open, its origin midway between the eyes,
+cut to the rows round his face that its band can show, faded out at the top
+and bottom. Its eyes are in `talk_table` too.
 
 Usage:
     python tools/make_portraits.py
@@ -57,6 +64,19 @@ MIKA_TINT = (255, 186, 40)
 
 LINE_INK = (4, 4, 8)
 
+# The sigil cut-in's portrait: game pixels per source pixel, the source rows
+# it keeps (the band never shows past them), and the height (game pixels)
+# each end fades out over.
+SZUIX_CUTIN_SCALE = 1.3
+SZUIX_CUTIN_ROWS = (70, 610)
+CUTIN_FADE = 40
+
+# Sealing the figure (`seal`), in source pixels: how near its outline (or a
+# real gap in it) the edge is left soft, and the largest hole counted as see-
+# through damage rather than a gap.
+SEAL_EDGE = 4
+SEAL_GAP = 600
+
 
 # ---------------------------------------------------------------------------
 # Shared
@@ -78,6 +98,27 @@ def resample(arr, scale):
     return out
 
 
+def seal(arr):
+    """Make the inside of the figure opaque, in place. Keying a drawing's
+    page out also takes the anti-aliased edges of anything drawn on the
+    figure whose colour passes near the page's (Mika's gold markings on his
+    black fur, against a brown page), leaving hairlines the background shows
+    through. A pixel is sealed if it is inside the figure: not within
+    `SEAL_EDGE` of the ground outside it, or of a gap in it larger than
+    `SEAL_GAP` pixels. Its colour is left as drawn."""
+    solid = arr[..., 3] > 127
+    filled = ndimage.binary_fill_holes(solid)
+    holes = filled & ~solid
+    lab, n = ndimage.label(holes)
+    if n:
+        big = np.zeros(n + 1, bool)
+        big[1:] = ndimage.sum(holes, lab, range(1, n + 1)) > SEAL_GAP
+        filled &= ~big[lab]
+    near = ndimage.binary_dilation(~filled, iterations=SEAL_EDGE)
+    arr[..., 3] = np.where(filled & ~near, 255.0, arr[..., 3])
+    return arr
+
+
 def fade_foot(arr):
     """Fade the last `FOOT_FADE` rows out, so the figure has no cut edge."""
     h = arr.shape[0]
@@ -87,11 +128,20 @@ def fade_foot(arr):
     return arr
 
 
-def finish(frames, anchor, scale):
-    """Scale a list of same-sized float RGBA frames, fade their feet and trim
-    them to the figure. Returns `(images, origin)`, the origin being `anchor`
-    (source pixels) in the trimmed sprite."""
-    small = [fade_foot(resample(f, scale)) for f in frames]
+def fade_ends(arr):
+    """Fade the first and last `CUTIN_FADE` rows out."""
+    h = arr.shape[0]
+    rows = np.arange(h, dtype=np.float32)
+    k = np.clip(np.minimum(rows, h - 1 - rows) / float(CUTIN_FADE), 0.0, 1.0)
+    arr[..., 3] *= (k * k * (3 - 2 * k))[:, None]
+    return arr
+
+
+def finish(frames, anchor, scale, fade=fade_foot):
+    """Scale a list of same-sized float RGBA frames, fade their feet (or what
+    `fade` fades) and trim them to the figure. Returns `(images, origin)`, the
+    origin being `anchor` (source pixels) in the trimmed sprite."""
+    small = [fade(resample(f, scale)) for f in frames]
     solid = np.max([s[..., 3] for s in small], axis=0) > 3
     ys, xs = np.nonzero(solid)
     x0, y0, x1, y1 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
@@ -245,7 +295,9 @@ def szuix_shut_eye(arr, eye):
                 + np.array(LINE_INK, np.float32) * line[..., None])
 
 
-def szuix_frames():
+def szuix_page():
+    """His page keyed and sealed, the same with his eyes shut, his eyes, the
+    point midway between them, and the colour they shine."""
     arr = szuix_cut()
     eyes = szuix_eyes(arr)
     anchor = midpoint(eyes)
@@ -255,12 +307,28 @@ def szuix_frames():
                          for e in eyes])
     glow = tuple(int(v) for v in px.mean(0))
 
+    seal(arr)
     shut = arr.copy()
     for e in eyes:
         szuix_shut_eye(shut, e)
+    return arr, shut, eyes, anchor, glow
 
+
+def szuix_frames(page):
+    arr, shut, eyes, anchor, glow = page
     images, origin = finish([arr, shut], anchor, SZUIX_SCALE)
     return (images, origin, eye_rows(eyes, anchor, SZUIX_SCALE), glow,
+            SZUIX_TINT)
+
+
+def szuix_cutin_frames(page):
+    """The sigil cut-in's portrait: eyes shut, then open."""
+    arr, shut, eyes, anchor, glow = page
+    top, bot = SZUIX_CUTIN_ROWS
+    images, origin = finish([shut[top:bot], arr[top:bot]],
+                            (anchor[0], anchor[1] - top), SZUIX_CUTIN_SCALE,
+                            fade=fade_ends)
+    return (images, origin, eye_rows(eyes, anchor, SZUIX_CUTIN_SCALE), glow,
             SZUIX_TINT)
 
 
@@ -283,6 +351,7 @@ def mika_frames():
     glow = M.eye_glow_colour(arr, eyes)
 
     M.clean_edge(arr, bg)
+    seal(arr)
     shut = arr.copy()
     for k, e in enumerate(eyes):
         M.shut_eye(shut, e, (k == 0), glow)
@@ -300,11 +369,11 @@ TABLE = """/// @desc The conversation portraits -- GENERATED by tools/make_portr
 ///       Do not edit: these are measured from the art.
 ///
 /// `talk_art(_spr)`: where a portrait's eyes are, for the light put on them
-/// when its owner is named. Each eye is `[x, y, rx, ry]`: its centre in
-/// pixels from the sprite's origin (which is midway between them), and its
-/// half-width and half-height. `glow` is the colour they shine. `tint` is
-/// the colour its owner is lit in while they speak, or -1 for none of its
-/// own.
+/// when its owner is named (and, for Szuix's sigil cut-in, as they open).
+/// Each eye is `[x, y, rx, ry]`: its centre in pixels from the sprite's
+/// origin (which is midway between them), and its half-width and
+/// half-height. `glow` is the colour they shine. `tint` is the colour its
+/// owner is lit in while they speak, or -1 for none of its own.
 
 function talk_art(_spr) {
 %s    return { eyes: [], glow: c_white, tint: -1 };
@@ -335,22 +404,31 @@ def write_table(rows):
 def main():
     gm_new.folder(FOLDER)
 
+    page = szuix_page()
     rows = []
-    sheets = []
-    for name, make in (("spr_talk_szuix", szuix_frames),
-                       ("spr_talk_mika", mika_frames)):
+    sheets = {}
+    for name, make, folder in (
+            ("spr_talk_szuix", lambda: szuix_frames(page), FOLDER),
+            ("spr_talk_mika", mika_frames, FOLDER),
+            ("spr_cutin_szuix", lambda: szuix_cutin_frames(page),
+             "Sprites/player")):
         images, origin, eyes, glow, tint = make()
-        gm_new.sprite(name, images, origin=origin, folder=FOLDER)
+        gm_new.sprite(name, images, origin=origin, folder=folder)
         rows.append((name, eyes, glow, tint))
-        sheets += images
+        sheets[name] = images
         print("%s: 2 frames of %dx%d, origin %d,%d, eyes %s"
               % (name, images[0].width, images[0].height, origin[0],
                  origin[1], [tuple(int(round(v)) for v in e) for e in eyes]))
     write_table(rows)
 
     out = os.path.join(A.PREVIEW, "portraits.png")
-    A.preview(sheets, out, cols=4, bg=(36, 26, 74),
+    A.preview(sheets["spr_talk_szuix"] + sheets["spr_talk_mika"], out, cols=4,
+              bg=(36, 26, 74),
               labels=["szuix", "szuix, eyes shut", "mika", "mika, eyes shut"])
+    print("->  %s" % os.path.relpath(out, A.ROOT))
+    out = os.path.join(A.PREVIEW, "portrait_cutin.png")
+    A.preview(sheets["spr_cutin_szuix"], out, cols=1, bg=(36, 26, 74),
+              labels=["szuix's sigil, eyes shut", "eyes open"])
     print("->  %s" % os.path.relpath(out, A.ROOT))
 
 

@@ -11,9 +11,9 @@
 /// the same way but awards no capture.
 ///
 /// A final boss arrives, is named by its card (`name_card`) and then opens its
-/// first attack. One with something to say (`def.talk`) is held after it
-/// arrives until the conversation ends (`talk_functions`), which plays the card
-/// itself.
+/// first attack. One with something to say (`def.talk`) waits above the field
+/// until the conversation (`talk_functions`) plays its card, comes down as
+/// the card's name lands, and holds its station until the conversation ends.
 
 /// @desc Attach boss state to an enemy and put it on the field.
 /// @param {array} _phases  the attack table; see the file docstring
@@ -118,6 +118,9 @@ function boss_act(_e, _g) {
     if (_b.card_t >= 0) boss_namecard_step(_b);
 
     if (_b.entry_t > 0) {
+        // One that arrives talking waits above the field, out of sight,
+        // until its name card names it, and comes down as the name lands.
+        if (_b.talking && !_b.named && _b.card_t < NAMECARD_SLAM_AT) return;
         _b.entry_t--;
         enemy_glide(_e, _b.home_x, _b.home_y, 0.06);
         return;

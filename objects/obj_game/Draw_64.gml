@@ -31,8 +31,8 @@ if (_boss != undefined) {
     }
 }
 
-// Szuix's eye card when he bombs; after the boss's cut-in so it is on top.
-player_draw_card(player);
+// Szuix's cut-in when he spends a sigil; after the boss's so it is on top.
+sigil_cutin_draw(player);
 
 fx_draw_text();
 

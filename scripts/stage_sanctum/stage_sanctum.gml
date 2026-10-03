@@ -136,7 +136,7 @@ function mika_link(_f, _a, _b, _frames) {
 function mika_def() {
     return {
         name: "MIKA",
-        title: "head mage to the Living God of Death",
+        title: "High Priest to the God of Death",
         sprite: spr_boss_mika,
         cutin: spr_cutin_mika,      // the spell cut-in's portrait
         // What he says before the fight, and the portrait he says it with
