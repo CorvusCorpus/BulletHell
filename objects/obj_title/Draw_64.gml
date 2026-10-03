@@ -16,7 +16,7 @@ var _n = array_length(stages);
 draw_set_halign(fa_center);
 draw_set_valign(fa_middle);
 draw_set_font(fnt_title());
-draw_text_outline(GAME_CX, 150, "NO MERE PAWN", COL_SZUIX_LIT, 1, 3);
+draw_text_outline(GAME_CX, 150, "NEXARCHON", COL_SZUIX_LIT, 1, 3);
 
 // The console's crest, under the title.
 var _cw2 = 520;
