@@ -8,6 +8,7 @@ Launches the built executable with `-selftest`, which runs the suites in
 Usage:
     python tools/test.py
     python tools/test.py -v     # print every assertion, not just failures
+    python tools/test.py --yyc  # build and test with YYC (see build.py)
 """
 import argparse
 import os
@@ -19,26 +20,28 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import build
 
 ROOT = build.ROOT
-EXE = os.path.join(build.BUILD, "out", build.project_name() + ".exe")
-
 TIMEOUT = 180
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--yyc", action="store_true",
+                    help="build and test with YYC rather than the VM")
     args = ap.parse_args()
 
-    if _compile() != 0:
+    if _compile(args.yyc) != 0:
         return 1
 
-    if not os.path.exists(EXE):
-        print("no executable at %s" % EXE)
+    exe = build.exe_path(args.yyc)
+
+    if not os.path.exists(exe):
+        print("no executable at %s" % exe)
         return 1
 
     try:
         # Minimised and without focus (see `build.run_game`).
-        proc = build.run_game([EXE, "-selftest"], TIMEOUT)
+        proc = build.run_game([exe, "-selftest"], TIMEOUT)
     except subprocess.TimeoutExpired:
         print("FAILED: the self-test did not finish within %ds" % TIMEOUT)
         print("A run-time throw is a MODAL BOX, which from here is a hang and "
@@ -78,10 +81,10 @@ def main():
     return 1 if fails else 0
 
 
-def _compile():
-    """Run build.py's main with no arguments of our own."""
+def _compile(yyc=False):
+    """Run build.py's main with none of our own arguments."""
     argv = sys.argv
-    sys.argv = ["build.py"]
+    sys.argv = ["build.py"] + (["--yyc"] if yyc else [])
     try:
         return build.main()
     finally:

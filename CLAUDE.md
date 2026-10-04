@@ -122,8 +122,8 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 
 | Tool | What it does |
 |---|---|
-| `tools/build.py` | Compiles with the runtime's `Igor.exe`; a cached build takes seconds and reports real diagnostics. `--run` launches the game, `--clean` drops the cache. |
-| `tools/test.py` | Builds, runs the game with `-selftest`, and grades the suites in `scripts/selftest` from stdout. `-v` lists every assertion. |
+| `tools/build.py` | Compiles with the runtime's `Igor.exe`; a cached build takes seconds and reports real diagnostics. `--run` launches the game, `--clean` drops the cache, `--yyc` compiles with YYC instead of the VM (into its own folder, about a minute and a half). |
+| `tools/test.py` | Builds, runs the game with `-selftest`, and grades the suites in `scripts/selftest` from stdout. `-v` lists every assertion, `--yyc` builds and tests with YYC. |
 | `tools/check_project.py` | Static checks GameMaker doesn't do: resource registration and `.yy` shape, object events, undefined macros and functions, call arity, legacy globals, blank sprite frames, sprite and font metrics shared with the generators, plus guards for specific past bugs (rings must block shots before enemies take them, `run_clear_field` must be called, grove horizon bands stay rooted to the camera, hall vertex buffers must match their sprite's texture). |
 | `tools/shot.py <scene>` | Builds, poses a scene with `-shot <scene>`, and saves `tools/_preview/<scene>.png`. `--burst 0,20,40` photographs one scene at several frame offsets and tiles a sheet. `--fullscreen` gives exact design-size pixels. It fails a run whose output shows a GameMaker error even if a picture was saved. Scenes are listed in `shot_scene_list()` (`scripts/shot_scenes`) and in `SCENES` in `shot.py`; both must be updated together. |
 | `tools/gm_new.py` | Importable module, no command line. It creates and registers resources: `script`, `sprite`, `shader`, `obj`, `room`, `sound`, `folder`, `delete`. GUIDs are derived from names, so regenerating writes identical files. |
@@ -140,7 +140,18 @@ Harness behaviour:
   afterwards. The save lives in `%LOCALAPPDATA%\Bullet_Hell\` (GameMaker
   turns the space into an underscore).
 - A posed player can be made `untouchable` (a harness-only flag), so a hit
-  doesn't clear a bite out of the pattern being photographed.
+  doesn't clear a bite out of the pattern being photographed. An untouchable
+  player runs no hit test, so a harness frame doesn't include its cost.
+- The harnesses run the VM build. YYC (`--yyc`) needs Visual Studio 2022's
+  C++ tools with the MSVC v142 (VS 2019) build tools as well, GameMaker's
+  `windowsYYC` runtime module, and the Visual Studio location set in the
+  IDE's preferences (Platform Settings > Windows). All of them are installed
+  on the owner's machine.
+- Every command-line build reads `licence.plist` from the GameMaker user
+  folder, which the IDE writes when it starts signed in. Igor's `Runtime`
+  commands judged that licence invalid and the file went missing straight
+  after, which stopped every build until restarting the IDE brought it
+  back.
 
 ## Code layout
 
@@ -764,4 +775,6 @@ Known gaps:
   the garbage collector stays quiet). Mika's N1 at its densest (about 1,400
   bullets) takes about 7 ms of work a frame on the owner's machine; of
   that, bullets are about 3.5 ms (step, draw, and the hit test and graze),
-  the hall about 1.9 ms and the HUD about 0.7 ms.
+  the hall about 1.9 ms and the HUD about 0.7 ms. Built with YYC the same
+  frame takes about 3.5 ms (bullets about 1.6 ms, the hall about 0.75 ms,
+  the HUD about 0.3 ms).

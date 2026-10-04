@@ -9,6 +9,11 @@ Usage:
     python tools/build.py            # compile, report errors, exit non-zero on failure
     python tools/build.py --run      # compile and launch the game
     python tools/build.py --clean    # discard the cache first (slower)
+    python tools/build.py --yyc      # compile with YYC (C++) instead of the VM
+
+YYC needs Visual Studio's C++ tools and GameMaker's Windows preference
+pointing at them (see GameMaker's Windows setup guide). It builds into its
+own folder (`BUILD_YYC`), so the VM build the harnesses use is untouched.
 
 Build artefacts go to a temp folder outside the project.
 """
@@ -28,6 +33,7 @@ USER = os.path.join(os.environ.get("APPDATA", ""), "GameMakerStudio2",
 IGOR = os.path.join(RUNTIME, "bin", "igor", "windows", "x64", "Igor.exe")
 
 BUILD = os.path.join(tempfile.gettempdir(), "bullethell_build")
+BUILD_YYC = os.path.join(tempfile.gettempdir(), "bullethell_build_yyc")
 
 # Harness runs start the game minimised and without focus
 # (SW_SHOWMINNOACTIVE), so they don't take the foreground. The game still
@@ -55,6 +61,12 @@ def run_game(cmd, timeout, show=False):
                           cwd=os.path.dirname(cmd[0]),
                           startupinfo=None if show else _background_startupinfo())
 
+
+
+def exe_path(yyc=False):
+    """Where a build leaves the game's executable."""
+    return os.path.join(BUILD_YYC if yyc else BUILD, "out",
+                        project_name() + ".exe")
 
 
 def project_name():
@@ -93,20 +105,30 @@ def main():
     ap.add_argument("--run", action="store_true", help="launch the game after building")
     ap.add_argument("--clean", action="store_true", help="discard the build cache first")
     ap.add_argument("-v", "--verbose", action="store_true", help="show all Igor output")
+    ap.add_argument("--yyc", action="store_true",
+                    help="compile with YYC rather than the VM")
     args = ap.parse_args()
 
     if not os.path.exists(IGOR):
         raise SystemExit("Igor not found at %s" % IGOR)
 
     name = project_name()
-    cache = os.path.join(BUILD, "cache")
-    temp = os.path.join(BUILD, "temp")
-    out = os.path.join(BUILD, "out")
+    where = BUILD_YYC if args.yyc else BUILD
+    cache = os.path.join(where, "cache")
+    temp = os.path.join(where, "temp")
+    out = os.path.join(where, "out")
 
     if args.clean:
-        shutil.rmtree(BUILD, ignore_errors=True)
+        shutil.rmtree(where, ignore_errors=True)
     for d in (cache, temp, out):
         os.makedirs(d, exist_ok=True)
+
+    # A YYC build links `Bullet_Hell.exe` and then renames it to the project's
+    # name, which fails while the last build's executable is still there.
+    if args.yyc:
+        last = os.path.join(out, name + ".exe")
+        if os.path.exists(last):
+            os.remove(last)
 
     cmd = [
         IGOR,
@@ -114,7 +136,7 @@ def main():
         "--rp=%s" % RUNTIME,
         "--uf=%s" % USER,
         "--config=Default",
-        "--runtime=VM",
+        "--runtime=%s" % ("YYC" if args.yyc else "VM"),
         "--cache=%s" % cache,
         "--temp=%s" % temp,
         "--of=%s" % os.path.join(out, name + ".zip"),
@@ -127,7 +149,7 @@ def main():
     # Run from the build folder: Igor writes the `--tf` archive relative to
     # the working directory, and it mustn't land in the project.
     proc = subprocess.run(cmd, capture_output=True, text=True,
-                          errors="replace", cwd=BUILD)
+                          errors="replace", cwd=where)
     output = (proc.stdout or "") + (proc.stderr or "")
     lines = output.splitlines()
 
@@ -153,7 +175,7 @@ def main():
             print("\n".join(lines[-25:]))
         return 1
 
-    print("Build OK  (%s)" % name)
+    print("Build OK  (%s%s)" % (name, ", YYC" if args.yyc else ""))
     return 0
 
 
