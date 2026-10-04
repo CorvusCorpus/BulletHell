@@ -448,8 +448,12 @@ function player_hit(_p) {
 function player_collide(_p, _g) {
     if (!_p.alive) return false;
 
-    if (!player_invulnerable(_p)) {
-        var _i = bullet_hit_index(_p.x, _p.y, PLAYER_R);
+    // One pass over the bullets for both the hit test and graze
+    // (`bullet_touch`); the grazes it finds are paid below only if nothing
+    // hit him.
+    var _open = !player_invulnerable(_p);
+    var _i = bullet_touch(_p.x, _p.y, _open ? PLAYER_R : -1, GRAZE_R);
+    if (_open) {
         if (_i >= 0) {
             // It leaves a mark where it touched him, so the hit can be read.
             fx_hit_mark(bullet_get(_i), _p.x, _p.y, PLAYER_R);
@@ -474,7 +478,7 @@ function player_collide(_p, _g) {
 
     // Grazing still pays during invulnerability. Bullets pay once each;
     // lasers and ring bands pay on a cooldown.
-    var _gz = bullet_graze(_p.x, _p.y, GRAZE_R)
+    var _gz = bullet_graze_commit()
             + laser_graze(_p.x, _p.y, PLAYER_R)
             + ring_graze(_p.x, _p.y, PLAYER_R);
     if (_gz > 0) {

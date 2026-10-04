@@ -69,6 +69,8 @@ function selftest_run() {
     test_hex_seal();
     test_hud_layout();
     test_boss_rig();
+    test_rail_fade();
+    test_ui_layers();
     test_counter();
     test_run_starts_clean();
     test_boss_is_never_invisible();
@@ -599,6 +601,23 @@ function test_graze() {
        bullet_graze(500 + global.bshape_spine0[BSHAPE_ARROW],
                     500 + global.bshape_radius[BSHAPE_ARROW] + GRAZE_R - 1,
                     GRAZE_R) == 1);
+
+    // The hit test and graze share one pass (`bullet_touch`): a graze is
+    // only noted until it is paid, and a hit pays none.
+    st_reset();
+    var _near = fire(500 + GRAZE_R * 0.5, 500, 0, 0, BSHAPE_ORB, BCOL_CYAN, 0);
+    ok("a pass with nothing hitting finds no hit",
+       bullet_touch(500, 500, PLAYER_R, GRAZE_R) == -1);
+    ok("and only notes the graze", !_near.grazed);
+    ok("which is paid when committed",
+       bullet_graze_commit() == 1 && _near.grazed);
+    st_reset();
+    _near = fire(500 + GRAZE_R * 0.5, 500, 0, 0, BSHAPE_ORB, BCOL_CYAN, 0);
+    fire(500, 500, 0, 0, BSHAPE_ORB, BCOL_CYAN, 0);
+    ok("a bullet on him is a hit",
+       bullet_touch(500, 500, PLAYER_R, GRAZE_R) == 1);
+    ok("and the graze beside it is never paid",
+       bullet_graze_commit() == 0 && !_near.grazed);
     st_reset();
 }
 
@@ -3392,6 +3411,52 @@ function test_boss_rig() {
     ok("and back up is behind the frame again",
        hud_rig_y(_h) + BOSS_BAR_H <= FIELD_Y0);
     st_reset();
+}
+
+/// @desc The boss's rail fades to `BOSS_RAIL_FADE` while the player is under
+///       it or near it, and comes back when he leaves.
+function test_rail_fade() {
+    st_reset();
+    var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+    var _h = hud_new();
+    ziggy_spawn(_g);
+    for (var _i = 0; _i < BOSS_ENTRY_TIME + 240; _i++) hud_step(_h, _g);
+    ok("the rail is opaque while the player is low on the field",
+       abs(_h.rail_fade - 1) < 0.001);
+
+    _g.player.y = BOSS_BAR_Y + BOSS_BAR_H * 0.5;
+    ok("under the rail counts as near it",
+       hud_rail_near(_h, _g.player.x, _g.player.y));
+    for (var _i = 0; _i < 120; _i++) hud_step(_h, _g);
+    ok_near("and fades it", _h.rail_fade, BOSS_RAIL_FADE, 0.001);
+
+    _g.player.y = FIELD_Y1 - 200;
+    for (var _i = 0; _i < 120; _i++) hud_step(_h, _g);
+    ok("leaving brings it back", abs(_h.rail_fade - 1) < 0.001);
+    st_reset();
+}
+
+/// @desc A cached layer is drawn again when what it shows changes or its
+///       surface is lost (surfaces can go at any time), and not otherwise.
+function test_ui_layers() {
+    var _l = ui_layer_new(0, 0, 64, 32);
+    ok("a new layer has to be drawn", ui_layer_begin(_l, 1));
+    ui_layer_end(_l);
+    ok("and then holds a surface", surface_exists(_l.surf));
+    ok("the same key needs nothing drawn", !ui_layer_begin(_l, 1));
+    ok("a new key does", ui_layer_begin(_l, 2));
+    ui_layer_end(_l);
+    var _src = [];
+    ok("so does a new source", ui_layer_begin(_l, 2, _src));
+    ui_layer_end(_l);
+    ok("but not the same one again", !ui_layer_begin(_l, 2, _src));
+    surface_free(_l.surf);
+    ok("a lost surface is drawn again", ui_layer_begin(_l, 2, _src));
+    ui_layer_end(_l);
+    ok("and leaves the drawing state as it was",
+       !global.ui_premul && draw_get_alpha() == 1);
+    ui_layer_free(_l);
+    ok("freeing lets the surface go", !surface_exists(_l.surf));
 }
 
 /// @desc The boss's percentage counter: odometer wheels, rolling to rest on a

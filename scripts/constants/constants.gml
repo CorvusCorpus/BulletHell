@@ -511,6 +511,17 @@
 // Divisions the rail is graduated in (see `hud_rail_scale`).
 #macro RAIL_GRADS 20
 
+// The rail fades to `BOSS_RAIL_FADE` of its opacity while the player is under
+// it or within `BOSS_RAIL_NEAR` pixels of its box (`hud_rail_near`), easing
+// `BOSS_RAIL_FADE_EASE` of the way there each frame.
+#macro BOSS_RAIL_FADE 0.5
+#macro BOSS_RAIL_NEAR 60
+#macro BOSS_RAIL_FADE_EASE 0.15
+
+// How far down from the top of the screen the rail's layers reach: past the
+// spell's name at the bottom of the rig's swing, with room for its glows.
+#macro HUD_RAIL_LAYER_H (BOSS_SPELL_Y + 120)
+
 // Where the chain attaches on `spr_ui_hanger`; mirrors `HANGER_EYE_CY` in
 // `tools/make_ui.py`.
 #macro UI_HANGER_EYE 8
@@ -1352,7 +1363,7 @@ enum BossMove {
 #macro HALL_SAND_N 130
 #macro HALL_SAND_COL make_colour_rgb(206, 180, 142)
 #macro HALL_SAND_A 0.30
-// ...and how it catches the light (`hall_dust_light`): what it shows with
+// ...and how it catches the light (`hall_draw_front`): what it shows with
 // nothing lighting it, how far from a torch it glints, how much, and the
 // colours it takes from a torch and from the moonbeam.
 #macro HALL_SAND_DARK 0.30

@@ -8,7 +8,7 @@ hud_draw_boss_line(hud, self);
 
 // The frame paints the margins opaque (masking the world, which is drawn
 // full-screen) and flashes red on damage.
-field_draw_frame(hud.life_flare, COL_LIFE);
+field_draw_frame(hud.life_flare, COL_LIFE, hud.frame);
 
 hud_draw(hud, self);
 

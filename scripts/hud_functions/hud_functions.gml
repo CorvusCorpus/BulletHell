@@ -58,6 +58,10 @@ function hud_new() {
         rig_seen: 0,             // what it was last frame, to catch the landing
         rig_flare: 0,            // the chains coming up taut
 
+        // The rail's opacity: 1, or `BOSS_RAIL_FADE` while the player is
+        // under it or near it (`hud_rail_near`).
+        rail_fade: 1,
+
         graze_seen: 0,           // what the counters were last frame
         tally_seen: 0,
         life_seen: HP_MAX,
@@ -67,7 +71,44 @@ function hud_new() {
         // The rank card, and how many marks it has been shown for
         // (`rank_card`).
         card: rank_card_new(),
+
+        // Cached layers (`ui_layer_new`), each drawn again only when what it
+        // shows changes: the margins' ground, the console's furniture, the
+        // marks' row, and the boss's rail under, over and on top of what it
+        // draws live. While the rail is less than opaque it is put together
+        // in `rail` and put on the screen as one, so it fades as a whole.
+        frame: field_frame_layer(),
+        console: hud_console_layer(),
+        marks: hud_console_layer(),
+        rail_under: hud_rail_layer(),
+        rail_over: hud_rail_layer(),
+        rail_top: hud_rail_layer(),
+        rail: hud_rail_layer(),
     };
+}
+
+/// @desc A layer over the console's plate, a little larger than it (its bevel
+///       and blooms reach past its edge).
+function hud_console_layer() {
+    return ui_layer_new(HUD_PANEL_X0 - 4, HUD_PANEL_Y0 - 4,
+                        HUD_PANEL_X1 - HUD_PANEL_X0 + 8,
+                        HUD_PANEL_Y1 - HUD_PANEL_Y0 + 8);
+}
+
+/// @desc A layer across the top of the field, where the boss's rail hangs.
+function hud_rail_layer() {
+    return ui_layer_new(FIELD_X0, 0, FIELD_W, HUD_RAIL_LAYER_H);
+}
+
+/// @desc Free the HUD's surfaces (from its owner's Clean Up).
+function hud_free(_h) {
+    ui_layer_free(_h.frame);
+    ui_layer_free(_h.console);
+    ui_layer_free(_h.marks);
+    ui_layer_free(_h.rail_under);
+    ui_layer_free(_h.rail_over);
+    ui_layer_free(_h.rail_top);
+    ui_layer_free(_h.rail);
 }
 
 /// @desc The screen position of mark socket `_i` of `_total` in the console.
@@ -209,6 +250,11 @@ function hud_step(_h, _g) {
     if (_h.rig >= 1 && _h.rig_seen < 1) _h.rig_flare = 1;
     _h.rig_seen = _h.rig;
 
+    // The rail fades while the player is under it or near it, so it never
+    // hides him (an attack can have him circling the boss up there).
+    var _fade = hud_rail_near(_h, _p.x, _p.y) ? BOSS_RAIL_FADE : 1;
+    _h.rail_fade += (_fade - _h.rail_fade) * BOSS_RAIL_FADE_EASE;
+
     var _ph_now = (_boss == undefined) ? -99 : _boss.boss.phase;
     if (_ph_now != _h.boss_phase_seen) {
         if (_h.boss_phase_seen != -99 && _ph_now > _h.boss_phase_seen) {
@@ -248,10 +294,22 @@ function hud_step(_h, _g) {
 /// @desc Draw the console and the rank card. (The boss rail is drawn
 ///       separately by `hud_draw_boss_line`, before the field's frame.)
 function hud_draw(_h, _g) {
-    var _boss = enemy_find_boss();
+    // What changes only now and then is kept in a layer (`hud_console_layer`):
+    // the plate, its rules and crest, the stage's name, the rows' tags and the
+    // meters' glass. SIGIL's tag reads READY once there is a sigil to spend.
+    var _ready = (_g.player.mp >= MP_PER_BOMB);
+    if (ui_layer_begin(_h.console, _ready ? 1 : 0, _g.def)) {
+        hud_draw_plate();
+        hud_draw_stage(_g);
+        hud_draw_tags(_ready);
+        draw_gauge_trough(HUD_COL_X, HUD_ROW_LIFE, HUD_METER_W, HUD_METER_H,
+                          1);
+        draw_gauge_trough(HUD_COL_X, HUD_ROW_SIGIL, HUD_METER_W, HUD_METER_H,
+                          1);
+        ui_layer_end(_h.console);
+    }
+    ui_layer_put(_h.console);
 
-    hud_draw_plate();
-    hud_draw_stage(_g);
     hud_draw_score(_h, _g);
     hud_draw_meters(_h, _g);
     hud_draw_marks(_h, _g);
@@ -299,8 +357,19 @@ function hud_draw_stage(_g) {
                   1, 2);
 }
 
-/// @desc The BEST, SCORE and GRAZE rows. The score swells briefly when
-///       points are scored.
+/// @desc The tags of the BEST, SCORE and GRAZE rows and of the LIFE and SIGIL
+///       meters (drawn into the console's layer; their values are drawn each
+///       frame).
+function hud_draw_tags(_ready) {
+    hud_row_tag(HUD_ROW_BEST, "BEST");
+    hud_row_tag(HUD_ROW_SCORE, "SCORE");
+    hud_row_tag(HUD_ROW_GRAZE, "GRAZE");
+    hud_row_tag(HUD_ROW_LIFE - 24, "LIFE");
+    hud_row_tag(HUD_ROW_SIGIL - 24, _ready ? "SIGIL  READY" : "SIGIL");
+}
+
+/// @desc The values of the BEST, SCORE and GRAZE rows. The score swells
+///       briefly when points are scored.
 function hud_draw_score(_h, _g) {
     var _p = _g.player;
     // BEST: the def's own `best` if it has one (practice: best this session),
@@ -309,40 +378,50 @@ function hud_draw_score(_h, _g) {
 
     // Highlighted once this attempt has beaten it.
     var _beaten = (_g.tally > _best && _best > 0);
-    hud_row(HUD_ROW_BEST, "BEST", string(max(_best, 0)), fnt_ui(),
-            _beaten ? merge_colour(COL_GRAZE, c_white,
-                                   0.3 + 0.3 * dsin(_g.t * 4))
-                    : merge_colour(COL_PARCHMENT, COL_ARCANE_LIT, 0.15),
-            _beaten ? 1 : 0.8);
+    hud_row_value(HUD_ROW_BEST, string(max(_best, 0)), fnt_ui(),
+                  _beaten ? merge_colour(COL_GRAZE, c_white,
+                                         0.3 + 0.3 * dsin(_g.t * 4))
+                          : merge_colour(COL_PARCHMENT, COL_ARCANE_LIT, 0.15),
+                  _beaten ? 1 : 0.8);
 
     var _f = _h.tally_flare;
     if (_f > 0.02) {
         draw_bloom(HUD_COL_X + HUD_COL_W * 0.72, HUD_ROW_SCORE,
                    HUD_COL_W * 0.9, COL_GRAZE, _f * 0.24);
     }
-    hud_row(HUD_ROW_SCORE, "SCORE", string(round(_h.tally_shown)), fnt_num(),
-            merge_colour(COL_GRAZE, c_white, _f * 0.65), 1, 1 + _f * 0.09);
+    hud_row_value(HUD_ROW_SCORE, string(round(_h.tally_shown)), fnt_num(),
+                  merge_colour(COL_GRAZE, c_white, _f * 0.65), 1,
+                  1 + _f * 0.09);
 
-    hud_row(HUD_ROW_GRAZE, "GRAZE", string(_p.graze_n), fnt_ui(),
-            merge_colour(COL_PARCHMENT, COL_RUNE,
-                         0.2 + _h.graze_flare * 0.8), 1);
+    hud_row_value(HUD_ROW_GRAZE, string(_p.graze_n), fnt_ui(),
+                  merge_colour(COL_PARCHMENT, COL_RUNE,
+                               0.2 + _h.graze_flare * 0.8), 1);
 }
 
 /// @desc One console row: a tracked tag on the left and a value on the right,
 ///       both vertically centred on `_y` (so different font sizes line up).
 function hud_row(_y, _tag, _value, _font, _col, _alpha = 1, _scale = 1) {
-    draw_set_valign(fa_middle);
+    hud_row_tag(_y, _tag);
+    hud_row_value(_y, _value, _font, _col, _alpha, _scale);
+}
 
+/// @desc A row's tag, on the left.
+function hud_row_tag(_y, _tag) {
+    draw_set_valign(fa_middle);
     draw_set_halign(fa_left);
     draw_set_font(fnt_small());
     // Tags are antique gold (`HUD_TAG_COL`).
     draw_text_tracked(HUD_COL_X, _y, _tag, 6, HUD_TAG_COL, 1, 2);
+    draw_set_valign(fa_top);
+}
 
+/// @desc A row's value, on the right.
+function hud_row_value(_y, _value, _font, _col, _alpha = 1, _scale = 1) {
+    draw_set_valign(fa_middle);
     draw_set_halign(fa_right);
     draw_set_font(_font);
     draw_text_outline_scaled(HUD_COL_X + HUD_COL_W, _y, _value, _col, _alpha,
                              _scale, 3);
-
     draw_set_halign(fa_left);
     draw_set_valign(fa_top);
 }
@@ -364,6 +443,33 @@ function hud_draw_marks(_h, _g) {
                     current_time * 0.004, _ring, 0.14);
     draw_sprite_ext(spr_boss_sigil, 0, _cx, _wy, _rs * 0.66, _rs * 0.66,
                     -current_time * 0.006, _ring, 0.11);
+
+    // The rest changes only when a mark is filed, so it is kept in a layer,
+    // except while a mark's arrival is still playing (the standing's flare,
+    // the rank card's flight and the medal's landing).
+    var _card = _h.card;
+    var _flare = (_led == undefined) ? 0 : _led.flare;
+    if (_flare > 0 || rank_card_live(_card) || _card.land > 0) {
+        hud_draw_ledger(_h, _g);
+        return;
+    }
+    var _stage = _g[$ "stage"];
+    if (ui_layer_begin(_h.marks, rank_count(_led) * 4096
+                                 + ((_stage != undefined)
+                                    ? _stage.encounters : 0),
+                       _led)) {
+        hud_draw_ledger(_h, _g);
+        ui_layer_end(_h.marks);
+    }
+    ui_layer_put(_h.marks);
+}
+
+/// @desc The MARKS section over its watermark: the standing, its rule, and
+///       the sockets with their medals.
+function hud_draw_ledger(_h, _g) {
+    var _x = HUD_COL_X;
+    var _y = HUD_ROW_MARKS;
+    var _led = _g[$ "marks"];
 
     // Nothing is shown as the standing until the first mark.
     var _overall = rank_overall(_led);
@@ -425,13 +531,12 @@ function hud_draw_marks(_h, _g) {
         draw_sprite_ext(spr_ui_mark_medal, _f, _mx, _cy2, _s, _s, 0,
                         c_white, 1);
         if (_pop > 0) {
-            gpu_set_blendmode(bm_add);
+            ui_blend(bm_add);
             draw_sprite_ext(spr_ui_mark_medal, _f, _mx, _cy2, _s, _s, 0,
                             c_white, 0.7 * _pop);
-            gpu_set_blendmode(bm_normal);
+            ui_blend(bm_normal);
         }
     }
-
 }
 
 /// @desc The hairline under a section's tag.
@@ -455,35 +560,39 @@ function hud_draw_meters(_h, _g) {
         ? merge_colour(COL_LIFE, c_white, 0.35 + 0.35 * dsin(_g.t * 9))
         : COL_LIFE;
 
-    hud_meter(HUD_ROW_LIFE, "LIFE", string(round(_p.hp)),
-              _h.life_shown / HP_MAX, _life_col,
-              HP_MAX div HP_PER_HIT, _h.life_slosh, _h.life_flare, _low, 11);
+    hud_meter(HUD_ROW_LIFE, string(round(_p.hp)), _h.life_shown / HP_MAX,
+              _life_col, HP_MAX div HP_PER_HIT, _h.life_slosh, _h.life_flare,
+              _low, 11);
 
     // The sigil liquid is greyed until there is enough for a bomb; "ready"
-    // is shown by the label, the rim and a sheen, not by lightening the
-    // liquid.
+    // is shown by the label (`hud_draw_tags`), the rim and a sheen, not by
+    // lightening the liquid.
     var _ready = _p.mp >= MP_PER_BOMB;
     var _mana_col = _ready ? COL_MANA
                            : merge_colour(COL_MANA, COL_SLATE, 0.5);
 
-    hud_meter(HUD_ROW_SIGIL, _ready ? "SIGIL  READY" : "SIGIL",
-              string(round(_p.mp)), _h.mana_shown / MP_MAX, _mana_col,
-              MP_MAX div MP_PER_BOMB, _h.mana_slosh, _h.mana_flare, _ready, 71);
+    hud_meter(HUD_ROW_SIGIL, string(round(_p.mp)), _h.mana_shown / MP_MAX,
+              _mana_col, MP_MAX div MP_PER_BOMB, _h.mana_slosh, _h.mana_flare,
+              _ready, 71);
 }
 
-/// @desc One meter: a row with its name and value, and the tube under it.
-function hud_meter(_y, _name, _value, _fraction, _col, _divs, _slosh, _flare,
-                   _ready, _seed) {
-    hud_row(_y - 24, _name, _value, fnt_ui(),
-            merge_colour(COL_PARCHMENT, c_white, _flare * 0.8), 1);
+/// @desc One meter's value and the tube under it: its contents and rim over
+///       the glass in the console's layer (`draw_gauge_h`'s parts). Its tag
+///       is in the layer too (`hud_draw_tags`).
+function hud_meter(_y, _value, _fraction, _col, _divs, _slosh, _flare, _ready,
+                   _seed) {
+    hud_row_value(_y - 24, _value, fnt_ui(),
+                  merge_colour(COL_PARCHMENT, c_white, _flare * 0.8), 1);
 
-    draw_gauge_h(HUD_COL_X, _y, HUD_METER_W, HUD_METER_H, _fraction, _col, 1, {
+    draw_gauge_contents(HUD_COL_X, _y, HUD_METER_W, HUD_METER_H, _fraction,
+                        _col, 1, {
         quadrants: _divs,
         slosh: _slosh,
         seed: _seed,
         ready: _ready,
         glow: _flare,
     });
+    draw_gauge_rim(HUD_COL_X, _y, HUD_METER_W, HUD_METER_H, _ready, 1, _col);
 
     // A brief additive flush of the meter's colour when it changes.
     if (_flare > 0.02) {
@@ -523,19 +632,42 @@ function hud_rig_y(_h) {
     return lerp(BOSS_RIG_STOW, BOSS_BAR_Y, _h.rig);
 }
 
+/// @desc Whether (`_x`, `_y`) is under the boss's rail, or within
+///       `BOSS_RAIL_NEAR` of the box it occupies (`hud_box`), where it hangs
+///       now.
+function hud_rail_near(_h, _x, _y) {
+    var _b = hud_box("boss");
+    var _dy = hud_rig_y(_h) - BOSS_BAR_Y;
+    return (_x > _b[0] - BOSS_RAIL_NEAR) && (_x < _b[2] + BOSS_RAIL_NEAR)
+        && (_y > _b[1] + _dy - BOSS_RAIL_NEAR)
+        && (_y < _b[3] + _dy + BOSS_RAIL_NEAR);
+}
+
 /// @desc Draw the boss's rail and everything on it. Called from `obj_game`'s
 ///       GUI event before `field_draw_frame`: the frame's opaque margins then
 ///       cut the chains off at the field edge and hide the rail while it is
 ///       stowed above the field.
+///
+///       While it is less than opaque, the rail is put together in its own
+///       layer and put on the screen as one, so it fades as a whole: in as it
+///       comes down, and to `BOSS_RAIL_FADE` while the player is near it
+///       (`rail_fade`). Opaque, it is drawn straight on. What
+///       changes only now and then is kept in three layers drawn at rest
+///       (`hud_rail_layers`); between them go what moves every frame: the
+///       chains, the liquid, the current attack's boundary, the clock and the
+///       counter.
 function hud_draw_boss_line(_h, _g) {
     if (_h.rig <= 0.004) return;
 
     var _boss = enemy_find_boss();
-    var _x1 = FIELD_X0 + BOSS_BAR_INSET;
-    var _x2 = FIELD_X1 - BOSS_BAR_INSET;
-    var _y  = hud_rig_y(_h);
+    var _r = hud_rail_geom();
+    // How far the rig hangs from rest, in whole window pixels, so what is
+    // drawn here lines up with the layers put that far down.
+    var _dy = ui_snap_dy(hud_rig_y(_h) - BOSS_BAR_Y);
+    var _y  = BOSS_BAR_Y + _dy;
     var _cy = _y + BOSS_BAR_H * 0.5;
     var _a  = clamp(_h.rig * 1.6, 0, 1);
+    var _ta = clamp((_h.rig - 0.42) * 2.4, 0, 1);
 
     // The liquid is the current attack's hue, or the boss's own colour
     // before the first attack.
@@ -546,73 +678,53 @@ function hud_draw_boss_line(_h, _g) {
         _col = global.bullet_colour[_boss.boss.def.col];
     }
 
-    // --- chains and rail (the terminals are drawn last, over the rail) ----
+    // Before the rail's own layer is opened, so no layer is drawn inside
+    // another.
+    hud_rail_layers(_h, _boss, _p, _col, _ta);
+
+    var _fade = _a * _h.rail_fade;
+    var _whole = (_fade < 0.999);
+    if (_whole) ui_layer_open(_h.rail);
+
+    // --- the chains (the terminals are drawn last, over the rail) ---------
     var _eye = _cy - (sprite_get_yoffset(spr_ui_hanger) - UI_HANGER_EYE);
     for (var _s = 0; _s < 2; _s++) {
-        var _hx = (_s == 0) ? (_x1 + BOSS_RIG_END) : (_x2 - BOSS_RIG_END);
-        draw_chain(_hx, FIELD_Y0 - 30, _eye, COL_GILT, _a);
+        var _hx = (_s == 0) ? (_r.x1 + BOSS_RIG_END) : (_r.x2 - BOSS_RIG_END);
+        draw_chain(_hx, FIELD_Y0 - 30, _eye, COL_GILT, 1);
     }
 
-    draw_rail(_x1, _y, _x2 - _x1, BOSS_BAR_H, _a);
-
-    // --- the health channel, between the cartouche and the dial -----------
-    var _px0 = _x1 + BOSS_RIG_END + 22;
-    var _dx  = _x2 - BOSS_RIG_END - 28 - BOSS_DIAL_D * 0.5;
-    var _ch_x = _px0 + BOSS_PCT_W + 14;
-    var _ch_w = (_dx - BOSS_DIAL_D * 0.5 - 14) - _ch_x;
-    var _ch_y = _cy - BOSS_BAR_CHANNEL * 0.5;
-
-    // The channel's rim is a dark gold, to match the rail it is set into.
-    draw_gauge_h(_ch_x, _ch_y, _ch_w, BOSS_BAR_CHANNEL, _h.boss_shown, _col,
-                 _a, {
+    // --- the rail and the channel's glass, then the liquid in it ----------
+    ui_layer_put(_h.rail_under, 1, _dy);
+    draw_gauge_contents(_r.ch_x, _cy - BOSS_BAR_CHANNEL * 0.5, _r.ch_w,
+                        BOSS_BAR_CHANNEL, _h.boss_shown, _col, 1, {
         slosh: _h.boss_slosh,
         glow: _h.boss_flare,
         seed: 29,
-        rim: merge_colour(COL_GILT, COL_VOID, 0.52),
     });
 
-    // A thin shadow along the channel's upper edge, so it reads as a recess.
-    gpu_set_blendmode(bm_normal);
-    draw_primitive_begin(pr_trianglestrip);
-    var _lipr = BOSS_BAR_CHANNEL * 0.5;
-    var _lxs = capsule_samples(_ch_x, _ch_x + _ch_w, _lipr, _ch_x + _ch_w);
-    for (var _i = 0; _i < array_length(_lxs); _i++) {
-        var _lx = _lxs[_i];
-        var _lh = capsule_half(_lx, _ch_x, _ch_x + _ch_w, _lipr);
-        draw_vertex_colour(_lx, _cy - _lh, COL_VOID, _a * 0.55);
-        draw_vertex_colour(_lx, _cy - _lh + 2.4, COL_VOID, 0);
-    }
-    draw_primitive_end();
+    // --- the channel's rim and scale, the dial's face, the cartouche's
+    // ground; then the boundary being fought toward, the clock and the
+    // counter ------------------------------------------------------------
+    ui_layer_put(_h.rail_over, 1, _dy);
+    hud_rail_scale(_h, _boss, _r.ch_x, _r.ch_w, _cy, _col, 1, false, true);
+    hud_draw_boss_dial(_h, _boss, _r.dx, _cy, 1);
+    if (_boss != undefined) hud_draw_boss_pct(_h, _r.px0, _cy, 1);
 
-    hud_rail_scale(_h, _boss, _ch_x, _ch_w, _cy, _col, _a);
-
-    // --- the readouts ------------------------------------------------------
-    // (The dial is drawn even with no clock, as part of the rail.)
-    var _ta = clamp((_h.rig - 0.42) * 2.4, 0, 1);
-    hud_draw_boss_dial(_h, _boss, _dx, _cy, _a);
-    if (_boss != undefined) {
-        hud_draw_boss_pct(_h, _px0, _cy, _col, _a);
-        hud_draw_boss_plate(_boss, _y - BOSS_BAR_Y, _a, _ta * _h.name_a);
-        hud_draw_boss_caption(_h, _boss, _p, _y - BOSS_BAR_Y, _ta);
-    }
-
-    // The terminals last, over the rail.
-    for (var _s = 0; _s < 2; _s++) {
-        var _hx = (_s == 0) ? (_x1 + BOSS_RIG_END) : (_x2 - BOSS_RIG_END);
-        draw_sprite_ext(spr_ui_hanger, 0, _hx, _cy, 1, 1, 0, COL_GILT, _a);
-    }
+    // --- the cartouche's frame, the plate, the spell's name, the terminals
+    ui_layer_put(_h.rail_top, 1, _dy);
 
     // The landing flare: additive flashes at the terminals, and a sheen
     // running out along the rail from the middle.
     if (_h.rig_flare > 0.02) {
         var _f = _h.rig_flare;
         for (var _s = 0; _s < 2; _s++) {
-            var _hx = (_s == 0) ? (_x1 + BOSS_RIG_END) : (_x2 - BOSS_RIG_END);
+            var _hx = (_s == 0) ? (_r.x1 + BOSS_RIG_END)
+                                : (_r.x2 - BOSS_RIG_END);
             draw_bloom(_hx, _cy, 120 * (1.4 - _f), COL_GILT_LIT, _f * 0.5);
         }
-        gpu_set_blendmode(bm_add);
+        ui_blend(bm_add);
         draw_primitive_begin(pr_trianglestrip);
-        var _sw = (_x2 - _x1) * 0.5 * (1 - _f);
+        var _sw = (_r.x2 - _r.x1) * 0.5 * (1 - _f);
         for (var _s = -1; _s <= 1; _s += 2) {
             draw_vertex_colour(FIELD_CX + _sw * _s, _y, COL_GILT_LIT, 0);
             draw_vertex_colour(FIELD_CX + _sw * _s, _y + BOSS_BAR_H,
@@ -621,7 +733,12 @@ function hud_draw_boss_line(_h, _g) {
         draw_primitive_end();
         draw_bloom(FIELD_CX + _sw, _cy, 90, COL_GILT_LIT, _f * 0.35);
         draw_bloom(FIELD_CX - _sw, _cy, 90, COL_GILT_LIT, _f * 0.35);
-        gpu_set_blendmode(bm_normal);
+        ui_blend(bm_normal);
+    }
+
+    if (_whole) {
+        ui_layer_end(_h.rail);
+        ui_layer_put(_h.rail, _fade);
     }
 
     draw_set_halign(fa_left);
@@ -630,12 +747,126 @@ function hud_draw_boss_line(_h, _g) {
     draw_set_colour(c_white);
 }
 
+/// @desc Where the rail's parts sit along it, at rest: its ends, the
+///       cartouche's left edge (`px0`), the dial's centre (`dx`) and the
+///       health channel between them (`ch_x`, `ch_w`). Worked out once.
+function hud_rail_geom() {
+    static _geom = undefined;
+    if (_geom == undefined) {
+        var _x1 = FIELD_X0 + BOSS_BAR_INSET;
+        var _x2 = FIELD_X1 - BOSS_BAR_INSET;
+        var _px0 = _x1 + BOSS_RIG_END + 22;
+        var _dx = _x2 - BOSS_RIG_END - 28 - BOSS_DIAL_D * 0.5;
+        var _ch_x = _px0 + BOSS_PCT_W + 14;
+        _geom = {
+            x1: _x1, x2: _x2, px0: _px0, dx: _dx, ch_x: _ch_x,
+            ch_w: (_dx - BOSS_DIAL_D * 0.5 - 14) - _ch_x,
+        };
+    }
+    return _geom;
+}
+
+/// @desc Draw again whichever of the rail's three layers no longer shows what
+///       it should. Each is drawn with the rail at rest, at full opacity
+///       (`hud_draw_boss_line` puts them where the rig hangs, and fades the
+///       whole).
+///       - Under the liquid: the rail and the channel's glass. Never changes.
+///       - Over it: the channel's rim and the shadow on its lip, the scale
+///         and every boundary but the current attack's, the dial's face, and
+///         the cartouche's ground. Changes with the attack, its colour, and
+///         the boundaries the liquid still covers.
+///       - On top: the cartouche's frame, the plate and the caster's name,
+///         the spell's name, and the terminals. Changes with the attack and
+///         as the names fade in.
+function hud_rail_layers(_h, _boss, _p, _col, _ta) {
+    var _r = hud_rail_geom();
+    var _y = BOSS_BAR_Y;
+    var _cy = _y + BOSS_BAR_H * 0.5;
+    var _ch_y = _cy - BOSS_BAR_CHANNEL * 0.5;
+
+    if (ui_layer_begin(_h.rail_under)) {
+        draw_rail(_r.x1, _y, _r.x2 - _r.x1, BOSS_BAR_H, 1);
+        draw_gauge_trough(_r.ch_x, _ch_y, _r.ch_w, BOSS_BAR_CHANNEL, 1);
+        ui_layer_end(_h.rail_under);
+    }
+
+    // A boss's phase table is built for it alone, so it tells one boss (and
+    // one attempt) from another.
+    var _ph = (_boss == undefined) ? undefined : _boss.boss.phases;
+    var _now = (_boss == undefined) ? -1 : _boss.boss.phase;
+    var _wet = hud_rail_wet(_h, _boss);
+    if (ui_layer_begin(_h.rail_over,
+                       ((_now + 2) * 1024 + _wet) * 16777216 + _col, _ph)) {
+        // The channel's rim is a dark gold, to match the rail it is set into.
+        draw_gauge_rim(_r.ch_x, _ch_y, _r.ch_w, BOSS_BAR_CHANNEL, false, 1,
+                       _col, merge_colour(COL_GILT, COL_VOID, 0.52));
+        hud_rail_lip(_r.ch_x, _r.ch_w, _cy);
+        hud_rail_scale(_h, _boss, _r.ch_x, _r.ch_w, _cy, _col, 1, true,
+                       false);
+        // (The dial's face is drawn even with no clock, as part of the rail.)
+        hud_draw_boss_dial_face(_r.dx, _cy, 1);
+        if (_boss != undefined) hud_draw_boss_pct_ground(_r.px0, _cy, 1);
+        ui_layer_end(_h.rail_over);
+    }
+
+    // The names' opacities, to the nearest step the layer can hold.
+    var _na = floor(255 * _ta * _h.name_a + 0.5);
+    var _sa = floor(255 * _ta * _h.spell_a + 0.5);
+    if (ui_layer_begin(_h.rail_top, ((_now + 2) * 256 + _na) * 256 + _sa,
+                       _ph)) {
+        if (_boss != undefined) {
+            hud_draw_boss_pct_frame(_r.px0, _cy, 1);
+            hud_draw_boss_plate(_boss, 0, 1, _na / 255);
+            hud_draw_boss_caption(_h, _boss, _p, 0, _ta);
+        }
+        for (var _s = 0; _s < 2; _s++) {
+            var _hx = (_s == 0) ? (_r.x1 + BOSS_RIG_END)
+                                : (_r.x2 - BOSS_RIG_END);
+            draw_sprite_ext(spr_ui_hanger, 0, _hx, _cy, 1, 1, 0, COL_GILT, 1);
+        }
+        ui_layer_end(_h.rail_top);
+    }
+}
+
+/// @desc How many of the boss's phase boundaries on the rail the liquid still
+///       covers (as `hud_rail_scale` decides it).
+function hud_rail_wet(_h, _boss) {
+    if (_boss == undefined) return 0;
+    var _ph = _boss.boss.phases;
+    var _n = 0;
+    for (var _i = 0; _i < array_length(_ph); _i++) {
+        var _f = hud_span_frac(_h.boss_span, _ph[_i].hp_end);
+        if (_f <= 0.001 || _f >= 0.999) continue;
+        if (_f <= _h.boss_shown + 0.001) _n++;
+    }
+    return _n;
+}
+
+/// @desc A thin shadow along the health channel's upper edge, so it reads as
+///       a recess.
+function hud_rail_lip(_x, _w, _cy) {
+    ui_blend(bm_normal);
+    draw_primitive_begin(pr_trianglestrip);
+    var _lipr = BOSS_BAR_CHANNEL * 0.5;
+    var _lxs = capsule_samples(_x, _x + _w, _lipr, _x + _w);
+    for (var _i = 0; _i < array_length(_lxs); _i++) {
+        var _lx = _lxs[_i];
+        var _lh = capsule_half(_lx, _x, _x + _w, _lipr);
+        draw_vertex_colour(_lx, _cy - _lh, COL_VOID, 0.55);
+        draw_vertex_colour(_lx, _cy - _lh + 2.4, COL_VOID, 0);
+    }
+    draw_primitive_end();
+}
+
 /// @desc The rail's scale: tick marks along both flanges (longer every
 ///       fifth), and each phase boundary as a groove through the channel
 ///       (dark over liquid, pale over empty) with a notch through the flanges
 ///       (full depth for a spell) and, for a spell, a small lozenge under the
 ///       rail. The boundary currently being fought toward pulses.
-function hud_rail_scale(_h, _boss, _x, _w, _cy, _col, _alpha) {
+///       `_still` draws the ticks and the other boundaries (the rail's layer
+///       holds them), `_live` the one that pulses.
+function hud_rail_scale(_h, _boss, _x, _w, _cy, _col, _alpha, _still = true,
+                        _live = true) {
     var _r = BOSS_BAR_CHANNEL * 0.5;
     var _lo = _x + _r;
     var _hi = _x + _w - _r;
@@ -644,7 +875,7 @@ function hud_rail_scale(_h, _boss, _x, _w, _cy, _col, _alpha) {
     var _top = _cy - BOSS_BAR_H * 0.5;
     var _bot = _cy + BOSS_BAR_H * 0.5;
     draw_set_colour(COL_GILT_LIT);
-    for (var _i = 1; _i < RAIL_GRADS; _i++) {
+    for (var _i = 1; _still && _i < RAIL_GRADS; _i++) {
         var _gx = lerp(_lo, _hi, _i / RAIL_GRADS);
         var _major = (_i mod 5 == 0);
         var _len = _major ? 4.6 : 2.6;
@@ -673,13 +904,13 @@ function hud_rail_scale(_h, _boss, _x, _w, _cy, _col, _alpha) {
         // Boundaries outside the rail's span (in practice) are skipped.
         var _f = hud_span_frac(_h.boss_span, _ph[_i].hp_end);
         if (_f <= 0.001 || _f >= 0.999) continue;
+        // The boundary of the current attack pulses.
+        var _pulsing = (_i == _now);
+        if (_pulsing ? !_live : !_still) continue;
         var _nx = _lo + (_hi - _lo) * _f;
         var _spell = (_ph[_i].kind == AttackKind.Spell);
         var _on_liquid = (_f <= _h.boss_shown + 0.001);
-
-        // The boundary of the current attack pulses.
-        var _live = (_i == _now);
-        var _puls = _live ? (0.55 + 0.45 * dsin(current_time * 0.22)) : 1;
+        var _puls = _pulsing ? (0.55 + 0.45 * dsin(current_time * 0.22)) : 1;
 
         // The groove through the channel.
         draw_set_colour(_on_liquid ? COL_VOID : COL_GILT_LIT);
@@ -701,26 +932,44 @@ function hud_rail_scale(_h, _boss, _x, _w, _cy, _col, _alpha) {
         if (_spell) {
             // The spell lozenge, under the rail.
             var _sy = _cy + BOSS_BAR_H * 0.5 + 4;
-            var _sr = 5 * (_live ? (0.9 + 0.22 * dsin(current_time * 0.22))
-                                 : 1);
+            var _sr = 5 * (_pulsing
+                           ? (0.9 + 0.22 * dsin(current_time * 0.22)) : 1);
             draw_set_alpha(_alpha * 0.9);
             draw_set_colour(COL_GILT_LIT);
             draw_triangle(_nx, _sy - _sr, _nx - _sr * 0.62, _sy,
                           _nx + _sr * 0.62, _sy, false);
             draw_triangle(_nx, _sy + _sr, _nx - _sr * 0.62, _sy,
                           _nx + _sr * 0.62, _sy, false);
-            if (_live) draw_bloom(_nx, _sy, 34, COL_GILT_LIT, 0.30 * _alpha);
+            if (_pulsing) {
+                draw_bloom(_nx, _sy, 34, COL_GILT_LIT, 0.30 * _alpha);
+            }
         }
     }
     draw_set_alpha(1);
     draw_set_colour(c_white);
 }
 
-/// @desc The boss's health percentage (to a tenth) in the cartouche at the
-///       rail's left end, drawn as rolling counter wheels driven by
-///       `pct_roll` (`draw_counter_wheel`).
-function hud_draw_boss_pct(_h, _x, _cy, _col, _alpha) {
-    // An opaque ground shaded like a drum, lighter across the middle.
+/// @desc Where the cartouche's readout is set, for a cartouche whose left
+///       edge is `_x` and centre line `_cy`: the right edge of the `%` sign
+///       (`rx`), the shared baseline (`base`), and the `%` sign's width
+///       (`wpc`). Leaves `fnt_small()` set.
+function hud_pct_layout(_x, _cy) {
+    static _out = { rx: 0, base: 0, wpc: 0 };
+    // Fixed columns laid out from the right, so the decimal point stays put.
+    // The whole part is centred on the rail by its digits' ink; the tenth,
+    // point and % sign share its baseline.
+    draw_set_font(fnt_num());
+    _out.base = _cy + string_height("0") * FONT_INK_RATIO * BOSS_PCT_SCALE
+                      * 0.5;
+    _out.rx = _x + BOSS_PCT_W - UI_PLAQUE_CHAMF - 7;
+    draw_set_font(fnt_small());
+    _out.wpc = string_width("%");
+    return _out;
+}
+
+/// @desc The cartouche's ground (an opaque drum, lighter across the middle)
+///       and its `%` sign: what is under the counter and never changes.
+function hud_draw_boss_pct_ground(_x, _cy, _alpha) {
     var _gx = _x + 9;
     var _gw = BOSS_PCT_W - 18;
     var _gh = BOSS_PCT_H - 14;
@@ -738,27 +987,34 @@ function hud_draw_boss_pct(_h, _x, _cy, _col, _alpha) {
         draw_primitive_end();
     }
 
+    var _at = hud_pct_layout(_x, _cy);
+    draw_set_halign(fa_right);
+    draw_set_valign(fa_bottom);
+    draw_text_outline(_at.rx, text_baseline_y(_at.base), "%", COL_GILT,
+                      _alpha * 0.9, 2);
+    draw_set_halign(fa_left);
+    draw_set_valign(fa_top);
+    draw_set_alpha(1);
+}
+
+/// @desc The boss's health percentage (to a tenth) in the cartouche at the
+///       rail's left end, drawn as rolling counter wheels driven by
+///       `pct_roll` (`draw_counter_wheel`). Its ground is drawn under it
+///       (`hud_draw_boss_pct_ground`) and its frame over it
+///       (`hud_draw_boss_pct_frame`).
+function hud_draw_boss_pct(_h, _x, _cy, _alpha) {
     // The digits whiten while turning and when a threshold falls.
     var _hot = min(1, _h.boss_slosh * 1.3 + _h.boss_flare);
     var _tint = merge_colour(COL_GILT_LIT, c_white, _hot * 0.7);
     var _p = clamp(_h.pct_roll, 0, 1000);      // tenths of a per cent
     var _sc = BOSS_PCT_SCALE;
 
-    // Fixed columns laid out from the right, so the decimal point stays put.
-    // The whole part is centred on the rail by its digits' ink; the tenth,
-    // point and % sign share its baseline.
+    var _at = hud_pct_layout(_x, _cy);
+    var _base = _at.base;
+    var _rx = _at.rx;
+    var _wpc = _at.wpc;
     draw_set_font(fnt_num());
-    var _num_ink = string_height("0") * FONT_INK_RATIO * _sc;
     var _cw = string_width("0") * _sc;
-    var _base = _cy + _num_ink * 0.5;
-    var _rx = _x + BOSS_PCT_W - UI_PLAQUE_CHAMF - 7;
-
-    draw_set_font(fnt_small());
-    var _wpc = string_width("%");
-    draw_set_halign(fa_right);
-    draw_set_valign(fa_bottom);
-    draw_text_outline(_rx, text_baseline_y(_base), "%", COL_GILT,
-                      _alpha * 0.9, 2);
 
     draw_set_font(fnt_ui());
     var _tw = string_width("0");
@@ -784,19 +1040,35 @@ function hud_draw_boss_pct(_h, _x, _cy, _col, _alpha) {
     draw_counter_wheel(_ox - _cw * 2, _cy, counter_wheel_pos(_p, 3), _tint,
                        _alpha, _sc, true, 3);
 
-    // The cartouche frame goes on last, over the wheels, hiding digits that
-    // are partway turned out of the window.
-    draw_sprite_ext(spr_ui_plaque, 0, _x + BOSS_PCT_W * 0.5, _cy, 1, 1, 0,
-                    COL_GILT, _alpha);
-
     draw_set_halign(fa_left);
     draw_set_valign(fa_top);
     draw_set_alpha(1);
 }
 
-/// @desc The attack's clock as a dial at the rail's right end: a faint full
-///       ring, a bright arc for the time left sweeping back to 12 o'clock,
-///       and the seconds on counter wheels in the middle. Additive.
+/// @desc The cartouche's frame, which goes on over the counter, hiding digits
+///       that are partway turned out of the window.
+function hud_draw_boss_pct_frame(_x, _cy, _alpha) {
+    draw_sprite_ext(spr_ui_plaque, 0, _x + BOSS_PCT_W * 0.5, _cy, 1, 1, 0,
+                    COL_GILT, _alpha);
+}
+
+/// @desc The clock dial's face at the rail's right end: an opaque disc in its
+///       gilt bezel.
+function hud_draw_boss_dial_face(_cx, _cy, _alpha) {
+    draw_set_colour(COL_VOID);
+    draw_set_alpha(_alpha);
+    draw_circle(_cx, _cy, BOSS_DIAL_D * 0.5 - BOSS_DIAL_D * 0.09, false);
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+
+    var _bz = BOSS_DIAL_D / sprite_get_width(spr_ui_dial);
+    draw_sprite_ext(spr_ui_dial, 0, _cx, _cy, _bz, _bz, 0, COL_GILT, _alpha);
+}
+
+/// @desc The attack's clock on the dial's face (`hud_draw_boss_dial_face`):
+///       a faint full ring, a bright arc for the time left sweeping back to
+///       12 o'clock, and the seconds on counter wheels in the middle.
+///       Additive.
 function hud_draw_boss_dial(_h, _boss, _cx, _cy, _alpha) {
     if (_alpha <= 0.004) return;
 
@@ -806,16 +1078,6 @@ function hud_draw_boss_dial(_h, _boss, _cx, _cy, _alpha) {
     var _whole = (_p == undefined) ? 0 : max(1, _p.time);
     var _frac = (_secs < 0) ? 0 : clamp(_secs * FPS / _whole, 0, 1);
     var _urgent = (_secs >= 0 && _secs < BOSS_DIAL_URGENT);
-
-    // The dial's opaque face.
-    draw_set_colour(COL_VOID);
-    draw_set_alpha(_alpha);
-    draw_circle(_cx, _cy, _r - BOSS_DIAL_D * 0.09, false);
-    draw_set_alpha(1);
-    draw_set_colour(c_white);
-
-    var _bz = BOSS_DIAL_D / sprite_get_width(spr_ui_dial);
-    draw_sprite_ext(spr_ui_dial, 0, _cx, _cy, _bz, _bz, 0, COL_GILT, _alpha);
 
     if (_secs < 0) return;
 
@@ -828,7 +1090,7 @@ function hud_draw_boss_dial(_h, _boss, _cx, _cy, _alpha) {
     var _steps = max(2, ceil(360 * _frac / 6));
     var _a = _alpha * _flick;
 
-    gpu_set_blendmode(bm_add);
+    ui_blend(bm_add);
     // The full clock, faint.
     draw_arc_band(_cx, _cy, _rad - 2, _rad + 2, 0, 360, COL_GILT,
                   0.10 * _alpha, 0.10 * _alpha, 48);
@@ -839,7 +1101,7 @@ function hud_draw_boss_dial(_h, _boss, _cx, _cy, _alpha) {
         draw_arc_band(_cx, _cy, _rad - 2.5, _rad + 2.5, 90, _to, _lit,
                       0.10 * _a, 0.52 * _a, _steps);
     }
-    gpu_set_blendmode(bm_normal);
+    ui_blend(bm_normal);
     if (_frac > 0.001) {
         draw_bloom(_cx + lengthdir_x(_rad, _to), _cy + lengthdir_y(_rad, _to),
                    BOSS_DIAL_D * 0.34, _lit, 0.42 * _a);

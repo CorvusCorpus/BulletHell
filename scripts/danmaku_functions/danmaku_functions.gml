@@ -22,6 +22,21 @@ function danmaku_init() {
     global.bullet_peak = 0;
     global.bullet_refused = 0;
 
+    // The bullets the last `bullet_touch` found in graze reach, and how many
+    // (`bullet_graze_commit`).
+    global.bullet_graze_list = [];
+    global.bullet_graze_n = 0;
+
+    // The furthest any shape's hitbox reaches from its path at scale 1 (its
+    // radius plus its spine's furthest end). The hit and graze loops reject
+    // bullets further than this, times the bullet's scale, in x.
+    global.bullet_reach1 = 0;
+    for (var _s = 0; _s < array_length(global.bshape_radius); _s++) {
+        global.bullet_reach1 = max(global.bullet_reach1,
+                                   global.bshape_radius[_s]
+                                   + global.bshape_ext[_s]);
+    }
+
     global.pshots = [];
     global.pshot_n = 0;
     global.pshot_seq = 0;       // see `pshot_fire`; only ever read by a draw
@@ -51,9 +66,10 @@ function bullet_blank() {
         life: 0,
 
         // Continuous behaviour, and the event queue. `q_n` entries are in use;
-        // slots beyond it are kept for reuse.
+        // slots beyond it are kept for reuse. `q_at` is the frame of the next
+        // event (`infinity` with none), so the step needn't look in the queue.
         bmod: BMod.Plain, mod_a: 0, mod_b: 0,
-        q: [], q_n: 0, q_i: 0,
+        q: [], q_n: 0, q_i: 0, q_at: infinity,
 
         // Survives `bullet_clear_circle` (bombs), not `bullet_clear_all`.
         resist: false,
@@ -151,6 +167,7 @@ function fire(_x, _y, _spd, _dir, _shape, _col, _delay = BULLET_DELAY_DEFAULT) {
     _b.mod_b = 0;
     _b.q_n = 0;
     _b.q_i = 0;
+    _b.q_at = infinity;
     _b.resist = false;
     _b.grazed = false;
 
@@ -292,8 +309,9 @@ function fire_spray(_x, _y, _n, _spd0, _spd1, _dir, _arc, _shape, _col,
 // ---------------------------------------------------------------------------
 // Scheduled events
 //
-// A bullet's queue is sorted on insert and walked off the front, so a bullet
-// with no events costs one integer compare. Use the named helpers rather than
+// A bullet's queue is sorted on insert and walked off the front, and the
+// bullet keeps the frame of its next event (`q_at`), so a bullet with no event
+// due costs one compare. Use the named helpers rather than
 // `bullet_schedule` directly.
 // ---------------------------------------------------------------------------
 
@@ -327,6 +345,7 @@ function bullet_schedule(_u, _at, _kind, _a = 0, _b = 0, _c = 0, _d = 0,
         _u.q[_i] = _tmp;
         _i--;
     }
+    _u.q_at = _u.q[_u.q_i].at;
     return _u;
 }
 
@@ -475,6 +494,7 @@ function bullet_run_queue(_u, _tx, _ty) {
                 break;
         }
     }
+    _u.q_at = (_u.q_i < _u.q_n) ? _u.q[_u.q_i].at : infinity;
     return false;
 }
 
@@ -492,7 +512,9 @@ function bullet_step(_tx, _ty) {
     var _r = FIELD_X1 + CULL_MARGIN;
     var _b = FIELD_Y1 + CULL_MARGIN;
 
-    // Locals rather than `global.` lookups inside the hot loop.
+    // Locals rather than `global.` lookups inside the hot loop. Each field is
+    // read once into a local and written back once: a struct field access is
+    // most of what this loop costs.
     var _pool = global.bullets;
     var _oriented = global.bshape_oriented;
 
@@ -514,7 +536,8 @@ function bullet_step(_tx, _ty) {
             }
         }
 
-        if (_u.q_i < _u.q_n && bullet_run_queue(_u, _tx, _ty)) {
+        var _life = _u.life;
+        if (_life >= _u.q_at && bullet_run_queue(_u, _tx, _ty)) {
             bullet_kill_at(_i);
             continue;
         }
@@ -523,39 +546,63 @@ function bullet_step(_tx, _ty) {
             bullet_apply_mod(_u, _tx, _ty);
         }
 
+        var _x = _u.x;
+        var _y = _u.y;
+        _u.px = _x;
+        _u.py = _y;
+        var _dir;
         if (_u.cart) {
             // Cartesian: each axis has its own force and cap.
-            _u.vx = clamp(_u.vx + _u.ax, _u.vx_min, _u.vx_max);
-            _u.vy = clamp(_u.vy + _u.ay, _u.vy_min, _u.vy_max);
-
-            _u.px = _u.x;
-            _u.py = _u.y;
-            _u.x += _u.vx;
-            _u.y += _u.vy;
+            var _vx = _u.vx + _u.ax;
+            var _vy = _u.vy + _u.ay;
+            if (_vx < _u.vx_min) _vx = _u.vx_min;
+            else if (_vx > _u.vx_max) _vx = _u.vx_max;
+            if (_vy < _u.vy_min) _vy = _u.vy_min;
+            else if (_vy > _u.vy_max) _vy = _u.vy_max;
+            _u.vx = _vx;
+            _u.vy = _vy;
+            _x += _vx;
+            _y += _vy;
 
             // Keep `dir` and `spd` correct. A stationary bullet keeps its
             // heading (`point_direction` of nothing would answer 0).
-            _u.spd = point_distance(0, 0, _u.vx, _u.vy);
-            if (_u.spd > 0) _u.dir = point_direction(0, 0, _u.vx, _u.vy);
+            var _spd = sqrt(_vx * _vx + _vy * _vy);
+            _u.spd = _spd;
+            if (_spd > 0) {
+                _dir = point_direction(0, 0, _vx, _vy);
+                _u.dir = _dir;
+            } else {
+                _dir = _u.dir;
+            }
         } else {
-            _u.spd = clamp(_u.spd + _u.acc, _u.spd_min, _u.spd_max);
-            _u.dir += _u.turn;
-
-            _u.px = _u.x;
-            _u.py = _u.y;
-            _u.x += lengthdir_x(_u.spd, _u.dir);
-            _u.y += lengthdir_y(_u.spd, _u.dir);
+            var _spd = _u.spd + _u.acc;
+            var _lo = _u.spd_min;
+            var _hi = _u.spd_max;
+            if (_spd < _lo) _spd = _lo;
+            else if (_spd > _hi) _spd = _hi;
+            _u.spd = _spd;
+            _dir = _u.dir;
+            var _turn = _u.turn;
+            if (_turn != 0) {
+                _dir += _turn;
+                _u.dir = _dir;
+            }
+            _x += lengthdir_x(_spd, _dir);
+            _y += lengthdir_y(_spd, _dir);
         }
+        _u.x = _x;
+        _u.y = _y;
 
         if (_oriented[_u.shape]) {
-            _u.angle = _u.dir;
+            _u.angle = _dir;
         } else {
-            _u.angle += _u.spin;
+            var _spin = _u.spin;
+            if (_spin != 0) _u.angle += _spin;
         }
 
-        _u.life++;
+        _u.life = _life + 1;
 
-        if (_u.x < _l || _u.x > _r || _u.y < _t || _u.y > _b) {
+        if (_x < _l || _x > _r || _y < _t || _y > _b) {
             bullet_kill_at(_i);
         }
     }
@@ -670,68 +717,120 @@ function bullet_reach_dist(_u, _x, _y) {
     return point_seg_dist(_x, _y, _u.px, _u.py, _u.x, _u.y);
 }
 
-/// @desc The index of the first bullet that hits a circle at (`_x`, `_y`),
-///       or -1. A cheap bounding-box reject runs before the swept test.
-function bullet_hit_index(_x, _y, _rad) {
+/// @desc The hit test and graze in one pass over the bullets, for a player
+///       at (`_x`, `_y`). `_rad` is his hitbox's radius, or below 0 for no
+///       hit test (while he can't be hurt); `_grad` the graze radius, or below
+///       0 for no graze.
+///
+///       Answers the index of the first bullet that hits, or -1. A bullet is
+///       hit swept over the path it moved this frame (a reject in x, both
+///       ends of the path out of reach; a bounding box; then the distance to
+///       its path or its spine). It grazes by where it is now, once ever.
+///       Bullets in graze reach are noted rather than marked:
+///       `bullet_graze_commit` marks and counts them once the caller knows he
+///       wasn't hit, since a hit pays no graze. A hit ends the pass.
+function bullet_touch(_x, _y, _rad, _grad) {
     var _n = global.bullet_n;
     var _pool = global.bullets;
     var _long = global.bshape_long;
     var _ext = global.bshape_ext;
+    var _reach1 = global.bullet_reach1;
+    var _list = global.bullet_graze_list;
+    var _m = 0;
+    global.bullet_graze_n = 0;
+
+    var _hit = (_rad >= 0);
+    var _gz = (_grad >= 0);
+    var _wide = max(_rad, _grad);
     for (var _i = 0; _i < _n; _i++) {
         var _u = _pool[_i];
+        // Out of reach in x: a few reads rather than the whole test, which
+        // is what most bullets need. Beyond it a bullet can't graze, and can
+        // only hit if its path crosses from one side to the other.
+        var _sc = _u.scale;
+        var _far = _wide + _reach1 * _sc;
+        var _ex = _u.x - _x;
+        var _out = (_ex > _far || _ex < -_far);
+        if (_out) {
+            if (!_hit) continue;
+            var _epx = _u.px - _x;
+            if ((_ex > _far && _epx > _far)
+                || (_ex < -_far && _epx < -_far)) continue;
+        }
         // Harmless while still a warning mark or while fading out.
         if (_u.delay > 0 || _u.fade_t > 0) continue;
 
-        var _reach = _rad + _u.r;
-        // The box covers the whole segment moved, not just the end point, or
-        // a fast bullet would be rejected before the swept test; and a long
-        // bullet's spine reaching out from its origin.
-        var _box = _reach + _ext[_u.shape] * _u.scale;
-        if (_x < min(_u.px, _u.x) - _box) continue;
-        if (_x > max(_u.px, _u.x) + _box) continue;
-        if (_y < min(_u.py, _u.y) - _box) continue;
-        if (_y > max(_u.py, _u.y) + _box) continue;
+        var _shape = _u.shape;
+        var _r = _u.r;
+        if (_hit) {
+            var _reach = _rad + _r;
+            // The box covers the whole segment moved, not just the end
+            // point, or a fast bullet would be rejected before the swept
+            // test; and a long bullet's spine reaching out from its origin.
+            var _box = _reach + _ext[_shape] * _sc;
+            var _ux = _u.x;
+            var _uy = _u.y;
+            var _upx = _u.px;
+            var _upy = _u.py;
+            if (_x >= min(_upx, _ux) - _box && _x <= max(_upx, _ux) + _box
+                && _y >= min(_upy, _uy) - _box
+                && _y <= max(_upy, _uy) + _box) {
+                var _d = _long[_shape]
+                    ? bullet_spine_dist(_u, _x, _y)
+                    : point_seg_dist(_x, _y, _upx, _upy, _ux, _uy);
+                if (_d < _reach) {
+                    global.bullet_graze_n = 0;
+                    return _i;
+                }
+            }
+        }
 
-        if (_long[_u.shape]) {
-            if (bullet_spine_dist(_u, _x, _y) < _reach) return _i;
-        } else if (point_seg_dist(_x, _y, _u.px, _u.py, _u.x, _u.y)
-                   < _reach) {
-            return _i;
+        if (_gz && !_out && !_u.grazed) {
+            var _greach = _grad + _r;
+            var _dy = _u.y - _y;
+            var _d2 = _ex * _ex + _dy * _dy;
+            var _near;
+            if (_long[_shape]) {
+                // Out of reach of even its spine's furthest end first,
+                // cheaply.
+                var _gfar = _greach + _ext[_shape] * _sc;
+                _near = _d2 < _gfar * _gfar
+                        && bullet_spine_dist(_u, _x, _y, false) < _greach;
+            } else {
+                _near = _d2 < _greach * _greach;
+            }
+            if (_near) {
+                _list[_m++] = _u;
+                global.bullet_graze_n = _m;
+            }
         }
     }
     return -1;
 }
 
+/// @desc Mark the bullets the last `bullet_touch` found in graze reach as
+///       grazed, and answer how many. Call it in the same frame, before any
+///       bullet is removed (the pool reuses its structs).
+function bullet_graze_commit() {
+    var _list = global.bullet_graze_list;
+    var _n = global.bullet_graze_n;
+    for (var _i = 0; _i < _n; _i++) _list[_i].grazed = true;
+    global.bullet_graze_n = 0;
+    return _n;
+}
+
+/// @desc The index of the first bullet that hits a circle at (`_x`, `_y`),
+///       or -1 (`bullet_touch` without graze).
+function bullet_hit_index(_x, _y, _rad) {
+    return bullet_touch(_x, _y, _rad, -1);
+}
+
 /// @desc Mark every ungrazed bullet within `_rad` as grazed, and count them.
-///       A bullet pays a graze once, ever.
+///       A bullet pays a graze once, ever (`bullet_touch` without the hit
+///       test).
 function bullet_graze(_x, _y, _rad) {
-    var _n = global.bullet_n;
-    var _pool = global.bullets;
-    var _long = global.bshape_long;
-    var _ext = global.bshape_ext;
-    var _count = 0;
-    for (var _i = 0; _i < _n; _i++) {
-        var _u = _pool[_i];
-        if (_u.grazed || _u.delay > 0 || _u.fade_t > 0) continue;
-        var _reach = _rad + _u.r;
-        var _dx = _u.x - _x;
-        var _dy = _u.y - _y;
-        var _d2 = _dx * _dx + _dy * _dy;
-        var _near;
-        if (_long[_u.shape]) {
-            // Out of reach of even its spine's furthest end first, cheaply.
-            var _far = _reach + _ext[_u.shape] * _u.scale;
-            _near = _d2 < _far * _far
-                    && bullet_spine_dist(_u, _x, _y, false) < _reach;
-        } else {
-            _near = _d2 < _reach * _reach;
-        }
-        if (_near) {
-            _u.grazed = true;
-            _count++;
-        }
-    }
-    return _count;
+    bullet_touch(_x, _y, -1, _rad);
+    return bullet_graze_commit();
 }
 
 // ---------------------------------------------------------------------------
@@ -747,31 +846,70 @@ function bullet_frame(_shape, _col, _life) {
     return _col * _f + ((_life div 3) mod _f);
 }
 
+/// @desc How far each shape's sprite reaches from its origin at scale 1, in
+///       any rotation, indexed by shape.
+function bullet_sprite_reaches() {
+    static _reach = undefined;
+    if (_reach == undefined) {
+        _reach = [];
+        var _spr = global.bshape_sprite;
+        for (var _k = 0; _k < array_length(_spr); _k++) {
+            var _sp = _spr[_k];
+            var _ox = sprite_get_xoffset(_sp);
+            var _oy = sprite_get_yoffset(_sp);
+            _reach[_k] = point_distance(0, 0,
+                max(_ox, sprite_get_width(_sp) - _ox),
+                max(_oy, sprite_get_height(_sp) - _oy));
+        }
+    }
+    return _reach;
+}
+
 /// @desc Draw every bullet: live bullets first, then the warning marks
 ///       additively on top, so a warning is never hidden under a live bullet.
+///       A live bullet whose sprite is wholly outside the field is skipped:
+///       the frame round the field covers it anyway. The marks are collected
+///       during the first pass rather than found by a second walk.
 function bullet_draw() {
     var _n = global.bullet_n;
+    var _pool = global.bullets;
+    var _spr = global.bshape_sprite;
+    var _frames = global.bshape_frames;
+    var _reach = bullet_sprite_reaches();
+    static _marks = [];
+    var _m = 0;
 
     for (var _i = 0; _i < _n; _i++) {
-        var _u = global.bullets[_i];
-        if (_u.delay > 0) continue;
-        draw_sprite_ext(global.bshape_sprite[_u.shape],
-                        bullet_frame(_u.shape, _u.col, _u.life),
-                        _u.x, _u.y, _u.scale, _u.scale, _u.angle,
-                        c_white,
-                        (_u.fade_t > 0) ? _u.fade_t / _u.fade_n : 1);
+        var _u = _pool[_i];
+        if (_u.delay > 0) {
+            _marks[_m++] = _u;
+            continue;
+        }
+        var _s = _u.shape;
+        var _sc = _u.scale;
+        var _x = _u.x;
+        var _y = _u.y;
+        var _pad = _reach[_s] * _sc;
+        if (_x < FIELD_X0 - _pad || _x > FIELD_X1 + _pad
+            || _y < FIELD_Y0 - _pad || _y > FIELD_Y1 + _pad) continue;
+        // `bullet_frame`, inline.
+        var _f = _frames[_s];
+        var _ft = _u.fade_t;
+        draw_sprite_ext(_spr[_s],
+                        (_f <= 1) ? _u.col
+                                  : _u.col * _f + ((_u.life div 3) mod _f),
+                        _x, _y, _sc, _sc, _u.angle, c_white,
+                        (_ft > 0) ? _ft / _u.fade_n : 1);
     }
 
     // The marks: additive, oversized, shrinking onto where the bullet will
     // be.
     gpu_set_blendmode(bm_add);
-    for (var _i = 0; _i < _n; _i++) {
-        var _u = global.bullets[_i];
-        if (_u.delay <= 0) continue;
+    for (var _i = 0; _i < _m; _i++) {
+        var _u = _marks[_i];
         var _t = _u.delay / _u.delay0;                 // 1 at birth, 0 at live
         var _s = _u.scale * (1 + (BULLET_DELAY_SCALE - 1) * _t);
-        draw_sprite_ext(global.bshape_sprite[_u.shape],
-                        bullet_frame(_u.shape, _u.col, 0),
+        draw_sprite_ext(_spr[_u.shape], bullet_frame(_u.shape, _u.col, 0),
                         _u.x, _u.y, _s, _s, _u.angle,
                         c_white, 0.30 * (1 - _t) + 0.14);
     }

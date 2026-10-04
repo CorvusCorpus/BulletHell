@@ -1332,46 +1332,37 @@ function hall_fire_put(_b, _x, _y, _z, _size, _level, _col, _seed, _seat) {
 }
 
 /// @desc One card into a buffer: centred on `(_x, _y, _z)`, spanning `_w`
-///       along `_r` and `_h` along `_u` (both unit vectors), with the sprite
-///       frame `_m` (`hall_uv_frame`) mapped from `_u0` to `_u1` across it.
-///       Every fire and reflection is a card rebuilt every frame, so this works
-///       in plain numbers rather than making arrays.
-function hall_card(_vb, _x, _y, _z, _r, _u, _w, _h, _m, _u0, _u1, _col,
-                   _a) {
+///       along +x (every card's right: the camera never yaws) and `_h` along
+///       the unit vector `(_ux, _uy, _uz)`, textured from page u `_s0` to
+///       `_s1` and v `_t0` to `_t1` (worked out once by the caller with
+///       `hall_uv_across` and `hall_uv_down`). Every fire and reflection is a
+///       card rebuilt every frame, so this works in plain numbers rather than
+///       making arrays, and takes nothing it would have to work out again.
+function hall_card(_vb, _x, _y, _z, _ux, _uy, _uz, _w, _h, _s0, _s1, _t0, _t1,
+                   _col, _a) {
     var _hw = _w * 0.5;
     var _hh = _h * 0.5;
-    var _rx = _r[0] * _hw;
-    var _ry = _r[1] * _hw;
-    var _rz = _r[2] * _hw;
-    var _ux = _u[0] * _hh;
-    var _uy = _u[1] * _hh;
-    var _uz = _u[2] * _hh;
+    _ux *= _hh;
+    _uy *= _hh;
+    _uz *= _hh;
 
-    // The corners: 0 top left, 1 top right, 2 bottom right, 3 bottom left.
-    var _x0 = _x - _rx + _ux;
-    var _y0 = _y - _ry + _uy;
-    var _z0 = _z - _rz + _uz;
-    var _x1 = _x + _rx + _ux;
-    var _y1 = _y + _ry + _uy;
-    var _z1 = _z + _rz + _uz;
-    var _x2 = _x + _rx - _ux;
-    var _y2 = _y + _ry - _uy;
-    var _z2 = _z + _rz - _uz;
-    var _x3 = _x - _rx - _ux;
-    var _y3 = _y - _ry - _uy;
-    var _z3 = _z - _rz - _uz;
-
-    var _s0 = hall_uv_across(_m, _u0);
-    var _s1 = hall_uv_across(_m, _u1);
-    var _t0 = hall_uv_down(_m, 0);
-    var _t1 = hall_uv_down(_m, 1);
+    // The corners: 0 top left, 1 top right, 2 bottom right, 3 bottom left
+    // (1 shares 0's y and z, and 3 shares 2's).
+    var _x0 = _x - _hw + _ux;
+    var _y0 = _y + _uy;
+    var _z0 = _z + _uz;
+    var _x1 = _x + _hw + _ux;
+    var _x2 = _x + _hw - _ux;
+    var _y2 = _y - _uy;
+    var _z2 = _z - _uz;
+    var _x3 = _x - _hw - _ux;
 
     // Two triangles: 0 1 2, then 0 2 3.
     vertex_position_3d(_vb, _x0, _y0, _z0);
     vertex_normal(_vb, 0, 0, -1);
     vertex_colour(_vb, _col, _a);
     vertex_texcoord(_vb, _s0, _t0);
-    vertex_position_3d(_vb, _x1, _y1, _z1);
+    vertex_position_3d(_vb, _x1, _y0, _z0);
     vertex_normal(_vb, 0, 0, -1);
     vertex_colour(_vb, _col, _a);
     vertex_texcoord(_vb, _s1, _t0);
@@ -1387,7 +1378,7 @@ function hall_card(_vb, _x, _y, _z, _r, _u, _w, _h, _m, _u0, _u1, _col,
     vertex_normal(_vb, 0, 0, -1);
     vertex_colour(_vb, _col, _a);
     vertex_texcoord(_vb, _s1, _t1);
-    vertex_position_3d(_vb, _x3, _y3, _z3);
+    vertex_position_3d(_vb, _x3, _y2, _z2);
     vertex_normal(_vb, 0, 0, -1);
     vertex_colour(_vb, _col, _a);
     vertex_texcoord(_vb, _s0, _t1);
@@ -1407,7 +1398,6 @@ function hall_draw_flames(_b) {
     var _n = _b.fire_n;
     if (_n == 0) return;
     var _f = hall_format();
-    var _right = [1, 0, 0];
     var _up = hall_cam_up(_b);
     // A tongue stands up in the world but leans toward the camera's up as the
     // camera looks down, so it doesn't flatten to a sliver from above.
@@ -1418,6 +1408,30 @@ function hall_draw_flames(_b) {
     var _t = hall_light_state().time;
     static _halo_uv = hall_uv_frame(spr_fx_bloom, 0);
     static _flame_uv = hall_uv_frame(spr_hall_flame, 0);
+    // The page UVs: the halo's whole frame, and the edges of the flame
+    // strip's frames (`_fs[k]` is frame k's left edge, `_fs[k + 1]` its
+    // right).
+    static _hs0 = hall_uv_across(_halo_uv, 0);
+    static _hs1 = hall_uv_across(_halo_uv, 1);
+    static _ht0 = hall_uv_down(_halo_uv, 0);
+    static _ht1 = hall_uv_down(_halo_uv, 1);
+    static _ft0 = hall_uv_down(_flame_uv, 0);
+    static _ft1 = hall_uv_down(_flame_uv, 1);
+    static _fs = undefined;
+    if (_fs == undefined) {
+        _fs = [];
+        for (var _q = 0; _q <= _frames; _q++) {
+            _fs[_q] = hall_uv_across(_flame_uv, _q / _frames);
+        }
+    }
+    var _upx = _up[0];
+    var _upy = _up[1];
+    var _upz = _up[2];
+    var _tux = _tu[0];
+    var _tuy = _tu[1];
+    var _tuz = _tu[2];
+    var _vbh = _b.vb_halo;
+    var _vbf = _b.vb_flame;
 
     vertex_begin(_b.vb_halo, _f);
     vertex_begin(_b.vb_flame, _f);
@@ -1427,13 +1441,12 @@ function hall_draw_flames(_b) {
         var _sz = _e[3];
         var _g = min(1, _lv);
         // the halo: wide and faint, then tight and bright
-        hall_card(_b.vb_halo, _e[0], _e[1], _e[2], _right, _up,
-                  _sz * HALL_HALO_WIDE * (0.9 + 0.1 * _lv),
-                  _sz * HALL_HALO_WIDE * (0.9 + 0.1 * _lv),
-                  _halo_uv, 0, 1, _e[5], HALL_HALO_WIDE_A * _g);
-        hall_card(_b.vb_halo, _e[0], _e[1] + _sz * 0.15, _e[2], _right, _up,
+        var _hw = _sz * HALL_HALO_WIDE * (0.9 + 0.1 * _lv);
+        hall_card(_vbh, _e[0], _e[1], _e[2], _upx, _upy, _upz, _hw, _hw,
+                  _hs0, _hs1, _ht0, _ht1, _e[5], HALL_HALO_WIDE_A * _g);
+        hall_card(_vbh, _e[0], _e[1] + _sz * 0.15, _e[2], _upx, _upy, _upz,
                   _sz * 1.5 * _lv, _sz * 1.5 * _lv,
-                  _halo_uv, 0, 1, _e[5], HALL_HALO_CORE_A * _g);
+                  _hs0, _hs1, _ht0, _ht1, _e[5], HALL_HALO_CORE_A * _g);
         // The tongue: its foot pinned to the seat and its height growing
         // along its own up (so a taller flame reaches higher rather than
         // lifting off its bowl). The animation runs at its own pace per fire
@@ -1450,12 +1463,10 @@ function hall_draw_flames(_b) {
         var _cy = _e[7] + _tu[1] * _mid;
         var _cz = _e[2] + _tu[2] * _mid;
         var _fa = min(1, 0.55 + 0.45 * _lv);
-        hall_card(_b.vb_flame, _cx, _cy, _cz, _right, _tu, _sz * 0.62, _fh,
-                  _flame_uv, _f0 / _frames, (_f0 + 1) / _frames, c_white,
-                  _fa * (1 - _k));
-        hall_card(_b.vb_flame, _cx, _cy, _cz, _right, _tu, _sz * 0.62, _fh,
-                  _flame_uv, _f1 / _frames, (_f1 + 1) / _frames, c_white,
-                  _fa * _k);
+        hall_card(_vbf, _cx, _cy, _cz, _tux, _tuy, _tuz, _sz * 0.62, _fh,
+                  _fs[_f0], _fs[_f0 + 1], _ft0, _ft1, c_white, _fa * (1 - _k));
+        hall_card(_vbf, _cx, _cy, _cz, _tux, _tuy, _tuz, _sz * 0.62, _fh,
+                  _fs[_f1], _fs[_f1 + 1], _ft0, _ft1, c_white, _fa * _k);
     }
     vertex_end(_b.vb_halo);
     vertex_end(_b.vb_flame);
@@ -1478,8 +1489,18 @@ function hall_draw_reflections(_b) {
     var _f = hall_format();
     var _up = hall_cam_up(_b);
     var _l = hall_light_state();
-    static _right = [1, 0, 0];
     static _glow_uv = hall_uv_frame(spr_fx_bloom, 0);
+    static _gs0 = hall_uv_across(_glow_uv, 0);
+    static _gs1 = hall_uv_across(_glow_uv, 1);
+    static _gt0 = hall_uv_down(_glow_uv, 0);
+    static _gt1 = hall_uv_down(_glow_uv, 1);
+    var _upx = _up[0];
+    var _upy = _up[1];
+    var _upz = _up[2];
+    var _cx = _l.cam[0];
+    var _cy = _l.cam[1];
+    var _cz = _l.cam[2];
+    var _vb = _b.vb_refl;
     vertex_begin(_b.vb_refl, _f);
     for (var _i = 0; _i < _n; _i++) {
         var _e = _fires[_i];
@@ -1487,18 +1508,18 @@ function hall_draw_reflections(_b) {
         // Polished stone mirrors a glancing view and hardly any other
         // (Fresnel), so the reflections are the level camera's and all but
         // gone from above.
-        var _dx = _e[0] - _l.cam[0];
-        var _dy = -_e[1] - _l.cam[1];
-        var _dz = _e[2] - _l.cam[2];
+        var _dx = _e[0] - _cx;
+        var _dy = -_e[1] - _cy;
+        var _dz = _e[2] - _cz;
         var _cos = abs(_dy) / max(1, point_distance_3d(0, 0, 0, _dx, _dy, _dz));
         var _fr = 0.04 + 0.96 * power(1 - _cos, 5);
         var _g = min(1, _e[4]) * min(1, _fr / HALL_REFL_FRESNEL);
         if (_g <= 0.01) continue;
-        hall_card(_b.vb_refl, _e[0], -_e[1] - _sz * 0.2, _e[2], _right, _up,
-                  _sz * HALL_REFL_W, _sz * HALL_REFL_H, _glow_uv, 0, 1,
+        hall_card(_vb, _e[0], -_e[1] - _sz * 0.2, _e[2], _upx, _upy, _upz,
+                  _sz * HALL_REFL_W, _sz * HALL_REFL_H, _gs0, _gs1, _gt0, _gt1,
                   _e[5], HALL_REFL_A * _g);
-        hall_card(_b.vb_refl, _e[0], -_e[1], _e[2], _right, _up,
-                  _sz * 1.1 * _e[4], _sz * 2.4 * _e[4], _glow_uv, 0, 1,
+        hall_card(_vb, _e[0], -_e[1], _e[2], _upx, _upy, _upz,
+                  _sz * 1.1 * _e[4], _sz * 2.4 * _e[4], _gs0, _gs1, _gt0, _gt1,
                   _e[5], HALL_REFL_CORE_A * _g);
     }
     vertex_end(_b.vb_refl);
@@ -2883,72 +2904,13 @@ function hall_draw_orrery(_b) {
     gpu_set_zwriteenable(true);
 }
 
-/// @desc `frac` folded into [0, 1) (GML's `frac` keeps the sign, which matters
-///       when a value is decreasing, as the sand's depth is).
-function hall_wrap01(_v) {
-    var _f = frac(_v);
-    return (_f < 0) ? _f + 1 : _f;
-}
-
-/// @desc The camera, packed for projecting points by hand (the hall's camera
-///       never yaws: a translation and a pitch). `_back` moves the eye back
-///       down the hall, for projecting a grain where it was a few frames ago.
-function hall_eye(_b, _x0, _y0, _w, _h, _back) {
-    return {
-        x: _b.cam_x, y: _b.cam_y, z: _b.dist - _back,
-        cp: dcos(_b.pitch), sp: dsin(_b.pitch),
-        foc: (_h * 0.5) / dtan(HALL_FOV * 0.5),
-        mx: _x0 + _w * 0.5, my: _y0 + _h * 0.5,
-    };
-}
-
-/// @desc Project a world point to the screen, writing `[x, y, scale]` into
-///       `_out`; false (and `_out` untouched) if it is behind the eye. The same
-///       projection the hall is drawn with, done in GML for the sand, which is
-///       drawn in the 2D front pass after the 3D state has been reset.
-function hall_project(_e, _wx, _wy, _wz, _out) {
-    var _dy = _wy - _e.y;
-    var _dz = _wz - _e.z;
-    var _vz = _dy * _e.sp + _dz * _e.cp;
-    if (_vz < HALL_SAND_ZNEAR) return false;
-    var _k = _e.foc / _vz;
-    _out[0] = _e.mx + (_wx - _e.x) * _k;
-    _out[1] = _e.my - (_dy * _e.cp - _dz * _e.sp) * _k;
-    _out[2] = _k;
-    return true;
-}
-
-/// @desc The light on a grain of dust at a world point, written into `_out`
-///       as `[warm, cold]`: the nearer torch pair's, and the opening's
-///       moonbeam's. The same lights as `sh_hall`'s, from the same state
-///       (`hall_light_state`).
-function hall_dust_light(_x, _y, _z, _out) {
-    var _l = hall_light_state();
-    var _kz = round(_z / HALL_BAY_Z) * HALL_BAY_Z;
-    var _on = hall_ignite(_l.front[0], _kz);
-    var _warm = 0;
-    if (_on > 0) {
-        for (var _s = -1; _s <= 1; _s += 2) {
-            var _d = point_distance_3d(_x, _y, _z, hall_torch_x(_s),
-                                       HALL_TORCH_Y, _kz);
-            _warm += sqr(max(0, 1 - _d / HALL_SAND_GLOW_R));
-        }
-        _warm *= min(_on, 1.5);
-    }
-    var _cold = 0;
-    if (_l.beam > 0) {
-        var _r = point_distance(_x, _z, 0, HALL_BEAM_Z);
-        _cold = sqr(max(0, 1 - _r / HALL_BEAM_R)) * _l.beam / HALL_BEAM_POW;
-    }
-    _out[0] = _warm * HALL_SAND_GLINT;
-    _out[1] = _cold * HALL_SAND_GLINT;
-}
-
 /// @desc The front pass, over the field: drifting sand, additive only (so it
 ///       can't hide a bullet). It shows where light catches it: warm near a
 ///       torch, cold in the opening's moonbeam, and barely at all in the dark
-///       between (`hall_dust_light`). Fades with the spell background, and
-///       comes up with the veil.
+///       between, from the same lights as `sh_hall`'s and the same state
+///       (`hall_light_state`). Fades with the spell background, and comes up
+///       with the veil. The projection and the light are worked out inline,
+///       since this runs for every grain every frame.
 function hall_draw_front(_b, _spell, _fill) {
     var _a = (1 - 0.86 * clamp(_spell, 0, 1)) * (1 - hall_veil(_b));
     if (_a <= 0.01) return;
@@ -2963,74 +2925,140 @@ function hall_draw_front(_b, _spell, _fill) {
     // so the sand parallaxes, moves with the camera, and streams past. It is
     // blown on one shared wind (`HALL_SAND_WIND`) and kept low over the floor
     // (`HALL_SAND_TOP`).
-    var _eye = hall_eye(_b, _x0, _y0, _w, _h, 0);
-    var _was = hall_eye(_b, _x0, _y0, _w, _h, _b.rush * HALL_SAND_TRAIL);
-    // Written by `hall_project` and `hall_dust_light` for each grain in
-    // turn (hundreds a frame), rather than made new each time.
-    static _p = [0, 0, 0];
-    static _q = [0, 0, 0];
-    static _lit = [0, 0];
+    //
+    // Each grain's constants, hashed once. One hash sets size, fall rate and
+    // wind response together, so heavy grains are large, fall fast and travel
+    // straight, and fine ones hang.
+    static _gg = undefined;
+    static _grate = [];
+    static _gtop = [];
+    static _gsx = [];
+    static _gwind = [];
+    static _gl0 = [];
+    static _gs0 = [];
+    if (_gg == undefined) {
+        _gg = [];
+        for (var _i = 0; _i < HALL_SAND_N; _i++) {
+            var _g = hall_hash(_i, 14);
+            _gg[_i] = _g;
+            _grate[_i] = HALL_SAND_FALL * (0.55 + 1.30 * _g);
+            _gtop[_i] = HALL_SAND_TOP * (0.10 + 0.90 * sqr(hall_hash(_i, 15)));
+            _gsx[_i] = hall_hash(_i, 13) * 2 * HALL_SAND_SPREAD
+                       - HALL_SAND_SPREAD - HALL_SAND_WIND * 0.5;
+            _gwind[_i] = HALL_SAND_WIND * (0.72 + 0.56 * hall_hash(_i, 16));
+            _gl0[_i] = hall_hash(_i, 12);
+            _gs0[_i] = hall_hash(_i, 11);
+        }
+    }
+
+    // The camera, packed for projecting by hand (it never yaws: a
+    // translation and a pitch), and how far back down the hall it was
+    // `HALL_SAND_TRAIL` frames ago, for the streak.
+    var _ex = _b.cam_x;
+    var _ey = _b.cam_y;
+    var _ez = _b.dist;
+    var _wz0 = _b.dist - _b.rush * HALL_SAND_TRAIL;
+    var _cp = dcos(_b.pitch);
+    var _sp = dsin(_b.pitch);
+    var _foc = (_h * 0.5) / dtan(HALL_FOV * 0.5);
+    var _mx = _x0 + _w * 0.5;
+    var _my = _y0 + _h * 0.5;
+
+    var _ls = hall_light_state();
+    var _front = _ls.front[0];
+    var _beam = _ls.beam;
+    var _tx = HALL_TORCH_X;
+    var _bw = sprite_get_width(spr_fx_bloom);
+    var _bt = _b.t;
+    var _dshift = _b.dist / HALL_SAND_RANGE;
 
     gpu_set_blendmode(bm_add);
     for (var _i = 0; _i < HALL_SAND_N; _i++) {
-        // One hash sets size, fall rate and wind response together, so heavy
-        // grains are large, fall fast and travel straight, and fine ones hang.
-        var _g = hall_hash(_i, 14);
-        var _rate = HALL_SAND_FALL * (0.55 + 1.30 * _g);
-        var _top = HALL_SAND_TOP * (0.10 + 0.90 * sqr(hall_hash(_i, 15)));
-        var _sx = hall_hash(_i, 13) * 2 * HALL_SAND_SPREAD - HALL_SAND_SPREAD
-                  - HALL_SAND_WIND * 0.5;
-        var _wind = HALL_SAND_WIND * (0.72 + 0.56 * hall_hash(_i, 16));
+        var _g = _gg[_i];
+        var _rate = _grate[_i];
+        var _top = _gtop[_i];
+        var _sx = _gsx[_i];
+        var _wind = _gwind[_i];
 
         // Its fall cycle, and its depth measured against the camera's travel
         // (a fixed world z the camera flies past, wrapping to the far end
-        // behind the fade).
-        var _l = hall_wrap01(hall_hash(_i, 12) + _b.t * _rate);
-        var _s = hall_wrap01(hall_hash(_i, 11)
-                             - _b.dist / HALL_SAND_RANGE);
-        var _wz = _b.dist + HALL_SAND_NEAR + _s * HALL_SAND_RANGE;
+        // behind the fade). `frac` keeps its sign, hence the folds.
+        var _l = frac(_gl0[_i] + _bt * _rate);
+        if (_l < 0) _l += 1;
+        var _s = frac(_gs0[_i] - _dshift);
+        if (_s < 0) _s += 1;
 
+        // Fade at both ends of both cycles (so nothing is visible when it
+        // wraps, and grains don't arrive at the lens as bright blobs). First,
+        // since it needs nothing projected.
+        var _fade = min(1, _s * 5) * min(1, (1 - _s) * 3)
+                    * min(1, _l * 8) * min(1, (1 - _l) * 8);
+        if (_fade <= 0.01) continue;
+
+        var _wz = _b.dist + HALL_SAND_NEAR + _s * HALL_SAND_RANGE;
         var _wx = _sx + _wind * _l;
         var _wy = _top * (1 - _l);
-        if (!hall_project(_eye, _wx, _wy, _wz, _p)) continue;
-        if (_p[0] < _x0 - 48 || _p[0] > _x0 + _w + 48
-            || _p[1] < _y0 - 48 || _p[1] > _y0 + _h + 48) continue;
+
+        // Projected; nothing behind the eye.
+        var _dy = _wy - _ey;
+        var _dz = _wz - _ez;
+        var _vz = _dy * _sp + _dz * _cp;
+        if (_vz < HALL_SAND_ZNEAR) continue;
+        var _k = _foc / _vz;
+        var _px = _mx + (_wx - _ex) * _k;
+        var _py = _my - (_dy * _cp - _dz * _sp) * _k;
+        if (_px < _x0 - 48 || _px > _x0 + _w + 48
+            || _py < _y0 - 48 || _py > _y0 + _h + 48) continue;
 
         // The streak: the same grain projected from where the camera and the
         // grain were a few frames ago.
         var _lb = max(0, _l - _rate * HALL_SAND_TRAIL);
         var _len = 0;
         var _ang = 0;
-        if (hall_project(_was, _sx + _wind * _lb, _top * (1 - _lb), _wz,
-                         _q)) {
-            var _ex = _p[0] - _q[0];
-            var _ey = _p[1] - _q[1];
-            _len = min(sqrt(_ex * _ex + _ey * _ey), HALL_SAND_TRAIL_MAX);
-            _ang = point_direction(_q[0], _q[1], _p[0], _p[1]);
+        var _qy = _top * (1 - _lb) - _ey;
+        var _qz = _wz - _wz0;
+        var _qv = _qy * _sp + _qz * _cp;
+        if (_qv >= HALL_SAND_ZNEAR) {
+            var _qk = _foc / _qv;
+            var _qx = _mx + (_sx + _wind * _lb - _ex) * _qk;
+            var _qyy = _my - (_qy * _cp - _qz * _sp) * _qk;
+            var _ddx = _px - _qx;
+            var _ddy = _py - _qyy;
+            _len = min(sqrt(_ddx * _ddx + _ddy * _ddy), HALL_SAND_TRAIL_MAX);
+            _ang = point_direction(_qx, _qyy, _px, _py);
         }
 
-        // Fade at both ends of both cycles (so nothing is visible when it
-        // wraps, and grains don't arrive at the lens as bright blobs).
-        var _fade = min(1, _s * 5) * min(1, (1 - _s) * 3)
-                    * min(1, _l * 8) * min(1, (1 - _l) * 8);
-        if (_fade <= 0.01) continue;
-
-        // The light on it.
-        hall_dust_light(_wx, _wy, _wz, _lit);
-        var _k = _lit[0] + _lit[1] + HALL_SAND_DARK;
-        if (_k * _fade <= 0.02) continue;
+        // The light on it, `[warm, cold]`: the nearer torch pair's, and the
+        // opening's moonbeam's.
+        var _kz = round(_wz / HALL_BAY_Z) * HALL_BAY_Z;
+        var _on = hall_ignite(_front, _kz);
+        var _warm = 0;
+        if (_on > 0) {
+            var _d0 = point_distance_3d(_wx, _wy, _wz, -_tx, HALL_TORCH_Y, _kz);
+            var _d1 = point_distance_3d(_wx, _wy, _wz, _tx, HALL_TORCH_Y, _kz);
+            _warm = (sqr(max(0, 1 - _d0 / HALL_SAND_GLOW_R))
+                     + sqr(max(0, 1 - _d1 / HALL_SAND_GLOW_R))) * min(_on, 1.5);
+        }
+        var _cold = 0;
+        if (_beam > 0) {
+            var _rr = point_distance(_wx, _wz, 0, HALL_BEAM_Z);
+            _cold = sqr(max(0, 1 - _rr / HALL_BEAM_R)) * _beam / HALL_BEAM_POW;
+        }
+        var _lw = _warm * HALL_SAND_GLINT;
+        var _lc = _cold * HALL_SAND_GLINT;
+        var _kk = _lw + _lc + HALL_SAND_DARK;
+        if (_kk * _fade <= 0.02) continue;
         var _col = merge_colour(merge_colour(HALL_SAND_COL, HALL_SAND_WARM,
-                                             _lit[0] / _k),
-                                HALL_SAND_COLD, _lit[1] / _k);
+                                             _lw / _kk),
+                                HALL_SAND_COLD, _lc / _kk);
 
         // Drawn with its head on the grain and its tail behind.
-        var _r = (0.55 + 1.70 * _g) * HALL_SAND_R * _p[2];
-        var _bw = sprite_get_width(spr_fx_bloom);
+        var _r = (0.55 + 1.70 * _g) * HALL_SAND_R * _k;
         draw_sprite_ext(spr_fx_bloom, 0,
-                        _p[0] - dcos(_ang) * _len * 0.5,
-                        _p[1] + dsin(_ang) * _len * 0.5,
+                        _px - dcos(_ang) * _len * 0.5,
+                        _py + dsin(_ang) * _len * 0.5,
                         (_r * 2 + _len) / _bw, _r * 2 / _bw, _ang,
-                        _col, min(1, HALL_SAND_A * _a * _fade * _k));
+                        _col, min(1, HALL_SAND_A * _a * _fade * _kk));
     }
     gpu_set_blendmode(bm_normal);
     draw_set_alpha(1);

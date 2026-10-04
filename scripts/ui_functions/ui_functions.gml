@@ -20,6 +20,180 @@ function ui_init() {
     global.fnt_head  = font_add_sprite_ext(spr_fnt_head, _glyphs, true, 2);
     global.fnt_spell = font_add_sprite_ext(spr_fnt_spell, _glyphs, true, 3);
     global.fnt_title = font_add_sprite_ext(spr_fnt_title, _glyphs, true, 4);
+
+    // True while a clear layer is being drawn (`ui_blend`).
+    global.ui_premul = false;
+}
+
+// ---------------------------------------------------------------------------
+// Cached layers
+//
+// What the HUD shows that changes only now and then is drawn once into a
+// surface, copied to the screen each frame, and drawn again only when what it
+// shows changes (its key) or the surface is lost. A layer is drawn in window
+// pixels, as the GUI layer itself is (`display_set_gui_size` scales it to the
+// window), so a copy lands pixel for pixel and looks as drawing directly
+// would at any window size. Two kinds:
+//
+// - An opaque layer is what is drawn over an opaque ground (the frame's
+//   margins, the console's plate). It is drawn over black with alpha writes
+//   off, and only the ground's own rectangles are copied (`ui_layer_put_rect`).
+// - A clear layer has nothing under it. It is drawn premultiplied, with every
+//   blend set through `ui_blend`, so its translucent and additive drawing
+//   lands on the screen as it would have directly (`ui_layer_put`).
+// ---------------------------------------------------------------------------
+
+/// @desc A layer covering `_w` x `_h` GUI units at (`_x`, `_y`).
+function ui_layer_new(_x, _y, _w, _h, _opaque = false) {
+    return {
+        x: _x, y: _y, w: _w, h: _h, opaque: _opaque,
+        surf: -1,
+        key: undefined, src: undefined,
+        // Window pixels per GUI unit, and the window pixel its surface's
+        // corner lands on; worked out when it is drawn.
+        kx: 1, ky: 1, ox: 0, oy: 0,
+        // What `ui_layer_end` puts back.
+        was_premul: false, was_world: undefined,
+    };
+}
+
+/// @desc Free a layer's surface (from its owner's Clean Up).
+function ui_layer_free(_l) {
+    if (surface_exists(_l.surf)) surface_free(_l.surf);
+    _l.surf = -1;
+    _l.key = undefined;
+}
+
+/// @desc Window pixels per GUI unit, across and down, read from the view the
+///       GUI event draws with (the window's own size can be a pixel off the
+///       buffer drawn into, and is 0 while minimised). 1 outside it.
+function ui_gui_scale_x() {
+    var _k = matrix_get(matrix_view)[0];
+    return (_k > 0) ? _k : 1;
+}
+
+function ui_gui_scale_y() {
+    var _k = matrix_get(matrix_view)[5];
+    return (_k > 0) ? _k : 1;
+}
+
+/// @desc Start drawing into `_l` if it needs it, and answer whether it does:
+///       its surface was lost, the window changed size, or `_key` (compared
+///       with `==`) or `_src` (compared by reference) differ from what it
+///       holds. When it answers true, draw in GUI coordinates and close with
+///       `ui_layer_end`.
+function ui_layer_begin(_l, _key = 0, _src = undefined) {
+    if (surface_exists(_l.surf) && _l.key == _key && _l.src == _src
+        && _l.kx == ui_gui_scale_x() && _l.ky == ui_gui_scale_y()) {
+        return false;
+    }
+    _l.key = _key;
+    _l.src = _src;
+    ui_layer_open(_l);
+    return true;
+}
+
+/// @desc Start drawing into `_l` whatever it holds (for a layer redrawn every
+///       frame, such as the boss's rail). Close with `ui_layer_end`.
+function ui_layer_open(_l) {
+    var _kx = ui_gui_scale_x();
+    var _ky = ui_gui_scale_y();
+    _l.kx = _kx;
+    _l.ky = _ky;
+    _l.ox = floor(_l.x * _kx);
+    _l.oy = floor(_l.y * _ky);
+    var _sw = max(1, ceil((_l.x + _l.w) * _kx) - _l.ox);
+    var _sh = max(1, ceil((_l.y + _l.h) * _ky) - _l.oy);
+    if (surface_exists(_l.surf)
+        && (surface_get_width(_l.surf) != _sw
+            || surface_get_height(_l.surf) != _sh)) {
+        surface_free(_l.surf);
+    }
+    if (!surface_exists(_l.surf)) _l.surf = surface_create(_sw, _sh);
+
+    _l.was_world = matrix_get(matrix_world);
+    surface_set_target(_l.surf);
+    // GUI units to this surface's pixels, as the GUI layer maps them to the
+    // window's.
+    matrix_set(matrix_world,
+               matrix_build(-_l.ox, -_l.oy, 0, 0, 0, 0, _kx, _ky, 1));
+    _l.was_premul = global.ui_premul;
+    if (_l.opaque) {
+        draw_clear_alpha(c_black, 1);
+        gpu_set_colorwriteenable(true, true, true, false);
+        global.ui_premul = false;
+    } else {
+        draw_clear_alpha(c_black, 0);
+        global.ui_premul = true;
+    }
+    ui_blend(bm_normal);
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+}
+
+/// @desc Finish drawing into `_l`, and put the draw state back as it was.
+function ui_layer_end(_l) {
+    gpu_set_colorwriteenable(true, true, true, true);
+    global.ui_premul = _l.was_premul;
+    ui_blend(bm_normal);
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
+    matrix_set(matrix_world, _l.was_world);
+    surface_reset_target();
+}
+
+/// @desc Copy a clear layer where it belongs, `_dy` GUI units lower (a whole
+///       number of window pixels; see `ui_snap_dy`), at `_alpha`. Onto the
+///       screen or into another clear layer alike.
+function ui_layer_put(_l, _alpha = 1, _dy = 0) {
+    if (!surface_exists(_l.surf) || _alpha <= 0.004) return;
+    // Premultiplied: the colour carries the alpha too.
+    var _v = clamp(floor(255 * _alpha + 0.5), 0, 255);
+    gpu_set_blendmode_ext(bm_one, bm_inv_src_alpha);
+    draw_surface_ext(_l.surf, _l.ox / _l.kx, _l.oy / _l.ky + _dy,
+                     1 / _l.kx, 1 / _l.ky, 0, make_colour_rgb(_v, _v, _v),
+                     _alpha);
+    ui_blend(bm_normal);
+}
+
+/// @desc Copy the part of an opaque layer under the GUI rectangle (`_x1`,
+///       `_y1`)-(`_x2`, `_y2`): exactly the window pixels a fill of that
+///       rectangle would cover.
+function ui_layer_put_rect(_l, _x1, _y1, _x2, _y2) {
+    if (!surface_exists(_l.surf)) return;
+    var _px1 = ceil(_x1 * _l.kx - 0.5);
+    var _py1 = ceil(_y1 * _l.ky - 0.5);
+    var _px2 = ceil(_x2 * _l.kx - 0.5);
+    var _py2 = ceil(_y2 * _l.ky - 0.5);
+    if (_px2 <= _px1 || _py2 <= _py1) return;
+    draw_surface_part_ext(_l.surf, _px1 - _l.ox, _py1 - _l.oy, _px2 - _px1,
+                          _py2 - _py1, _px1 / _l.kx, _py1 / _l.ky,
+                          1 / _l.kx, 1 / _l.ky, c_white, 1);
+}
+
+/// @desc A vertical offset rounded to whole window pixels, so a layer drawn
+///       at rest and put `_dy` lower lines up with what is drawn live at the
+///       same offset.
+function ui_snap_dy(_dy) {
+    var _ky = ui_gui_scale_y();
+    return floor(_dy * _ky + 0.5) / _ky;
+}
+
+/// @desc Set the blend mode. Inside a clear layer, the premultiplied form of
+///       it: colour weighted by its alpha, and alpha laid over the layer's
+///       (or for `bm_add`, colour added and the layer's alpha left alone).
+///       Everything a clear layer draws sets its blend through this.
+function ui_blend(_mode) {
+    if (!global.ui_premul) {
+        gpu_set_blendmode(_mode);
+        return;
+    }
+    if (_mode == bm_add) {
+        gpu_set_blendmode_ext_sepalpha(bm_src_alpha, bm_one, bm_zero, bm_one);
+    } else {
+        gpu_set_blendmode_ext_sepalpha(bm_src_alpha, bm_inv_src_alpha,
+                                       bm_one, bm_inv_src_alpha);
+    }
 }
 
 // Font accessors. Call them: `draw_set_font(fnt_ui())`, not `fnt_ui`
@@ -188,8 +362,17 @@ function fascia_shade(_y) {
                         _t * _t * 0.62 + _t * 0.28);
 }
 
-/// @desc One rectangle of fascia: the ramp, and the grain over it.
+/// @desc One rectangle of fascia: the ramp, the grain over it, and its
+///       motes.
 function draw_fascia(_x1, _y1, _x2, _y2) {
+    if (_x2 <= _x1 || _y2 <= _y1) return;
+    draw_fascia_ground(_x1, _y1, _x2, _y2);
+    fascia_motes(_x1, _y1, _x2, _y2);
+}
+
+/// @desc A rectangle of fascia's ramp and grain, which never change (the
+///       field's frame keeps them in a layer).
+function draw_fascia_ground(_x1, _y1, _x2, _y2) {
     if (_x2 <= _x1 || _y2 <= _y1) return;
 
     draw_primitive_begin(pr_trianglestrip);
@@ -204,7 +387,6 @@ function draw_fascia(_x1, _y1, _x2, _y2) {
 
     draw_grain(_x1, _y1, _x2, _y2, merge_colour(COL_PARCHMENT, COL_RUNE, 0.4),
                0.075);
-    fascia_motes(_x1, _y1, _x2, _y2);
 }
 
 /// @desc Faint motes drifting up through a fascia rectangle. Positions are
@@ -214,7 +396,7 @@ function fascia_motes(_x1, _y1, _x2, _y2) {
     var _h = _y2 - _y1;
     if (_w < 8 || _h < 8) return;
 
-    gpu_set_blendmode(bm_add);
+    ui_blend(bm_add);
     var _sw = sprite_get_width(spr_fx_bloom);
     for (var _i = 0; _i < 18; _i++) {
         // Seeded off the rectangle so each piece of margin carries its own
@@ -230,7 +412,7 @@ function fascia_motes(_x1, _y1, _x2, _y2) {
         draw_sprite_ext(spr_fx_bloom, 0, _mx, _my, _k, _k, 0,
                         (_i mod 3 == 0) ? COL_RUNE : COL_GILT_LIT, _a);
     }
-    gpu_set_blendmode(bm_normal);
+    ui_blend(bm_normal);
 }
 
 /// @desc `spr_ui_grain` tiled over a rectangle, additively, cropping the edge
@@ -240,7 +422,7 @@ function draw_grain(_x1, _y1, _x2, _y2, _col, _alpha) {
     var _tw = sprite_get_width(spr_ui_grain);
     var _th = sprite_get_height(spr_ui_grain);
 
-    gpu_set_blendmode(bm_add);
+    ui_blend(bm_add);
     // Phased off the screen origin so the tiling lines up across rectangles.
     var _sy = _y1 - (_y1 mod _th);
     while (_sy < _y2) {
@@ -258,7 +440,7 @@ function draw_grain(_x1, _y1, _x2, _y2, _col, _alpha) {
         }
         _sy += _th;
     }
-    gpu_set_blendmode(bm_normal);
+    ui_blend(bm_normal);
 }
 
 /// @desc The four corner ornaments of a rectangle: one sprite, flipped.
@@ -324,20 +506,48 @@ function draw_plate(_x1, _y1, _x2, _y2, _alpha = 1) {
 // The field's boundary
 // ---------------------------------------------------------------------------
 
+/// @desc The layer `field_draw_frame` keeps the margins' ground in: the
+///       whole screen, opaque.
+function field_frame_layer() {
+    return ui_layer_new(0, 0, GAME_W, GAME_H, true);
+}
+
 /// @desc Paint the four margins opaque (masking the world, which is drawn
 ///       across the whole screen) and draw the frame round the field: an
 ///       inner glow, the gilt rules, and the corner ornaments. Called from the
 ///       GUI event, which has no shake matrix, so the mask never moves.
 ///       `_flash` lights the frame in `_flash_col` (the damage flash).
-function field_draw_frame(_flash = 0, _flash_col = COL_LIFE) {
-    // The margins (opaque).
-    draw_fascia(0, 0, GAME_W, FIELD_Y0 - 1);                        // above
-    draw_fascia(0, FIELD_Y1 + 1, GAME_W, GAME_H);                   // below
-    draw_fascia(0, FIELD_Y0 - 1, FIELD_X0 - 1, FIELD_Y1 + 1);       // left
-    draw_fascia(FIELD_X1 + 1, FIELD_Y0 - 1, GAME_W, FIELD_Y1 + 1);  // right
+///       `_layer`, if given (`field_frame_layer`), keeps the margins' ramp and
+///       grain, which never change; their motes are drawn each frame.
+function field_draw_frame(_flash = 0, _flash_col = COL_LIFE,
+                          _layer = undefined) {
+    // The margins (opaque): above, below, left and right.
+    static _m = [[0, 0, GAME_W, FIELD_Y0 - 1],
+                 [0, FIELD_Y1 + 1, GAME_W, GAME_H],
+                 [0, FIELD_Y0 - 1, FIELD_X0 - 1, FIELD_Y1 + 1],
+                 [FIELD_X1 + 1, FIELD_Y0 - 1, GAME_W, FIELD_Y1 + 1]];
+    if (_layer == undefined) {
+        for (var _i = 0; _i < 4; _i++) {
+            draw_fascia(_m[_i][0], _m[_i][1], _m[_i][2], _m[_i][3]);
+        }
+    } else {
+        if (ui_layer_begin(_layer)) {
+            for (var _i = 0; _i < 4; _i++) {
+                draw_fascia_ground(_m[_i][0], _m[_i][1], _m[_i][2], _m[_i][3]);
+            }
+            ui_layer_end(_layer);
+        }
+        // Each margin's motes straight after its ground, as `draw_fascia`
+        // has them.
+        for (var _i = 0; _i < 4; _i++) {
+            ui_layer_put_rect(_layer, _m[_i][0], _m[_i][1], _m[_i][2],
+                              _m[_i][3]);
+            fascia_motes(_m[_i][0], _m[_i][1], _m[_i][2], _m[_i][3]);
+        }
+    }
 
     // A faint glow inward from each field edge, drawn as a gradient strip.
-    gpu_set_blendmode(bm_add);
+    ui_blend(bm_add);
     var _g = merge_colour(COL_RUNE, COL_ARCANE_LIT, 0.45);
     field_edge_glow(FIELD_X0, FIELD_Y0, FIELD_X1, FIELD_Y0 + FIELD_GLOW,
                     _g, true);     // from the top edge, downward
@@ -347,7 +557,7 @@ function field_draw_frame(_flash = 0, _flash_col = COL_LIFE) {
                     _g, false);
     field_edge_glow(FIELD_X1, FIELD_Y0, FIELD_X1 - FIELD_GLOW, FIELD_Y1,
                     _g, false);
-    gpu_set_blendmode(bm_normal);
+    ui_blend(bm_normal);
 
     // The rule: a bright hairline at the field edge and dimmer lines outside
     // it.
@@ -376,14 +586,14 @@ function field_draw_frame(_flash = 0, _flash_col = COL_LIFE) {
 
     // Damage flash: several fading rules spreading outward, and the corners.
     if (_flash > 0.01) {
-        gpu_set_blendmode(bm_add);
+        ui_blend(bm_add);
         draw_set_colour(_flash_col);
         for (var _i = 0; _i < 7; _i++) {
             draw_set_alpha(_flash * 0.5 * (1 - _i / 7));
             draw_rectangle(FIELD_X0 - 1 - _i, FIELD_Y0 - 1 - _i,
                            FIELD_X1 + 1 + _i, FIELD_Y1 + 1 + _i, true);
         }
-        gpu_set_blendmode(bm_normal);
+        ui_blend(bm_normal);
         draw_corners(FIELD_X0, FIELD_Y0, FIELD_X1, FIELD_Y1,
                      _flash_col, _flash * 0.7, 14, 0.62);
     }
@@ -528,10 +738,10 @@ function liquid_wave(_along, _seed, _slosh = 0) {
 ///       one sprite is scaled in one place.
 function draw_bloom(_x, _y, _size, _col, _alpha) {
     if (_alpha <= 0.004) return;
-    gpu_set_blendmode(bm_add);
+    ui_blend(bm_add);
     var _s = _size / sprite_get_width(spr_fx_bloom);
     draw_sprite_ext(spr_fx_bloom, 0, _x, _y, _s, _s, 0, _col, _alpha);
-    gpu_set_blendmode(bm_normal);
+    ui_blend(bm_normal);
 }
 
 /// @desc An arc drawn as a band, with alpha interpolated from `_a_from` to
@@ -559,7 +769,7 @@ function draw_arc_band(_x, _y, _r_in, _r_out, _from, _to, _colour, _a_from,
 function draw_liquid_bubbles(_x0, _x1, _bot, _surf, _seed, _col, _alpha) {
     if (abs(_bot - _surf) < 12) return;
     if (_x1 - _x0 < 10) return;
-    gpu_set_blendmode(bm_add);
+    ui_blend(bm_add);
     var _sw = sprite_get_width(spr_fx_bloom);
     for (var _i = 0; _i < 7; _i++) {
         var _p = frac(current_time * (0.00007 + 0.00005 * frac(_i * 0.37))
@@ -572,7 +782,7 @@ function draw_liquid_bubbles(_x0, _x1, _bot, _surf, _seed, _col, _alpha) {
         var _k = _s / _sw;
         draw_sprite_ext(spr_fx_bloom, 0, _bx, _by, _k, _k, 0, _col, _a);
     }
-    gpu_set_blendmode(bm_normal);
+    ui_blend(bm_normal);
 }
 
 /// @desc The glass a gauge is drawn in: the trough and its lengthwise
@@ -583,12 +793,12 @@ function draw_gauge_trough(_x, _y, _w, _h, _alpha) {
     // A faint highlight band along the glass, inset by the radius so the
     // additive band doesn't spill past the rounded ends.
     var _r = _h * 0.5;
-    gpu_set_blendmode(bm_add);
+    ui_blend(bm_add);
     draw_set_colour(c_white);
     draw_set_alpha(_alpha * 0.06);
     draw_rectangle(_x + _r, _y + _h * 0.15, _x + _w - _r, _y + _h * 0.34,
                    false);
-    gpu_set_blendmode(bm_normal);
+    ui_blend(bm_normal);
     draw_set_alpha(1);
     draw_set_colour(c_white);
 }
@@ -618,7 +828,22 @@ function draw_gauge_rim(_x, _y, _w, _h, _ready, _alpha,
 ///       `_opts`: `ready`, `slosh`, `seed`, `quadrants` (division count),
 ///       `glow`, and `rim` (the rim's colour when not ready; the boss channel
 ///       uses dark gold).
+///
+///       It is three parts, drawn in turn: the glass (`draw_gauge_trough`),
+///       the contents (`draw_gauge_contents`) and the rim (`draw_gauge_rim`).
+///       The HUD keeps the glass in a cached layer and draws the others.
 function draw_gauge_h(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts = {}) {
+    if (_alpha <= 0.004) return;
+    draw_gauge_trough(_x, _y, _w, _h, _alpha);
+    draw_gauge_contents(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts);
+    draw_gauge_rim(_x, _y, _w, _h, _opts[$ "ready"] ?? false, _alpha, _colour,
+                   _opts[$ "rim"] ?? COL_SLATE);
+}
+
+/// @desc A gauge's contents (see `draw_gauge_h`): the liquid, the divisions
+///       over it, and the sheen when ready.
+function draw_gauge_contents(_x, _y, _w, _h, _fraction, _colour, _alpha,
+                             _opts = {}) {
     _fraction = clamp(_fraction, 0, 1);
     if (_alpha <= 0.004) return;
 
@@ -627,8 +852,6 @@ function draw_gauge_h(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts = {}) {
     var _seed  = _opts[$ "seed"] ?? 0;
     var _glow  = _opts[$ "glow"] ?? 0;
     var _rad   = _h / 2;
-
-    draw_gauge_trough(_x, _y, _w, _h, _alpha);
 
     // Two pixels, matching the rim drawn over the top of it at the end.
     var _in   = 2;
@@ -655,12 +878,18 @@ function draw_gauge_h(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts = {}) {
 
         var _xs = capsule_samples(_lo, _hi, _r, _body);
         var _ns = array_length(_xs);
+        // The contour's height at each sample, worked out once for the body
+        // and the gloss, and the surface's x at each step down it, once for
+        // the wave and its meniscus.
+        static _hs = [];
+        static _wx = [];
 
         // The body: lighter along the top, dark along the bottom.
         draw_primitive_begin(pr_trianglestrip);
         for (var _i = 0; _i < _ns; _i++) {
             var _bx = _xs[_i];
             var _hh = capsule_half(_bx, _lo, _hi, _r);
+            _hs[_i] = _hh;
             draw_vertex_colour(_bx, _cy - _hh, _face, _alpha);
             draw_vertex_colour(_bx, _cy + _hh, _deep, _alpha);
         }
@@ -678,6 +907,7 @@ function draw_gauge_h(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts = {}) {
                 var _py = _cy + _dy;
                 var _sx = clamp(_surf + liquid_wave(_dy + _r, _seed, _slosh),
                                 _body, capsule_reach(_dy, _hi, _r));
+                _wx[_i] = _sx;
                 var _c = merge_colour(_face, _deep, _t);
                 draw_vertex_colour(_body, _py, _c, _alpha);
                 draw_vertex_colour(_sx, _py, _c, _alpha);
@@ -685,32 +915,29 @@ function draw_gauge_h(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts = {}) {
             draw_primitive_end();
 
             // The meniscus: a thin additive band riding the wave.
-            gpu_set_blendmode(bm_add);
+            ui_blend(bm_add);
             draw_primitive_begin(pr_trianglestrip);
             for (var _i = 0; _i <= LIQ_WAVE_STEPS; _i++) {
-                var _t = _i / LIQ_WAVE_STEPS;
-                var _dy = lerp(-_hb, _hb, _t);
-                var _py = _cy + _dy;
-                var _sx = clamp(_surf + liquid_wave(_dy + _r, _seed, _slosh),
-                                _body, capsule_reach(_dy, _hi, _r));
+                var _py = _cy + lerp(-_hb, _hb, _i / LIQ_WAVE_STEPS);
+                var _sx = _wx[_i];
                 draw_vertex_colour(_sx, _py, _lit, _alpha * 0.34);
                 draw_vertex_colour(_sx - 7, _py, _lit, 0);
             }
             draw_primitive_end();
-            gpu_set_blendmode(bm_normal);
+            ui_blend(bm_normal);
         }
 
         // A faint gloss along the top of the tube, following the contour.
-        gpu_set_blendmode(bm_add);
+        ui_blend(bm_add);
         draw_primitive_begin(pr_trianglestrip);
         for (var _i = 0; _i < _ns; _i++) {
             var _gx = _xs[_i];
-            var _hh = capsule_half(_gx, _lo, _hi, _r);
+            var _hh = _hs[_i];
             draw_vertex_colour(_gx, _cy - _hh, _lit, _alpha * 0.13);
             draw_vertex_colour(_gx, _cy - _hh * 0.52, _lit, 0);
         }
         draw_primitive_end();
-        gpu_set_blendmode(bm_normal);
+        ui_blend(bm_normal);
 
         // Bubbles rise toward the top of the tube.
         draw_liquid_bubbles(_lo, _body, _cy + _r * 0.7, _cy - _r * 0.7, _seed,
@@ -744,7 +971,7 @@ function draw_gauge_h(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts = {}) {
     if (_ready && _fill > 1) {
         var _p = frac(current_time * 0.00035);
         var _sx = lerp(_lo - _h, _lo + _fill + _h, _p);
-        gpu_set_blendmode(bm_add);
+        ui_blend(bm_add);
         draw_primitive_begin(pr_trianglestrip);
         for (var _i = 0; _i <= 10; _i++) {
             var _t = _i / 10;
@@ -757,11 +984,9 @@ function draw_gauge_h(_x, _y, _w, _h, _fraction, _colour, _alpha, _opts = {}) {
             draw_vertex_colour(_px, _cy + _hh, c_white, 0);
         }
         draw_primitive_end();
-        gpu_set_blendmode(bm_normal);
+        ui_blend(bm_normal);
     }
 
-    draw_gauge_rim(_x, _y, _w, _h, _ready, _alpha, _colour,
-                   _opts[$ "rim"] ?? COL_SLATE);
     draw_set_alpha(1);
     draw_set_colour(c_white);
 }
