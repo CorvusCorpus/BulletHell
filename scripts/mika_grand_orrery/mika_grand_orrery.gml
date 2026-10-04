@@ -11,8 +11,10 @@
 /// so it grows harder as he nears defeat, as a Touhou Extra's last spell
 /// does.
 ///
-/// As drafted, the rings wake from the inside out, one for each sixth of his
-/// health for this attack, and each fires one plain rule:
+/// The rings wake from the inside out, one for each sixth of his health for
+/// this attack, and all of them once 20 seconds are left on the clock (the
+/// owner's call, so the attack can't be camped to a timeout). Each fires one
+/// plain rule:
 ///   0 (gold)    the corona: a dashed spiral of sand thrown straight out from
 ///               him as it whirls round.
 ///   1 (cyan)    the pinwheel: three arms of grains from its middle, turning
@@ -82,12 +84,15 @@ function orrery_way(_k) {
 // `IGNITE` frames before it.
 #macro ORRERY_FIRST (MIKA_MILL_WIND + 20)
 
-// Ring k wakes once he has lost k sixths of his health for this attack. At
-// most one wakes every `WAKE_GAP` frames, in order, so a burst of damage
-// doesn't wake several at once. A ring lights up over `IGNITE` frames and
-// starts firing when fully lit.
+// Ring k wakes once he has lost k sixths of his health for this attack, or
+// once `LATE` frames or fewer are left on the clock, whatever his health (so
+// holding fire doesn't keep the attack easy until it times out). At most one
+// wakes every `WAKE_GAP` frames, in order, so a burst of damage doesn't wake
+// several at once. A ring lights up over `IGNITE` frames and starts firing
+// when fully lit.
 #macro ORRERY_WAKE_GAP 50
 #macro ORRERY_IGNITE 45
+#macro ORRERY_LATE (20 * FPS)
 
 // The look: asleep, a ring looks as any ring does (it hurts to touch either
 // way) and turns slowly; awake it glows (`GLOW`, swelling by `PULSE` every
@@ -149,6 +154,15 @@ function orrery_new() {
     return _o;
 }
 
+/// @desc Frames left on this attack's clock at attack frame `_t`, or
+///       `infinity` without a boss or a clock (in tests).
+function orrery_time_left(_e, _t) {
+    if (_e[$ "boss"] == undefined) return infinity;
+    var _p = boss_phase(_e);
+    if (_p == undefined || _p.time <= 0) return infinity;
+    return _p.time - _t;
+}
+
 /// @desc How far through his health for this attack he is: 0 as it opens, 1
 ///       at its threshold. 0 without a boss (in tests).
 function orrery_rage(_e) {
@@ -163,13 +177,14 @@ function orrery_rage(_e) {
     return clamp((_hi - _e.hp) / (_hi - _lo), 0, 1);
 }
 
-/// @desc Wake the next ring if his health says so and the last woke long
-///       enough ago. Ring 0 wakes as soon as this is first asked.
+/// @desc Wake the next ring if his health or the clock says so and the last
+///       woke long enough ago. Ring 0 wakes as soon as this is first asked.
 function orrery_wake(_o, _e, _t) {
     if (_o.woken >= ORRERY_N) return;
     if (_t - _o.last < ORRERY_WAKE_GAP) return;
     var _k = _o.woken;
-    if (orrery_rage(_e) < _k / ORRERY_N) return;
+    if (orrery_rage(_e) < _k / ORRERY_N
+        && orrery_time_left(_e, _t) > ORRERY_LATE) return;
     _o.wake[_k] = _t;
     _o.woken++;
     _o.last = _t;
