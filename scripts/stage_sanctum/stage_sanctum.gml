@@ -109,15 +109,6 @@ function mika_formation(_e, _n, _dist, _rate, _col, _shoot, _ttl, _spin) {
     return _f;
 }
 
-/// @desc String current between two members of a formation, if both are still
-///       the rings they were.
-function mika_link(_f, _a, _b, _frames) {
-    if (ring_valid(_f.ring[_a], _f.gen[_a])
-        && ring_valid(_f.ring[_b], _f.gen[_b])) {
-        ring_link(_f.ring[_a], _f.ring[_b], _frames);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Mika
 //
@@ -172,7 +163,7 @@ function mika_def() {
 ///           N5  draft: the crown            S5  unwritten
 ///           N6  draft: the crown mirrored   S6  unwritten
 ///           N7  draft: the rush             S7  unwritten
-///                                           S8  old placeholder, Grand Orrery
+///                                           S8  written: Grand Orrery
 ///
 ///       To write a slot: put the attack in its own script under the
 ///       `Scripts/mika` folder (the non-spells share `mika_nonspells`), point
@@ -239,9 +230,11 @@ function mika_slots() {
           fire_at: MIKA_MILL_WIND },
         mika_unwritten_row(true, 7),     // S7
 
-        // S8
-        { name: "Grand Orrery", col: BCOL_GOLD, hp: 504, time: 50 * FPS,
-          move: BossMove.Fixed, attack: mika_grand_orrery },
+        // S8 -- Grand Orrery (`mika_grand_orrery`). He holds the middle of
+        // the field with all six rings in orbit round him.
+        { name: "Grand Orrery", col: BCOL_GOLD, hp: 600, time: 99 * FPS,
+          move: BossMove.Fixed, at: { x: ORRERY_X, y: ORRERY_Y },
+          attack: mika_grand_orrery, fire_at: ORRERY_FIRST },
     ];
 }
 
@@ -343,10 +336,10 @@ function mika_unwritten_spell(_e, _g, _t) {
 }
 
 // ---------------------------------------------------------------------------
-// Old placeholders still in S3 and S8
+// The old placeholder still in S3
 //
-// Delete each one, and anything only it uses, when its slot is written. The
-// frozen copies in `stage_sanctum_old` keep them playable.
+// Delete it, and anything only it uses, when its slot is written. The frozen
+// copy in `stage_sanctum_old` keeps it playable.
 // ---------------------------------------------------------------------------
 
 /// @desc **Three Open Gates.** Three rings drifting across the field, each
@@ -378,56 +371,4 @@ function mika_gate_beam(_ring, _g, _t) {
     if ((_t mod 38) == 22) {
         ring_fire_rim(_ring, 5, 3.0, _t * 2.9, BSHAPE_MOTE, BCOL_AMBER, 16);
     }
-}
-
-/// @desc **Grand Orrery.** Six rings on two counter-rotating orbits, one
-///       adjacent pair strung with current at a time, one band charged at a
-///       time, and volleys off every rim.
-function mika_grand_orrery(_e, _g, _t) {
-    static orrery = { ring: [], gen: [] };
-
-    if (_t == 0) {
-        orrery = { ring: [], gen: [] };
-        for (var _i = 0; _i < MIKA_RING_N; _i++) {
-            var _inner = (_i mod 2) == 0;
-            var _r = mika_orbit_ring(_e, _inner ? 200 : 360, _i * 60,
-                                     _inner ? 0.85 : -0.55, MIKA_RING_COL,
-                                     _inner ? mika_orrery_in
-                                            : mika_orrery_out);
-            orrery.ring[_i] = _r;
-            orrery.gen[_i] = (_r == undefined) ? -1 : _r.gen;
-            if (_r != undefined) _r.spin = _inner ? 1.3 : -0.9;
-        }
-    }
-
-    // One pair strung at a time, walking round the six.
-    if ((_t mod 84) == 0) {
-        var _k = (_t div 84) mod MIKA_RING_N;
-        mika_link(orrery, _k, (_k + 1) mod MIKA_RING_N, 68);
-    }
-
-    // One band charged at a time, on a different period.
-    if ((_t mod 130) == 60) {
-        var _c = (_t div 130) mod MIKA_RING_N;
-        if (ring_valid(orrery.ring[_c], orrery.gen[_c])) {
-            ring_charge(orrery.ring[_c], RING_WARN, 78);
-        }
-    }
-
-    if ((_t mod 118) == 58) {
-        fire_fan_stack(_e.x, _e.y, 9, 3, 4.8, 1.0,
-                       aim_at(_e.x, _e.y, _g.player.x, _g.player.y), 56,
-                       BSHAPE_RICE, BCOL_BONE, 22);
-    }
-}
-
-function mika_orrery_in(_ring, _g, _t) {
-    if ((_t mod 58) != 26) return;
-    ring_fire_tangent(_ring, 5, 3.2, _t * 3.3, BSHAPE_MOTE, MIKA_RING_COL,
-                      1, 18);
-}
-
-function mika_orrery_out(_ring, _g, _t) {
-    if ((_t mod 70) != 34) return;
-    ring_fire_rim(_ring, 6, 3.4, -_t * 2.6, BSHAPE_ORB, BCOL_AMBER, 20);
 }

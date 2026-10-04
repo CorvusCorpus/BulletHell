@@ -18,7 +18,7 @@ function shot_scene_list() {
               "hex_burst",
               "grove", "grove_arrive", "grove_turn", "grove_blood",
               "grove_boss", "grove_spell",
-              "sanctum", "mika_attacks",
+              "sanctum", "mika_attacks", "orrery_rage",
               "hall_a", "hall_b", "hall_turn", "hall_arrive",
               "rope_lab", "title_card", "cutin", "talk", "talk_card",
               "golem_n1", "golem_n2", "golem_n3"];
@@ -74,6 +74,21 @@ function shot_mika_slot(_name) {
 // are relative to this.
 #macro SHOT_MIKA_AT (4 * FPS)
 
+// `orrery_rage`: Grand Orrery with Mika held this many hit points above its
+// threshold, so his rings all wake in turn (`orrery_wake`), photographed this
+// far in.
+#macro SHOT_ORRERY_LEFT 4
+#macro SHOT_ORRERY_AT (10 * FPS)
+
+/// @desc The slot Grand Orrery is in.
+function shot_orrery_slot() {
+    var _l = mika_slots();
+    for (var _i = 0; _i < array_length(_l); _i++) {
+        if (_l[_i].attack == mika_grand_orrery) return _i;
+    }
+    return -1;
+}
+
 // The `talk` scene presses Z once every this many frames, so each line is
 // typed out and read before the next. The conversation starts about
 // `SHOT_TALK_AT` frames into either scene (a practised fight's boss arrives
@@ -126,6 +141,7 @@ function shot_scene_room(_name) {
 function shot_scene_prepare(_name) {
     // Mika's slots are photographed through practice, in the open hall.
     var _slot = shot_mika_slot(_name);
+    if (_name == "orrery_rage") _slot = shot_orrery_slot();
     if (_slot >= 0) {
         global.stage_def = stage_sanctum_def();
         global.practice = practice_new(stage_sanctum_def(), 1, _slot);
@@ -286,6 +302,15 @@ function shot_pose(_scene, _g) {
     // player gets hit, and a hit clears a circle of bullets out of the
     // picture). The shutter is `SHOT_MIKA_AT` into the attack, after the
     // practice count and, for a spell, the declaration.
+    if (_scene == "orrery_rage") {
+        // Not firing, so his health stays where `shot_tick` holds it.
+        _g.input_override = shot_input(false, false);
+        _g.player.x = FIELD_CX + 120;
+        _g.player.y = FIELD_Y1 - 120;
+        _g.player.untouchable = true;
+        return PRACTICE_READY + BOSS_SPELL_LEAD + SHOT_ORRERY_AT;
+    }
+
     var _slot = shot_mika_slot(_scene);
     if (_slot >= 0) {
         _g.player.x = FIELD_CX + 120;
@@ -701,6 +726,13 @@ function shot_tick(_scene, _g, _t) {
         case "golem_n3":
             // Hold the stage clock, so no wave arrives in the picture.
             _g.stage.t = 0;
+            break;
+
+        case "orrery_rage":
+            var _ob = enemy_find_boss();
+            if (_ob != undefined && boss_phase(_ob) != undefined) {
+                _ob.hp = boss_phase_floor(_ob) + SHOT_ORRERY_LEFT;
+            }
             break;
 
         case "talk":

@@ -173,7 +173,7 @@ Game logic is plain functions over structs; objects are thin controllers.
 | `player_functions` | Player, input, the sigil and its seals, grace, hitbox |
 | `boss_functions` | Boss phase machine, movement modes, ceremony timing |
 | `stage_functions` | Stage timeline, gates, wave helpers, encounter windows, `run_clear_field` |
-| `stage_ziggy`, `stage_grove`, `stage_sanctum`, `mika_nonspells`, `mika_storm_cage`, `mika_chakram_blitz` | Stages one to three: timelines, bosses, attacks. `stage_list()`, the roster of all stages, lives in `stage_ziggy`. |
+| `stage_ziggy`, `stage_grove`, `stage_sanctum`, `mika_nonspells`, `mika_storm_cage`, `mika_chakram_blitz`, `mika_grand_orrery` | Stages one to three: timelines, bosses, attacks. `stage_list()`, the roster of all stages, lives in `stage_ziggy`. |
 | `sanctum_waves`, `sanctum_ring_waves`, `sanctum_foes`, `sanctum_golem` | Stage three's way to Mika: its timeline and fodder waves (`sanctum_wave_table()`), the two waves of his rings, its foes' look and deaths, and the sand golem |
 | `enemy_routes` | Fodder flying routes of legs (`leg_curve`, `leg_orbit`, `leg_aim`, `leg_path`, `leg_exit`, `leg_appear`), spawned by `foe_spawn` / `ev_foe` |
 | `title_card` | The stage title card a timeline plays (`wave_title_card`) |
@@ -259,7 +259,9 @@ hit) but not `bullet_clear_all` (phase changes).
 
 **Lasers.** `laser_beam` is anchored and telegraphed; it can follow a `src`
 and re-aim at a `look` point every frame. `laser_ray` travels and is culled
-when its tail leaves. `laser_curve` draws the trail of its head's past
+when its tail leaves; it is drawn as light with a white-hot core, narrowing
+to a point at each end (`spr_bul_ray`, stretched to its length and `wid`),
+and its kill segment stops short of its points. `laser_curve` draws the trail of its head's past
 positions.
 
 **Rings** (`ring_functions`) are furniture a boss puts down:
@@ -274,6 +276,8 @@ positions.
 - They can flash the lane they are about to be thrown down
   (`ring_lane_flash`), drawn under every ring. It is decoration and never
   kills.
+- They can glow (`glow`, drawn as a charge's heat without widening the
+  lethal band), and an arc can have its own colour (`arc_col`).
 - They can fake depth: `depth` scales a ring's size, drawn and collided
   alike (`ring_radius`); `shade` dims it; and a ring `behind` its caster is
   drawn before the enemies (`ring_draw_behind` before `enemy_draw`) and
@@ -553,7 +557,7 @@ owner's Mika sheet in `tools/source/`.
 |---|---|
 | `art_common.py` | Shared canvas, shading, noise and preview helpers |
 | `make_palette.py` | `scripts/palette` |
-| `make_bullets.py` | Bullet sprites **and** `scripts/bullet_table`: hitbox, default spin, frame counts. A round shape's hit radius is defined next to its picture; a long shape's capsule is fitted to its drawn body (`CAPSULES`), so a hit never comes before the player's hitbox visibly overlaps it. Shapes are drawn through `art_common.Cut`, which centres them exactly on their origins. |
+| `make_bullets.py` | Bullet sprites (and the ray, `spr_bul_ray`) **and** `scripts/bullet_table`: hitbox, default spin, frame counts. A round shape's hit radius is defined next to its picture; a long shape's capsule is fitted to its drawn body (`CAPSULES`), so a hit never comes before the player's hitbox visibly overlaps it. Shapes are drawn through `art_common.Cut`, which centres them exactly on their origins. |
 | `make_fx.py`, `make_items.py`, `make_ui.py`, `make_fonts.py` | Effects plus Szuix's shot, sigil, focus circle and hitbox, the bosses' seal, and the hit mark's lock, strike and burst (`spr_fx_strike`); pickups; console furniture, medals and the boss rail; sprite fonts |
 | `medal_art.py` | Imported by `make_ui.py` (run alone, it only writes a preview): the rank medals, rendered in their own colours from height fields shaded as metal, enamel, cut stones and granite. The card's medal with its reverse and edge (for the coin spin, `medal_draw`) and a spell's star; the console's medals and sockets. |
 | `make_enemies.py`, `make_player.py`, `make_boss.py` | Fodder (stages one and two, tinted); Szuix from his sheet; Ziggy, whose art is a placeholder. `make_boss.py` states what a painted replacement must keep. |
@@ -737,7 +741,8 @@ Mika's slots (`mika_slots()` is the source of truth):
 | N7 | Draft, unplayed: six rings whose orbit reverses on each of his hops, with an aimed bolt from each ring at every reversal |
 | S1 | Written, in playtesting: `Storm Cage`. Three rings strung with lightning ride round the player; a sandstorm floods the field; rings stop grains; on a bolt amber sand bursts into slow falling glass and ember grit burns away. |
 | S2 | Written, in playtesting: `Chakram Blitz` (inspired by Murasa's anchors in Touhou 12). Two rings rest at his sides and are thrown at the player in turn; while one waits it loops once round him in 2.5D, larger in front and smaller, dimmer and harmless behind him, timed to be back at rest as its wind-up starts. Each winds up aimed at the player, locks its aim with a brief flash of its lane, charges, is thrown fast with a sharp acceleration and a smooth braking stop, lays a braided double-helix rope that holds still and then comes apart, comes to rest short of the wall with its spin still building like a yo-yo's, sprays a brief pinwheel of bullets, and is pulled back. One ring is out at a time, and the gap between throws shrinks over the attack. |
-| S3, S8 | Old placeholders: `Three Open Gates`, `Grand Orrery` |
+| S3 | Old placeholder: `Three Open Gates` |
+| S8 | Written, in playtesting: `Grand Orrery`. He holds the middle and throws out all six rings, which come out as the mill's do onto six orbits (each drawn as a gold line) clear of the bottom middle, evenly spaced and at one rate, alternate rings turning the other way; bolts string between rings that come close. A rage spell: a ring wakes (lit) for each sixth of his health lost, from the inside out, each firing its own pattern (corona spiral, pinwheel, comets, halo, a star of eight fixed beams, one aimed at the player, rings of darts in every direction). Photograph the whole with `python tools/shot.py orrery_rage`, which holds him at his threshold. |
 | S4–S7 | Stubs (`Unwritten Spell 4` to `7`) |
 
 Known gaps:
@@ -745,7 +750,7 @@ Known gaps:
 - Nothing has been balanced against a human; every tuning number is a first
   guess.
 - These are placeholders: all attacks except the Hex, Mika's non-spells,
-  `Storm Cage` and `Chakram Blitz` (Ziggy's, Velka's first five, the
+  `Storm Cage`, `Chakram Blitz` and `Grand Orrery` (Ziggy's, Velka's first five, the
   midbosses', stage three's ten waves, every draft), Ziggy's art, every
   boss's cut-in portrait (all show Mika's, shut eyes painted over his
   sheet), the grove's tree art, every sound, and both music tracks. Only

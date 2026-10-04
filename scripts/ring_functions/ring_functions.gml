@@ -10,6 +10,8 @@
 /// - Fire: `act(ring, run, frame)` runs every frame like a boss attack.
 /// - Lane: it can flash the path it is about to be thrown down
 ///   (`ring_lane_flash`). Drawn only.
+/// - Track: it can show the circle it orbits on round its `src` (`track`),
+///   as a line under everything. Drawn only.
 /// - Depth: in a 2.5D effect it can be nearer or further (`depth`, a factor on
 ///   its size that its collision follows), dimmed (`shade`), or behind its
 ///   caster (`behind`), where it is drawn before the enemies and neither
@@ -51,6 +53,7 @@ function ring_blank() {
         act: undefined,          // function(_ring, _g, _t), every frame
         arc: undefined,          // another ring this one is strung to
         arc_gen: -1, arc_t: 0,
+        arc_col: -1,             // the arc's colour; -1 is the ring's `col`
         graze_t: 0,
         // False for a ring that may be carried off the field and back (one
         // riding the player), which would otherwise be culled.
@@ -61,6 +64,12 @@ function ring_blank() {
         // neither hurts, grazes nor blocks (`ring_touchable`).
         depth: 1, shade: 0,
         behind: false,
+        // A steady light in the band (0 to 1), drawn like a charge's heat but
+        // harmless: the band's lethal width doesn't change.
+        glow: 0,
+        // The radius of the orbit it rides round its `src`, shown as a line
+        // in `track_col` (a colour) at `track_a` (0 is none); drawn only.
+        track: 0, track_a: 0, track_col: c_white,
         // The path it is about to be thrown down (`ring_lane_flash`), and
         // frames since the flash (-1 is "none"); drawn only.
         lane_t: -1, lane_life: 1,
@@ -95,11 +104,16 @@ function ring_alloc() {
     _g.src = undefined; _g.ox = 0; _g.oy = 0;
     _g.act = undefined;
     _g.arc = undefined; _g.arc_gen = -1; _g.arc_t = 0;
+    _g.arc_col = -1;
     _g.graze_t = 0;
     _g.cull = true;
     _g.depth = 1;
     _g.shade = 0;
     _g.behind = false;
+    _g.glow = 0;
+    _g.track = 0;
+    _g.track_a = 0;
+    _g.track_col = c_white;
     _g.lane_t = -1;
     _g.alive = true;
     global.ring_seq++;
@@ -534,7 +548,8 @@ function ring_beam(_ring, _dir, _len, _wid, _col, _warn, _hot, _fade = 18) {
 // ---------------------------------------------------------------------------
 
 /// @desc Scale, alpha and charge glow for a ring this frame. The charge
-///       pulses during the warning and is full while hot.
+///       pulses during the warning and is full while hot; a ring's `glow`
+///       lights it as far without a charge.
 function ring_visual(_ring) {
     if (_ring.fade >= 0) {
         var _f = _ring.fade / max(1, RING_FADE);
@@ -547,6 +562,7 @@ function ring_visual(_ring) {
     } else if (_ring.hot > 0) {
         _c = 1;
     }
+    _c = max(_c, _ring.glow);
     if (_ring.form > 0) {
         var _in = 1 - _ring.form / max(1, RING_FORM);
         return { scale: 0.72 + 0.28 * _in, alpha: _in * 0.85, charge: _c };
@@ -557,8 +573,46 @@ function ring_visual(_ring) {
 /// @desc The rings passing behind their caster (`behind`), and their lanes,
 ///       drawn before the enemies so the boss hides them.
 function ring_draw_behind() {
+    ring_draw_tracks();
     ring_draw_lanes(true);
     ring_draw_bodies(true);
+}
+
+/// @desc Every ring's orbit track (`track`): a solid line round the circle it
+///       rides on about its `src`, in `track_col`, full at the circle and
+///       fading to nothing `RING_TRACK_HALF` either side, so its edge is soft
+///       at any slant. Drawn before the enemies and every ring.
+function ring_draw_tracks() {
+    for (var _i = 0; _i < global.ring_n; _i++) {
+        var _r = global.rings[_i];
+        if (_r.track <= 0 || _r.src == undefined) continue;
+        var _a = _r.track_a * ring_visual(_r).alpha;
+        if (_a <= 0.01) continue;
+        var _cx = _r.src.x;
+        var _cy = _r.src.y;
+        var _col = _r.track_col;
+        var _rad = _r.track;
+        // Too small to draw as a circle (a track can grow from nothing).
+        if (_rad < 2 * RING_TRACK_HALF) continue;
+        var _n = max(24, ceil(180 / darccos(clamp(1 - RING_TRACK_SAG / _rad,
+                                                  -1, 1))));
+        var _step = 360 / _n;
+        // The outer half, then the inner: each a strip from the full line to
+        // nothing.
+        for (var _s = -1; _s <= 1; _s += 2) {
+            var _edge = _rad + _s * RING_TRACK_HALF;
+            draw_primitive_begin(pr_trianglestrip);
+            for (var _k = 0; _k <= _n; _k++) {
+                var _ux = dcos(_k * _step);
+                var _uy = -dsin(_k * _step);
+                draw_vertex_colour(_cx + _ux * _rad, _cy + _uy * _rad, _col,
+                                   _a);
+                draw_vertex_colour(_cx + _ux * _edge, _cy + _uy * _edge,
+                                   _col, 0);
+            }
+            draw_primitive_end();
+        }
+    }
 }
 
 /// @desc Every other ring, with the lanes under them and the arcs over.
@@ -794,7 +848,8 @@ function ring_draw_arcs() {
         var _a = ring_arc_ends(_r);
         if (_a == undefined) continue;
 
-        var _col = global.bullet_colour[_r.col];
+        var _col = global.bullet_colour[(_r.arc_col >= 0) ? _r.arc_col
+                                                          : _r.col];
         var _len = point_distance(_a.x0, _a.y0, _a.x1, _a.y1);
         if (_len < 1) continue;
         var _dir = point_direction(_a.x0, _a.y0, _a.x1, _a.y1);

@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"mika_grand_orrery",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"mika_grand_orrery",
+  "parent":{
+    "name":"mika",
+    "path":"folders/Scripts/mika.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

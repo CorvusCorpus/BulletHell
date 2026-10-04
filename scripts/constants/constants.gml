@@ -224,6 +224,12 @@
 #macro RING_ARC_WID 26             // the current between two rings, drawn
 #macro RING_ARC_NODES 14           // segments the bolt is jittered in
 
+// A ring's orbit track (`track`): a line fading out this many pixels either
+// side of the circle, in segments short enough that the circle bows from its
+// chords by no more than `SAG` pixels.
+#macro RING_TRACK_HALF 2
+#macro RING_TRACK_SAG 0.25
+
 // ---------------------------------------------------------------------------
 // Items
 // ---------------------------------------------------------------------------

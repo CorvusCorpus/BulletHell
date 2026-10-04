@@ -89,7 +89,9 @@ function laser_beam(_x, _y, _dir, _len, _wid, _col, _warn, _hot, _fade = 18) {
     return _l;
 }
 
-/// @desc A bar of light that travels; no warning phase.
+/// @desc A bar of light that travels; no warning phase. It is drawn as a
+///       white-hot core in its hue, `_wid` wide and `_len` from point to
+///       point, narrowing to a point at each end (`laser_draw_ray`).
 function laser_ray(_x, _y, _dir, _spd, _len, _wid, _col, _life) {
     var _l = laser_alloc();
     if (_l == undefined) return undefined;
@@ -259,12 +261,20 @@ function laser_spine_dist(_l, _x, _y) {
         return _best;
     }
 
-    // A ray's segment runs backwards from its head; a beam's runs forwards
-    // from its anchor.
+    // A ray's segment runs backwards from its head, drawn in from both points
+    // by the share of its narrowing ends (`BRAY_TAPER`) its kill width is of
+    // its drawn width, so a point never kills wider than it is drawn; a
+    // beam's runs forwards from its anchor.
     var _x1, _y1;
     if (_l.kind == LaserKind.Ray) {
-        _x1 = _l.x - lengthdir_x(_l.len, _l.dir);
-        _y1 = _l.y - lengthdir_y(_l.len, _l.dir);
+        var _taper = BRAY_TAPER * _l.len / (BRAY_BODY1 - BRAY_BODY0);
+        var _in = min(_taper * laser_hit_half(_l) / (_l.wid * 0.5),
+                      _l.len * 0.5);
+        var _hx = _l.x - lengthdir_x(_in, _l.dir);
+        var _hy = _l.y - lengthdir_y(_in, _l.dir);
+        _x1 = _l.x - lengthdir_x(_l.len - _in, _l.dir);
+        _y1 = _l.y - lengthdir_y(_l.len - _in, _l.dir);
+        return point_seg_dist(_x, _y, _hx, _hy, _x1, _y1);
     } else {
         _x1 = _l.x + lengthdir_x(_l.len, _l.dir);
         _y1 = _l.y + lengthdir_y(_l.len, _l.dir);
@@ -343,7 +353,9 @@ function laser_visual(_l) {
             };
 
         case LaserPhase.Fire:
-            // Reaches full width over three frames.
+            // A ray is a solid grain from its first frame; a beam reaches
+            // full width over three.
+            if (_l.kind == LaserKind.Ray) return { wid: _l.wid, alpha: 1 };
             var _in = min(1, _l.t / 3);
             return { wid: _l.wid * _in, alpha: 0.95 };
 
@@ -364,20 +376,13 @@ function laser_draw() {
 
         if (_l.kind == LaserKind.Curve) {
             laser_draw_curve(_l, _v, _col);
+        } else if (_l.kind == LaserKind.Ray) {
+            laser_draw_ray(_l, _v.alpha);
         } else {
-            var _len = _l.len;
-            var _x0 = _l.x;
-            var _y0 = _l.y;
-            if (_l.kind == LaserKind.Ray) {
-                // Drawn from the tail forward, so the sprite's bright end is
-                // at the head.
-                _x0 = _l.x - lengthdir_x(_len, _l.dir);
-                _y0 = _l.y - lengthdir_y(_len, _l.dir);
-            }
-            laser_draw_bar(_x0, _y0, _l.dir, _len, _v.wid, _col, _v.alpha);
-
-            // A light at a beam's root (rays and curves have a lit head).
-            if (_l.kind == LaserKind.Beam) laser_draw_muzzle(_l, _col);
+            laser_draw_bar(_l.x, _l.y, _l.dir, _l.len, _v.wid, _col,
+                           _v.alpha);
+            // A light at a beam's root.
+            laser_draw_muzzle(_l, _col);
         }
     }
     gpu_set_blendmode(bm_normal);
@@ -427,6 +432,17 @@ function laser_draw_muzzle(_l, _col) {
         draw_sprite_ext(spr_fx_spark, 0, _l.x, _l.y, _arm / _sw, _thk / _sh,
                         _l.dir + _k * 90, _col, _m.alpha * 0.5);
     }
+}
+
+/// @desc A ray (`laser_ray`): its light (`spr_bul_ray`, frame = its colour)
+///       stretched from its tail to its head and to its `wid`.
+function laser_draw_ray(_l, _alpha) {
+    var _half = _l.len * 0.5;
+    draw_sprite_ext(spr_bul_ray, _l.col,
+                    _l.x - lengthdir_x(_half, _l.dir),
+                    _l.y - lengthdir_y(_half, _l.dir),
+                    _l.len / (BRAY_BODY1 - BRAY_BODY0), _l.wid / BRAY_THICK,
+                    _l.dir, c_white, _alpha);
 }
 
 /// @desc One straight bar of light from (`_x`, `_y`) along `_dir`: a wide body

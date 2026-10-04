@@ -43,6 +43,11 @@
 #macro BCOL_BONE 13
 #macro BCOL_COUNT 14
 
+#macro BRAY_BODY0 1.00
+#macro BRAY_BODY1 127.00
+#macro BRAY_THICK 32.00
+#macro BRAY_TAPER 26.00
+
 /// @desc Fill in the shape table. Called once, from obj_boot.
 function bullet_table_init() {
     global.bshape_sprite = [

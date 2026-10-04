@@ -73,6 +73,8 @@ SCENES = (
     "grove_spell",   # her caster's background: bone circle, antlers, wash
     "sanctum",       # stage three from the start: its first wave, firing
     "mika_attacks",  # its attack list, scrolled half way down Mika's fifteen
+    "orrery_rage",   # Grand Orrery held near its threshold, so every ring
+                     # wakes in turn; ten seconds in (use --burst)
 
     # Stage three's hall: before the reveal, after it, partway, and the
     # opening fade.
