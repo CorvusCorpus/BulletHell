@@ -365,13 +365,13 @@
 #macro BOSS_DRIFT_Y 74
 #macro BOSS_DRIFT_RATE 0.075
 
-// `BossMove.Track`: the station walks toward the player's column at this
-// capped speed (not a proportional ease, which would be fastest when the
-// player is furthest away), wanders `BOSS_TRACK_SWAY` either side of it so it
-// is not directly overhead, and keeps its centre `BOSS_TRACK_EDGE` in from the
-// field's sides.
-#macro BOSS_TRACK_SPD 4.0
-#macro BOSS_TRACK_SWAY 120
+// `BossMove.Track`: holds `HOLD` frames, then hops over `MOVE` frames to a
+// spot `LEAN` of the way across to the player's x, give or take up to `X`,
+// keeping its centre `BOSS_TRACK_EDGE` in from the field's sides.
+#macro BOSS_HOP_HOLD 120
+#macro BOSS_HOP_MOVE 45
+#macro BOSS_HOP_LEAN 0.45
+#macro BOSS_HOP_X 160
 #macro BOSS_TRACK_EDGE 130
 
 // Where a boss holds station, measured down the field.
@@ -667,7 +667,7 @@ enum AttackKind {
 enum BossMove {
     Drift,      // the default: a wide lissajous wander round its station
     Close,      // the same wander, kept near the station
-    Track,      // trends toward the player's column, loosely, still wandering
+    Track,      // hops like Step, leaning toward the player's side
     Fixed,      // takes its station and holds it
     Step,       // holds still, hops to a new spot, holds again
 }

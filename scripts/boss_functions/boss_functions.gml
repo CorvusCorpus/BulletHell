@@ -62,9 +62,11 @@ function boss_spawn(_x, _y, _hp, _phases, _def) {
         home_x: _x,
         home_y: BOSS_HOME_Y,
         drift_t: 0,
-        // The column `BossMove.Track` walks toward the player (see
-        // `boss_move`).
+        // Where `BossMove.Track`'s current hop lands, and frames into its
+        // hops (see `boss_move`).
         track_x: _x,
+        track_y: BOSS_HOME_Y,
+        hop_t: 0,
 
         hits_this_phase: 0,
         bombs_this_phase: 0,
@@ -241,7 +243,7 @@ function boss_charge(_b) {
 //
 // Each attack says how the boss moves with its `move` field (`BossMove`):
 // `Drift` (the default wide wander), `Close` (the wander kept near the
-// station), `Track` (trends toward the player's column), `Fixed` (holds the
+// station), `Track` (hops, leaning toward the player's side), `Fixed` (holds the
 // station) or `Step` (holds, hops, holds). It is per attack because one boss
 // may want different movement in different attacks.
 // ---------------------------------------------------------------------------
@@ -265,9 +267,14 @@ function boss_move(_e, _g, _i) {
     // frame.
     var _k = boss_move_kind(_b, _i);
 
-    // The tracked column follows the boss whenever it isn't tracking, so
-    // starting to track doesn't lurch across the field.
-    if (_k != BossMove.Track) _b.track_x = _e.x;
+    // The hop's landing spot follows the boss whenever it isn't tracking, and
+    // the hops start over with a hold, so starting to track doesn't lurch
+    // across the field.
+    if (_k != BossMove.Track) {
+        _b.track_x = _e.x;
+        _b.track_y = _e.y;
+        _b.hop_t = 0;
+    }
 
     switch (_k) {
         case BossMove.Track: boss_move_track(_e, _g); break;
@@ -292,10 +299,12 @@ function boss_move_drift(_e, _amp = BOSS_DRIFT_X, _amp_y = BOSS_DRIFT_Y) {
     _e.y += (_y - _e.y) * BOSS_DRIFT_RATE;
 }
 
-/// @desc Loose horizontal tracking: the tracked column walks toward the
-///       player's x at a capped speed (`BOSS_TRACK_SPD`), and the boss
-///       wanders `BOSS_TRACK_SWAY` about it, squashed against the field's
-///       sides. Only x tracks.
+/// @desc `BossMove.Track`: hops like `Step`, leaning toward the player's
+///       side. It holds for `BOSS_HOP_HOLD`, then hops for `BOSS_HOP_MOVE`
+///       to a spot picked as the hop starts: `BOSS_HOP_LEAN` of the way
+///       across to the player's x, plus a sideways offset that is a function
+///       of the hop's number (`BOSS_HOP_X`), kept `BOSS_TRACK_EDGE` in from
+///       the field's sides.
 function boss_move_track(_e, _g) {
     var _b = _e.boss;
 
@@ -305,18 +314,18 @@ function boss_move_track(_e, _g) {
         return;
     }
 
-    var _lo = FIELD_X0 + BOSS_TRACK_EDGE;
-    var _hi = FIELD_X1 - BOSS_TRACK_EDGE;
+    var _cyc = BOSS_HOP_HOLD + BOSS_HOP_MOVE;
+    if ((_b.hop_t mod _cyc) == BOSS_HOP_HOLD) {
+        var _n = (_b.hop_t div _cyc) + 1;
+        var _x = lerp(_b.track_x, _g.player.x, BOSS_HOP_LEAN)
+                 + dsin(_n * 137) * BOSS_HOP_X;
+        _b.track_x = clamp(_x, FIELD_X0 + BOSS_TRACK_EDGE,
+                           FIELD_X1 - BOSS_TRACK_EDGE);
+        _b.track_y = _b.home_y + dsin(_n * 71) * BOSS_STEP_Y;
+    }
+    _b.hop_t++;
 
-    var _want = clamp(_g.player.x, _lo, _hi);
-    _b.track_x += clamp(_want - _b.track_x, -BOSS_TRACK_SPD, BOSS_TRACK_SPD);
-    _b.track_x = clamp(_b.track_x, _lo, _hi);
-
-    var _x = clamp(_b.track_x + dsin(_b.drift_t * 0.55) * BOSS_TRACK_SWAY,
-                   _lo, _hi);
-    var _y = _b.home_y + dsin(_b.drift_t * 0.93) * BOSS_DRIFT_Y;
-    _e.x += (_x - _e.x) * BOSS_DRIFT_RATE;
-    _e.y += (_y - _e.y) * BOSS_DRIFT_RATE;
+    enemy_glide(_e, _b.track_x, _b.track_y, BOSS_STEP_RATE);
 }
 
 /// @desc The station the attack at index `_i` asks for with its `at`
