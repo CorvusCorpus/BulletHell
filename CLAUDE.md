@@ -762,7 +762,8 @@ Known gaps:
   burst, parked to be tried before any slot uses it.
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.
-- Fodder can only move as `wave_line` and `wave_cross` describe.
+- Stages one and two's fodder can only move as `wave_line` and `wave_cross`
+  describe; only stage three's waves fly routes (`enemy_routes`).
 - Missing parts of ph3's shot API:
   - a hit width per laser (every laser kills at about a third of its drawn
     width);
