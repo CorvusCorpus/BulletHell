@@ -118,9 +118,11 @@ def register(name, rel_path, order=0):
     """Add a resource to the .yyp resource list and the resource order."""
     _add_to_list(YYP, "resources",
                  '    {"id":{"name":"%s","path":"%s",},},' % (name, rel_path))
-    _add_to_list(ORDER, "ResourceOrderSettings",
-                 '    {"name":"%s","order":%d,"path":"%s",},'
-                 % (name, order, rel_path))
+    # The resource order is the IDE's, and git-ignored; a fresh clone has none.
+    if os.path.exists(ORDER):
+        _add_to_list(ORDER, "ResourceOrderSettings",
+                     '    {"name":"%s","order":%d,"path":"%s",},'
+                     % (name, order, rel_path))
 
 
 def folder(path, order=0):
@@ -136,7 +138,7 @@ def folder(path, order=0):
                          '    {"$GMFolder":"","%%Name":"%s","folderPath":"%s",'
                          '"name":"%s","resourceType":"GMFolder",'
                          '"resourceVersion":"2.0",},' % (name, folder_path, name))
-        if '"%s"' % folder_path not in read(ORDER):
+        if os.path.exists(ORDER) and '"%s"' % folder_path not in read(ORDER):
             _add_to_list(ORDER, "FolderOrderSettings",
                          '    {"name":"%s","order":%d,"path":"%s",},'
                          % (name, order, folder_path))
@@ -607,6 +609,8 @@ def delete(name, kind):
     shutil.rmtree(os.path.join(ROOT, kind, name), ignore_errors=True)
     path = "%s/%s/%s.yy" % (kind, name, name)
     for f in (YYP, ORDER):
+        if not os.path.exists(f):
+            continue
         lines = [ln for ln in read(f).split("\n") if '"%s"' % path not in ln]
         write(f, "\n".join(lines))
         validate(f)

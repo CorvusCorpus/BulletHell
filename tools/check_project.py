@@ -574,6 +574,8 @@ def check_record_shapes():
                          "fonts", "tilesets", "animcurves", "sequences")
             for yy in glob.glob(os.path.join(ROOT, kind, "*", "*.yy"))
             if not yy.endswith(".old.yy")]:
+        if not os.path.exists(path):
+            continue
         data = load_yy(path)
         if data is None:
             continue
@@ -1756,7 +1758,9 @@ def check_texture_groups_exist(yyp):
 def main():
     yyp_path = os.path.join(ROOT, PROJECT + ".yyp")
     yyp = load_yy(yyp_path)
-    load_yy(os.path.join(ROOT, PROJECT + ".resource_order"))
+    order_path = os.path.join(ROOT, PROJECT + ".resource_order")
+    if os.path.exists(order_path):
+        load_yy(order_path)
 
     if yyp is not None:
         check_yyp_resources(yyp)
