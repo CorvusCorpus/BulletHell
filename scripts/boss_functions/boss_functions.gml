@@ -243,9 +243,9 @@ function boss_charge(_b) {
 //
 // Each attack says how the boss moves with its `move` field (`BossMove`):
 // `Drift` (the default wide wander), `Close` (the wander kept near the
-// station), `Track` (hops, leaning toward the player's side), `Fixed` (holds the
-// station) or `Step` (holds, hops, holds). It is per attack because one boss
-// may want different movement in different attacks.
+// station), `Track` (hops, leaning toward the player's side), `Fixed` (holds
+// the station) or `Step` (holds, hops, holds). It is per attack because one
+// boss may want different movement in different attacks.
 // ---------------------------------------------------------------------------
 
 /// @desc The movement kind for the attack at index `_i`. Read with
