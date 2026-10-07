@@ -98,6 +98,52 @@ and is open to change. Earlier agents wrote a great deal of invented
   or under it**, for attacks that have him circling the boss (Chakram
   Blitz).
 
+## The roster
+
+From the owner, and confirmed for the game; not the whole cast. A boss's
+gimmick is the mechanic its attacks are built around.
+
+- **Ziggy**, a fiend imp: the tutorial boss. His stage is undecided, probably
+  near Szuix's castle with a "level 1" feel. No major gimmick; fire and rock
+  attacks.
+- **Velka**, a druid witch fox (a banshee) from Celtic myth. A dark forest at
+  night, witch charms and skulls in the trees, a full moon that turns to a
+  blood moon during the stage. Gimmick: wisp enemies that spawn during her
+  non-spells and some spells.
+- **Mika**, Ashiah's high priest and archmage. The library of Ashiah's
+  palace, holding the archives of the life of everyone who ever lived.
+  Gimmick: metal chakram rings that block the player's fire, and electric
+  lasers that turn sand bullets into glass shards. He is also the midboss of
+  Ashiah's stage.
+- **Ashiah**, an Egyptian cat descended from Anubis and Bastet, the living
+  incarnation of the God of Death. A major boss, near twenty attacks. His
+  palace's sanctum and throne room, on the border between this world and the
+  afterlife. Gimmick: regions that sap life gradually.
+- **Vin'Zhen**, a qilin, the incarnation of the God of Life (Ashiah's
+  complement). A major boss, in the heart of his forest. Gimmick undecided.
+- **Astyr**, a jackalope, Vin'Zhen's forest ranger. Vin'Zhen's forest.
+  Gimmick: hops about like a rabbit while firing arrows rapidly.
+- **Faol**, a kelpie and satyr hybrid. By and in Vin'Zhen's lake. Gimmick:
+  sinking, a gravity that drifts the player's movement downward (like
+  Papyrus's in Undertale).
+- **Corvus**, a crow revenant after the grim reaper and Bloodborne. Begins in
+  a graveyard and descends deeper into a labyrinthine crypt. Gimmick: he
+  closes on or lunges at the player during patterns with melee attacks.
+- **Sylvia**, an egregore after the Cheshire cat. Begins somewhere that
+  looks normal and slowly fades into a trippy Wonderland. Gimmick: messing
+  with the game's visuals and controls during attacks.
+- **Haveri**, a bluejay mage and alchemist descended from a mythical Aztec
+  bird. He lost a wing in a magical explosion and flies on a conjured arcane
+  one in its place. Stage undecided. Gimmick: colourful potion vials he
+  throws, which explode or react with one another.
+- **Noxus**, a wulver tinkerer with technical gimmicks, such as remotely
+  detonated bombs. Stage undecided, maybe a cave.
+- **Kremlatiel**, a seraphic wyvern, the hidden superboss. An ascent into the
+  sky against a glowing sunrise; angelic attacks with big blinding lasers.
+  Unlocked by clearing every other boss at a certain rank, which lets her
+  book be bought in the game's shop (not built yet). Inspired by Bayonetta's
+  Rodin fights.
+
 ## How to work here
 
 - Do what was asked and no more. Don't write rules, constraints or
@@ -734,8 +780,9 @@ What's playable:
 - The review card.
 - The old stage three.
 
-Stages two and three are unlocked from the start. Six more stages are named
-on the rack and not built.
+Stages two and three are unlocked from the start. Eight more stages from the
+roster are on the rack, locked and not built; their order, names and
+subtitles are placeholders.
 
 Mika's slots (`mika_slots()` is the source of truth):
 

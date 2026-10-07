@@ -416,17 +416,30 @@ function ziggy_no_mere_pawn(_e, _g, _t) {
 // The roster
 // ---------------------------------------------------------------------------
 
-/// @desc Every stage in the game: the three built ones and six planned ones
-///       (drawn locked on the rack; `build` undefined means not built).
+/// @desc Every stage in the game: the three built ones and the planned ones
+///       from the owner's roster (drawn locked on the rack; `build` undefined
+///       means not built). The planned stages' order, names and subtitles
+///       are placeholders; each row's comment names its boss. Kremlatiel,
+///       the hidden superboss, is bought from the shop, so she is not here.
 function stage_list() {
     var _list = [stage_ziggy_def(), stage_grove_def(), stage_sanctum_def()];
     var _planned = [
-        ["THE RED CHAPEL", "something old, and thirsty", 3],
-        ["THE GLASS DESERT", "a palace under moving sand", 4],
-        ["THE ROOKERY", "the birdmen's high nests", 5],
-        ["THE DROWNED LIBRARY", "where the words went", 6],
-        ["THE CLOCKWORK MIRE", "a swamp that keeps time", 7],
-        ["THE SALT THRONE", "a court of dried things", 8],
+        // Corvus
+        ["THE DESCENDING CRYPT", "a graveyard, and what lies under it", 3],
+        // Sylvia
+        ["THE CROOKED PATH", "somewhere ordinary, for now", 4],
+        // Haveri
+        ["THE ALCHEMIST", "stage not yet chosen", 5],
+        // Noxus
+        ["THE TINKERER", "stage not yet chosen", 6],
+        // Astyr
+        ["THE RANGER'S WOOD", "Vin'Zhen's forest, and its warden", 7],
+        // Faol
+        ["THE SINKING LAKE", "deep water in Vin'Zhen's land", 8],
+        // Vin'Zhen
+        ["THE HEARTWOOD", "where the god of life keeps his heart", 9],
+        // Ashiah
+        ["THE THRESHOLD THRONE", "the border of the afterlife", 10],
     ];
     for (var _i = 0; _i < array_length(_planned); _i++) {
         array_push(_list, {
