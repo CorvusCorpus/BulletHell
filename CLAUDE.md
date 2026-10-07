@@ -94,6 +94,9 @@ and is open to change. Earlier agents wrote a great deal of invented
 - **A boss has between ten and twenty attacks**, and its health rail is one
   long bar for the whole fight that gives each attack an equal share,
   whatever its health.
+- **Szuix steals an artifact from every boss.** The main menu will let him
+  trade artifacts into the shop for abilities, and equip them in slots: a
+  main shot, a special and a passive effect. (Not built yet.)
 - **The boss's health rail fades to half opacity while the player is near
   or under it**, for attacks that have him circling the boss (Chakram
   Blitz).
