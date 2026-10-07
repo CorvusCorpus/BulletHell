@@ -124,7 +124,10 @@ gimmick is the mechanic its attacks are built around.
 - **Astyr**, a jackalope, Vin'Zhen's forest ranger. Vin'Zhen's forest.
   Gimmick: hops about like a rabbit while firing arrows rapidly.
 - **Faol**, an urisk (a Highland goat-legged water spirit) with some kelpie in
-  him. By and in Vin'Zhen's lake. Gimmick:
+  him. He was human; becoming one of Vin'Zhen's followers made him immortal,
+  and over the decades since he has slowly changed into something more like a
+  cryptid. An awkward, shy recluse, self-conscious about looking scary or
+  creepy to visitors. By and in Vin'Zhen's lake. Gimmick:
   sinking, a gravity that drifts the player's movement downward (like
   Papyrus's in Undertale).
 - **Corvus**, a crow revenant after the grim reaper and Bloodborne. Begins in
