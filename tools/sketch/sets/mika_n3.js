@@ -12,7 +12,8 @@
 // opposite ways.
 (function () {
 'use strict';
-const C = { ember: '#ff6a2a', amber: '#ffb627', gold: '#ffd84a' };
+const C = { ember: '#ff6a2a', amber: '#ffb627', gold: '#ffd84a',
+            cyan: '#5ad1e6' };
 const PELLET = 3.3, MOTE = 4.3;
 
 // The sand's pace, as N1's: grow, hold, brake and floor are the original
@@ -64,6 +65,68 @@ Sketch.set({
             }
         }
       } },
+
+    // "Ring shots", tried in N4 and scratched (the ring shots didn't look good
+    // against the sandstorm): the woven disc turning N4's
+    // way in N4's colours, and Mika himself throwing an aimed five-way fan of
+    // cyan ring shots once a turn of the rings, which leave fast and brake to
+    // a drift; the fans start once the disc's first loose sand has reached the
+    // player's height. The fan makes the player move through the weave rather
+    // than sit in a gap.
+    { name: 'Ring shots', loop: () => 228,
+      orbits: [{ rings: 4, radius: 205, period: 114, way: 1 }],
+      emit(a) {
+        if (a.t % 2 === 0) {
+            const o = a.orbits[0];
+            for (let i = 0; i < 4; i++) {
+                const r = a.ringOf(0, i);
+                for (const [turn, col, rr] of [[1, C.amber, PELLET],
+                                               [-1, C.ember, MOTE]]) {
+                    a.bullet({ x: r.x, y: r.y, ph: r.p, o, turn,
+                               rad: o.radius + 34, lim: o.radius + 334, col,
+                               r: rr, cull: false, step: pairStep });
+                }
+            }
+        }
+        if (a.t >= 385 && (a.t - 385) % 114 === 0) {
+            const m = a.boss, p = a.player;
+            const aim = a.pdir(p.x - m.x, p.y - m.y);
+            for (let j = -2; j <= 2; j++) {
+                // The game's ring shot (hit radius 18.5), in cyan.
+                a.grain({ x: m.x, y: m.y, v: 9, dir: aim + j * 11, hold: 6,
+                          brake: 0.25, flr: 4.0, col: C.cyan, r: 18.5,
+                          hollow: true });
+            }
+        }
+      } },
+
+    // N4 candidate, "Braid": the woven disc with its two families shed at
+    // different distances, the sand circling with the rings into an inner
+    // band and the sand circling against them into an outer one. Both spread
+    // at the same rate, so the bands turn against each other without
+    // meeting, and the two only cross once let go. N4's way round
+    // (counterclockwise) and colours.
+    { name: 'Braid', loop: () => 114,
+      orbits: [{ rings: 4, radius: 205, period: 114, way: 1 }],
+      emit(a) {
+        if (a.t % 2) return;
+        const o = a.orbits[0];
+        for (let i = 0; i < 4; i++) {
+            const r = a.ringOf(0, i);
+            for (const [turn, off, col, rr] of [[1, 34, C.amber, PELLET],
+                                                [-1, 120, C.ember, MOTE]]) {
+                a.bullet({ x: r.x, y: r.y, ph: r.p, o, turn,
+                           rad: o.radius + off, lim: o.radius + off + 300,
+                           col, r: rr, cull: false, step: pairStep });
+            }
+        }
+      } },
+
+    // The braid with each family kept to its own ring of the disc: the sand
+    // circling with the rings spreads only `inSpread` before it is let go,
+    // and the sand circling against them is shed beyond that, at `outOff`.
+    // The inner sand's streams then cross the outer ring on their way out.
+    braidApart('Braid, apart', 150, 190, 300),
 
     // B: each ring sheds one grain that trails it, as N1's sand does, and one
     // that leads it by as much. Turning with the rings, the two are mirror
@@ -143,6 +206,25 @@ function wovenFour(name, beat, k, period, opt) {
                           hold: Math.round(8 / k), brake: 0.4 * k * k,
                           flr: 2.0 * k, curl: curl * k * c * w, bend,
                           col, r: rr });
+            }
+        }
+      } };
+}
+
+function braidApart(name, inSpread, outOff, outSpread) {
+    return { name, loop: () => 114,
+      orbits: [{ rings: 4, radius: 205, period: 114, way: 1 }],
+      emit(a) {
+        if (a.t % 2) return;
+        const o = a.orbits[0];
+        for (let i = 0; i < 4; i++) {
+            const r = a.ringOf(0, i);
+            for (const [turn, off, spread, col, rr] of
+                     [[1, 34, inSpread, C.amber, PELLET],
+                      [-1, outOff, outSpread, C.ember, MOTE]]) {
+                a.bullet({ x: r.x, y: r.y, ph: r.p, o, turn,
+                           rad: o.radius + off, lim: o.radius + off + spread,
+                           col, r: rr, cull: false, step: pairStep });
             }
         }
       } };

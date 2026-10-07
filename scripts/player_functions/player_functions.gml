@@ -613,7 +613,7 @@ function player_draw_focus_ring(_p, _x, _y, _a) {
     var _e = 1 - power(1 - _s, 3);
     gpu_set_blendmode(bm_add);
     var _k = 1.18 - 0.18 * _e;
-    draw_sprite_ext(spr_focus_sigil, 0, _x, _y, _k, _k, _p.anim * 0.35,
+    draw_sprite_ext(spr_focus_sigil, 0, _x, _y, _k, _k, _p.anim * 0.5,
                     COL_SIGIL, 0.85 * _s * _a);
     _k = 1.32 - 0.32 * _e;
     draw_sprite_ext(spr_focus_sigil, 1, _x, _y, _k, _k, -_p.anim * 0.6,
@@ -622,14 +622,14 @@ function player_draw_focus_ring(_p, _x, _y, _a) {
 }
 
 /// @desc The focus circle's heart (`spr_focus_sigil` frame 2), over him: his
-///       four-pointed star upright round the hitbox, growing out of it as
-///       focus is held.
+///       four-pointed star round the hitbox, growing out of it as focus is
+///       held. It turns slowly against the rim (frame 0).
 function player_draw_focus_heart(_p, _x, _y, _a) {
     var _s = _p.focus_show;
     if (_s <= 0.01 || _a <= 0.01) return;
     var _k = 0.4 + 0.6 * (1 - power(1 - _s, 3));
     gpu_set_blendmode(bm_add);
-    draw_sprite_ext(spr_focus_sigil, 2, _x, _y, _k, _k, 0,
+    draw_sprite_ext(spr_focus_sigil, 2, _x, _y, _k, _k, -_p.anim * 0.3,
                     merge_colour(COL_SIGIL, c_white, 0.75), 0.6 * _s * _a);
     gpu_set_blendmode(bm_normal);
 }

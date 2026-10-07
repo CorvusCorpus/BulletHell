@@ -3916,11 +3916,11 @@ function test_bullet_orbit() {
     st_reset();
 }
 
-/// @desc Mika's disc non-spells (N1, and N3's woven disc) for most of their
-///       clock: their grains are let go and leave, and neither fills the
-///       bullet pool.
+/// @desc Mika's disc non-spells (N1, N3's woven disc, and N4's slower and
+///       denser one) for most of their clock: their grains are let go and
+///       leave, and none fills the bullet pool.
 function test_mika_disc_runs() {
-    var _slots = [0, 4];
+    var _slots = [0, 4, 6];
     for (var _s = 0; _s < array_length(_slots); _s++) {
         var _label = mika_slot_name(_slots[_s]);
         st_reset();

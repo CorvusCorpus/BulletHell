@@ -160,7 +160,8 @@ function mika_def() {
 ///           N1  written: the disc           S1  written: Storm Cage
 ///           N2  written: the disc mirrored  S2  written: Chakram Blitz
 ///           N3  written: the woven disc S3  old placeholder, Three Open Gates
-///           N4  written: N3 mirrored        S4  unwritten
+///           N4  written: N3 mirrored, slower and denser
+///                                           S4  unwritten
 ///           N5  draft: the crown            S5  unwritten
 ///           N6  draft: the crown mirrored   S6  unwritten
 ///           N7  draft: the rush             S7  unwritten
@@ -209,10 +210,11 @@ function mika_slots() {
         { name: "Three Open Gates", col: BCOL_AMBER, hp: 448,
           time: 44 * FPS, attack: mika_three_gates },
 
-        // N4 -- N3 mirrored, with its colours swapped; its health is N3's.
+        // N4 -- N3 mirrored, with its colours swapped, slower and denser
+        // (`MIKA_N4_PACE`); its health is N3's.
         { name: "", col: BCOL_AMBER, hp: 250, time: 35 * FPS,
           move: BossMove.Step, hold: 600, attack: mika_n4_woven,
-          fire_at: MIKA_DISC_WIND },
+          fire_at: MIKA_N4_WIND },
         mika_unwritten_row(true, 4),     // S4
 
         // N5 -- the crown (draft). 14% of shots reach him through six rings,

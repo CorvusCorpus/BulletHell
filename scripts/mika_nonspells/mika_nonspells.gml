@@ -243,6 +243,9 @@ function mika_sand_burst(_ring, _at, _dir, _look, _hold, _brake, _floor,
 ///       - `wind`: frames the rings take to wind up (`MIKA_MILL_WIND`).
 ///       - `bands`: a disc's bands (`mika_disc_band`); N1's three by
 ///         default.
+///       - `pace`: how fast a disc's sand spreads, is let go and drifts,
+///         against N1's (1). The rings' `orbit` and `wind` are given to
+///         match it (see `mika_woven_disc`).
 ///       `flr` not `floor`: see the note in `mika_sand_burst`.
 function mika_mill_shape(_spec) {
     return {
@@ -259,6 +262,7 @@ function mika_mill_shape(_spec) {
         disc: _spec[$ "disc"] ?? false,
         wind: _spec[$ "wind"] ?? MIKA_MILL_WIND,
         bands: _spec[$ "bands"] ?? mika_disc_bands(),
+        pace: _spec[$ "pace"] ?? 1,
     };
 }
 
@@ -678,13 +682,17 @@ function mika_disc() {
 
 /// @desc An orbit for a disc's sand (see `bullet_orbit`), round (`_x`, `_y`)
 ///       at the rings' tilt, turning `_way` at the rings' rate at their
-///       radius. It never moves: the grains on it circle that spot.
+///       radius. It never moves: the grains on it circle that spot. The
+///       mill's `pace` runs the sand's numbers faster or slower together, so
+///       its paths keep their shape.
 function mika_disc_orbit(_x, _y, _way, _mill) {
+    var _k = _mill.pace;
     return { x: _x, y: _y, tilt: MIKA_MILL_TILT, way: _way,
-             rate: _mill.orbit, ref: _mill.dist, grow: MIKA_DISC_GROW,
-             free_at: MIKA_DISC_FREE, fling: MIKA_DISC_FLING,
-             hold: MIKA_DISC_HOLD, brake: MIKA_DISC_BRAKE,
-             flr: MIKA_DISC_FLOOR };
+             rate: _mill.orbit, ref: _mill.dist, grow: MIKA_DISC_GROW * _k,
+             free_at: floor(MIKA_DISC_FREE / _k + 0.5),
+             fling: MIKA_DISC_FLING,
+             hold: floor(MIKA_DISC_HOLD / _k + 0.5),
+             brake: MIKA_DISC_BRAKE * _k * _k, flr: MIKA_DISC_FLOOR * _k };
 }
 
 /// @desc What a disc's rings share: the orbits new sand goes onto, `cur`
@@ -747,15 +755,24 @@ function mika_disc_grain(_o, _ang, _rad, _shape, _col) {
 /// @desc N3 and N4's mill: four rings shedding a pair into one band, the
 ///       grain circling with them of shape `_with_shape` and colour
 ///       `_with_col`, the one circling against them `_back_shape`,
-///       `_back_col`.
-function mika_woven_disc(_with_shape, _with_col, _back_shape, _back_col) {
+///       `_back_col`. `_pace` runs the whole of it -- the rings' turn and
+///       wind-up too, so the shape holds -- faster or slower than N1's; the
+///       shedding beat stays, so a slower one lays its sand closer.
+function mika_woven_disc(_with_shape, _with_col, _back_shape, _back_col,
+                         _pace = 1) {
     return mika_mill_shape({
-        rings: MIKA_WOVEN_RINGS, dist: MIKA_MILL_DIST, orbit: MIKA_DISC_ORBIT,
-        beat: MIKA_DISC_BEAT, wind: MIKA_DISC_WIND, disc: true,
+        rings: MIKA_WOVEN_RINGS, dist: MIKA_MILL_DIST,
+        orbit: MIKA_DISC_ORBIT * _pace, beat: MIKA_DISC_BEAT,
+        wind: floor(MIKA_DISC_WIND / _pace + 0.5), disc: true, pace: _pace,
         bands: [ mika_disc_band(MIKA_DISC_IN, _with_shape, _with_col),
                  mika_disc_band(MIKA_DISC_IN, _back_shape, _back_col, true) ],
     });
 }
+
+// N4 runs at this much of N3's pace: slower, and with the same shedding beat,
+// denser.
+#macro MIKA_N4_PACE 0.8
+#macro MIKA_N4_WIND floor(MIKA_DISC_WIND / MIKA_N4_PACE + 0.5)
 
 /// @desc **N3.** The woven disc, turning clockwise as N1 does: ember glints
 ///       circle with the rings, amber grains against them.
@@ -765,12 +782,14 @@ function mika_n3_woven(_e, _g, _t) {
                                                  BSHAPE_PELLET, BCOL_AMBER));
 }
 
-/// @desc **N4.** N3 mirrored: turning counterclockwise, with amber grains
-///       circling with the rings and ember glints against them.
+/// @desc **N4.** N3 mirrored -- turning counterclockwise, with amber grains
+///       circling with the rings and ember glints against them -- at
+///       `MIKA_N4_PACE` of its pace, so slower and denser.
 function mika_n4_woven(_e, _g, _t) {
     if (_t != 0) return;
     mika_mill_spawn(_e, 1, [0], mika_woven_disc(BSHAPE_PELLET, BCOL_AMBER,
-                                                BSHAPE_MOTE, BCOL_EMBER));
+                                                BSHAPE_MOTE, BCOL_EMBER,
+                                                MIKA_N4_PACE));
 }
 
 // ---------------------------------------------------------------------------

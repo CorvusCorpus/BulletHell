@@ -477,8 +477,8 @@ def make_focus_frames():
        into each break, the top one longest.
     1. His script (cyan): the sigil's inner word eight times round, a dot
        between.
-    2. The heart (pale): a four-pointed sparkle and a ring round the hitbox,
-       its tips pointing in at it.
+    2. The heart (pale): a four-pointed sparkle with equal tips and a ring
+       round the hitbox, its tips pointing in at it.
 
     The script runs just outside his body (his wings reach 61px), so the
     circle hugs him; the grace dial moves out past it while he is focused
@@ -524,8 +524,8 @@ def make_focus_frames():
     script = _alpha_only_glow(c1.finish(), 0.6, 1.4)
 
     c2 = A.Canvas(size, size)
-    _flare(c2, cx, cy, -90, 30, 22, 4.0, alpha=70)
-    _flare(c2, cx, cy, -90, 30, 22, 4.0, alpha=210, outline=0.9)
+    _flare(c2, cx, cy, -90, 26, 26, 4.0, alpha=70)
+    _flare(c2, cx, cy, -90, 26, 26, 4.0, alpha=210, outline=0.9)
     c2.ellipse([cx - 11.5, cy - 11.5, cx + 11.5, cy + 11.5],
                outline=(255, 255, 255, 210), width=1.0)
     heart = _alpha_only_glow(c2.finish(), 0.6, 1.6)

@@ -142,7 +142,8 @@ function rim(r, dir) {
  * degrees a frame until it has bent `bend` degrees. Extras, all off by
  * default: `fall` (a downward drift it eases into once settled), `down` (turns
  * it toward straight down at that many degrees a frame once settled) with
- * `sway` (degrees it swings either side of down while falling). Any bullet
+ * `sway` (degrees it swings either side of down while falling). `len` draws
+ * it as a pointed shard that long along its heading, `hollow` as a ring. Any bullet
  * is removed at `life` frames, the backstop the game's sand has
  * (`MIKA_SAND_LIFE`). */
 function grain(o) {
@@ -238,6 +239,17 @@ function step() {
 function dot(b, alpha) {
     const s = VIEW;
     g.globalAlpha = alpha;
+    if (b.len) { shard(b); g.globalAlpha = 1; return; }
+    if (b.hollow) {
+        // A hollow ring shot: its hit radius is about the ring's middle.
+        g.strokeStyle = b.col;
+        g.lineWidth = Math.max(1.5, b.r * s * 0.35);
+        g.beginPath();
+        g.arc(b.x * s, b.y * s, b.r * s * 1.6, 0, 7);
+        g.stroke();
+        g.globalAlpha = 1;
+        return;
+    }
     g.fillStyle = b.col;
     g.beginPath();
     g.arc(b.x * s, b.y * s, Math.max(2, b.r * s * 1.7), 0, 7);
@@ -247,6 +259,24 @@ function dot(b, alpha) {
     g.arc(b.x * s, b.y * s, Math.max(0.8, b.r * s * 0.5), 0, 7);
     g.fill();
     g.globalAlpha = 1;
+}
+
+// A long bullet (`len` set: a crystal or shard), drawn as a pointed diamond
+// `len` long along its heading, with a pale core.
+function shard(b) {
+    const s = VIEW, L = b.len * s * 0.5, W = Math.max(2, b.r * s * 1.4);
+    const ux = dcos(b.dir), uy = -dsin(b.dir), vx = -uy, vy = ux;
+    const x = b.x * s, y = b.y * s;
+    for (const [k, col] of [[1, b.col], [0.45, '#ffffff']]) {
+        g.fillStyle = col;
+        g.beginPath();
+        g.moveTo(x + ux * L * k, y + uy * L * k);
+        g.lineTo(x + vx * W * k, y + vy * W * k);
+        g.lineTo(x - ux * L * k, y - uy * L * k);
+        g.lineTo(x - vx * W * k, y - vy * W * k);
+        g.closePath();
+        g.fill();
+    }
 }
 
 function drawRing(r) {
