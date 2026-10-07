@@ -132,8 +132,8 @@ gimmick is the mechanic its attacks are built around.
 - **Sylvia**, an egregore after the Cheshire cat. Begins somewhere that
   looks normal and slowly fades into a trippy Wonderland. Gimmick: messing
   with the game's visuals and controls during attacks.
-- **Haveri**, a bluejay mage and alchemist descended from a mythical Aztec
-  bird. He lost a wing in a magical explosion and flies on a conjured arcane
+- **Haveri**, a bluejay (a huitzitzilin) mage and alchemist descended from a
+  mythical Aztec bird. He lost a wing in a magical explosion and flies on a conjured arcane
   one in its place. Stage undecided. Gimmick: colourful potion vials he
   throws, which explode or react with one another.
 - **Noxus**, a wulver tinkerer with technical gimmicks, such as remotely
