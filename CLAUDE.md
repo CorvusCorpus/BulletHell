@@ -91,6 +91,9 @@ and is open to change. Earlier agents wrote a great deal of invented
 - **Spending a sigil plays Szuix's own cut-in**, in the spell cut-in's
   style, as though he were declaring a spell of his own against the boss.
   It has no name plate.
+- **A boss has between ten and twenty attacks**, and its health rail is one
+  long bar for the whole fight that gives each attack an equal share,
+  whatever its health.
 - **The boss's health rail fades to half opacity while the player is near
   or under it**, for attacks that have him circling the boss (Chakram
   Blitz).
@@ -320,7 +323,9 @@ a hit, a score or a new mark. `hud_step` compares what it is showing with the
 true values and animates the difference. That includes the boss's health
 rail, which lowers when a boss is on the field and rises when it leaves, and
 the rank card, which is thrown when the ledger grows. The rail is drawn before
-the field frame, so it can hide above the field.
+the field frame, so it can hide above the field. It maps the boss's health
+onto equal shares, one per attack (`hud_rail_frac`), and its percentage reads
+the same mapped value, so it counts progress through the fight.
 
 **The HUD is cached in layers** (`ui_layer_*` in `ui_functions`). What
 changes only now and then is drawn into a surface and copied each frame, and

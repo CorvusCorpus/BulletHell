@@ -514,8 +514,6 @@
 #macro BOSS_SPELL_Y (BOSS_BAR_Y + BOSS_BAR_H * 0.5 + BOSS_PCT_H * 0.5 + 18)
 #macro BOSS_SPELL_W 330
 
-// Divisions the rail is graduated in (see `hud_rail_scale`).
-#macro RAIL_GRADS 20
 
 // The rail fades to `BOSS_RAIL_FADE` of its opacity while the player is under
 // it or within `BOSS_RAIL_NEAR` pixels of its box (`hud_rail_near`), easing

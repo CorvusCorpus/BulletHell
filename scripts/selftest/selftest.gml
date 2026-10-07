@@ -3481,6 +3481,9 @@ function test_counter() {
     var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
     var _h = hud_new();
     var _b = ziggy_spawn(_g);
+    // One attack, so the rail reads the boss's health as it is.
+    _b.boss.phases = [_b.boss.phases[0]];
+    _b.boss.phases[0].hp_end = 0;
     ok("a counter starts full", _h.pct_roll == 1000);
     _b.hp = _b.hp_max * 0.7463;
     var _last = _h.pct_roll;
@@ -3527,8 +3530,9 @@ function test_counter() {
     _g.practice = undefined;
     _b.hp = _b.hp_max * lerp(_bot, _top, 0.5);
     for (var _i = 0; _i < 150; _i++) hud_step(_h, _g);
-    ok("a stage reads the same health against the whole fight",
-       _h.pct_roll == floor(lerp(_bot, _top, 0.5) * 1000 + 0.0001));
+    var _n = array_length(_ph);
+    ok("a stage reads it as that attack's equal share of the whole fight",
+       _h.pct_roll == floor((_n - 2.5) / _n * 1000 + 0.0001));
     st_reset();
 }
 

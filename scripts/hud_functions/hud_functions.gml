@@ -217,7 +217,8 @@ function hud_step(_h, _g) {
     // to 0 (`hud_boss_span`).
     _h.boss_span = hud_boss_span(_g, _boss);
     var _want = (_boss == undefined) ? 1
-              : hud_span_frac(_h.boss_span, _boss.hp / _boss.hp_max);
+              : hud_span_frac(_h.boss_span,
+                              hud_rail_frac(_boss, _boss.hp / _boss.hp_max));
     _h.boss_slosh = max(_h.boss_slosh * 0.93,
                         min(1, abs(_want - _h.boss_shown) * 6));
     _h.boss_shown += (_want - _h.boss_shown) * 0.18;
@@ -605,19 +606,45 @@ function hud_meter(_y, _value, _fraction, _col, _divs, _slosh, _flare, _ready,
 // The boss's rail
 // ---------------------------------------------------------------------------
 
-/// @desc The stretch of the boss's health the rail spans, as `[top, bottom]`
-///       fractions of its whole health: `[1, 0]`, or in practice the
-///       practised attack's own span from the phase table. Read from the
-///       practice request, because the attempt starts in a pause where the
-///       boss has no phase yet.
+/// @desc The stretch of the whole fight's rail (`hud_rail_frac`) the rail
+///       spans, as `[top, bottom]`: `[1, 0]`, or in practice the practised
+///       attack's own share. Read from the practice request, because the
+///       attempt starts in a pause where the boss has no phase yet.
 function hud_boss_span(_g, _boss) {
     var _pr = _g[$ "practice"];
     if (_pr == undefined || _boss == undefined) return [1, 0];
-    var _ph = _boss.boss.phases;
+    var _n = array_length(_boss.boss.phases);
     var _i = _pr.phase_i;
-    if (_i < 0 || _i >= array_length(_ph)) return [1, 0];
-    var _top = (_i > 0) ? _ph[_i - 1].hp_end : 1;
-    return [_top, _ph[_i].hp_end];
+    if (_i < 0 || _i >= _n) return [1, 0];
+    return [hud_rail_bound(_n, _i - 1), hud_rail_bound(_n, _i)];
+}
+
+/// @desc Where a fraction of a boss's whole health sits on the whole fight's
+///       rail, from 1 (full) to 0. Each attack gets an equal share of the
+///       rail whatever its health: attack `i` of `n` runs from
+///       `hud_rail_bound(n, i - 1)` down to `hud_rail_bound(n, i)`, through
+///       its own health in between.
+function hud_rail_frac(_boss, _f) {
+    var _ph = _boss.boss.phases;
+    var _n = array_length(_ph);
+    if (_n == 0) return clamp(_f, 0, 1);
+    var _top = 1;
+    for (var _i = 0; _i < _n; _i++) {
+        var _end = _ph[_i].hp_end;
+        if (_f > _end || _i == _n - 1) {
+            var _in = (_top - _end > 0.000001)
+                      ? clamp((_f - _end) / (_top - _end), 0, 1) : 1;
+            return hud_rail_bound(_n, _i) + _in / _n;
+        }
+        _top = _end;
+    }
+    return 0;
+}
+
+/// @desc Where attack `_i` of `_n` ends on the whole fight's rail (1 for
+///       `_i == -1`, the top).
+function hud_rail_bound(_n, _i) {
+    return (_n - 1 - _i) / _n;
 }
 
 /// @desc A fraction of a boss's whole health, as a fraction of `_span`.
@@ -835,7 +862,8 @@ function hud_rail_wet(_h, _boss) {
     var _ph = _boss.boss.phases;
     var _n = 0;
     for (var _i = 0; _i < array_length(_ph); _i++) {
-        var _f = hud_span_frac(_h.boss_span, _ph[_i].hp_end);
+        var _f = hud_span_frac(_h.boss_span,
+                               hud_rail_bound(array_length(_ph), _i));
         if (_f <= 0.001 || _f >= 0.999) continue;
         if (_f <= _h.boss_shown + 0.001) _n++;
     }
@@ -858,38 +886,17 @@ function hud_rail_lip(_x, _w, _cy) {
     draw_primitive_end();
 }
 
-/// @desc The rail's scale: tick marks along both flanges (longer every
-///       fifth), and each phase boundary as a groove through the channel
+/// @desc The rail's scale: each phase boundary as a groove through the channel
 ///       (dark over liquid, pale over empty) with a notch through the flanges
 ///       (full depth for a spell) and, for a spell, a small lozenge under the
 ///       rail. The boundary currently being fought toward pulses.
-///       `_still` draws the ticks and the other boundaries (the rail's layer
+///       `_still` draws the other boundaries (the rail's layer
 ///       holds them), `_live` the one that pulses.
 function hud_rail_scale(_h, _boss, _x, _w, _cy, _col, _alpha, _still = true,
                         _live = true) {
     var _r = BOSS_BAR_CHANNEL * 0.5;
     var _lo = _x + _r;
     var _hi = _x + _w - _r;
-
-    // The tick marks.
-    var _top = _cy - BOSS_BAR_H * 0.5;
-    var _bot = _cy + BOSS_BAR_H * 0.5;
-    draw_set_colour(COL_GILT_LIT);
-    for (var _i = 1; _still && _i < RAIL_GRADS; _i++) {
-        var _gx = lerp(_lo, _hi, _i / RAIL_GRADS);
-        var _major = (_i mod 5 == 0);
-        var _len = _major ? 4.6 : 2.6;
-        // Each tick is a dark line with a pale one beside it (a single gilt
-        // hairline on gilt is invisible).
-        draw_set_colour(COL_VOID);
-        draw_set_alpha(_alpha * (_major ? 0.75 : 0.5));
-        draw_rectangle(_gx - 1, _top + 2.4, _gx, _top + 2.4 + _len, false);
-        draw_rectangle(_gx - 1, _bot - 2.4 - _len, _gx, _bot - 2.4, false);
-        draw_set_colour(COL_GILT_LIT);
-        draw_set_alpha(_alpha * (_major ? 0.6 : 0.36));
-        draw_rectangle(_gx, _top + 2.4, _gx + 1, _top + 2.4 + _len, false);
-        draw_rectangle(_gx, _bot - 2.4 - _len, _gx + 1, _bot - 2.4, false);
-    }
 
     if (_boss == undefined) {
         draw_set_alpha(1);
@@ -902,7 +909,8 @@ function hud_rail_scale(_h, _boss, _x, _w, _cy, _col, _alpha, _still = true,
     var _now = _boss.boss.phase;
     for (var _i = 0; _i < array_length(_ph); _i++) {
         // Boundaries outside the rail's span (in practice) are skipped.
-        var _f = hud_span_frac(_h.boss_span, _ph[_i].hp_end);
+        var _f = hud_span_frac(_h.boss_span,
+                               hud_rail_bound(array_length(_ph), _i));
         if (_f <= 0.001 || _f >= 0.999) continue;
         // The boundary of the current attack pulses.
         var _pulsing = (_i == _now);
