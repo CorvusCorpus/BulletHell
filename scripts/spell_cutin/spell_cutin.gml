@@ -473,6 +473,8 @@ function cutin_draw(_h, _boss) {
 
     if (_t < CUTIN_BAND_TIME) {
         cutin_draw_veil(_g);
+        // The caster's seal goes under the band; the caster itself in front.
+        cutin_draw_caster_seal(_g, _boss, _col);
         cutin_draw_strips(_g, _col);
         if (_g.h > 1) {
             var _band = cutin_strip(_g, -_g.h * 0.5, _g.h * 0.5);
@@ -809,28 +811,40 @@ function cutin_draw_cut(_g, _col) {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc The caster drawn again in front of the band: its seal and a glow
-///       behind it, brighter than `boss_draw` has them, and a rim of the
-///       spell's colour round it. It goes as the veil lifts off the boss drawn
-///       under it; the rim goes first, or the fading boss is washed out in
-///       it. (A boss drawn in parts casts no spells,
-///       and isn't drawn here.)
-function cutin_draw_caster(_g, _e, _col) {
-    var _t = _g.t;
-    // Solid until the veil has nearly lifted, so the boss under it isn't
-    // seen through.
-    var _a = min(1, 3 * cutin_veil(_t));
-    var _b = _e.boss;
-    if (_a <= 0.01 || _b.def[$ "draw"] != undefined) return;
+/// @desc How solid the caster drawn over the veil is: solid until the veil has
+///       nearly lifted, so the boss under it isn't seen through. Zero for a
+///       boss drawn in parts, which casts no spells and isn't drawn again.
+function cutin_caster_alpha(_g, _e) {
+    if (_e.boss.def[$ "draw"] != undefined) return 0;
+    return min(1, 3 * cutin_veil(_g.t));
+}
 
-    var _spr = _b.def.sprite;
+/// @desc The caster's seal over the veil, brighter than `boss_draw` has it.
+///       It is drawn before the band, so the band covers it.
+function cutin_draw_caster_seal(_g, _e, _col) {
+    var _a = cutin_caster_alpha(_g, _e);
+    if (_a <= 0.01) return;
+    // The world shakes and the GUI doesn't, so the shake is added here.
+    boss_draw_seal(_e.x + global.shake_x, _e.y + global.shake_y, _e.t, _col,
+                   1.5 * _a);
+}
+
+/// @desc The caster drawn again in front of the band: a glow behind it and a
+///       rim of the spell's colour round it (its seal is under the band,
+///       `cutin_draw_caster_seal`). It goes as the veil lifts off the boss
+///       drawn under it; the rim goes first, or the fading boss is washed out
+///       in it.
+function cutin_draw_caster(_g, _e, _col) {
+    var _a = cutin_caster_alpha(_g, _e);
+    if (_a <= 0.01) return;
+
+    var _spr = _e.boss.def.sprite;
     var _pose = boss_pose(_e);
     // The world shakes and the GUI doesn't, so the shake is added here.
     var _bx = _e.x + global.shake_x;
     var _by = _e.y + global.shake_y;
     var _y = _by + _pose[1];
 
-    boss_draw_seal(_bx, _by, _e.t, _col, 1.5 * _a);
     gpu_set_blendmode(bm_add);
     var _gs = 380 / sprite_get_width(spr_fx_bloom);
     draw_sprite_ext(spr_fx_bloom, 0, _bx, _by, _gs, _gs, 0, _col, 0.5 * _a);

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pattern sketches</title>
+<style>
+:root { color-scheme: dark; }
+body { margin: 0; background: #0b0816; color: #d9cfe8; font: 14px/1.5 system-ui, sans-serif; }
+main { max-width: 1020px; margin: 0 auto; padding: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+h1 { font: 500 20px Georgia, serif; color: #e3c27a; margin: 0; }
+select, button { font: inherit; background: #1d1536; color: #e8def7; border: 1px solid #3b2d63; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button:hover { border-color: #6b55a8; }
+#pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+#pills button.on { background: #3a2a14; border-color: #c9a24a; color: #f3d590; }
+canvas { display: block; width: 100%; border-radius: 8px; cursor: crosshair; background: #120c24; }
+#bar { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 8px; color: #a99cc4; }
+#bar b { color: #f1e8ff; font-weight: 500; }
+#hint { color: #7f7399; font-size: 13px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">Pattern sketches</h1>
+    <select id="sets" aria-label="Pattern set"></select>
+  </header>
+  <div id="pills"></div>
+  <canvas id="cv"></canvas>
+  <div id="bar">
+    <span>Frame <b id="t">0</b></span>
+    <span>Grains <b id="n">0</b></span>
+    <span>Hits <b id="hits">0</b></span>
+    <span id="toggles"></span>
+    <label><input type="checkbox" id="slow"> Half speed</label>
+    <button id="pause">Pause</button>
+    <button id="reset">Restart</button>
+  </div>
+  <div id="hint">The mouse steers the player; hold the button to focus. Space pauses, R restarts.</div>
+</main>
+<script src="engine.js"></script>
+<script src="sets/index.js"></script>
+<script>
+(function () {
+'use strict';
+const q = new URLSearchParams(location.search);
+const ids = window.SKETCH_SETS || [];
+const id = q.get('set') || ids[0];
+const $ = (s) => document.getElementById(s);
+
+// Sets are plain scripts so the page works from file:// as well as a server.
+const s = document.createElement('script');
+s.src = 'sets/' + id + '.js';
+s.onload = start;
+s.onerror = () => { $('title').textContent = 'No set "' + id + '" in tools/sketch/sets'; };
+document.body.appendChild(s);
+
+for (const k of ids) {
+    const o = document.createElement('option');
+    o.value = k; o.textContent = k; o.selected = (k === id);
+    $('sets').appendChild(o);
+}
+$('sets').onchange = (e) => { q.set('set', e.target.value); q.delete('pattern'); location.search = q; };
+
+let paused = false, slow = false;
+
+function start() {
+    const set = Sketch.use(id);
+    $('title').textContent = set.name;
+    document.title = set.name + ' — sketches';
+    const cv = $('cv');
+    Sketch.mount(cv, window.devicePixelRatio || 1);
+
+    for (const tg of set.toggles || []) {
+        const l = document.createElement('label');
+        l.innerHTML = '<input type="checkbox"> ' + tg.label;
+        l.firstChild.onchange = (e) => { Sketch.opts[tg.id] = e.target.checked; Sketch.restart(); };
+        $('toggles').appendChild(l);
+    }
+
+    set.patterns.forEach((p, i) => {
+        const b = document.createElement('button');
+        b.textContent = p.name;
+        b.onclick = () => pick(i);
+        $('pills').appendChild(b);
+    });
+    function pick(i) {
+        Sketch.choose(i);
+        [...$('pills').children].forEach((c, j) => c.classList.toggle('on', j === i));
+        q.set('pattern', Sketch.slug(set.patterns[i].name));
+        history.replaceState(null, '', '?' + q);
+    }
+    const want = q.get('pattern');
+    const k = want ? set.patterns.findIndex((p) => Sketch.slug(p.name) === want) : 0;
+    pick(Math.max(0, k));
+
+    Sketch.onFrame((f) => { $('t').textContent = f.t; $('n').textContent = f.grains; $('hits').textContent = f.hits; });
+    $('reset').onclick = () => Sketch.restart();
+    $('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? 'Resume' : 'Pause'; };
+    $('slow').onchange = (e) => { slow = e.target.checked; };
+    addEventListener('keydown', (e) => {
+        if (e.code === 'Space') { e.preventDefault(); $('pause').click(); }
+        if (e.code === 'KeyR') Sketch.restart();
+    });
+    cv.addEventListener('mousemove', (e) => {
+        const r = cv.getBoundingClientRect();
+        Sketch.player.tx = (e.clientX - r.left) / r.width * Sketch.GAME.fieldW;
+        Sketch.player.ty = (e.clientY - r.top) / r.height * Sketch.GAME.fieldH;
+    });
+    cv.addEventListener('mousedown', () => { Sketch.player.focus = true; });
+    addEventListener('mouseup', () => { Sketch.player.focus = false; });
+
+    let last = 0, acc = 0;
+    function loop(ts) {
+        if (!last) last = ts;
+        acc += Math.min(100, ts - last) * (slow ? 0.5 : 1);
+        last = ts;
+        while (acc >= 1000 / 60) { if (!paused) Sketch.step(); acc -= 1000 / 60; }
+        Sketch.draw();
+        requestAnimationFrame(loop);
+    }
+    // A headless capture drives the frames itself.
+    if (!q.has('capture')) requestAnimationFrame(loop);
+    window.sketchReady = true;
+}
+})();
+</script>
+</body>
+</html>

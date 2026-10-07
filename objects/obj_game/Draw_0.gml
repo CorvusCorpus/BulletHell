@@ -21,10 +21,6 @@ spell_bg_draw(spell_style, spell_col, t, spell_fade);
 ring_draw_behind();
 enemy_draw();
 
-// Rings are opaque, so they draw before bullets, lasers and the player; they
-// can hide the boss but never a bullet.
-ring_draw();
-
 item_draw();
 pshot_draw();
 
@@ -32,6 +28,10 @@ player_draw_bomb(player);
 player_draw(player);
 // The invulnerability dial, under the bullets.
 player_draw_grace(player);
+
+// Rings over the player (owner's call) but under bullets and lasers: they
+// are opaque, so they may hide the boss or the player but never a bullet.
+ring_draw();
 
 laser_draw();
 bullet_draw();

@@ -366,6 +366,7 @@ function player_seals_step(_p) {
 
         _s.x += lengthdir_x(_s.spd, _s.dir);
         _s.y += lengthdir_y(_s.spd, _s.dir);
+        player_seal_bounce(_s);
 
         // The wake clears without dropping items: `bullet_clear_circle` drops
         // a shard for the first bullet of every call, which here would be one
@@ -381,12 +382,25 @@ function player_seals_step(_p) {
                      20, 46, spr_fx_bloom);
         }
 
-        if (_s.t >= BOMB_SEAL_LIFE
-            || _s.x < FIELD_X0 - 40 || _s.x > FIELD_X1 + 40
-            || _s.y < FIELD_Y0 - 40 || _s.y > FIELD_Y1 + 40) {
-            player_seal_burst(_s);
-        }
+        if (_s.t >= BOMB_SEAL_LIFE) player_seal_burst(_s);
     }
+}
+
+/// @desc Turn a seal back off the field's edge, as off a mirror, so a sigil
+///       cast against a wall keeps all its seals rather than bursting the
+///       ones that leave toward it.
+function player_seal_bounce(_s) {
+    var _x0 = FIELD_X0 + BOMB_SEAL_EDGE, _x1 = FIELD_X1 - BOMB_SEAL_EDGE;
+    var _y0 = FIELD_Y0 + BOMB_SEAL_EDGE, _y1 = FIELD_Y1 - BOMB_SEAL_EDGE;
+    var _dx = lengthdir_x(1, _s.dir), _dy = lengthdir_y(1, _s.dir);
+    if ((_s.x < _x0 && _dx < 0) || (_s.x > _x1 && _dx > 0)) {
+        _s.dir = 180 - _s.dir;
+    }
+    if ((_s.y < _y0 && _dy < 0) || (_s.y > _y1 && _dy > 0)) {
+        _s.dir = -_s.dir;
+    }
+    _s.x = clamp(_s.x, _x0, _x1);
+    _s.y = clamp(_s.y, _y0, _y1);
 }
 
 /// @desc One seal going off where it is: clears a circle of bullets (dropping

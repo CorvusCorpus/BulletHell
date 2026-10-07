@@ -119,6 +119,7 @@
 #macro BOMB_SEAL_R 26          // how close to a target counts as striking it
 #macro BOMB_SEAL_WAKE 90       // bullets this close to a flying seal are swept
 #macro BOMB_SEAL_BLAST 230     // ...and this close to where it bursts
+#macro BOMB_SEAL_EDGE 24       // how far inside the field's edge a seal turns back
 #macro BOMB_SEAL_DMG 10
 #macro BOMB_SIGIL_FADE 120     // the frame the circle starts to fade...
 #macro BOMB_SIGIL_OUT (BOMB_INVULN - 8)   // ...and is gone
@@ -590,6 +591,7 @@ enum BMod {
     Plain,
     Home,       // steers toward the player, weakly, for as long as it lives
     Wander,     // drifts on a sine
+    Orbit,      // rides a tilted orbit round a moving centre (`bullet_orbit`)
 }
 
 /// What a bullet can be told to do at a frame (ph3's `AddPattern` family).

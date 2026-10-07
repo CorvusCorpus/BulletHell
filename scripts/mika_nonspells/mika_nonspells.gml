@@ -166,13 +166,14 @@ function mika_sand_burst(_ring, _at, _dir, _look, _hold, _brake, _floor,
 }
 
 // ---------------------------------------------------------------------------
-// The mill (N1 and N2)
+// The mill (N5 to N7, and the rings of N1 to N4's discs)
 //
 // Rings form on top of Mika, extend to their distance while the orbit winds
 // up from a standstill, and throw nothing until they reach speed. Each ring
 // then lays streams of beads off its trailing rim -- thrown out from that
 // point of the ring, so the sand is left in its wake. A bead brakes to a stop,
-// hangs briefly, and splits into grains that drift.
+// hangs briefly, and splits into grains that drift. (N1 to N4's rings shed
+// a disc instead; see "The disc" below.)
 // ---------------------------------------------------------------------------
 
 #macro MIKA_MILL_RINGS 2
@@ -183,6 +184,16 @@ function mika_sand_burst(_ring, _at, _dir, _look, _hold, _brake, _floor,
 // The direction (+1 or -1) is chosen per slot. It flips the orbit, the rim
 // the sand leaves from, the lean on the throw and the way the drift bends,
 // all together.
+
+// The orbit is a level circle round him seen from above, as
+// Chakram Blitz's loop is. On screen it is an ellipse `TILT` times as tall as
+// it is wide. At the far side a ring is smaller by `DEPTH` of its size and
+// dimmed by `DIM`, and in front as much larger, easing between with the
+// sine of its angle. On the far half it is behind him, so he hides it, and it
+// neither hurts nor blocks the player's fire. It still throws sand there.
+#macro MIKA_MILL_TILT 0.53
+#macro MIKA_MILL_DEPTH 0.2
+#macro MIKA_MILL_DIM 0.55
 
 // ---- the wind-up ----------------------------------------------------------
 
@@ -198,8 +209,8 @@ function mika_sand_burst(_ring, _at, _dir, _look, _hold, _brake, _floor,
 
 // ---- the wake -------------------------------------------------------------
 
-// Streams per ring, and the degrees of rim their muzzles are spread over.
-#macro MIKA_MILL_WAKE 2
+// The degrees of rim a ring's streams are spread over, when it throws more
+// than one.
 #macro MIKA_MILL_WAKE_ARC 56
 
 // How far the throw is turned off straight-out-from-the-ring. A bead leaves
@@ -227,6 +238,11 @@ function mika_sand_burst(_ring, _at, _dir, _look, _hold, _brake, _floor,
 ///       - `rock`: true for an orbit that reverses on each of his hops.
 ///       - `bolt`: true if every ring throws an aimed beam at each reversal
 ///         (only meaningful with `rock`).
+///       - `disc`: true if the rings shed a disc of sand (`mika_disc_shed`)
+///         instead of throwing beads.
+///       - `wind`: frames the rings take to wind up (`MIKA_MILL_WIND`).
+///       - `bands`: a disc's bands (`mika_disc_band`); N1's three by
+///         default.
 ///       `flr` not `floor`: see the note in `mika_sand_burst`.
 function mika_mill_shape(_spec) {
     return {
@@ -240,6 +256,9 @@ function mika_mill_shape(_spec) {
         flr: _spec[$ "flr"] ?? MIKA_SAND_FLOOR,
         rock: _spec[$ "rock"] ?? false,
         bolt: _spec[$ "bolt"] ?? false,
+        disc: _spec[$ "disc"] ?? false,
+        wind: _spec[$ "wind"] ?? MIKA_MILL_WIND,
+        bands: _spec[$ "bands"] ?? mika_disc_bands(),
     };
 }
 
@@ -261,13 +280,6 @@ function mika_mill_bead_gap(_mill) {
 ///       The wake only reads if this outruns the sand's floor speed.
 function mika_mill_rim_spd(_mill) {
     return _mill.dist * _mill.orbit * pi / 180;
-}
-
-/// @desc N1 and N2's mill: two rings, half a turn apart, two streams each.
-function mika_mill_pair() {
-    return mika_mill_shape({ rings: MIKA_MILL_RINGS, dist: MIKA_MILL_DIST,
-                             orbit: MIKA_MILL_ORBIT, beat: MIKA_MILL_BEAT,
-                             wake: MIKA_MILL_WAKE, arc: MIKA_MILL_WAKE_ARC });
 }
 
 // ---- the bead -------------------------------------------------------------
@@ -306,13 +318,14 @@ function mika_mill_wind(_t) {
 ///       reversal `_flip`). Being a pure function of `_t` means nothing carries
 ///       over between frames or attempts.
 function mika_mill_turned(_t, _mill, _flip) {
-    var _ramp = _mill.orbit * MIKA_MILL_WIND / (MIKA_MILL_WIND_POW + 1);
-    if (_t < MIKA_MILL_WIND) {
-        return _ramp * power(_t / MIKA_MILL_WIND, MIKA_MILL_WIND_POW + 1);
+    var _w = _mill.wind;
+    var _ramp = _mill.orbit * _w / (MIKA_MILL_WIND_POW + 1);
+    if (_t < _w) {
+        return _ramp * power(_t / _w, MIKA_MILL_WIND_POW + 1);
     }
-    var _u = _t - MIKA_MILL_WIND;
+    var _u = _t - _w;
     if (!_mill.rock || _t < _flip) return _ramp + _mill.orbit * _u;
-    return _ramp + _mill.orbit * ((_flip - MIKA_MILL_WIND)
+    return _ramp + _mill.orbit * ((_flip - _w)
                                   + mika_mill_rock(_t - _flip));
 }
 
@@ -420,9 +433,10 @@ function mika_mill_flip_at(_e) {
 }
 
 /// @desc How far out from Mika a ring rides at frame `_t`: zero when it
-///       forms, `_dist` once the wind-up is over, eased at both ends.
-function mika_mill_reach(_t, _dist) {
-    var _u = clamp(_t / MIKA_MILL_WIND, 0, 1);
+///       forms, `_dist` once the wind-up (`_wind` frames) is over, eased at
+///       both ends.
+function mika_mill_reach(_t, _dist, _wind = MIKA_MILL_WIND) {
+    var _u = clamp(_t / _wind, 0, 1);
     return _dist * _u * _u * (3 - 2 * _u);
 }
 
@@ -476,30 +490,48 @@ function mika_bead(_ring, _at, _dir, _look, _dress, _curl, _mill) {
 }
 
 /// @desc The `act` for one of a mill's rings: ride the orbit, turn with it,
-///       lay down its streams, and cast a bolt at reversals. The orbit angle
-///       is computed from the frame rather than read off the ring, whose
-///       velocity is dominated by Mika's own movement. Settings are bound
-///       into the method, not written onto the pooled ring.
-function mika_mill_ring_for(_cycle, _a0, _way, _hue, _mill, _flip) {
+///       lay down its streams (or shed into `_disc`, the disc's holder from
+///       `mika_disc_holder`, when the mill has one), and cast a bolt at
+///       reversals. The
+///       orbit angle is computed from the frame rather than read off the ring,
+///       whose velocity is dominated by Mika's own movement. Settings are
+///       bound into the method, not written onto the pooled ring.
+function mika_mill_ring_for(_cycle, _a0, _way, _hue, _mill, _flip,
+                            _disc = undefined) {
     return method({ cyc: _cycle, a0: _a0, way: _way, hue: _hue, mill: _mill,
-                    flip: _flip },
+                    flip: _flip, disc: _disc },
                   function(_ring, _g, _t) {
-        var _rad = mika_mill_reach(_t, mill.dist);
+        var _rad = mika_mill_reach(_t, mill.dist, mill.wind);
         var _orb = a0 + way * mika_mill_turned(_t, mill, flip);
         _ring.ox = lengthdir_x(_rad, _orb);
-        _ring.oy = lengthdir_y(_rad, _orb);
+        _ring.oy = lengthdir_y(_rad * MIKA_MILL_TILT, _orb);
         // Rigid with the orbit: set outright, with `spin` zero so `ring_step`
         // does not add to it.
         _ring.spin = 0;
         _ring.ang = _orb;
 
-        // The wake, with both the swing and the orbit read at the lead frame
-        // (see `MIKA_MILL_LEAD`), so they agree about the direction.
-        mika_mill_rim(_ring, _g, _t, cyc, hue,
-                      way * mika_mill_swing(_t + MIKA_MILL_LEAD, mill, flip),
-                      a0 + way * mika_mill_turned(_t + MIKA_MILL_LEAD, mill,
-                                                  flip),
-                      mill);
+        // Its depth: 1 at the far side (the top of the ellipse), -1 in front.
+        var _far = dsin(_orb);
+        _ring.depth = 1 - MIKA_MILL_DEPTH * _far;
+        _ring.shade = MIKA_MILL_DIM * max(0, _far);
+        _ring.behind = (_far > 0);
+
+        if (disc != undefined) {
+            mika_disc_shed(_ring, _t, cyc, hue,
+                           a0 + way * mika_mill_turned(_t + MIKA_MILL_LEAD,
+                                                       mill, flip),
+                           mill, disc);
+        } else {
+            // The wake, with both the swing and the orbit read at the lead
+            // frame (see `MIKA_MILL_LEAD`), so they agree about the
+            // direction.
+            mika_mill_rim(_ring, _g, _t, cyc, hue,
+                          way * mika_mill_swing(_t + MIKA_MILL_LEAD, mill,
+                                                flip),
+                          a0 + way * mika_mill_turned(_t + MIKA_MILL_LEAD,
+                                                      mill, flip),
+                          mill);
+        }
 
         // The bolt is cast into the hop, so it sits outside the rim's guards.
         mika_mill_bolt(_ring, _g, _t, mill, flip);
@@ -511,6 +543,8 @@ function mika_mill_ring_for(_cycle, _a0, _way, _hue, _mill, _flip) {
 function mika_mill_spawn(_e, _way, _hues, _mill) {
     // The frame a rocking mill first reverses; see `mika_mill_flip_at`.
     var _flip = mika_mill_flip_at(_e);
+    // Where a disc's sand is circling now, shared by all its rings.
+    var _disc = _mill.disc ? mika_disc_holder(_e, _way, _mill) : undefined;
     for (var _i = 0; _i < _mill.rings; _i++) {
         // On top of him, at no radius: `mika_mill_reach` takes them out.
         var _r = ring_new(_e.x, _e.y, MIKA_RING_COL, 0);
@@ -518,38 +552,42 @@ function mika_mill_spawn(_e, _way, _hues, _mill) {
         ring_attach(_r, _e, 0, 0);
         _r.act = mika_mill_ring_for(_i, _i * (360 / _mill.rings), _way,
                                     _hues[_i mod array_length(_hues)], _mill,
-                                    _flip);
+                                    _flip, _disc);
     }
 }
 
-/// @desc **N1.** The mill, turning one way: ring 0 throws ember glints, ring
-///       1 amber grains.
-function mika_n1_sandmill(_e, _g, _t) {
+/// @desc **N1.** The disc (`mika_disc_shed`), turning clockwise as the
+///       sketch does: ring 0's bands are ember glints, ring 1's amber grains,
+///       and the middle band gold.
+function mika_n1_sanddisc(_e, _g, _t) {
     if (_t != 0) return;
-    mika_mill_spawn(_e, 1, [0, 1], mika_mill_pair());
+    mika_mill_spawn(_e, -1, [0, 1], mika_disc());
 }
 
-/// @desc **N2.** N1 mirrored: the rings run the other way and the two storms
-///       swap hues.
-function mika_n2_sandmill(_e, _g, _t) {
+/// @desc **N2.** N1 mirrored: the disc turning counterclockwise, with the
+///       hues swapped, so ring 0's bands are amber glints and ring 1's ember
+///       grains (the middle band is gold in both).
+function mika_n2_sanddisc(_e, _g, _t) {
     if (_t != 0) return;
-    mika_mill_spawn(_e, -1, [1, 0], mika_mill_pair());
+    mika_mill_spawn(_e, 1, [1, 0], mika_disc());
 }
 
 /// @desc One ring's wake at orbit angle `_orb`, with swing `_sw`. Nothing is
 ///       thrown during the wind-up or while Mika is hopping between stations
 ///       (`boss_holding`); the beat is counted from the end of the wind-up.
 function mika_mill_rim(_ring, _g, _t, _cycle, _hue, _sw, _orb, _mill) {
-    if (_t < MIKA_MILL_WIND) return;
+    if (_t < _mill.wind) return;
 
     // Sand laid down while the origin slides would smear the figure.
     if (!boss_holding(_ring.src)) return;
 
-    if (((_t - MIKA_MILL_WIND) mod _mill.beat) != 0) return;
+    if (((_t - _mill.wind) mod _mill.beat) != 0) return;
 
-    // The trailing rim: a quarter turn back from the direction of travel,
-    // scaled by the swing (at a reversal it is the outer rim).
-    var _back = _orb - 90 * _sw;
+    // The trailing rim: straight back along the ring's path on screen (the
+    // ellipse's tangent), turned by the swing (at a reversal it is the outer
+    // rim). On a circle this is `_orb - 90 * _sw`.
+    var _back = darctan2(-MIKA_MILL_TILT * dcos(_orb), dsin(_orb))
+                + 90 * (1 - _sw);
 
     // The curl is quantised to quarters so `mika_mill_dress`'s cache stays
     // small.
@@ -568,38 +606,171 @@ function mika_mill_rim(_ring, _g, _t, _cycle, _hue, _sw, _orb, _mill) {
 }
 
 // ---------------------------------------------------------------------------
-// N3 and N4 -- the quad (draft)
+// The disc (N1 and N2)
 //
-// The mill with four rings a quarter turn apart, one stream each (the same
-// sand per second as N1's pair), riding a little further out.
+// The mill's two rings on their 2.5D orbit, shedding sand that keeps circling
+// in the rings' own plane (`BMod.Orbit`): three bands, the first starting
+// inside each ring's metal and the others beyond it, with gaps between. A grain
+// circles slower the further out it is and drifts outward; after
+// `MIKA_DISC_FREE` frames it is let go along its path, flung a little faster
+// than it was going, and brakes to a drift.
+//
+// Nothing is shed while Mika hops, as with the bead mill. Sand circles the
+// spot where it was shed: when he lands somewhere new, the next grains start
+// a disc round him there, and the old one goes on round its own centre until
+// it has all been let go. Picked from the browser sketches
+// (`tools/sketch/sets/mika_n1.js`, "Sand disc").
 // ---------------------------------------------------------------------------
 
-#macro MIKA_QUAD_RINGS 4
-#macro MIKA_QUAD_DIST 235
-#macro MIKA_QUAD_WAKE 1
-#macro MIKA_QUAD_WAKE_ARC MIKA_MILL_WAKE_ARC   // unused while the wake is 1
-#macro MIKA_QUAD_BEAT MIKA_MILL_BEAT
-#macro MIKA_QUAD_ORBIT MIKA_MILL_ORBIT
+// N1 is the browser sketch's sand disc with everything running 1.5 times as
+// fast -- the rings' turn included, so the shape is the sketch's -- and
+// shedding every other frame. The rings' wind-up and working orbit (degrees a
+// frame):
+#macro MIKA_DISC_WIND 67
+#macro MIKA_DISC_ORBIT 3.15
 
-/// @desc N3 and N4's mill: four rings, a quarter turn apart, one stream each.
-function mika_mill_quad() {
-    return mika_mill_shape({ rings: MIKA_QUAD_RINGS, dist: MIKA_QUAD_DIST,
-                             orbit: MIKA_QUAD_ORBIT, beat: MIKA_QUAD_BEAT,
-                             wake: MIKA_QUAD_WAKE,
-                             arc: MIKA_QUAD_WAKE_ARC });
+// Frames between sheddings, per ring.
+#macro MIKA_DISC_BEAT 2
+
+// How far beyond the rings' orbit the three bands start.
+#macro MIKA_DISC_IN 34
+#macro MIKA_DISC_MID 92
+#macro MIKA_DISC_OUT 150
+
+// Pixels a frame a grain drifts outward, and the frames it circles before it
+// is let go (so how far out it gets).
+#macro MIKA_DISC_GROW 1.35
+#macro MIKA_DISC_FREE 222
+
+// Let go: its speed along its path times `FLING`, held for `HOLD` frames, then
+// braked by `BRAKE` a frame to `FLOOR`.
+#macro MIKA_DISC_FLING 1.5
+#macro MIKA_DISC_HOLD 7
+#macro MIKA_DISC_BRAKE 0.11
+#macro MIKA_DISC_FLOOR 3.0
+
+// How far Mika must have moved from a disc's centre for new sand to start a
+// disc round him instead (he settles onto a station by easing in).
+#macro MIKA_DISC_RECENTRE 4
+
+/// @desc One band of a disc: sand shed `_off` beyond the rings' orbit, of
+///       shape `_shape` and colour `_col` (-1 for each: the ring's own sand,
+///       `mika_mill_look`), circling with the rings, or against them at the
+///       same rate if `_back`.
+function mika_disc_band(_off, _shape = -1, _col = -1, _back = false) {
+    return { off: _off, shape: _shape, col: _col, back: _back };
 }
 
-/// @desc **N3.** The quad, turning N1's way. Hue steps alternate, so opposite
-///       rings share a look (`mika_sand_grade` wraps the cycle index).
-function mika_n3_sandquad(_e, _g, _t) {
-    if (_t != 0) return;
-    mika_mill_spawn(_e, 1, [0, 1, 0, 1], mika_mill_quad());
+/// @desc N1's three bands: the ring's own sand, gold, its own sand again.
+function mika_disc_bands() {
+    return [ mika_disc_band(MIKA_DISC_IN),
+             mika_disc_band(MIKA_DISC_MID, BSHAPE_PELLET, BCOL_GOLD),
+             mika_disc_band(MIKA_DISC_OUT) ];
 }
 
-/// @desc **N4.** N3 mirrored, with hues swapped.
-function mika_n4_sandquad(_e, _g, _t) {
+/// @desc N1's mill: the pair's two rings at the pair's distance, shedding a
+///       disc.
+function mika_disc() {
+    return mika_mill_shape({ rings: MIKA_MILL_RINGS, dist: MIKA_MILL_DIST,
+                             orbit: MIKA_DISC_ORBIT, beat: MIKA_DISC_BEAT,
+                             wind: MIKA_DISC_WIND, disc: true });
+}
+
+/// @desc An orbit for a disc's sand (see `bullet_orbit`), round (`_x`, `_y`)
+///       at the rings' tilt, turning `_way` at the rings' rate at their
+///       radius. It never moves: the grains on it circle that spot.
+function mika_disc_orbit(_x, _y, _way, _mill) {
+    return { x: _x, y: _y, tilt: MIKA_MILL_TILT, way: _way,
+             rate: _mill.orbit, ref: _mill.dist, grow: MIKA_DISC_GROW,
+             free_at: MIKA_DISC_FREE, fling: MIKA_DISC_FLING,
+             hold: MIKA_DISC_HOLD, brake: MIKA_DISC_BRAKE,
+             flr: MIKA_DISC_FLOOR };
+}
+
+/// @desc What a disc's rings share: the orbits new sand goes onto, `cur`
+///       turning with the rings and `back` against them, both replaced by
+///       `mika_disc_shed` when Mika has moved.
+function mika_disc_holder(_e, _way, _mill) {
+    return { cur: mika_disc_orbit(_e.x, _e.y, _way, _mill),
+             back: mika_disc_orbit(_e.x, _e.y, -_way, _mill), way: _way,
+             mill: _mill };
+}
+
+/// @desc One ring's shedding, at orbit angle `_orb`: a grain into each of the
+///       mill's bands (`mika_disc_band`), at the ring's own angle. Nothing is
+///       shed during the wind-up or while Mika hops (`boss_holding`).
+function mika_disc_shed(_ring, _t, _cycle, _hue, _orb, _mill, _disc) {
+    if (_t < _mill.wind) return;
+    if (!boss_holding(_ring.src)) return;
+    if (((_t - _mill.wind) mod _mill.beat) != 0) return;
+
+    // He has landed somewhere new: the sand from here on circles him here.
+    var _src = _ring.src;
+    if (point_distance(_disc.cur.x, _disc.cur.y, _src.x, _src.y)
+        > MIKA_DISC_RECENTRE) {
+        _disc.cur = mika_disc_orbit(_src.x, _src.y, _disc.way, _disc.mill);
+        _disc.back = mika_disc_orbit(_src.x, _src.y, -_disc.way, _disc.mill);
+    }
+
+    var _own = mika_mill_look(_cycle, _hue);
+    var _bands = _mill.bands;
+    for (var _k = 0; _k < array_length(_bands); _k++) {
+        var _b = _bands[_k];
+        mika_disc_grain(_b.back ? _disc.back : _disc.cur, _orb,
+                        _mill.dist + _b.off,
+                        (_b.shape < 0) ? _own.shape : _b.shape,
+                        (_b.col < 0) ? _own.col : _b.col);
+    }
+}
+
+/// @desc One grain on orbit `_o`, placed on it at once; it sits there as a
+///       warning mark for `MIKA_SAND_DELAY` frames.
+function mika_disc_grain(_o, _ang, _rad, _shape, _col) {
+    var _u = fire(_o.x, _o.y, 0, 0, _shape, _col, MIKA_SAND_DELAY);
+    bullet_orbit(_u, _o, _ang, _rad);
+    // The sand's backstop, though a grain normally leaves the field first.
+    bullet_expire_at(_u, MIKA_SAND_LIFE);
+}
+
+// ---------------------------------------------------------------------------
+// N3 and N4 -- the woven disc
+//
+// The disc on four rings, a quarter turn apart on N1's orbit and at its speed.
+// Each ring sheds a pair into one band: one grain circles with the rings as
+// N1's sand does, the other against them at the same rate, so the two are let
+// go as mirror images and their streams cross. Picked from the browser
+// sketches (`tools/sketch/sets/mika_n3.js`, "Woven disc").
+// ---------------------------------------------------------------------------
+
+#macro MIKA_WOVEN_RINGS 4
+
+/// @desc N3 and N4's mill: four rings shedding a pair into one band, the
+///       grain circling with them of shape `_with_shape` and colour
+///       `_with_col`, the one circling against them `_back_shape`,
+///       `_back_col`.
+function mika_woven_disc(_with_shape, _with_col, _back_shape, _back_col) {
+    return mika_mill_shape({
+        rings: MIKA_WOVEN_RINGS, dist: MIKA_MILL_DIST, orbit: MIKA_DISC_ORBIT,
+        beat: MIKA_DISC_BEAT, wind: MIKA_DISC_WIND, disc: true,
+        bands: [ mika_disc_band(MIKA_DISC_IN, _with_shape, _with_col),
+                 mika_disc_band(MIKA_DISC_IN, _back_shape, _back_col, true) ],
+    });
+}
+
+/// @desc **N3.** The woven disc, turning clockwise as N1 does: ember glints
+///       circle with the rings, amber grains against them.
+function mika_n3_woven(_e, _g, _t) {
     if (_t != 0) return;
-    mika_mill_spawn(_e, -1, [1, 0, 1, 0], mika_mill_quad());
+    mika_mill_spawn(_e, -1, [0], mika_woven_disc(BSHAPE_MOTE, BCOL_EMBER,
+                                                 BSHAPE_PELLET, BCOL_AMBER));
+}
+
+/// @desc **N4.** N3 mirrored: turning counterclockwise, with amber grains
+///       circling with the rings and ember glints against them.
+function mika_n4_woven(_e, _g, _t) {
+    if (_t != 0) return;
+    mika_mill_spawn(_e, 1, [0], mika_woven_disc(BSHAPE_PELLET, BCOL_AMBER,
+                                                BSHAPE_MOTE, BCOL_EMBER));
 }
 
 // ---------------------------------------------------------------------------

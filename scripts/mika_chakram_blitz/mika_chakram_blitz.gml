@@ -42,10 +42,10 @@ enum ChakramMode {
 #macro CHAKRAM_HOLD_SPIN 2.5
 
 // While it waits, a ring loops once round him, as if round a level circle
-// seen from a little above: out from its resting place, behind him, across
-// the other side and in front, and home again, arriving back at rest just as
-// its wind-up starts, so every throw leaves from where and when it would
-// anyway (`chakram_loop_step`). The loop goes anticlockwise as seen from
+// seen from above: out from its resting place, rising behind him, across
+// the other side and dipping in front, and home again, arriving back at rest
+// just as its wind-up starts, so every throw leaves from where and when it
+// would anyway (`chakram_loop_step`). The loop goes anticlockwise as seen from
 // above the field. A wait shorter than `LOOP_MIN` frames is spent at rest.
 //
 // The depth is faked: at the far side a ring is `LOOP_TILT` pixels higher,
@@ -53,7 +53,7 @@ enum ChakramMode {
 // as much lower and larger, easing between with the sine of its angle. On
 // the far half it is behind him, so he hides it, and it neither hurts nor
 // blocks the player's fire (the ring's `behind`).
-#macro CHAKRAM_LOOP_TILT 30
+#macro CHAKRAM_LOOP_TILT 90
 #macro CHAKRAM_LOOP_DEPTH 0.2
 #macro CHAKRAM_LOOP_DIM 0.55
 #macro CHAKRAM_LOOP_MIN 90
@@ -274,7 +274,7 @@ function chakram_loop_ang(_s) {
 }
 
 /// @desc Where resting ring `_s` is on its loop at attack frame `_t`: the
-///       level circle through its resting place, seen from a little above,
+///       level circle through its resting place, seen from above,
 ///       so the far side is higher and the near side lower.
 function chakram_loop_x(_s, _e) {
     return _e.x + CHAKRAM_HOLD_X * dcos(chakram_loop_ang(_s));

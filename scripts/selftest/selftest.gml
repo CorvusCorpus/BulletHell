@@ -79,6 +79,8 @@ function selftest_run() {
     test_audio_playback();
     test_music();
     test_attacks_run();
+    test_bullet_orbit();
+    test_mika_disc_runs();
     test_bullet_cost();
 
     show_debug_message("SELFTEST DONE " + string(global.st_pass) + " passed, "
@@ -1081,6 +1083,23 @@ function test_boss_step() {
     ok("...travels during a hop", _moved_hopping > 1);
     ok("...and is still while it holds", _moved_holding < 1.0);
 
+    // A row with its own `hold` holds that long, timed from its own start
+    // rather than from wherever `drift_t` had got to.
+    var _h = { x: FIELD_CX, y: BOSS_HOME_Y,
+               boss: { phase: 0, phase_t: 0, drift_t: 150, track_x: FIELD_CX,
+                       home_x: FIELD_CX, home_y: BOSS_HOME_Y,
+                       phases: [ { move: BossMove.Step, hold: 300 } ] } };
+    var _first_hop = -1;
+    var _held = 0;
+    for (var _f = 0; _f < (300 + BOSS_STEP_MOVE) * 2; _f++) {
+        if (boss_holding(_h)) _held++;
+        else if (_first_hop < 0) _first_hop = _f;
+        boss_move(_h, _g, 0);
+        _h.boss.phase_t++;
+    }
+    ok("a row's own hold is held from the start of its attack",
+       _first_hop == 300 && _held == 600);
+
     var _b = _e.boss;
     var _inside = true;
     for (var _i = 0; _i < 40; _i++) {
@@ -1514,6 +1533,33 @@ function test_bomb_seals() {
     ok("a seal hunts down what is on the field", _hit_at > BOMB_SEAL_AT);
     ok("and takes BOMB_SEAL_DMG off it per strike",
        (400 - _e.hp) mod BOMB_SEAL_DMG == 0 && _e.hp < 400);
+
+    // Cast in a bottom corner with nothing to hunt: the walls turn the seals
+    // back, so every one is still in the air until its life runs out.
+    st_reset();
+    _g = st_game_at(FIELD_X0 + 30, FIELD_Y1 - 20);
+    _p = _g.player;
+    _p.mp = MP_MAX;
+    player_bomb(_p, _g);
+    var _fewest = BOMB_SEALS, _inside = true;
+    for (var _f = 0; _f < BOMB_SEAL_AT + BOMB_SEAL_LIFE - 4; _f++) {
+        _p.bomb_t--;
+        player_bomb_sweep(_p);
+        player_seals_step(_p);
+        if (_f >= BOMB_SEAL_AT) {
+            _fewest = min(_fewest, player_seals_live(_p));
+            for (var _i = 0; _i < BOMB_SEALS; _i++) {
+                var _s2 = _p.seals[_i];
+                if (_s2.live && (_s2.x < FIELD_X0 || _s2.x > FIELD_X1
+                                 || _s2.y < FIELD_Y0 || _s2.y > FIELD_Y1)) {
+                    _inside = false;
+                }
+            }
+        }
+    }
+    ok("a sigil cast in a corner loses no seal to the walls",
+       _fewest == BOMB_SEALS);
+    ok("and its seals stay on the field", _inside);
     st_reset();
 }
 
@@ -3826,6 +3872,82 @@ function test_attacks_run() {
     ok("every attack on the rack runs without throwing (" + string(_ran)
        + " run) " + _threw, _ran > 0 && _threw == "");
     ok("and none fills the bullet pool " + _flooded, _flooded == "");
+    st_reset();
+}
+
+/// @desc `BMod.Orbit`: a bullet rides its orbit's centre wherever it goes,
+///       isn't culled while it orbits, and is let go at `free_at` into an
+///       ordinary bullet that leaves the field.
+function test_bullet_orbit() {
+    st_reset();
+    var _o = { x: FIELD_CX, y: FIELD_CY, tilt: 0.5, way: 1, rate: 2,
+               ref: 200, grow: 1, free_at: 60, fling: 1.5, hold: 5,
+               brake: 0.1, flr: 2 };
+    var _u = bullet_orbit(fire(0, 0, 0, 0, BSHAPE_PELLET, BCOL_AMBER, 0),
+                          _o, 0, 200);
+    ok("an orbiting bullet is put on its orbit",
+       abs(_u.x - (FIELD_CX + 200)) < 0.01 && abs(_u.y - FIELD_CY) < 0.01);
+    bullet_step(FIELD_CX, FIELD_Y1);
+    var _x0 = _u.x;
+    _o.x += 50;
+    bullet_step(FIELD_CX, FIELD_Y1);
+    ok("and follows its centre", abs(_u.x - _x0 - 50) < 3);
+
+    // Far off the field it lives on, as long as it is on the orbit.
+    _o.x = -2000;
+    for (var _f = 0; _f < 20; _f++) bullet_step(FIELD_CX, FIELD_Y1);
+    ok("and isn't culled while it orbits",
+       bullet_count() == 1 && _u.bmod == BMod.Orbit);
+    _o.x = FIELD_CX;
+
+    var _last = 0;
+    while (_u.bmod == BMod.Orbit && _u.life < 200) {
+        bullet_step(FIELD_CX, FIELD_Y1);
+        if (_u.bmod == BMod.Orbit) _last = _u.spd;
+    }
+    ok("it is let go at free_at", _u.bmod == BMod.Plain
+       && _u.life == _o.free_at + 1);
+    ok("at fling times its speed on the orbit",
+       abs(_u.spd - _last * _o.fling) < _last * 0.1 + 0.01);
+    for (var _f = 0; _f < 1500 && bullet_count() > 0; _f++) {
+        bullet_step(FIELD_CX, FIELD_Y1);
+    }
+    ok("and then leaves the field", bullet_count() == 0);
+    st_reset();
+}
+
+/// @desc Mika's disc non-spells (N1, and N3's woven disc) for most of their
+///       clock: their grains are let go and leave, and neither fills the
+///       bullet pool.
+function test_mika_disc_runs() {
+    var _slots = [0, 4];
+    for (var _s = 0; _s < array_length(_slots); _s++) {
+        var _label = mika_slot_name(_slots[_s]);
+        st_reset();
+        var _g = st_game_at(FIELD_CX, FIELD_Y1 - 200);
+        var _e = mika_spawn(_g);
+        _e.boss.entry_t = 0;
+        _e.boss.declare_t = 0;
+        _e.boss.started = true;
+        _e.x = _e.boss.home_x;
+        _e.y = _e.boss.home_y;
+        boss_enter_phase(_e, _g, _slots[_s]);
+        _e.boss.lead_t = 0;
+        var _peak = 0, _free = 0;
+        for (var _f = 0; _f < 30 * FPS; _f++) {
+            boss_act(_e, _g);
+            ring_step(_g);
+            bullet_step(_g.player.x, _g.player.y);
+            _peak = max(_peak, bullet_count());
+        }
+        for (var _i = 0; _i < bullet_count(); _i++) {
+            if (bullet_get(_i).bmod != BMod.Orbit) _free++;
+        }
+        ok(_label + "'s disc lets its grains go (" + string(_free)
+           + " loose of " + string(bullet_count()) + ")", _free > 0);
+        ok("and stays well inside the bullet pool (peak " + string(_peak)
+           + ")", _peak < BULLET_MAX / 2);
+    }
     st_reset();
 }
 

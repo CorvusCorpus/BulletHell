@@ -68,7 +68,8 @@ function bullet_blank() {
         // Continuous behaviour, and the event queue. `q_n` entries are in use;
         // slots beyond it are kept for reuse. `q_at` is the frame of the next
         // event (`infinity` with none), so the step needn't look in the queue.
-        bmod: BMod.Plain, mod_a: 0, mod_b: 0,
+        // `mod_s` is a struct a behaviour shares between bullets (an orbit's).
+        bmod: BMod.Plain, mod_a: 0, mod_b: 0, mod_s: undefined,
         q: [], q_n: 0, q_i: 0, q_at: infinity,
 
         // Survives `bullet_clear_circle` (bombs), not `bullet_clear_all`.
@@ -165,6 +166,7 @@ function fire(_x, _y, _spd, _dir, _shape, _col, _delay = BULLET_DELAY_DEFAULT) {
     _b.bmod = BMod.Plain;
     _b.mod_a = 0;
     _b.mod_b = 0;
+    _b.mod_s = undefined;
     _b.q_n = 0;
     _b.q_i = 0;
     _b.q_at = infinity;
@@ -543,6 +545,13 @@ function bullet_step(_tx, _ty) {
         }
 
         if (_u.bmod != BMod.Plain) {
+            if (_u.bmod == BMod.Orbit) {
+                // It places itself, and isn't culled while it orbits. On the
+                // frame it is let go it moves no further.
+                bullet_orbit_step(_u);
+                _u.life = _life + 1;
+                continue;
+            }
             bullet_apply_mod(_u, _tx, _ty);
         }
 
@@ -624,6 +633,76 @@ function bullet_apply_mod(_u, _tx, _ty) {
             _u.dir += dsin(_u.life * _u.mod_b) * _u.mod_a;
             break;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Orbiting (`BMod.Orbit`)
+// ---------------------------------------------------------------------------
+
+/// @desc Put bullet `_u` on orbit `_o`, `_ang` degrees round its centre
+///       (GameMaker's sense) at radius `_rad`, and place it there. One orbit
+///       struct is shared by every bullet on it; move its centre each frame
+///       and they all follow. Its fields:
+///       - `x`, `y`: the centre. The orbit is a level circle seen from above
+///         at `tilt`: on screen an ellipse `tilt` times as tall as it is wide,
+///         its far half above the centre.
+///       - `way`: +1 turns counterclockwise on screen, -1 clockwise.
+///       - `rate`, `ref`: degrees a frame at radius `ref`; at radius `r` the
+///         rate is scaled by `power(ref / r, 1.5)`, so further out is slower.
+///       - `grow`: pixels a frame the bullet moves outward.
+///       - `free_at`: the frame of its life it is let go, along its path at
+///         `fling` times its speed there. It holds that speed for `hold`
+///         frames, then brakes by `brake` a frame to `flr`.
+///       Passes `undefined` through.
+function bullet_orbit(_u, _o, _ang, _rad) {
+    if (_u == undefined) return undefined;
+    bullet_repolar(_u);
+    _u.bmod = BMod.Orbit;
+    _u.mod_s = _o;
+    _u.mod_a = _ang;
+    _u.mod_b = _rad;
+    _u.acc = 0;
+    _u.turn = 0;
+    bullet_orbit_place(_u);
+    _u.px = _u.x;
+    _u.py = _u.y;
+    return _u;
+}
+
+/// @desc Put an orbiting bullet where its angle and radius say.
+function bullet_orbit_place(_u) {
+    var _o = _u.mod_s;
+    var _a = _u.mod_a;
+    _u.x = _o.x + lengthdir_x(_u.mod_b, _a);
+    _u.y = _o.y + lengthdir_y(_u.mod_b * _o.tilt, _a);
+}
+
+/// @desc One frame of an orbiting bullet (from `bullet_step`): round and out,
+///       or, at `free_at`, let go along its path. `dir` and `spd` follow its
+///       motion on screen, so the bullet is right whichever way it is moving.
+function bullet_orbit_step(_u) {
+    var _o = _u.mod_s;
+    var _x = _u.x;
+    var _y = _u.y;
+    _u.px = _x;
+    _u.py = _y;
+    var _k = _o.ref / _u.mod_b;
+    _u.mod_a += _o.way * _o.rate * _k * sqrt(_k);
+    _u.mod_b += _o.grow;
+    bullet_orbit_place(_u);
+
+    var _vx = _u.x - _x;
+    var _vy = _u.y - _y;
+    _u.spd = sqrt(_vx * _vx + _vy * _vy);
+    if (_u.spd > 0) _u.dir = point_direction(0, 0, _vx, _vy);
+    if (global.bshape_oriented[_u.shape]) _u.angle = _u.dir;
+    else _u.angle += _u.spin;
+
+    if (_u.life < _o.free_at) return;
+    _u.bmod = BMod.Plain;
+    _u.mod_s = undefined;
+    _u.spd *= _o.fling;
+    bullet_accel_at(_u, _u.life + _o.hold, -_o.brake, _o.flr);
 }
 
 // ---------------------------------------------------------------------------

@@ -279,7 +279,7 @@ function boss_move(_e, _g, _i) {
     switch (_k) {
         case BossMove.Track: boss_move_track(_e, _g); break;
         case BossMove.Fixed: boss_move_hold(_e, boss_move_at(_b, _i)); break;
-        case BossMove.Step:  boss_move_step(_e);      break;
+        case BossMove.Step:  boss_move_step(_e, _i);  break;
         case BossMove.Close:
             boss_move_drift(_e, BOSS_CLOSE_X, BOSS_CLOSE_Y);
             break;
@@ -344,21 +344,40 @@ function boss_move_hold(_e, _at = undefined) {
     enemy_glide(_e, _x, _y, BOSS_DRIFT_RATE);
 }
 
-/// @desc `BossMove.Step`: hold for `BOSS_STEP_HOLD`, hop for
-///       `BOSS_STEP_MOVE`, hold again. Derived entirely from `drift_t`, and
-///       hop `n`'s landing spot is a function of `n`, so it is the same every
-///       attempt.
-function boss_move_step(_e) {
+/// @desc `BossMove.Step` for the attack at index `_i`: hold (`boss_step_hold`
+///       frames), hop for `BOSS_STEP_MOVE`, hold again. Derived entirely from
+///       its clock (`boss_step_clock`), and hop `n`'s landing spot is a
+///       function of `n`, so it is the same every attempt.
+function boss_move_step(_e, _i) {
     var _b = _e.boss;
-    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
-    var _n = _b.drift_t div _cyc;
+    var _hold = boss_step_hold(_b, _i);
+    var _cyc = _hold + BOSS_STEP_MOVE;
+    var _c = boss_step_clock(_b, _i);
+    var _n = _c div _cyc;
 
     // While holding, glide to this hop's spot (already there); while moving,
     // to the next one.
-    var _to = ((_b.drift_t mod _cyc) < BOSS_STEP_HOLD) ? _n : _n + 1;
+    var _to = ((_c mod _cyc) < _hold) ? _n : _n + 1;
 
     enemy_glide(_e, boss_step_x(_b, _to), boss_step_y(_b, _to),
                 BOSS_STEP_RATE);
+}
+
+/// @desc How long the `Step` attack at index `_i` holds between hops: its
+///       row's `hold`, or `BOSS_STEP_HOLD`.
+function boss_step_hold(_b, _i) {
+    if (_i < 0 || _i >= array_length(_b.phases)) return BOSS_STEP_HOLD;
+    return _b.phases[_i][$ "hold"] ?? BOSS_STEP_HOLD;
+}
+
+/// @desc The clock the `Step` attack at index `_i` hops by: `drift_t`, which
+///       runs on across attacks; or, for a row with its own `hold`, the
+///       attack's own frames (0 in the pause before it), so its first hold is
+///       a whole one.
+function boss_step_clock(_b, _i) {
+    if (_i < 0 || _i >= array_length(_b.phases)) return _b.drift_t;
+    if (_b.phases[_i][$ "hold"] == undefined) return _b.drift_t;
+    return (_i == _b.phase) ? max(0, _b.phase_t) : 0;
 }
 
 /// @desc Where hop `_n` lands, sideways. Incommensurable angles, so the
@@ -382,8 +401,9 @@ function boss_holding(_e) {
     if (boss_move_kind(_b, _b.phase) != BossMove.Step) return true;
     // Through a local: `mod (` reads to `check_unknown_functions` as a call to
     // a function named `mod`.
-    var _cyc = BOSS_STEP_HOLD + BOSS_STEP_MOVE;
-    return (_b.drift_t mod _cyc) < BOSS_STEP_HOLD;
+    var _hold = boss_step_hold(_b, _b.phase);
+    var _cyc = _hold + BOSS_STEP_MOVE;
+    return (boss_step_clock(_b, _b.phase) mod _cyc) < _hold;
 }
 
 /// @desc Play the boss's name card (`name_card`): the cut that opens it

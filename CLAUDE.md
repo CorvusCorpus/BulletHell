@@ -49,6 +49,13 @@ and is open to change. Earlier agents wrote a great deal of invented
   rings as they spin, which shoot out quickly and then rapidly decelerate to a
   slower speed then drift in a deterministic pattern". The sand is
   yellow/orange (amber). A ring's metal hurts to touch like a bullet.
+- **Mika's non-spell rings orbit in 2.5D**, as Chakram Blitz's loop does:
+  round him as if on a level circle seen from above, smaller, dimmer and
+  behind him at the back, larger in front. The sand patterns written for the
+  old flat orbit are to be reworked to suit it.
+- **Sand on the far side of an orbit stays live.** It is drawn at full
+  strength and hurts like any bullet; dimming or disarming it leaves a
+  blind spot.
 - **The hall's ornament is realistic material work**: fine inlay and
   carving of varying weight, never flat fills or lines of one weight (both
   read as cartoon or MS Paint). Mika's library is fancy and pristine, not a
@@ -184,6 +191,7 @@ python tools/build.py && python tools/test.py && python tools/check_project.py
 | `tools/shot.py <scene>` | Builds, poses a scene with `-shot <scene>`, and saves `tools/_preview/<scene>.png`. `--burst 0,20,40` photographs one scene at several frame offsets and tiles a sheet. `--fullscreen` gives exact design-size pixels. It fails a run whose output shows a GameMaker error even if a picture was saved. Scenes are listed in `shot_scene_list()` (`scripts/shot_scenes`) and in `SCENES` in `shot.py`; both must be updated together. |
 | `tools/gm_new.py` | Importable module, no command line. It creates and registers resources: `script`, `sprite`, `shader`, `obj`, `room`, `sound`, `folder`, `delete`. GUIDs are derived from names, so regenerating writes identical files. |
 | `tools/make_*.py` | The asset generators (see Art). Each writes a preview sheet to `tools/_preview/`, which is git-ignored. |
+| `tools/sketch.py [set] [pattern]` | Pattern sketches: a browser model of a pattern for trying an idea before building it in GML (`tools/sketch/`: `engine.js`, `sketch.html`, and one set of patterns per file in `sets/`). With no flags it opens the set in the browser, where the mouse steers a player and counts hits. `--gif` renders one exact loop of a pattern and `--burst 300,500` a sheet of frames, both to `tools/_preview/sketch_*`, headlessly through Playwright and the installed Edge. `--list` names the sets and patterns. It is not the game: the field, player and ring numbers in `engine.js` are copied by hand. |
 
 Harness behaviour:
 
@@ -274,7 +282,10 @@ returns the bullet; `fire_ring`, `fire_fan`, `fire_stack`, `fire_ring_stack`,
 `fire_fan_stack` and `fire_spray` build on it. `fire_xy` with `bullet_force`
 is the Cartesian model, needed for forces along one axis. A later polar
 instruction puts a bullet back on the polar model. Continuous behaviours are
-`BMod` (`Home`, `Wander`). Scheduled events are `BQ` entries (`Aim`, `Move`,
+`BMod` (`Home`, `Wander`, `Orbit`). `Orbit` (`bullet_orbit`) carries a bullet
+round a tilted circle whose centre can move, every bullet on it sharing one
+struct, and lets it go along its path at a set frame; it isn't culled while
+it orbits. Scheduled events are `BQ` entries (`Aim`, `Move`,
 `Accel`, `Turn`, `Force`, `Split`, `Shed`, `Graphic`, `Fade`), added with
 the `bullet_*_at` helpers, at most `BULLET_QUEUE_MAX` per bullet. Split and
 shed children inherit the parent's shape and colour, and can be dressed by a
@@ -340,6 +351,7 @@ positions.
   neither hurts, grazes nor blocks (`ring_touchable`).
 - They are culled once wholly off the field, unless `cull` is off (Storm
   Cage's rings ride the player past the walls).
+- They draw over the player (owner's call) but under lasers and bullets.
 
 `ring_block_shots` must run before `enemy_take_shots` (checked). To fire from
 a moving ring, use `ring_rim_at_x/_y`, which give where the metal will be when
@@ -369,7 +381,9 @@ above where he cast. He is drawn again in front of the band, with his
 focus circle and hitbox while focused, so it never hides him. The sigil itself is paced round
 it (owner's request), so the cut-in hides none of it: the sweep's circle
 grows while the cut-in plays, the seals leave as it ends (`BOMB_SEAL_AT`),
-and the circle fades out as his grace (as long as a hit's) runs out.
+and the circle fades out as his grace (as long as a hit's) runs out. The
+field's edge turns a seal back (`player_seal_bounce`), so a sigil cast
+against a wall loses none of them.
 
 **The HUD reacts by watching.** Nothing in the game calls the HUD to report
 a hit, a score or a new mark. `hud_step` compares what it is showing with the
@@ -394,8 +408,8 @@ the screen once, so it fades as a whole: in as it comes down, and to
 `BOSS_RAIL_FADE` while the player is near it (`hud_rail_near`).
 
 **Bosses.** `boss_spawn(x, y, hp, phases, def)`. A phase is
-`{kind, name, col, bg, hp_end, time, attack, move?, at?, fire_at?, par?,
-score?, survival?}`, and `attack(_e, _g, _t)` is called every frame with the
+`{kind, name, col, bg, hp_end, time, attack, move?, at?, hold?, fire_at?,
+par?, score?, survival?}`, and `attack(_e, _g, _t)` is called every frame with the
 frames elapsed. The last three are for grading (see below).
 
 - A phase ends on health (checked first) or on time, and either way the bar
@@ -414,7 +428,8 @@ frames elapsed. The last three are for grading (see below).
   or `Step`. Read it as `_p[$ "move"] ?? BossMove.Drift`, because a bare read
   of a missing struct field raises. `at` (`{x, y}`) gives a `Fixed` attack its
   own station instead of the boss's; the boss glides there during the pause
-  before it.
+  before it. `hold` gives a `Step` attack its own frames between hops, timed
+  from the attack's start (`boss_step_hold`, `boss_step_clock`).
 - Before every attack the boss plays a charge cue (`boss_charge`, the Hex's
   pull), `BOSS_CHARGE_LEAD` frames before the attack's first shots. Those
   come on the attack's first frame unless the row's `fire_at` says later;
@@ -422,7 +437,8 @@ frames elapsed. The last three are for grading (see below).
 - `def.final == false` makes a midboss.
 - Every boss has a seal behind it (`boss_draw_seal`, `spr_boss_seal`): a
   gilt rule, two engraved weaves in the boss's colour and a cyan thread,
-  each turning at its own rate. The cut-in's caster draws it brighter. The
+  each turning at its own rate. The cut-in and the name card draw it
+  brighter, under their band, with the boss in front of the band. The
   old hexagram (`spr_boss_sigil`) is still used by the spell backgrounds,
   the name card and the console's watermark.
 - A final boss is named by its card (`name_card`) before its first attack:
@@ -762,6 +778,10 @@ Create every resource through `tools/gm_new.py`.
   conversation.
 - **A screenshot scene**: add it to `shot_scene_list()` and to `SCENES` in
   `tools/shot.py`.
+- **A pattern sketch**: a file in `tools/sketch/sets/` calling `Sketch.set`
+  (the header of `engine.js` describes it), named in `sets/index.js`. It
+  uses GameMaker's angles and field coordinates, so it ports to GML almost
+  line for line. Open it with `python tools/sketch.py <set>`.
 
 ## Current state
 
@@ -795,8 +815,10 @@ Mika's slots (`mika_slots()` is the source of truth):
 
 | Slot | State |
 |---|---|
-| N1, N2 | Written: two rings milling sand, and the same mill turned the other way. Mika himself fires nothing. |
-| N3–N6 | Drafts, unplayed: the mill with four rings, then with six, each followed by its mirror |
+| N1 | Written, in playtesting: the browser sketch's sand disc (`tools/sketch/sets/mika_n1.js`) run 1.5 times as fast, rings included, shedding more often and with a third band. The two rings on their 2.5D orbit shed three bands of yellow and orange sand that keep circling in the rings' plane (`BMod.Orbit`), drifting outward and slowing, and are let go along their paths to drift across the field. He holds longer between hops than other `Step` attacks (`hold`), sheds nothing while he hops, and sand circles the spot it was shed from. Mika himself fires nothing. |
+| N2 | Written, in playtesting: N1 mirrored (turning the other way) with each ring's hue swapped. |
+| N3, N4 | Written, in playtesting: the woven disc, picked from the browser sketches (`tools/sketch/sets/mika_n3.js`). Four rings on N1's orbit, each shedding a pair into one band: one grain circles with the rings as N1's sand does, the other against them at the same rate, so their streams cross. N4 is N3 mirrored with its colours swapped. Health started at N1's times the four-ring blocking measured on the old flat orbit and was trimmed after playtesting. |
+| N5, N6 | Drafts, unplayed: the bead mill with six rings, and its mirror |
 | N7 | Draft, unplayed: six rings whose orbit reverses on each of his hops, with an aimed bolt from each ring at every reversal |
 | S1 | Written, in playtesting: `Storm Cage`. Three rings strung with lightning ride round the player; a sandstorm floods the field; rings stop grains; on a bolt amber sand bursts into slow falling glass and ember grit burns away. |
 | S2 | Written, in playtesting: `Chakram Blitz` (inspired by Murasa's anchors in Touhou 12). Two rings rest at his sides and are thrown at the player in turn; while one waits it loops once round him in 2.5D, larger in front and smaller, dimmer and harmless behind him, timed to be back at rest as its wind-up starts. Each winds up aimed at the player, locks its aim with a brief flash of its lane, charges, is thrown fast with a sharp acceleration and a smooth braking stop, lays a braided double-helix rope that holds still and then comes apart, comes to rest short of the wall with its spin still building like a yo-yo's, sprays a brief pinwheel of bullets, and is pulled back. One ring is out at a time, and the gap between throws shrinks over the attack. |
@@ -837,8 +859,8 @@ Known gaps:
   because it draws hundreds of billboards from GML every frame. Stage one
   takes about 6 ms, and the hall about 5 ms with an empty field (the hall's
   flames, reflections and sand build their vertices without allocating, so
-  the garbage collector stays quiet). Mika's N1 at its densest (about 1,400
-  bullets) takes about 7 ms of work a frame on the owner's machine; of
+  the garbage collector stays quiet). The bead mill (N1 and N2 before the
+  disc) at its densest (about 1,400 bullets) takes about 7 ms of work a frame on the owner's machine; of
   that, bullets are about 3.5 ms (step, draw, and the hit test and graze),
   the hall about 1.9 ms and the HUD about 0.7 ms. Built with YYC the same
   frame takes about 3.5 ms (bullets about 1.6 ms, the hall about 0.75 ms,

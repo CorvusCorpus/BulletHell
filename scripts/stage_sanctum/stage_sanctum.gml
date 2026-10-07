@@ -145,9 +145,10 @@ function mika_def() {
 /// @desc The fifteen slots, one row each in fight order. This is the only
 ///       list to edit; `mika_phases` derives the phase table from it.
 ///
-///       A row is `{name, col, hp, time, attack, move?, at?, fire_at?, par?,
-///       score?, survival?}`. A name makes it a spell. `at` is a `Fixed`
-///       slot's own station (`boss_move_at`). `fire_at` is the frame its first
+///       A row is `{name, col, hp, time, attack, move?, at?, hold?, fire_at?,
+///       par?, score?, survival?}`. A name makes it a spell. `at` is a `Fixed`
+///       slot's own station (`boss_move_at`); `hold` a `Step` slot's own
+///       frames between hops (`boss_step_hold`). `fire_at` is the frame its first
 ///       shots come on, which his charge cue builds to (`boss_charge`), since
 ///       the rings he puts down first are no threat. `hp` is the share of his
 ///       health
@@ -156,10 +157,10 @@ function mika_def() {
 ///       are for the grading (`rank_attack_target`, `rank_attack_expired`).
 ///
 ///       Current state (keep this true):
-///           N1  written: the mill           S1  written: Storm Cage
-///           N2  written: the mill mirrored  S2  written: Chakram Blitz
-///           N3  draft: the quad             S3  old placeholder, Three Open Gates
-///           N4  draft: the quad mirrored    S4  unwritten
+///           N1  written: the disc           S1  written: Storm Cage
+///           N2  written: the disc mirrored  S2  written: Chakram Blitz
+///           N3  written: the woven disc S3  old placeholder, Three Open Gates
+///           N4  written: N3 mirrored        S4  unwritten
 ///           N5  draft: the crown            S5  unwritten
 ///           N6  draft: the crown mirrored   S6  unwritten
 ///           N7  draft: the rush             S7  unwritten
@@ -170,12 +171,14 @@ function mika_def() {
 ///       the row at it, and give it a health share and a clock.
 function mika_slots() {
     return [
-        // N1 -- the mill (`mika_nonspells`). `Step`: he holds still while the
-        // rings throw and hops between bursts. Its health is priced for his
-        // rings blocking part of the player's fire.
-        { name: "", col: BCOL_AMBER, hp: 260, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n1_sandmill,
-          fire_at: MIKA_MILL_WIND },
+        // N1 -- the disc (`mika_nonspells`). `Step`, holding `hold` frames
+        // between hops so a disc has time to fill; nothing is shed while he
+        // hops. Its health is the bead mill's (priced for his rings blocking
+        // part of the player's fire) plus six seconds of full focused fire
+        // (`rank_full_fire`), for the disc's start before its sand comes loose.
+        { name: "", col: BCOL_AMBER, hp: 440, time: 35 * FPS,
+          move: BossMove.Step, hold: 600, attack: mika_n1_sanddisc,
+          fire_at: MIKA_DISC_WIND },
         // S1 -- Storm Cage (`mika_storm_cage`). Its cage blocks the
         // player's fire whenever a ring passes over them; the health is the
         // placeholder's until that has been measured.
@@ -183,10 +186,10 @@ function mika_slots() {
           move: BossMove.Fixed, attack: mika_storm_cage,
           fire_at: STORM_STRIKE },
 
-        // N2 -- N1 mirrored.
-        { name: "", col: BCOL_AMBER, hp: 260, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n2_sandmill,
-          fire_at: MIKA_MILL_WIND },
+        // N2 -- N1 mirrored, with its hues swapped; its health is N1's.
+        { name: "", col: BCOL_AMBER, hp: 440, time: 35 * FPS,
+          move: BossMove.Step, hold: 600, attack: mika_n2_sanddisc,
+          fire_at: MIKA_DISC_WIND },
         // S2 -- Chakram Blitz (`mika_chakram_blitz`). He holds the middle of
         // the field, so the player can circle him; the health is half the old
         // placeholder's, since circling keeps the player off his line of fire.
@@ -194,20 +197,22 @@ function mika_slots() {
           move: BossMove.Fixed, at: { x: FIELD_CX, y: FIELD_CY - 60 },
           attack: mika_chakram_blitz, fire_at: CHAKRAM_FIRST },
 
-        // N3 -- the quad (draft). Four rings block more of the player's fire:
-        // measured headlessly, 16% of shots reach him against 24% for the
-        // pair, so its health is N1's times 0.69.
-        { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n3_sandquad,
-          fire_at: MIKA_MILL_WIND },
+        // N3 -- the woven disc (`mika_nonspells`), held between hops as N1 is.
+        // Four rings block more of the player's fire: measured headlessly on
+        // the old flat orbit, 16% of shots reached him against 24% for two,
+        // so its health was N1's times 0.69 (not measured on the 2.5D orbit),
+        // since trimmed from playtesting.
+        { name: "", col: BCOL_AMBER, hp: 250, time: 35 * FPS,
+          move: BossMove.Step, hold: 600, attack: mika_n3_woven,
+          fire_at: MIKA_DISC_WIND },
         // S3
         { name: "Three Open Gates", col: BCOL_AMBER, hp: 448,
           time: 44 * FPS, attack: mika_three_gates },
 
-        // N4 -- N3 mirrored.
-        { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n4_sandquad,
-          fire_at: MIKA_MILL_WIND },
+        // N4 -- N3 mirrored, with its colours swapped; its health is N3's.
+        { name: "", col: BCOL_AMBER, hp: 250, time: 35 * FPS,
+          move: BossMove.Step, hold: 600, attack: mika_n4_woven,
+          fire_at: MIKA_DISC_WIND },
         mika_unwritten_row(true, 4),     // S4
 
         // N5 -- the crown (draft). 14% of shots reach him through six rings,
@@ -272,6 +277,7 @@ function mika_phases() {
             time: _s.time,
             move: _s[$ "move"] ?? BossMove.Drift,
             at: _s[$ "at"],
+            hold: _s[$ "hold"],
             attack: _s.attack,
             fire_at: _s[$ "fire_at"] ?? 0,
             par: _s[$ "par"],

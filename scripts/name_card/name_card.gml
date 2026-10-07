@@ -225,6 +225,8 @@ function namecard_draw(_h, _boss) {
     var _g = namecard_geom(_b);
 
     cutin_draw_veil(_g);
+    // The boss's seal under the band, the boss itself in front of it.
+    cutin_draw_caster_seal(_g, _boss, _col);
     namecard_draw_band(_g, _boss, FIELD_CX, _col, NAMECARD_TITLE_MAX);
     cutin_draw_caster(_g, _boss, _col);
     namecard_draw_flight(_h, _g, _boss, FIELD_CX, _col, NAMECARD_TITLE_MAX);
