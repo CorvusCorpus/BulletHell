@@ -1100,6 +1100,20 @@ function test_boss_step() {
     ok("a row's own hold is held from the start of its attack",
        _first_hop == 300 && _held == 600);
 
+    // ...or from its `hold_from`, holding until then too.
+    _h.boss.phases[0].hold_from = 50;
+    _h.boss.phase_t = 0;
+    _first_hop = -1;
+    _held = 0;
+    for (var _f = 0; _f < 50 + (300 + BOSS_STEP_MOVE) * 2; _f++) {
+        if (boss_holding(_h)) _held++;
+        else if (_first_hop < 0) _first_hop = _f;
+        boss_move(_h, _g, 0);
+        _h.boss.phase_t++;
+    }
+    ok("and from its hold_from, when it has one",
+       _first_hop == 350 && _held == 650);
+
     var _b = _e.boss;
     var _inside = true;
     for (var _i = 0; _i < 40; _i++) {
@@ -3916,11 +3930,11 @@ function test_bullet_orbit() {
     st_reset();
 }
 
-/// @desc Mika's disc non-spells (N1, N3 and N4's woven discs, N5's pulses
-///       and N7's reversing disc) for most of their clock: their grains are
-///       let go and leave, and none fills the bullet pool.
+/// @desc Mika's disc non-spells (N1, N3 and N4's woven discs, N5 and N6's
+///       pulses and N7's reversing disc) for most of their clock: their
+///       grains are let go and leave, and none fills the bullet pool.
 function test_mika_disc_runs() {
-    var _slots = [0, 4, 6, 8, 12];
+    var _slots = [0, 4, 6, 8, 10, 12];
     for (var _s = 0; _s < array_length(_slots); _s++) {
         var _label = mika_slot_name(_slots[_s]);
         st_reset();
@@ -3935,12 +3949,32 @@ function test_mika_disc_runs() {
         _e.boss.lead_t = 0;
         // Up to a second short of its clock, before it times out and clears.
         var _run = min(30 * FPS, _e.boss.phases[_slots[_s]].time - FPS);
-        var _peak = 0, _free = 0;
+        var _peak = 0, _free = 0, _hop_shed = 0, _slow = 0, _top = 0;
+        var _turns = array_create(_run, 0), _still = array_create(_run, false);
+        var _was = undefined;
         for (var _f = 0; _f < _run; _f++) {
             boss_act(_e, _g);
+            var _n0 = bullet_count();
             ring_step(_g);
+            // Sand is only shed while he holds still.
+            if (!boss_holding(_e) && bullet_count() > _n0) _hop_shed++;
+            // How far his first ring turned this frame, and whether he held.
+            if (global.ring_n > 0) {
+                var _a = global.rings[0].ang;
+                if (_was != undefined) {
+                    _turns[_f] = abs(angle_difference(_a, _was));
+                    _top = max(_top, _turns[_f]);
+                }
+                _was = _a;
+            }
+            _still[_f] = boss_holding(_e);
             bullet_step(_g.player.x, _g.player.y);
             _peak = max(_peak, bullet_count());
+        }
+        // While he holds still after the wind-up, his rings turn at their
+        // full speed: a reversal (N7's) only ever comes while he hops.
+        for (var _f = 2 * FPS; _f < _run; _f++) {
+            if (_still[_f] && _turns[_f] < _top * 0.999) _slow++;
         }
         for (var _i = 0; _i < bullet_count(); _i++) {
             if (bullet_get(_i).bmod != BMod.Orbit) _free++;
@@ -3949,6 +3983,10 @@ function test_mika_disc_runs() {
            + " loose of " + string(bullet_count()) + ")", _free > 0);
         ok("and stays well inside the bullet pool (peak " + string(_peak)
            + ")", _peak < BULLET_MAX / 2);
+        ok("sheds nothing while he hops (" + string(_hop_shed) + " frames)",
+           _hop_shed == 0);
+        ok("and its rings turn at full speed while he holds (" + string(_slow)
+           + " slow frames)", _slow == 0);
     }
     st_reset();
 }

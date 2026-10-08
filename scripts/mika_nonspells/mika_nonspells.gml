@@ -166,7 +166,7 @@ function mika_sand_burst(_ring, _at, _dir, _look, _hold, _brake, _floor,
 }
 
 // ---------------------------------------------------------------------------
-// The mill (N6, and the rings of the other non-spells' discs)
+// The mill (the rings of the non-spells' discs)
 //
 // Rings form on top of Mika, extend to their distance while the orbit winds
 // up from a standstill, and throw nothing until they reach speed. Each ring
@@ -531,13 +531,12 @@ function mika_mill_ring_for(_cycle, _a0, _way, _hue, _mill, _flip,
         _ring.behind = (_far > 0);
 
         if (disc != undefined) {
-            // The swing too, so a rocking disc's sand circles the way the
-            // rings are going when it is shed.
+            // The swing too (now, not at the lead frame), so a rocking disc's
+            // sand circles the way the rings are going as it is shed.
             mika_disc_shed(_ring, _t, cyc, hue,
                            a0 + way * mika_mill_turned(_t + MIKA_MILL_LEAD,
                                                        mill, flip),
-                           way * mika_mill_swing(_t + MIKA_MILL_LEAD, mill,
-                                                 flip),
+                           way * mika_mill_swing(_t, mill, flip),
                            mill, disc);
         } else {
             // The wake, with both the swing and the orbit read at the lead
@@ -646,6 +645,11 @@ function mika_mill_rim(_ring, _g, _t, _cycle, _hue, _sw, _orb, _mill) {
 // frame):
 #macro MIKA_DISC_WIND 67
 #macro MIKA_DISC_ORBIT 3.15
+
+// How long Mika stays between hops: a whole number of the rings' turns, so
+// each stop lays complete turns of sand. Counted from the end of the wind-up
+// (the rows' `hold_from`), so the first stop is as long as the rest.
+#macro MIKA_DISC_STAY floor(5 * 360 / MIKA_DISC_ORBIT + 0.5)
 
 // Frames between sheddings, per ring.
 #macro MIKA_DISC_BEAT 2
@@ -804,6 +808,8 @@ function mika_woven_disc(_with_shape, _with_col, _back_shape, _back_col,
 // denser.
 #macro MIKA_N4_PACE 0.8
 #macro MIKA_N4_WIND floor(MIKA_DISC_WIND / MIKA_N4_PACE + 0.5)
+// Four of its slower turns between hops (see `MIKA_DISC_STAY`).
+#macro MIKA_N4_STAY floor(4 * 360 / (MIKA_DISC_ORBIT * MIKA_N4_PACE) + 0.5)
 
 /// @desc **N3.** The woven disc, turning clockwise as N1 does: ember glints
 ///       circle with the rings, amber grains against them.
@@ -824,7 +830,7 @@ function mika_n4_woven(_e, _g, _t) {
 }
 
 // ---------------------------------------------------------------------------
-// N5 and N7 -- six-ring discs
+// N5, N6 and N7 -- six-ring discs
 //
 // All six of his rings (`MIKA_RING_N`) at `MIKA_ORBIT`, the radius his
 // six-ring formations use, moving along their path as fast as N3's rings do,
@@ -835,6 +841,9 @@ function mika_n4_woven(_e, _g, _t) {
 // The six rings' working orbit, degrees a frame (168 frames a turn).
 #macro MIKA_SIX_ORBIT (360 / 168)
 
+// N5 and N6 stay four turns between hops (see `MIKA_DISC_STAY`).
+#macro MIKA_SIX_STAY floor(4 * 360 / MIKA_SIX_ORBIT + 0.5)
+
 // Frames a six-ring disc's grain circles before it is let go (a 260 px
 // spread at N1's pace).
 #macro MIKA_SIX_FREE 193
@@ -843,16 +852,24 @@ function mika_n4_woven(_e, _g, _t) {
 #macro MIKA_PULSE_EVERY 42
 #macro MIKA_PULSE_ON 10
 
-/// @desc N5's mill: the woven disc's pairs on six rings, shed in pulses, so
-///       the sand goes out in waves.
-function mika_pulse_disc() {
+// N6's: bursts twice as long, half as often -- the same sand a second, in
+// thicker waves with wider lanes between them.
+#macro MIKA_N6_PULSE_EVERY 84
+#macro MIKA_N6_PULSE_ON 20
+
+/// @desc N5 and N6's mill: the woven disc's pairs on six rings, shed in
+///       pulses (each ring sheds every frame for `_on` frames in every
+///       `_every`), so the sand goes out in waves. The grain circling with the
+///       rings is of shape `_with_shape` and colour `_with_col`, the one
+///       circling against them `_back_shape`, `_back_col`.
+function mika_pulse_disc(_with_shape, _with_col, _back_shape, _back_col,
+                         _every, _on) {
     return mika_mill_shape({
         rings: MIKA_RING_N, dist: MIKA_ORBIT, orbit: MIKA_SIX_ORBIT, beat: 1,
         wind: MIKA_DISC_WIND, disc: true, free: MIKA_SIX_FREE,
-        pulse: MIKA_PULSE_EVERY, pulse_on: MIKA_PULSE_ON,
-        bands: [ mika_disc_band(MIKA_DISC_IN, BSHAPE_MOTE, BCOL_EMBER),
-                 mika_disc_band(MIKA_DISC_IN, BSHAPE_PELLET, BCOL_AMBER,
-                                true) ],
+        pulse: _every, pulse_on: _on,
+        bands: [ mika_disc_band(MIKA_DISC_IN, _with_shape, _with_col),
+                 mika_disc_band(MIKA_DISC_IN, _back_shape, _back_col, true) ],
     });
 }
 
@@ -860,13 +877,31 @@ function mika_pulse_disc() {
 ///       rings and amber grains against them, shed in bursts.
 function mika_n5_pulses(_e, _g, _t) {
     if (_t != 0) return;
-    mika_mill_spawn(_e, -1, [0], mika_pulse_disc());
+    mika_mill_spawn(_e, -1, [0],
+                    mika_pulse_disc(BSHAPE_MOTE, BCOL_EMBER, BSHAPE_PELLET,
+                                    BCOL_AMBER, MIKA_PULSE_EVERY,
+                                    MIKA_PULSE_ON));
 }
 
-// N7's reversals: the rings hold one way `HOLD` frames, then swing round to
-// the other over `SWING`; the first swing comes a hold after the wind-up.
-#macro MIKA_REVERSE_HOLD 150
-#macro MIKA_REVERSE_SWING 30
+/// @desc **N6.** N5 mirrored -- turning counterclockwise, with amber grains
+///       circling with the rings and ember glints against them -- and its
+///       bursts twice as long, half as often (`MIKA_N6_PULSE_*`).
+function mika_n6_pulses(_e, _g, _t) {
+    if (_t != 0) return;
+    mika_mill_spawn(_e, 1, [0],
+                    mika_pulse_disc(BSHAPE_PELLET, BCOL_AMBER, BSHAPE_MOTE,
+                                    BCOL_EMBER, MIKA_N6_PULSE_EVERY,
+                                    MIKA_N6_PULSE_ON));
+}
+
+// N7's reversals are his hops: the rings go one whole turn one way (`HOLD`,
+// which is also its row's `hold`), then swing round to the other while he
+// hops, when nothing is shed. The first comes a hold after the wind-up, as
+// his first hop does. `FLIP` allows for his hop clock running a frame ahead
+// of the rings' (it reads `phase_t` after the attack has advanced it).
+#macro MIKA_REVERSE_HOLD floor(360 / MIKA_SIX_ORBIT + 0.5)
+#macro MIKA_REVERSE_SWING BOSS_STEP_MOVE
+#macro MIKA_REVERSE_FLIP (MIKA_DISC_WIND + MIKA_REVERSE_HOLD - 1)
 #macro MIKA_REVERSE_BEAT 3
 
 /// @desc N7's mill: six rings whose turn reverses on its own timer, each
@@ -880,7 +915,7 @@ function mika_reversing_disc() {
         beat: MIKA_REVERSE_BEAT, wind: MIKA_DISC_WIND, disc: true,
         free: MIKA_SIX_FREE, rock: true, rock_hold: MIKA_REVERSE_HOLD,
         rock_swing: MIKA_REVERSE_SWING,
-        flip: MIKA_DISC_WIND + MIKA_REVERSE_HOLD, bolt: true,
+        flip: MIKA_REVERSE_FLIP, bolt: true,
         bands: [ mika_disc_band(MIKA_DISC_IN),
                  mika_disc_band(MIKA_DISC_MID, BSHAPE_PELLET, BCOL_GOLD) ],
     });
@@ -892,34 +927,4 @@ function mika_reversing_disc() {
 function mika_n7_reversing(_e, _g, _t) {
     if (_t != 0) return;
     mika_mill_spawn(_e, -1, [0, 1, 0, 1, 0, 1], mika_reversing_disc());
-}
-
-// ---------------------------------------------------------------------------
-// N6 -- the crown (draft)
-//
-// The bead mill on all six of his rings at `MIKA_ORBIT`. The orbit is slower
-// than the pair's, because the same angle covers more ground at this radius
-// (compare mills with `mika_mill_bead_gap` and `mika_mill_rim_spd`).
-// ---------------------------------------------------------------------------
-
-#macro MIKA_CROWN_RINGS MIKA_RING_N
-#macro MIKA_CROWN_DIST MIKA_ORBIT
-#macro MIKA_CROWN_WAKE 1
-#macro MIKA_CROWN_WAKE_ARC MIKA_MILL_WAKE_ARC
-#macro MIKA_CROWN_BEAT 4
-#macro MIKA_CROWN_ORBIT 1.30
-
-/// @desc N6's mill: six rings, a sixth of a turn apart, one stream each.
-function mika_mill_crown() {
-    return mika_mill_shape({ rings: MIKA_CROWN_RINGS, dist: MIKA_CROWN_DIST,
-                             orbit: MIKA_CROWN_ORBIT, beat: MIKA_CROWN_BEAT,
-                             wake: MIKA_CROWN_WAKE,
-                             arc: MIKA_CROWN_WAKE_ARC });
-}
-
-/// @desc **N6.** The crown, turning counterclockwise. Alternate rings share
-///       a look.
-function mika_n6_sandcrown(_e, _g, _t) {
-    if (_t != 0) return;
-    mika_mill_spawn(_e, -1, [1, 0, 1, 0, 1, 0], mika_mill_crown());
 }

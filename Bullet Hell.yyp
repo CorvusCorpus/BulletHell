@@ -47,8 +47,6 @@
   },
   "name":"Bullet Hell",
   "resources":[
-    {"id":{"name":"spr_ui_bearing_gem","path":"sprites/spr_ui_bearing_gem/spr_ui_bearing_gem.yy",},},
-    {"id":{"name":"spr_ui_bearing","path":"sprites/spr_ui_bearing/spr_ui_bearing.yy",},},
     {"id":{"name":"obj_boot","path":"objects/obj_boot/obj_boot.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},
     {"id":{"name":"obj_practice","path":"objects/obj_practice/obj_practice.yy",},},
@@ -286,6 +284,8 @@
     {"id":{"name":"spr_szuix","path":"sprites/spr_szuix/spr_szuix.yy",},},
     {"id":{"name":"spr_talk_mika","path":"sprites/spr_talk_mika/spr_talk_mika.yy",},},
     {"id":{"name":"spr_talk_szuix","path":"sprites/spr_talk_szuix/spr_talk_szuix.yy",},},
+    {"id":{"name":"spr_ui_bearing_gem","path":"sprites/spr_ui_bearing_gem/spr_ui_bearing_gem.yy",},},
+    {"id":{"name":"spr_ui_bearing","path":"sprites/spr_ui_bearing/spr_ui_bearing.yy",},},
     {"id":{"name":"spr_ui_chain","path":"sprites/spr_ui_chain/spr_ui_chain.yy",},},
     {"id":{"name":"spr_ui_corner","path":"sprites/spr_ui_corner/spr_ui_corner.yy",},},
     {"id":{"name":"spr_ui_crest","path":"sprites/spr_ui_crest/spr_ui_crest.yy",},},

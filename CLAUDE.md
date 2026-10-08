@@ -424,8 +424,8 @@ the screen once, so it fades as a whole: in as it comes down, and to
 `BOSS_RAIL_FADE` while the player is near it (`hud_rail_near`).
 
 **Bosses.** `boss_spawn(x, y, hp, phases, def)`. A phase is
-`{kind, name, col, bg, hp_end, time, attack, move?, at?, hold?, fire_at?,
-par?, score?, survival?}`, and `attack(_e, _g, _t)` is called every frame with the
+`{kind, name, col, bg, hp_end, time, attack, move?, at?, hold?, hold_from?,
+fire_at?, par?, score?, survival?}`, and `attack(_e, _g, _t)` is called every frame with the
 frames elapsed. The last three are for grading (see below).
 
 - A phase ends on health (checked first) or on time, and either way the bar
@@ -445,7 +445,10 @@ frames elapsed. The last three are for grading (see below).
   of a missing struct field raises. `at` (`{x, y}`) gives a `Fixed` attack its
   own station instead of the boss's; the boss glides there during the pause
   before it. `hold` gives a `Step` attack its own frames between hops, timed
-  from the attack's start (`boss_step_hold`, `boss_step_clock`).
+  from the attack's start, or from its `hold_from` (`boss_step_hold`,
+  `boss_step_clock`). Mika's non-spells hold a whole number of their rings'
+  turns, counted from the end of the rings' wind-up, so each stop lays
+  complete turns of sand (owner's request).
 - Before every attack the boss plays a charge cue (`boss_charge`, the Hex's
   pull), `BOSS_CHARGE_LEAD` frames before the attack's first shots. Those
   come on the attack's first frame unless the row's `fire_at` says later;
@@ -831,12 +834,12 @@ Mika's slots (`mika_slots()` is the source of truth):
 
 | Slot | State |
 |---|---|
-| N1 | Written, in playtesting: the browser sketch's sand disc (`tools/sketch/sets/mika_n1.js`) run 1.5 times as fast, rings included, shedding more often and with a third band. The two rings on their 2.5D orbit shed three bands of yellow and orange sand that keep circling in the rings' plane (`BMod.Orbit`), drifting outward and slowing, and are let go along their paths to drift across the field. He holds longer between hops than other `Step` attacks (`hold`), sheds nothing while he hops, and sand circles the spot it was shed from. Mika himself fires nothing. |
+| N1 | Written, in playtesting: the browser sketch's sand disc (`tools/sketch/sets/mika_n1.js`) run 1.5 times as fast, rings included, shedding more often and with a third band. The two rings on their 2.5D orbit shed three bands of yellow and orange sand that keep circling in the rings' plane (`BMod.Orbit`), drifting outward and slowing, and are let go along their paths to drift across the field. He holds whole turns of the rings between hops (`hold`), sheds nothing while he hops, and sand circles the spot it was shed from. Mika himself fires nothing. |
 | N2 | Written, in playtesting: N1 mirrored (turning the other way) with each ring's hue swapped. |
 | N3, N4 | Written, in playtesting: the woven disc, picked from the browser sketches (`tools/sketch/sets/mika_n3.js`). Four rings on N1's orbit, each shedding a pair into one band: one grain circles with the rings as N1's sand does, the other against them at the same rate, so their streams cross. N4 is N3 mirrored with its colours swapped, run at 0.8 of its pace (rings included, so the shape holds) with the same shedding beat, so slower and denser. Health started at N1's times the four-ring blocking measured on the old flat orbit and was trimmed after playtesting. |
 | N5 | Written, in playtesting: pulses, picked from the browser sketches (`tools/sketch/sets/mika_n5.js`). Six rings on his six-ring radius shed the woven disc's pairs (one grain circling with the rings, one against) only in short bursts, every ring at once, so the sand goes out in waves. |
-| N6 | Draft, unplayed: the bead mill with six rings (its twist to be settled once N5 has been played) |
-| N7 | Written, in playtesting: the reversing disc, from the same sketches. Six rings whose turn holds one way, then swings round to the other on its own timer (`rock_hold`, `rock_swing`); sand circles the way the rings were going when it was shed, so fresh sand crosses the old after each reversal and the released sand falls in curtains. Each ring sheds its own sand and a gold band, and as each reversal starts every ring casts a beam aimed at the player, which pivots on that spot as the ring swings round (`mika_mill_bolt`). |
+| N6 | Written, in playtesting: N5 mirrored with its colours swapped, its bursts twice as long and half as often (the same sand a second, in thicker waves with wider lanes between). |
+| N7 | Written, in playtesting: the reversing disc, from the same sketches. Six rings that turn one whole way round, then swing round to the other while Mika hops (his hops are its reversals, so nothing is shed during a turn); sand circles the way the rings were going when it was shed, so fresh sand crosses the old after each reversal and the released sand falls in curtains. Each ring sheds its own sand and a gold band, and as each reversal starts every ring casts a beam aimed at the player, which pivots on that spot as the ring swings round (`mika_mill_bolt`). |
 | S1 | Written, in playtesting: `Storm Cage`. Three rings strung with lightning ride round the player; a sandstorm floods the field; rings stop grains; on a bolt amber sand bursts into slow falling glass and ember grit burns away. |
 | S2 | Written, in playtesting: `Chakram Blitz` (inspired by Murasa's anchors in Touhou 12). Two rings rest at his sides and are thrown at the player in turn; while one waits it loops once round him in 2.5D, larger in front and smaller, dimmer and harmless behind him, timed to be back at rest as its wind-up starts. Each winds up aimed at the player, locks its aim with a brief flash of its lane, charges, is thrown fast with a sharp acceleration and a smooth braking stop, lays a braided double-helix rope that holds still and then comes apart, comes to rest short of the wall with its spin still building like a yo-yo's, sprays a brief pinwheel of bullets, and is pulled back. One ring is out at a time, and the gap between throws shrinks over the attack. |
 | S3 | Old placeholder: `Three Open Gates` |

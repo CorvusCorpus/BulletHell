@@ -372,12 +372,14 @@ function boss_step_hold(_b, _i) {
 
 /// @desc The clock the `Step` attack at index `_i` hops by: `drift_t`, which
 ///       runs on across attacks; or, for a row with its own `hold`, the
-///       attack's own frames (0 in the pause before it), so its first hold is
-///       a whole one.
+///       attack's own frames from its row's `hold_from` (0 until then, and in
+///       the pause before it), so every hold is a whole one.
 function boss_step_clock(_b, _i) {
     if (_i < 0 || _i >= array_length(_b.phases)) return _b.drift_t;
-    if (_b.phases[_i][$ "hold"] == undefined) return _b.drift_t;
-    return (_i == _b.phase) ? max(0, _b.phase_t) : 0;
+    var _p = _b.phases[_i];
+    if (_p[$ "hold"] == undefined) return _b.drift_t;
+    if (_i != _b.phase) return 0;
+    return max(0, _b.phase_t - (_p[$ "hold_from"] ?? 0));
 }
 
 /// @desc Where hop `_n` lands, sideways. Incommensurable angles, so the
