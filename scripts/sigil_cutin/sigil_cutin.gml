@@ -346,5 +346,7 @@ function sigil_cutin_draw_caster(_g, _p) {
     draw_sprite_ext(spr_szuix, _fr, _x, _y, 1, 1, _ang, c_white, _a * _flicker);
     player_draw_focus_heart(_p, _x, _y, _a);
 
-    if (_p.focus && _p.entry <= 0) player_draw_hitbox_at(_x, _y, _a);
+    if (_p.entry <= 0) {
+        player_draw_hitbox_at(_x, _y, _a, _p.focus_show, _p.anim);
+    }
 }

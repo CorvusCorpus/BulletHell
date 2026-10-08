@@ -3916,11 +3916,11 @@ function test_bullet_orbit() {
     st_reset();
 }
 
-/// @desc Mika's disc non-spells (N1, N3's woven disc, and N4's slower and
-///       denser one) for most of their clock: their grains are let go and
-///       leave, and none fills the bullet pool.
+/// @desc Mika's disc non-spells (N1, N3 and N4's woven discs, N5's pulses
+///       and N7's reversing disc) for most of their clock: their grains are
+///       let go and leave, and none fills the bullet pool.
 function test_mika_disc_runs() {
-    var _slots = [0, 4, 6];
+    var _slots = [0, 4, 6, 8, 12];
     for (var _s = 0; _s < array_length(_slots); _s++) {
         var _label = mika_slot_name(_slots[_s]);
         st_reset();
@@ -3933,8 +3933,10 @@ function test_mika_disc_runs() {
         _e.y = _e.boss.home_y;
         boss_enter_phase(_e, _g, _slots[_s]);
         _e.boss.lead_t = 0;
+        // Up to a second short of its clock, before it times out and clears.
+        var _run = min(30 * FPS, _e.boss.phases[_slots[_s]].time - FPS);
         var _peak = 0, _free = 0;
-        for (var _f = 0; _f < 30 * FPS; _f++) {
+        for (var _f = 0; _f < _run; _f++) {
             boss_act(_e, _g);
             ring_step(_g);
             bullet_step(_g.player.x, _g.player.y);

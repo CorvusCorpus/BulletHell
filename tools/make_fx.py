@@ -526,41 +526,83 @@ def make_focus_frames():
     c2 = A.Canvas(size, size)
     _flare(c2, cx, cy, -90, 26, 26, 4.0, alpha=70)
     _flare(c2, cx, cy, -90, 26, 26, 4.0, alpha=210, outline=0.9)
-    c2.ellipse([cx - 11.5, cy - 11.5, cx + 11.5, cy + 11.5],
+    c2.ellipse([cx - 14.5, cy - 14.5, cx + 14.5, cy + 14.5],
                outline=(255, 255, 255, 210), width=1.0)
     heart = _alpha_only_glow(c2.finish(), 0.6, 1.6)
 
     return [rim, script, heart]
 
 
-HITBOX_SIZE = 20
-# The disc's radius in the sprite's pixels. The game draws it scaled so this
-# is `PLAYER_R` (`HITBOX_ART_R` in constants.gml must match it).
+HITBOX_SIZE = 28
+# The white core's radius in the sprite's pixels. The game draws it scaled so
+# this is `PLAYER_R` (`HITBOX_ART_R` in constants.gml must match it).
 HITBOX_R = 4.0
+# The marker round the core, larger than the hitbox so it is easy to follow:
+# a cyan band, a dark keyline, and a soft dark halo past it.
+HITBOX_BAND = (5.0, 7.4)
+HITBOX_KEY = 8.9
+HITBOX_HALO = 12.5
 
 
 def make_hitbox(size=HITBOX_SIZE):
-    """The hitbox: a white core in a rim of his cyan, the two filling exactly
-    `HITBOX_R`, inside a dark contour so it reads over anything (amber sand
-    included). Colours baked; drawn untinted, after the bullets.
+    """The hitbox marker, two frames, colours baked, drawn after the bullets.
+
+    0. A white core of exactly `HITBOX_R` (the true hitbox), a dark hairline,
+       a band of his cyan lit from the upper left, a dark keyline, and a soft
+       dark halo, so it reads over anything (amber sand included). Everything
+       outside the core is a marker only.
+    1. A sheen: a short white arc on the band, which the game turns slowly
+       and adds over frame 0.
     """
     ss = 8
-    _, _, r = A.grid(size * ss, size * ss)
-    rp = r * size / 2.0                  # final pixels from the centre
+    n = size * ss
+    ys, xs = np.mgrid[0:n, 0:n].astype(np.float32)
+    c = (n - 1) / 2.0
+    dx = (xs - c) / ss
+    dy = (ys - c) / ss
+    rp = np.hypot(dx, dy)                # final pixels from the centre
     aa = 1.5 / ss
+    b0, b1 = HITBOX_BAND
 
     def inside(rad):
         return np.clip((rad - rp) / aa + 0.5, 0, 1)
 
-    disc = inside(HITBOX_R)
-    core = inside(HITBOX_R - 1.35)
-    contour = inside(HITBOX_R + 1.5)
-    col = np.zeros((size * ss, size * ss, 3), np.float32)
-    col[:] = (14, 10, 40)
-    col += (np.array(A.RUNE, np.float32) - col) * disc[..., None]
-    col += (np.array((255, 255, 255), np.float32) - col) * core[..., None]
-    img = A.from_arrays(col, contour * 0.92)
-    return img.resize((size, size), Image.LANCZOS)
+    white = np.array((255, 255, 255), np.float32)
+    col = np.zeros((n, n, 3), np.float32)
+    col[:] = (10, 6, 30)
+
+    # The halo falls off past the keyline; inside it the ground is opaque.
+    t = np.clip((rp - HITBOX_KEY) / (HITBOX_HALO - HITBOX_KEY), 0, 1)
+    alpha = np.maximum((1 - t) ** 2 * 0.55, inside(HITBOX_KEY) * 0.96)
+
+    # The band: deep cyan at its outer edge, his cyan inside, and a lift
+    # toward white on the side facing the light.
+    f = np.clip((rp - b0) / (b1 - b0), 0, 1)
+    rune = np.array(A.RUNE, np.float32)
+    deep = np.array((22, 120, 200), np.float32)
+    lit = np.clip(0.5 - 0.5 * (dx * 0.6 + dy * 0.8) / np.maximum(rp, 1e-3),
+                  0, 1)
+    band_col = deep + (rune - deep) * (1 - f * 0.75)[..., None]
+    band_col += (white - band_col) * (0.35 * lit * (1 - f))[..., None]
+    band = inside(b1) * (1 - inside(b0))
+    col += (band_col - col) * band[..., None]
+
+    # The core, faintly cyan at its edge. Between it and the band is the
+    # ground: a dark hairline that makes the core its own disc.
+    edge = np.clip((rp / HITBOX_R) ** 3, 0, 1)[..., None]
+    core_col = white - (white - np.array((214, 246, 255), np.float32)) * edge
+    col += (core_col - col) * inside(HITBOX_R)[..., None]
+    marker = A.from_arrays(col, alpha).resize((size, size), Image.LANCZOS)
+
+    # The sheen: 80 degrees of the band, tapering at both ends.
+    ang = np.degrees(np.arctan2(dy, dx))
+    s = np.clip((ang + 150.0) / 80.0, 0, 1)
+    arc = np.clip(np.sin(s * math.pi), 0, 1) ** 1.5 * ((ang > -150) & (ang < -70))
+    mid = (b0 + b1) / 2.0
+    across = np.clip(1 - np.abs(rp - mid) / ((b1 - b0) / 2.0), 0, 1)
+    sheen = A.from_arrays(np.full((n, n, 3), 255, np.float32),
+                          arc * across * 0.9)
+    return [marker, sheen.resize((size, size), Image.LANCZOS)]
 
 
 # ---------------------------------------------------------------------------
@@ -986,7 +1028,9 @@ def main():
         layered = A.add(layered, lit)
     layered.resize((768, 768), Image.LANCZOS).save(
         os.path.join(A.PREVIEW, "sigil.png"))
-    emit("spr_hitbox", make_hitbox(), folder="Sprites/ui")
+    hitbox = make_hitbox()
+    gm_new.sprite("spr_hitbox", hitbox, origin="center", folder="Sprites/ui")
+    made.append(("spr_hitbox", hitbox[0]))
     focus = make_focus_frames()
     gm_new.sprite("spr_focus_sigil", focus, origin="center",
                   folder="Sprites/ui")

@@ -21,6 +21,9 @@
  *   toggles           [{id, label}] checkboxes, read as `api.opts[id]`
  *   orbits            several orbits instead (each with the same fields, plus
  *                     `phase0`, the degrees its first ring starts round)
+ *                     An orbit may also give `radiusAt(t)` (a radius that
+ *                     changes) and `turnAt(t)` (degrees turned by frame `t`,
+ *                     for a turn that isn't steady); see `orbitRadius`.
  *   patterns          [{name, emit(api), step?(api), orbit?, orbits?, boss?,
  *                     loop?}]
  * A pattern's `orbit` overrides fields of the set's, its `orbits` replaces
@@ -78,12 +81,18 @@ let cv = null, g = null, scale = 1, label = '', listeners = [];
  * angle round the boss, `far` is dsin(orb) (1 at the back, -1 in front), and
  * `size` is how much larger or smaller depth makes it. */
 function ringAt(i, tt, o = orbit) {
-    const r = onOrbit((o.phase0 || 0) + i * 360 / o.rings + 360 * tt / o.period,
-                      o.radius, boss, o);
+    const turned = o.turnAt ? o.turnAt(tt) : 360 * tt / o.period;
+    const r = onOrbit((o.phase0 || 0) + i * 360 / o.rings + turned,
+                      orbitRadius(o, tt), boss, o);
     r.i = i;
     r.o = o;
     r.size = 1 - o.depth * r.far;
     return r;
+}
+
+// Orbit `o`'s radius at frame `tt`: its `radiusAt`, or its steady `radius`.
+function orbitRadius(o, tt) {
+    return o.radiusAt ? o.radiusAt(tt) : o.radius;
 }
 
 // The GameMaker angle round the boss at phase `p` on orbit `o` (see `ringAt`).
@@ -302,8 +311,8 @@ function draw() {
         g.strokeStyle = 'rgba(201,162,74,0.18)';
         g.lineWidth = 1;
         g.beginPath();
-        g.ellipse(boss.x * s, boss.y * s, o.radius * s,
-                  o.radius * o.tilt * s, 0, 0, 7);
+        const rad = orbitRadius(o, t);
+        g.ellipse(boss.x * s, boss.y * s, rad * s, rad * o.tilt * s, 0, 0, 7);
         g.stroke();
         for (let i = 0; i < o.rings; i++) rings.push(ringAt(i, t, o));
     }

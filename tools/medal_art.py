@@ -510,7 +510,7 @@ def _gem(face, col, cx, cy, rg, kind, seed):
     e[:, :-w] |= idx[:, :-w] != idx[:, w:]
     val = val + 0.16 * e
     val = val * (1 - 0.22 * rho ** 3) * (1 - 0.8 * _ss(0.93, 1.0, rho))
-    g = ramp(GEMS[kind], val)
+    g = ramp(GEMS[kind] if isinstance(kind, str) else kind, val)
 
     # Fire: a few of the small facets throw a spectral colour.
     rng = np.random.default_rng(seed + 11)

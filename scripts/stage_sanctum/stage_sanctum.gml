@@ -162,9 +162,10 @@ function mika_def() {
 ///           N3  written: the woven disc S3  old placeholder, Three Open Gates
 ///           N4  written: N3 mirrored, slower and denser
 ///                                           S4  unwritten
-///           N5  draft: the crown            S5  unwritten
-///           N6  draft: the crown mirrored   S6  unwritten
-///           N7  draft: the rush             S7  unwritten
+///           N5  written: pulses             S5  unwritten
+///           N6  draft: the crown            S6  unwritten
+///           N7  written: reversing disc + bolts
+///                                           S7  unwritten
 ///                                           S8  written: Grand Orrery
 ///
 ///       To write a slot: put the attack in its own script under the
@@ -217,24 +218,27 @@ function mika_slots() {
           fire_at: MIKA_N4_WIND },
         mika_unwritten_row(true, 4),     // S4
 
-        // N5 -- the crown (draft). 14% of shots reach him through six rings,
-        // so its health is N1's times 0.60.
-        { name: "", col: BCOL_AMBER, hp: 156, time: 35 * FPS,
-          move: BossMove.Step, attack: mika_n5_sandcrown,
-          fire_at: MIKA_MILL_WIND },
+        // N5 -- pulses (`mika_nonspells`), held between hops as N1 is. Six
+        // rings block more of the player's fire than four: on the old flat
+        // orbit 14% of shots reached him against 16%, so its health is N3's
+        // times 14/16 (a first guess, not measured on the 2.5D orbit).
+        { name: "", col: BCOL_AMBER, hp: 220, time: 35 * FPS,
+          move: BossMove.Step, hold: 600, attack: mika_n5_pulses,
+          fire_at: MIKA_DISC_WIND },
         mika_unwritten_row(true, 5),     // S5
 
-        // N6 -- N5 mirrored.
+        // N6 -- the crown (draft): the bead mill on six rings.
         { name: "", col: BCOL_AMBER, hp: 156, time: 35 * FPS,
           move: BossMove.Step, attack: mika_n6_sandcrown,
           fire_at: MIKA_MILL_WIND },
         mika_unwritten_row(true, 6),     // S6
 
-        // N7 -- the rush (draft). A shorter clock; health is N1's times 0.60
-        // (the same blocking as the crown), scaled by 30/35 for the clock.
-        { name: "", col: BCOL_AMBER, hp: 134, time: 30 * FPS,
-          move: BossMove.Step, attack: mika_n7_sandrush,
-          fire_at: MIKA_MILL_WIND },
+        // N7 -- the reversing disc (`mika_nonspells`), with a bolt from every
+        // ring at each reversal, held between hops as N1 is. A shorter clock; its health is N5's scaled by 30/35 for it
+        // (a first guess).
+        { name: "", col: BCOL_AMBER, hp: 190, time: 30 * FPS,
+          move: BossMove.Step, hold: 600, attack: mika_n7_reversing,
+          fire_at: MIKA_DISC_WIND },
         mika_unwritten_row(true, 7),     // S7
 
         // S8 -- Grand Orrery (`mika_grand_orrery`). He holds the middle of

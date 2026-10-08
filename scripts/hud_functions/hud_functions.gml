@@ -62,6 +62,18 @@ function hud_new() {
         // under it or near it (`hud_rail_near`).
         rail_fade: 1,
 
+        // The bearing under the boss on the field's bottom rule
+        // (`hud_draw_bearing`): how far it is shown (0 to 1), frames since it
+        // was called up, where it stands, the boss's colour (`BCOL_*`), how
+        // far the player is in line with the boss (eased), and a glint lit
+        // as he comes into line.
+        bearing_a: 0,
+        bearing_t: 0,
+        bearing_x: FIELD_CX,
+        bearing_col: BCOL_GOLD,
+        bearing_line: 0,
+        bearing_glint: 0,
+
         graze_seen: 0,           // what the counters were last frame
         tally_seen: 0,
         life_seen: HP_MAX,
@@ -251,6 +263,26 @@ function hud_step(_h, _g) {
     if (_h.rig >= 1 && _h.rig_seen < 1) _h.rig_flare = 1;
     _h.rig_seen = _h.rig;
 
+    // The bearing is up while the rail is (opening over half a second,
+    // closing faster) and stands under the boss; it keeps its last place as
+    // it goes.
+    if (_hung && _h.bearing_a <= 0) _h.bearing_t = 0;
+    _h.bearing_a = _hung ? min(1, _h.bearing_a + 1 / 30)
+                         : max(0, _h.bearing_a - 1 / 18);
+    _h.bearing_t++;
+    if (_boss != undefined) {
+        _h.bearing_x = clamp(_boss.x, FIELD_X0, FIELD_X1);
+        _h.bearing_col = _boss.boss.def.col;
+    }
+    var _dx = abs(_p.x - _h.bearing_x);
+    var _line = (_hung && _p.alive)
+              ? 1 - clamp((_dx - BEARING_LINE_NEAR)
+                          / (BEARING_LINE_FAR - BEARING_LINE_NEAR), 0, 1)
+              : 0;
+    _h.bearing_glint = max(0, _h.bearing_glint - 0.05);
+    if (_line >= 0.5 && _h.bearing_line < 0.5) _h.bearing_glint = 1;
+    _h.bearing_line += (_line - _h.bearing_line) * 0.25;
+
     // The rail fades while the player is under it or near it, so it never
     // hides him (an attack can have him circling the boss up there).
     var _fade = hud_rail_near(_h, _p.x, _p.y) ? BOSS_RAIL_FADE : 1;
@@ -286,6 +318,102 @@ function hud_step(_h, _g) {
     if (_want_spell > 0 && _h.cutin_seen >= 0) _h.spell_a = 1;
     _h.cutin_seen = _cut;
     _h.spell_a += (_want_spell - _h.spell_a) * 0.10;
+}
+
+// ---------------------------------------------------------------------------
+// The bearing
+// ---------------------------------------------------------------------------
+
+/// @desc The bearing: where the boss is across the field, marked on the
+///       field's bottom rule (drawn after the frame, on the GUI layer). A
+///       gilt compass rose (`spr_ui_bearing`) holds a stone of the boss's
+///       colour (`spr_ui_bearing_gem`) on the outer rule, its top point
+///       reaching up past the field's edge, with blades along the rule inlaid
+///       in that colour. The rules glow under it and its light spills up into
+///       the field. It opens out from the stone; its blades draw in at the
+///       field's sides. Its top point glints; with the player in line under
+///       the boss the light swells and the top point flares, and a glint
+///       crosses the stone as he comes into line (and every few seconds).
+function hud_draw_bearing(_h) {
+    var _a = _h.bearing_a;
+    if (_a <= 0.01) return;
+    var _x = _h.bearing_x;
+    var _y = BEARING_Y;
+    var _col = global.bullet_colour[_h.bearing_col];
+    var _t = _h.bearing_t;
+    var _ln = _h.bearing_line;
+    var _breath = 0.5 + 0.5 * dsin(_t * 2.4);
+    // Eased: the mount pops out of nothing, the blades follow it out.
+    var _o = 1 - power(1 - _a, 3);
+    var _pop = min(1, _a * 1.6);
+    var _m = 0.55 + 0.45 * (1 + 2.2 * power(_pop - 1, 3) + 1.2 * power(_pop - 1, 2));
+    var _w = 1 - power(1 - clamp(_a * 1.25 - 0.25, 0, 1), 3);
+
+    // Each blade's reach, drawn in so its end stays on the outer rule.
+    var _room_r = (FIELD_X1 + FIELD_RULE_OUT - 2 - _x) / BEARING_REACH;
+    var _room_l = (_x - FIELD_X0 + FIELD_RULE_OUT - 2) / BEARING_REACH;
+    var _sr = _w * clamp(_room_r, 0, 1);
+    var _sl = _w * clamp(_room_l, 0, 1);
+
+    // Its light spilling up across the field's edge, and lighting the rules
+    // under it.
+    ui_blend(bm_add);
+    var _bw = sprite_get_width(spr_fx_bloom);
+    draw_sprite_ext(spr_fx_bloom, 0, _x, FIELD_Y1, 240 / _bw, 96 / _bw, 0,
+                    _col, (0.20 + 0.06 * _breath + 0.22 * _ln) * _o);
+    var _rule = merge_colour(COL_GILT_LIT, _col, 0.35);
+    var _half = 40 + BEARING_REACH * max(_sr, _sl);
+    hud_bearing_glow(_x, FIELD_Y1 + 1, FIELD_Y1 + 5, _half, _rule,
+                     (0.55 + 0.25 * _ln) * _o);
+    hud_bearing_glow(_x, _y - 1, _y + 2, _half, _rule, 0.35 * _o);
+    ui_blend(bm_normal);
+
+    // The blades, and their inlay of the boss's colour, lit from within.
+    var _inlay = merge_colour(_col, c_white, 0.2);
+    draw_sprite_ext(spr_ui_bearing, 1, _x, _y, _sr, 1, 0, c_white, _o);
+    draw_sprite_ext(spr_ui_bearing, 2, _x, _y, _sl, 1, 0, c_white, _o);
+    draw_sprite_ext(spr_ui_bearing, 3, _x, _y, _sr, 1, 0, _inlay, _o);
+    draw_sprite_ext(spr_ui_bearing, 4, _x, _y, _sl, 1, 0, _inlay, _o);
+    ui_blend(bm_add);
+    var _hot = (0.20 + 0.15 * _breath + 0.35 * _ln) * _o;
+    draw_sprite_ext(spr_ui_bearing, 3, _x, _y, _sr, 1, 0, _col, _hot);
+    draw_sprite_ext(spr_ui_bearing, 4, _x, _y, _sl, 1, 0, _col, _hot);
+    ui_blend(bm_normal);
+
+    // The rose and its stone, glowing.
+    draw_sprite_ext(spr_ui_bearing, 0, _x, _y, _m, _m, 0, c_white, _pop);
+    draw_bloom(_x, _y, 46, _col, (0.30 + 0.12 * _breath + 0.30 * _ln) * _o);
+    draw_sprite_ext(spr_ui_bearing_gem, _h.bearing_col, _x, _y, _m, _m, 0,
+                    c_white, _pop);
+
+    // The glint across the stone: as the player comes into line, and for
+    // half a second in every four.
+    var _u = (_t mod 240) / 30;
+    var _g = max(_h.bearing_glint, (_u < 1) ? dsin(_u * 180) : 0);
+    ui_blend(bm_add);
+    if (_g > 0.01) {
+        card_draw_glint(_x - 2, _y - 2, 13 * _g, c_white, 0.85 * _g * _o);
+    }
+    // The top point glints softly, and flares while he is in line.
+    card_draw_glint(_x, _y - 22 * _m, 7 + 9 * _ln,
+                    merge_colour(_col, c_white, 0.5),
+                    (0.30 + 0.12 * _breath + 0.6 * _ln) * _o);
+    ui_blend(bm_normal);
+}
+
+/// @desc A glow along a rule under the bearing: from `_y0` to `_y1`,
+///       brightest at `_x` and fading out `_half` pixels each way. Additive;
+///       the caller sets the blend.
+function hud_bearing_glow(_x, _y0, _y1, _half, _col, _alpha) {
+    if (_alpha <= 0.004) return;
+    draw_primitive_begin(pr_trianglestrip);
+    draw_vertex_colour(_x - _half, _y0, _col, 0);
+    draw_vertex_colour(_x - _half, _y1, _col, 0);
+    draw_vertex_colour(_x, _y0, _col, _alpha);
+    draw_vertex_colour(_x, _y1, _col, _alpha);
+    draw_vertex_colour(_x + _half, _y0, _col, 0);
+    draw_vertex_colour(_x + _half, _y1, _col, 0);
+    draw_primitive_end();
 }
 
 // ---------------------------------------------------------------------------

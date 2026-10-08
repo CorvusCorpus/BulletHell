@@ -17,6 +17,7 @@ import sys
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+from scipy import ndimage
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -542,6 +543,136 @@ def plaque(w=PLAQUE_W, h=PLAQUE_H):
 
     return _alpha_only(c.finish())
 
+
+# ---------------------------------------------------------------------------
+# The bearing: where the boss is, on the field's bottom rule
+# ---------------------------------------------------------------------------
+
+BEARING_W = 152          # the sprite's width; its origin is the stone's centre
+BEARING_UP = 24          # rows above the stone's centre
+BEARING_DOWN = 20        # ...and below it
+BEARING_UNIT = 16.0      # final pixels per unit of the height field
+BEARING_GEM_R = 6.8      # the stone's radius
+BEARING_GEM_SIZE = 16
+
+
+def _bu(p):
+    return p / BEARING_UNIT
+
+
+def _bearing_blade(x0, x1, w_root, w_mid, w_tip, sgn, bulge_at, steps=48):
+    """A blade along the rule from `x0` to `x1` (final pixels from the stone,
+    `sgn` the side), swelling from `w_root` to `w_mid` and tapering to
+    `w_tip`, as one polygon in units."""
+    top, bot = [], []
+    for i in range(steps + 1):
+        f = i / float(steps)
+        x = x0 + (x1 - x0) * f
+        if f < bulge_at:
+            w = w_root + (w_mid - w_root) * math.sin(f / bulge_at * math.pi / 2)
+        else:
+            g = (f - bulge_at) / (1 - bulge_at)
+            w = w_tip + (w_mid - w_tip) * (1 - g) ** 1.4
+        top.append((_bu(sgn * x), _bu(-w / 2)))
+        bot.append((_bu(sgn * x), _bu(w / 2)))
+    return top + bot[::-1]
+
+
+def _bearing_star(tips, waist, turn):
+    """A star with len(tips) points (final pixels), in units."""
+    n = len(tips)
+    pts = []
+    for i in range(n * 2):
+        a = math.radians(turn + i * 180.0 / n)
+        rr = tips[i // 2] if i % 2 == 0 else waist
+        pts.append((_bu(math.cos(a) * rr), _bu(math.sin(a) * rr)))
+    return pts
+
+
+def bearing():
+    """The bearing that rides the field's bottom rule under the boss, as five
+    frames on one canvas, its origin the stone's centre, which sits on the
+    field's outer rule. Rendered gilt (`medal_art.shade_metal`), colours
+    baked:
+
+    0. The mount: a four-pointed star over a shorter one turned 45 degrees (a
+       compass rose), its top point reaching up past the field's edge, with a
+       collet and a dark seat for the stone (`bearing_gems`).
+    1, 2. The right and left blades along the outer rule, each with a channel
+       down its spine and a bead at its end. The game draws them before the
+       mount and stretches them out from it.
+    3, 4. The channels' inlay, white with the value in the alpha, tinted the
+       boss's colour.
+    """
+    f = medal_art.Face(BEARING_W, BEARING_UNIT, 8)
+    masks = {}
+    for sgn in (1, -1):
+        blade = _bearing_blade(10.0, 62.0, 4.6, 6.2, 0.6, sgn, 0.22)
+        f.relief([blade], 0.12, 0.0, "ridge")
+        wing = f.polys([blade])
+        channel = _bearing_blade(14.0, 54.0, 1.3, 1.9, 0.3, sgn, 0.2)
+        masks[("inlay", sgn)] = f.polys([channel])
+        f.sink([channel], 0.05, 0.02)
+        bx = _bu(sgn * 65.5)
+        d = np.hypot(f.X - bx, f.Y) / _bu(1.6)
+        bead = d < 1
+        f.put(bead, 0.07 * np.sqrt(np.clip(1 - d * d, 0, 1)), 0.0)
+        masks[("wing", sgn)] = wing | bead
+
+    rose = _bearing_star([17.0] * 4, 5.0, -45.0)
+    f.relief([rose], 0.11, 0.0, "ridge")
+    star = medal_art.star(0, 0, [_bu(22.0), _bu(16.0), _bu(15.0),
+                                 _bu(16.0)], _bu(10.4))
+    f.relief([star], 0.18, 0.0, "ridge")
+    f.band(_bu(7.2), _bu(9.8), 0.12, 0.08)
+    seat = f.r < _bu(7.4)
+    f.level(seat, 0.0)
+    mount = f.polys([rose, star]) | (f.r < _bu(9.8))
+
+    col = medal_art.shade_metal(f, "gilt")
+    # The seat is near-black indigo, so the stone never melts into the gilt.
+    col[seat] = np.array((14, 8, 30), np.float32)
+
+    def frame(mask, colour=None):
+        """`mask` finished at final size, with a dark contour on its
+        outermost edge, cropped to the sprite's rows."""
+        c = col if colour is None else colour
+        if colour is None:
+            d = ndimage.distance_transform_edt(mask) / f.ss
+            edge = np.clip(1.0 - d / 0.75, 0, 1) * mask
+            c = col * (1 - 0.55 * edge)[..., None]
+        img = medal_art.finish(f, c, mask.astype(np.float32), contour=0)
+        mid = BEARING_W // 2
+        return img.crop((0, mid - BEARING_UP, BEARING_W, mid + BEARING_DOWN))
+
+    white = np.full(col.shape, 255.0, np.float32)
+    return [frame(mount), frame(masks[("wing", 1)]),
+            frame(masks[("wing", -1)]),
+            frame(masks[("inlay", 1)], white),
+            frame(masks[("inlay", -1)], white)]
+
+
+def _gem_ramp(rgb):
+    """A cut stone's ramp in one bullet colour, deepest to hottest."""
+    h = np.array(rgb, np.float32)
+    w = np.array((255, 255, 255), np.float32)
+    return [(0.00, tuple(h * 0.05)), (0.22, tuple(h * 0.22)),
+            (0.46, tuple(h * 0.58)), (0.70, tuple(h * 0.95)),
+            (0.90, tuple(h + (w - h) * 0.5)),
+            (1.15, tuple(h + (w - h) * 0.95))]
+
+
+def bearing_gems():
+    """The bearing's stone, a round brilliant, one frame per bullet colour
+    (`BCOL_*`, so the game picks the boss's own)."""
+    out = []
+    for i, (_, rgb) in enumerate(A.BULLET_HUES):
+        f = medal_art.Face(BEARING_GEM_SIZE, BEARING_GEM_R, 8)
+        col = np.zeros(f.h.shape + (3,), np.float32)
+        medal_art._gem(f, col, 0.0, 0.0, 1.0, _gem_ramp(rgb), 3 + i)
+        out.append(medal_art.finish(f, col, f.cover, contour=0.05))
+    return out
+
 # ---------------------------------------------------------------------------
 # Rings
 # ---------------------------------------------------------------------------
@@ -620,6 +751,8 @@ def main():
     hg = hanger()
     pl = plaque()
     dl = dial()
+    br = bearing()
+    bg = bearing_gems()
 
     gm_new.sprite("spr_ui_corner", [co], origin="topleft", folder="Sprites/ui")
     gm_new.sprite("spr_ui_rule", [ru], origin="topleft", folder="Sprites/ui")
@@ -653,6 +786,12 @@ def main():
                   folder="Sprites/ui")
     gm_new.sprite("spr_ui_plaque", [pl], origin="center", folder="Sprites/ui")
     gm_new.sprite("spr_ui_dial", [dl], origin="center", folder="Sprites/ui")
+    # The bearing's origin is its stone's centre, which the game sets on the
+    # field's outer rule; its stone is its own sprite, a frame per colour.
+    gm_new.sprite("spr_ui_bearing", br,
+                  origin=(BEARING_W // 2, BEARING_UP), folder="Sprites/ui")
+    gm_new.sprite("spr_ui_bearing_gem", bg, origin="center",
+                  folder="Sprites/ui")
 
     print("corner %dx%d  rule %dx%d  mark %dx%d x%d  grain %dx%d  crest %dx%d"
           % (co.width, co.height, ru.width, ru.height,
@@ -699,6 +838,28 @@ def main():
               labels=["corner", "crest", "rule", "lozenge", "rosette",
                       "grain x4", "chain x5", "hanger", "plaque", "dial"])
     print("->  %s" % os.path.relpath(PREVIEW, A.ROOT))
+
+    # The bearing, assembled as the game draws it, in four bosses' colours
+    # (its inlay tinted, its stone the colour's frame), at four times size.
+    rows = []
+    for hue in ("crimson", "gold", "jade", "violet"):
+        k = A.HUE_INDEX[hue]
+        tint = A.mix(A.hue(hue), (255, 255, 255), 0.2)
+        cell = Image.new("RGBA", br[0].size, tuple(ground) + (255,))
+        for img in (br[1], br[2]):
+            cell.alpha_composite(img)
+        for img in (br[3], br[4]):
+            lit = Image.new("RGBA", img.size, A.rgba(tint, 0))
+            lit.putalpha(img.getchannel("A"))
+            cell.alpha_composite(lit)
+        cell.alpha_composite(br[0])
+        cell.alpha_composite(bg[k], (BEARING_W // 2 - BEARING_GEM_SIZE // 2,
+                                     BEARING_UP - BEARING_GEM_SIZE // 2))
+        rows.append(cell.resize((cell.width * 4, cell.height * 4),
+                                Image.LANCZOS))
+    path = os.path.join(A.PREVIEW, "ui_bearing.png")
+    A.preview(rows, path, cols=1, bg=(10, 8, 20))
+    print("->  %s" % os.path.relpath(path, A.ROOT))
 
     # The medals get their own sheets: the card's, turned, and the console's.
     path = medal_art.preview(md)

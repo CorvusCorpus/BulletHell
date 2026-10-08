@@ -10,6 +10,9 @@ hud_draw_boss_line(hud, self);
 // full-screen) and flashes red on damage.
 field_draw_frame(hud.life_flare, COL_LIFE, hud.frame);
 
+// The boss's bearing, on the frame's bottom rule.
+hud_draw_bearing(hud);
+
 hud_draw(hud, self);
 
 var _over = (phase == Phase.Won || phase == Phase.Lost);

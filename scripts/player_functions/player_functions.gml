@@ -675,19 +675,30 @@ function player_draw_grace(_p) {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc The hitbox, shown only while focused. Its own function because it
+/// @desc The hitbox marker, shown while focused (it comes in and goes out
+///       with the focus circle, `focus_show`). Its own function because it
 ///       is drawn after the bullets.
 function player_draw_hitbox(_p) {
-    if (!_p.alive || !_p.focus || _p.entry > 0) return;
-    player_draw_hitbox_at(_p.x, _p.y, 1);
+    if (!_p.alive || _p.entry > 0) return;
+    player_draw_hitbox_at(_p.x, _p.y, 1, _p.focus_show, _p.anim);
 }
 
-/// @desc The hitbox at (`_x`, `_y`) on a cyan glow, its disc at exactly
-///       `PLAYER_R` (`HITBOX_ART_R` is the disc's radius in the sprite).
-function player_draw_hitbox_at(_x, _y, _a) {
-    draw_bloom(_x, _y, 30, COL_RUNE, 0.45 * _a);
-    var _hs = PLAYER_R / HITBOX_ART_R;
-    draw_sprite_ext(spr_hitbox, 0, _x, _y, _hs, _hs, 0, c_white, _a);
+/// @desc The hitbox marker at (`_x`, `_y`) on a cyan glow: a white core at
+///       exactly `PLAYER_R` (`HITBOX_ART_R` is the core's radius in the
+///       sprite) in a larger cyan ring that is only a marker, with a sheen
+///       turning round the ring. `_show` (0 to 1) brings it in, settling from
+///       a little larger, and fades it out; `_anim` turns the sheen.
+function player_draw_hitbox_at(_x, _y, _a, _show = 1, _anim = 0) {
+    if (_show <= 0.01 || _a <= 0.01) return;
+    var _in = power(1 - clamp(_show, 0, 1), 2);
+    var _k = _a * min(1, _show * 3);
+    var _hs = PLAYER_R / HITBOX_ART_R * (1 + 0.45 * _in);
+    draw_bloom(_x, _y, 40, COL_RUNE, 0.40 * _k);
+    draw_sprite_ext(spr_hitbox, 0, _x, _y, _hs, _hs, 0, c_white, _k);
+    gpu_set_blendmode(bm_add);
+    draw_sprite_ext(spr_hitbox, 1, _x, _y, _hs, _hs, -_anim * 2.4, c_white,
+                    0.55 * _k);
+    gpu_set_blendmode(bm_normal);
 }
 
 /// @desc The player's shots, additive: a bloom under each, then the flame

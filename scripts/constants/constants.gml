@@ -78,12 +78,13 @@
 #macro PLAYER_SPD 11.0
 #macro PLAYER_SPD_FOCUS 4.6
 
-// The hitbox, drawn at exactly this size when focused.
+// The hitbox. While focused it is shown as the white core of a larger marker
+// (`spr_hitbox`), drawn at exactly this size.
 #macro PLAYER_R 4.0
 #macro GRAZE_R 30.0
 
-// The hitbox disc's radius in `spr_hitbox`'s own pixels (`HITBOX_R` in
-// tools/make_fx.py), so it can be drawn at exactly `PLAYER_R`.
+// The marker's white core's radius in `spr_hitbox`'s own pixels (`HITBOX_R`
+// in tools/make_fx.py), so the core can be drawn at exactly `PLAYER_R`.
 #macro HITBOX_ART_R 4.0
 
 // Frames the focus circle takes to open as focus is held, and to close.
@@ -522,6 +523,17 @@
 #macro BOSS_RAIL_FADE 0.5
 #macro BOSS_RAIL_NEAR 60
 #macro BOSS_RAIL_FADE_EASE 0.15
+
+// The bearing that marks the boss's x on the field's bottom rule
+// (`hud_draw_bearing`). Its stone sits on the outer rule, and its blades
+// reach `BEARING_REACH` pixels each way (where `bearing` in
+// tools/make_ui.py ends them), drawing in at the field's sides. The player
+// counts as in line with the boss within `BEARING_LINE_NEAR` pixels of its x,
+// easing off by `BEARING_LINE_FAR`.
+#macro BEARING_Y (FIELD_Y1 + floor(FIELD_RULE_OUT))
+#macro BEARING_REACH 68
+#macro BEARING_LINE_NEAR 14
+#macro BEARING_LINE_FAR 44
 
 // How far down from the top of the screen the rail's layers reach: past the
 // spell's name at the bottom of the rig's swing, with room for its glows.

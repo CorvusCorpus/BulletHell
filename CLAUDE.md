@@ -107,6 +107,12 @@ and is open to change. Earlier agents wrote a great deal of invented
 - **The boss's health rail fades to half opacity while the player is near
   or under it**, for attacks that have him circling the boss (Chakram
   Blitz).
+- **The focused hitbox marker is larger than the true hitbox**, as in
+  Touhou, so it is easy to follow and feels more generous, which makes
+  getting hit less frustrating.
+- **The boss's position across the field is marked at the bottom of the
+  field**, as Touhou does, because the wide field makes lining up under a
+  moving boss hard; it is the game's own design, not a copy of Touhou's.
 
 ## The roster
 
@@ -368,8 +374,10 @@ and a lock (`spr_fx_strike`) closes on it, then opens and lets it go.
 Lasers, rings and bodies leave no mark. While focused he has
 a small violet circle behind him (`spr_focus_sigil`, opening and closing with
 `focus_show`), and the grace dial moves out past it. The focused hitbox is
-drawn last, at exactly `PLAYER_R` (`HITBOX_ART_R` is its disc in the sprite,
-checked against `make_fx.py`).
+drawn last, as a marker larger than it (`spr_hitbox`): a white core at
+exactly `PLAYER_R` (`HITBOX_ART_R` is the core's radius in the sprite,
+checked against `make_fx.py`) in a cyan ring with a turning sheen, which is
+only a marker. It comes in and goes out with `focus_show`.
 
 Spending a sigil plays his cut-in (`sigil_cutin`, drawn from the player's
 `cutin_t`): a spell's cut-in turned round and quicker, the band tilted the
@@ -393,6 +401,14 @@ the rank card, which is thrown when the ledger grows. The rail is drawn before
 the field frame, so it can hide above the field. It maps the boss's health
 onto equal shares, one per attack (`hud_rail_frac`), and its percentage reads
 the same mapped value, so it counts progress through the fight.
+
+The boss's x is marked on the field's bottom rule by its bearing
+(`hud_draw_bearing`, drawn after the frame), up and down with the rail: a
+gilt compass rose holding a stone of the boss's colour on the outer rule,
+its top point reaching up past the field's edge, with blades along the rule
+that draw in at the field's sides. Its light spills up into the field, and
+swells, with its top point flaring, while the player is in line under the
+boss (`BEARING_LINE_NEAR`/`_FAR`).
 
 **The HUD is cached in layers** (`ui_layer_*` in `ui_functions`). What
 changes only now and then is drawn into a surface and copied each frame, and
@@ -632,7 +648,7 @@ owner's Mika sheet in `tools/source/`.
 | `art_common.py` | Shared canvas, shading, noise and preview helpers |
 | `make_palette.py` | `scripts/palette` |
 | `make_bullets.py` | Bullet sprites (and the ray, `spr_bul_ray`) **and** `scripts/bullet_table`: hitbox, default spin, frame counts. A round shape's hit radius is defined next to its picture; a long shape's capsule is fitted to its drawn body (`CAPSULES`), so a hit never comes before the player's hitbox visibly overlaps it. Shapes are drawn through `art_common.Cut`, which centres them exactly on their origins. |
-| `make_fx.py`, `make_items.py`, `make_ui.py`, `make_fonts.py` | Effects plus Szuix's shot, sigil, focus circle and hitbox, the bosses' seal, and the hit mark's lock, strike and burst (`spr_fx_strike`); pickups; console furniture, medals and the boss rail; sprite fonts |
+| `make_fx.py`, `make_items.py`, `make_ui.py`, `make_fonts.py` | Effects plus Szuix's shot, sigil, focus circle and hitbox, the bosses' seal, and the hit mark's lock, strike and burst (`spr_fx_strike`); pickups; console furniture, medals, the boss rail and the boss's bearing (its stone a frame per bullet colour); sprite fonts |
 | `medal_art.py` | Imported by `make_ui.py` (run alone, it only writes a preview): the rank medals, rendered in their own colours from height fields shaded as metal, enamel, cut stones and granite. The card's medal with its reverse and edge (for the coin spin, `medal_draw`) and a spell's star; the console's medals and sockets. |
 | `make_enemies.py`, `make_player.py`, `make_boss.py` | Fodder (stages one and two, tinted); Szuix from his sheet; Ziggy, whose art is a placeholder. `make_boss.py` states what a painted replacement must keep. |
 | `cel_art.py` | Imported by the two below: 2D sprite illustration in code (cel-shaded parts with line work, lit from the upper left) |
@@ -818,8 +834,9 @@ Mika's slots (`mika_slots()` is the source of truth):
 | N1 | Written, in playtesting: the browser sketch's sand disc (`tools/sketch/sets/mika_n1.js`) run 1.5 times as fast, rings included, shedding more often and with a third band. The two rings on their 2.5D orbit shed three bands of yellow and orange sand that keep circling in the rings' plane (`BMod.Orbit`), drifting outward and slowing, and are let go along their paths to drift across the field. He holds longer between hops than other `Step` attacks (`hold`), sheds nothing while he hops, and sand circles the spot it was shed from. Mika himself fires nothing. |
 | N2 | Written, in playtesting: N1 mirrored (turning the other way) with each ring's hue swapped. |
 | N3, N4 | Written, in playtesting: the woven disc, picked from the browser sketches (`tools/sketch/sets/mika_n3.js`). Four rings on N1's orbit, each shedding a pair into one band: one grain circles with the rings as N1's sand does, the other against them at the same rate, so their streams cross. N4 is N3 mirrored with its colours swapped, run at 0.8 of its pace (rings included, so the shape holds) with the same shedding beat, so slower and denser. Health started at N1's times the four-ring blocking measured on the old flat orbit and was trimmed after playtesting. |
-| N5, N6 | Drafts, unplayed: the bead mill with six rings, and its mirror |
-| N7 | Draft, unplayed: six rings whose orbit reverses on each of his hops, with an aimed bolt from each ring at every reversal |
+| N5 | Written, in playtesting: pulses, picked from the browser sketches (`tools/sketch/sets/mika_n5.js`). Six rings on his six-ring radius shed the woven disc's pairs (one grain circling with the rings, one against) only in short bursts, every ring at once, so the sand goes out in waves. |
+| N6 | Draft, unplayed: the bead mill with six rings (its twist to be settled once N5 has been played) |
+| N7 | Written, in playtesting: the reversing disc, from the same sketches. Six rings whose turn holds one way, then swings round to the other on its own timer (`rock_hold`, `rock_swing`); sand circles the way the rings were going when it was shed, so fresh sand crosses the old after each reversal and the released sand falls in curtains. Each ring sheds its own sand and a gold band, and as each reversal starts every ring casts a beam aimed at the player, which pivots on that spot as the ring swings round (`mika_mill_bolt`). |
 | S1 | Written, in playtesting: `Storm Cage`. Three rings strung with lightning ride round the player; a sandstorm floods the field; rings stop grains; on a bolt amber sand bursts into slow falling glass and ember grit burns away. |
 | S2 | Written, in playtesting: `Chakram Blitz` (inspired by Murasa's anchors in Touhou 12). Two rings rest at his sides and are thrown at the player in turn; while one waits it loops once round him in 2.5D, larger in front and smaller, dimmer and harmless behind him, timed to be back at rest as its wind-up starts. Each winds up aimed at the player, locks its aim with a brief flash of its lane, charges, is thrown fast with a sharp acceleration and a smooth braking stop, lays a braided double-helix rope that holds still and then comes apart, comes to rest short of the wall with its spin still building like a yo-yo's, sprays a brief pinwheel of bullets, and is pulled back. One ring is out at a time, and the gap between throws shrinks over the attack. |
 | S3 | Old placeholder: `Three Open Gates` |
