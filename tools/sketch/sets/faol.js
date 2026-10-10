@@ -127,7 +127,7 @@ function fountain(a) {
 // apart whose every segment bends: a sway that runs down it (up to 22 degrees
 // at the tip, 120 frames a sway) and a current that leans every frond the same
 // way, turning slowly from 25 degrees one side to 25 the other and back over
-// 480 frames. Their links hurt like any bullet.
+// 480 frames. Their links hurt like any bullet, and have no age limit.
 const FROND = { links: 15, gap: 26, grow: 2, sway: 22, P: 120, wave: 0.5, lean: 25, L: 480 };
 const FROND_BASE = [215, 245, 295, 325];
 
@@ -165,7 +165,7 @@ function growFronds(a, dress) {
     for (const f of s.fronds) {
         while (f.made < FROND.links && f.made * FROND.grow <= a.t) {
             const j = f.made++;
-            a.bullet(Object.assign({ x: f.x, y: f.y, f, j, r: size(a, ORB),
+            a.bullet(Object.assign({ x: f.x, y: f.y, f, j, r: size(a, ORB), life: Infinity,
                                      col: j % 2 ? C.lime : C.jade, step: frondLink }, dress(f, j)));
         }
     }
