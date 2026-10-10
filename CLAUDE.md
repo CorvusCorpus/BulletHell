@@ -35,6 +35,11 @@ and is open to change. Earlier agents wrote a great deal of invented
   grimoires, gems, sentries.
 - **Randomness is per attack.** Some attacks are patterns to learn and
   anticipate; others are pure dodging. Neither is the house style.
+- **Attacks aren't static**, non-spells included. As in Touhou, they come in
+  phases, their bullets change direction or slow down and speed up again,
+  and a pattern can build up before it is let go.
+- **Small sand and pellet bullets are mostly Mika's.** Almost every other
+  boss fires larger bullets.
 - **Every ring is the same size** (`RING_R`); a ring has no radius of its own.
   The exception is apparent depth in a 2.5D effect (`depth`), asked for in
   Chakram Blitz: a ring nearer or further looks, and collides, larger or

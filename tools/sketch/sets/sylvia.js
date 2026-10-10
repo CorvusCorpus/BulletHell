@@ -7,7 +7,7 @@
 // The game's bullet hues (`palette`).
 const C = { cyan: '#38d6ff', magenta: '#f848e0', rose: '#ff80b2',
             indigo: '#745cff', violet: '#b054fa', bone: '#e8eeff' };
-const PELLET = 3.3, MOTE = 4.3, ORB = 7.0;
+const ORB = 7.0, BALL = 15.0;      // hit radii (`bullet_table`)
 const PI = Math.PI;
 const dcos = (d) => Math.cos(d * PI / 180), dsin = (d) => Math.sin(d * PI / 180);
 const pdir = (dx, dy) => Math.atan2(-dy, dx) * 180 / PI;
@@ -62,14 +62,14 @@ function almond(a, x0, y0, x1, y1, w, frames, hold, col) {
 // Sylvia draws two spirals of still pellets side by side, mirror images, the
 // left cyan and the right magenta. A pen (an orb) flies from him to each
 // spiral's centre in `reach` frames and winds outward at `pen` pixels a frame,
-// leaving a pellet every `gap` pixels. After `pause` frames the spirals come
+// leaving an orb every `gap` pixels. After `pause` frames the spirals come
 // alive (each pattern differently), and a pellet bounces once off a side wall
 // (the game's bullets have no bounce yet). He hops after each pair, holding
 // `hold` frames. The spiral winds `turns` times from radius `r0` to `r1`,
 // counterclockwise from bearing `a0`; the centres are `dx` either side of him
 // and `dy` below.
 const SPI = { dx: 300, dy: 170, r0: 18, r1: 190, turns: 2.5, a0: 270,
-              gap: 20, reach: 20, pen: 16, pause: 22, hold: 210 };
+              gap: 30, reach: 20, pen: 16, pause: 22, hold: 210 };
 
 // The left spiral's path from its centre, a point every pixel along it:
 // {x, y, ang (bearing from the centre), th (degrees wound), dir (heading)}.
@@ -100,7 +100,7 @@ function spirals(a, mode) {
     for (const m of [1, -1]) {
         a.bullet({ x: a.boss.x, y: a.boss.y, sx: a.boss.x, sy: a.boss.y,
                    ox: a.boss.x - m * SPI.dx, oy: a.boss.y + SPI.dy, m, pair, mode,
-                   col: m > 0 ? C.cyan : C.magenta, r: ORB, next: 0, step: penStep });
+                   col: m > 0 ? C.cyan : C.magenta, r: BALL, next: 0, step: penStep });
     }
 }
 
@@ -119,7 +119,7 @@ function penStep(b, a) {
     while (b.next < SPI_N && b.next * SPI.gap <= s) {
         const k = b.next++, p = PATH[k * SPI.gap];
         a.bullet({ x: b.ox + b.m * p.x, y: b.oy + p.y, ox: b.ox, oy: b.oy, m: b.m,
-                   k, p, pair: b.pair, mode: b.mode, col: b.col, r: PELLET,
+                   k, p, pair: b.pair, mode: b.mode, col: b.col, r: ORB,
                    v: 0, dir: 0, live: false, rot: 0, bounced: false,
                    step: pelletStep });
     }
@@ -202,8 +202,8 @@ Sketch.set({
       loop: () => 2 * (SPI.hold + 45), emit(a) { spirals(a, inout); } },
 
     // Every 100 frames six blades (curved lasers, magenta and indigo by
-    // turns) unfurl from him along a spiral. Two strands of cyan pellets
-    // stream out along the same spiral between each pair of blades, slowing
+    // turns) unfurl from him along a spiral. A strand of cyan orbs streams
+    // out along the same spiral midway between each pair of blades, slowing
     // all the way. The iris
     // turns 0.3 degrees a frame. A game curve turns at a fixed rate and so
     // draws a circle; this needs its turn to ease off as it goes out.
@@ -220,18 +220,15 @@ Sketch.set({
         }
         if (a.t % 5 === 0) {
             for (let k = 0; k < 6; k++) {
-                for (const off of [20, 40]) {
-                    shot(a, { x: a.boss.x, y: a.boss.y, v: 7, dir: base + off + k * 60,
-                              sp: SP, acc: -0.04, vto: 2.4,
-                              col: C.cyan, r: PELLET });
-                }
+                shot(a, { x: a.boss.x, y: a.boss.y, v: 7, dir: base + 30 + k * 60,
+                          sp: SP, acc: -0.04, vto: 2.4, col: C.cyan, r: ORB });
             }
         }
       } },
 
-    // Six short beams round him turn steadily, a degree a frame. Every 6
-    // frames each tip sheds a pellet leaning back against the turn, so the
-    // pellets lay six spiral arms, cyan and pink by turns.
+    // Six short beams round him turn steadily, a degree a frame. Every 8
+    // frames each tip sheds an orb leaning back against the turn, so the
+    // orbs lay six spiral arms, cyan and pink by turns.
     { name: 'Pinwheel', loop: () => 120,
       init(a) {
         for (let k = 0; k < 6; k++) {
@@ -241,12 +238,12 @@ Sketch.set({
         }
       },
       emit(a) {
-        if (a.t % 6) return;
+        if (a.t % 8) return;
         for (let k = 0; k < 6; k++) {
             const d = a.t + k * 60;
             shot(a, { x: a.boss.x + a.dcos(d) * 230, y: a.boss.y - a.dsin(d) * 230,
                       v: 4.5, dir: d - 18, acc: -0.08, vto: 2.2, from: 30,
-                      col: k % 2 ? C.rose : C.cyan, r: k % 2 ? MOTE : PELLET });
+                      col: k % 2 ? C.rose : C.cyan, r: ORB });
         }
       } },
 
@@ -254,19 +251,19 @@ Sketch.set({
     // magenta arms the other, fired fast and slowing to a drift. The magenta
     // arms are set half a firing step off the cyan, so the two never leave
     // along the same line.
-    { name: 'Woven spiral', loop: () => 40,
+    { name: 'Woven spiral', loop: () => 120,
       emit(a) {
-        if (a.t % 4) return;
+        if (a.t % 6) return;
         for (let k = 0; k < 5; k++) {
             shot(a, { x: a.boss.x, y: a.boss.y, v: 6, dir: a.t * 1.8 + k * 72,
-                      acc: -0.12, vto: 2.4, from: 20, col: C.cyan, r: PELLET });
-            shot(a, { x: a.boss.x, y: a.boss.y, v: 6, dir: -a.t * 1.8 + k * 72 + 39.6,
-                      acc: -0.12, vto: 2.4, from: 20, col: C.magenta, r: MOTE });
+                      acc: -0.12, vto: 3, from: 20, col: C.cyan, r: ORB });
+            shot(a, { x: a.boss.x, y: a.boss.y, v: 6, dir: -a.t * 1.8 + k * 72 + 41.4,
+                      acc: -0.12, vto: 3, from: 20, col: C.magenta, r: ORB });
         }
       } },
 
     // Every 90 frames five pink seeds go out and stop, and each spins out a
-    // small iris for 24 frames: four arms of pellets, cyan and magenta by
+    // small iris for 24 frames: four arms of orbs, cyan and magenta by
     // turns, so every bloom is a pinwheel. Alternate volleys turn 36 degrees
     // and spin the other way.
     { name: 'Iris blooms', loop: () => 180,
@@ -275,15 +272,15 @@ Sketch.set({
         const n = Math.floor(a.t / 90), way = n % 2 ? -1 : 1;
         for (let k = 0; k < 5; k++) {
             shot(a, { x: a.boss.x, y: a.boss.y, v: 10, dir: 90 + n * 36 + k * 72,
-                      acc: -0.22, vto: 0, col: C.rose, r: ORB,
+                      acc: -0.22, vto: 0, col: C.rose, r: BALL,
                       step: (b, api) => {
                           moveShot(b, api);
                           const u = b.age - 46;
-                          if (u < 0 || u % 4) return;
+                          if (u < 0 || u % 6) return;
                           for (let j = 0; j < 4; j++) {
-                              shot(api, { x: b.x, y: b.y, v: 2.6, dir: way * u * 7 + j * 90,
+                              shot(api, { x: b.x, y: b.y, v: 3.6, dir: way * u * 7 + j * 90,
                                           col: j % 2 ? C.magenta : C.cyan,
-                                          r: j % 2 ? MOTE : PELLET });
+                                          r: ORB });
                           }
                           if (u >= 24) b.dead = true;
                       } });
@@ -301,15 +298,15 @@ Sketch.set({
             const ax = Math.max(380, Math.min(980, a.player.x));
             almond(a, a.boss.x, a.boss.y, ax, 1060, 230, 60, 140, C.magenta);
         }
-        if (a.t % 6) return;
+        if (a.t % 9) return;
         for (let k = 0; k < 4; k++) {
-            shot(a, { x: a.boss.x, y: a.boss.y, v: 2.8, dir: a.t * 2 + k * 90,
-                      col: k % 2 ? C.rose : C.cyan, r: k % 2 ? MOTE : PELLET });
+            shot(a, { x: a.boss.x, y: a.boss.y, v: 3.2, dir: a.t * 2 + k * 90,
+                      col: k % 2 ? C.rose : C.cyan, r: ORB });
         }
       } },
 
     // Three curved lasers circle him at a fixed radius (magenta, indigo,
-    // violet), the rim of the iris. Every 5 frames each head sheds a pair
+    // violet), the rim of the iris. Every 7 frames each head sheds a pair
     // splayed either side of straight out, cyan one way and pink the other,
     // so the pairs weave a lattice.
     { name: 'Iris rim', loop: () => 210,
@@ -323,13 +320,13 @@ Sketch.set({
         });
       },
       emit(a) {
-        if (a.t % 5) return;
+        if (a.t % 7) return;
         for (const h of a.store.rim) {
             const out = h.dir - 90;
-            shot(a, { x: h.x, y: h.y, v: 5, dir: out + 35, acc: -0.1, vto: 2.3,
-                      from: 24, col: C.cyan, r: PELLET });
-            shot(a, { x: h.x, y: h.y, v: 5, dir: out - 35, acc: -0.1, vto: 2.3,
-                      from: 24, col: C.rose, r: MOTE });
+            shot(a, { x: h.x, y: h.y, v: 5, dir: out + 35, acc: -0.1, vto: 2.8,
+                      from: 24, col: C.cyan, r: ORB });
+            shot(a, { x: h.x, y: h.y, v: 5, dir: out - 35, acc: -0.1, vto: 2.8,
+                      from: 24, col: C.rose, r: ORB });
         }
       } },
 
