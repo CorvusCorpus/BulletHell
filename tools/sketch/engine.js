@@ -25,9 +25,11 @@
  *                     changes) and `turnAt(t)` (degrees turned by frame `t`,
  *                     for a turn that isn't steady); see `orbitRadius`.
  *   patterns          [{name, emit(api), step?(api), orbit?, orbits?, boss?,
- *                     loop?}]
+ *                     hold?, loop?}]
  * A pattern's `orbit` overrides fields of the set's, its `orbits` replaces
- * them (each over the set's `orbit`), and its `boss` the set's. `loop` is the frames
+ * them (each over the set's `orbit`), and its `boss` the set's. `hold` is the
+ * frames a stepping boss holds between hops (a phase's `hold`; default
+ * BOSS_STEP_HOLD). `loop` is the frames
  * after which it repeats exactly (default one orbit), used for GIFs.
  *
  * A pattern fires through `api.grain`, `api.bullet` and `api.laser` (see each).
@@ -119,9 +121,9 @@ function onOrbit(p, rad, c = boss, o = orbit) {
 // `BossMove.Step` (`boss_move_step`): hold, hop to the next station, hold.
 function stepBoss() {
     if (moves !== 'step') return;
-    const cyc = GAME.stepHold + GAME.stepMove;
+    const hold = pat.hold || GAME.stepHold, cyc = hold + GAME.stepMove;
     const n = Math.floor(t / cyc);
-    const to = (t % cyc < GAME.stepHold) ? n : n + 1;
+    const to = (t % cyc < hold) ? n : n + 1;
     const tx = GAME.bossX + dsin(to * 137) * GAME.stepX;
     const ty = GAME.bossY + dsin(to * 71) * GAME.stepY;
     boss.x += (tx - boss.x) * GAME.stepRate;
@@ -131,7 +133,8 @@ function stepBoss() {
 // Is the boss holding still (`boss_holding`)? Always, unless it steps.
 function holding() {
     if (moves !== 'step') return true;
-    return t % (GAME.stepHold + GAME.stepMove) < GAME.stepHold;
+    const hold = pat.hold || GAME.stepHold;
+    return t % (hold + GAME.stepMove) < hold;
 }
 
 // Did ring `i`'s phase pass `deg` (mod 360) on this frame?
