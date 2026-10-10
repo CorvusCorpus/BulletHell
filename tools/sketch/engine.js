@@ -355,10 +355,11 @@ function dot(b, alpha) {
 }
 
 // A long bullet (`len` set: a crystal or shard), drawn as a pointed diamond
-// `len` long along its heading, with a pale core.
+// `len` long along its heading (or along `face`, if set), with a pale core.
 function shard(b) {
     const s = VIEW, L = b.len * s * 0.5, W = Math.max(2, b.r * s * 1.4);
-    const ux = dcos(b.dir), uy = -dsin(b.dir), vx = -uy, vy = ux;
+    const d = b.face !== undefined ? b.face : b.dir;
+    const ux = dcos(d), uy = -dsin(d), vx = -uy, vy = ux;
     const x = b.x * s, y = b.y * s;
     for (const [k, col] of [[1, b.col], [0.45, '#ffffff']]) {
         g.fillStyle = col;

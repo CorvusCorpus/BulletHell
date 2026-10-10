@@ -111,11 +111,12 @@ function reapingSlash(a) {
 // pivot well away from him, so the cut is a shallow curve across the space
 // in front of him; its reach swells by `sw` mid-swing, and it is swung with a
 // slow start and stop, so the trail is sparse where the blade is fast. Silver
-// blades along the swing make its outer edge, and cyan orbs its inner edge
-// where the crescent is thick (up to 46 px). 12 frames after a cut is drawn
-// it flies off as one: each piece outward from the pivot, leaning 20 degrees
-// into the swing, the middle fastest (1.5 to 6), so the crescent bows as it
-// goes; it brakes to a crawl and 60 frames later speeds up again to 3.5.
+// blades lying along the cut make its outer edge, and cyan orbs its inner
+// edge where the crescent is thick (up to 46 px). Each piece sets off as the
+// blade lays it, outward from the pivot and leaning 20 degrees into the
+// swing, slowly (0.6) and speeding up over 35 frames, the middle of the cut
+// to 6 and its ends to 2.5, so the crescent bows as it goes. The blades keep
+// lying along the cut as it flies.
 const SLASHES = [
     // at: frame of the combo it starts; draw: frames it takes; p: its pivot
     // from him; a0 to a1: the blade's bearing from the pivot; R: its reach.
@@ -125,7 +126,7 @@ const SLASHES = [
     { at: 50, draw: 12, p: [-380, 80],   a0: 45,  a1: -35, R: 460, sw: 0.1 },
     { at: 50, draw: 12, p: [380, 80],    a0: 135, a1: 215, R: 460, sw: 0.1 },
 ];
-const SLASH_N = 26, SLASH_W = 46, SLASH_HOLD = 12;
+const SLASH_N = 26, SLASH_W = 46;
 
 // Where slash `sl` cut from (px, py) puts its edge at `u` (0 to 1 through the
 // swing), `inset` px in from the tip.
@@ -148,16 +149,14 @@ function bladeCombo(a, t0) {
             const j = cb.laid[i]++, w = j / (SLASH_N - 1);
             const q = slashAt(sl, px, py, w), q2 = slashAt(sl, px, py, Math.min(1, w + 0.01));
             const q1 = slashAt(sl, px, py, Math.max(0, w - 0.01));
-            const go = sl.draw + SLASH_HOLD - f, mid = Math.sin(PI * w);
-            const fly = (b) => { b.dir = pdir(b.x - px, b.y - py) + way * 20; b.v = 1.5 + 4.5 * mid;
-                                 b.acc = -0.12; b.vto = 1; };
-            const again = (b) => { b.acc = 0.05; b.vto = 3.5; };
-            blade(a, { x: q.x, y: q.y, dir: pdir(q2.x - q1.x, q2.y - q1.y),
-                       ev: [[go, fly], [go + 60, again]] });
+            const mid = Math.sin(PI * w), top = 2.5 + 3.5 * mid;
+            const go = { dir: pdir(q.x - px, q.y - py) + way * 20, v: 0.6,
+                         acc: (top - 0.6) / 35, vto: top };
+            blade(a, Object.assign({ x: q.x, y: q.y, face: pdir(q2.x - q1.x, q2.y - q1.y) }, go));
             const thick = SLASH_W * mid;
             if (thick >= 14) {
                 const qi = slashAt(sl, px, py, w, thick);
-                shot(a, { x: qi.x, y: qi.y, r: ORB, col: C.cyan, ev: [[go, fly], [go + 60, again]] });
+                shot(a, Object.assign({ x: qi.x, y: qi.y, r: ORB, col: C.cyan }, go));
             }
         }
     });
