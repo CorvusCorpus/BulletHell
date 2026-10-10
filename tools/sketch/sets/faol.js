@@ -122,108 +122,112 @@ function fountain(a) {
 
 // ---- Kelp ------------------------------------------------------------------------
 
-// Fronds of seaweed grow from his waist, one link at a time, and sway in a
-// wave that runs down them, wider toward the tip. A frond's `cfg`: `links`
-// `gap` px apart, one more every `grow` frames; sway up to `amp` px at the
-// tip, `P` frames a sway, `wave` radians of lag a link; from `back` it draws
-// back in, gone by `gone`.
-function frondAt(f, j, t) {
-    const c = f.cfg;
-    const pull = t < c.back ? 1 : Math.max(0, 1 - (t - c.back) / (c.gone - c.back));
-    const d = (j + 1) * c.gap * pull;
-    const off = c.amp * Math.pow((j + 1) / c.links, 1.5)
-                * Math.sin(2 * PI * t / c.P - c.wave * j + f.ph);
-    return { x: f.x + dcos(f.dir) * d + dcos(f.dir + 90) * off,
-             y: f.y - dsin(f.dir) * d - dsin(f.dir + 90) * off };
+// Four fronds of seaweed grow from his waist at the start, a link every 2
+// frames, and stay for the whole attack. Each is a chain of 15 links 26 px
+// apart whose every segment bends: a sway that runs down it (up to 22 degrees
+// at the tip, 120 frames a sway) and a current that leans every frond the same
+// way, turning slowly from 25 degrees one side to 25 the other and back over
+// 480 frames. Their links hurt like any bullet.
+const FROND = { links: 15, gap: 26, grow: 2, sway: 22, P: 120, wave: 0.5, lean: 25, L: 480 };
+const FROND_BASE = [215, 245, 295, 325];
+
+// Frond `f`'s points (root first) and segment headings at frame `t`.
+function frondPath(f, t) {
+    if (f.at === t) return f.path;
+    const cur = FROND.lean * Math.sin(2 * PI * t / FROND.L);
+    const pts = [{ x: f.x, y: f.y }], angs = [];
+    for (let j = 0; j < FROND.links; j++) {
+        const k = (j + 1) / FROND.links;
+        const ang = f.base + cur * k + FROND.sway * k * Math.sin(2 * PI * t / FROND.P - FROND.wave * j + f.ph);
+        const p = pts[j];
+        pts.push({ x: p.x + dcos(ang) * FROND.gap, y: p.y - dsin(ang) * FROND.gap });
+        angs.push(ang);
+    }
+    f.at = t;
+    f.path = { pts, angs };
+    return f.path;
 }
 
 function frondLink(b, a) {
-    const t = a.t - b.f.t0;
-    if (t > b.f.cfg.gone || b.f.cut) { b.dead = true; return; }
-    const q = frondAt(b.f, b.j, t);
+    const q = frondPath(b.f, a.t).pts[b.j + 1];
     b.x = q.x;
     b.y = q.y;
+    if (b.pod) b.pod(b, a);
 }
 
-// Grow each frond in `fronds` a link at a time.
-function growFronds(a, fronds) {
-    for (const f of fronds) {
-        const c = f.cfg, t = a.t - f.t0;
-        while (f.made < c.links && f.made * c.grow <= t && t < c.back) {
-            const j = f.made++, tip = j === c.links - 1;
-            a.bullet({ x: f.x, y: f.y, f, j, r: size(a, tip ? BALL : ORB),
-                       col: tip ? C.spring : j % 2 ? C.lime : C.jade, step: frondLink });
+// Grow the fronds a link at a time; `dress(f, j)` gives a link extra fields.
+function growFronds(a, dress) {
+    const s = a.store;
+    if (!s.fronds) {
+        s.fronds = FROND_BASE.map((base, i) => ({ x: a.boss.x, y: a.boss.y + 40, base,
+                                                  ph: i * 1.3, made: 0 }));
+    }
+    for (const f of s.fronds) {
+        while (f.made < FROND.links && f.made * FROND.grow <= a.t) {
+            const j = f.made++;
+            a.bullet(Object.assign({ x: f.x, y: f.y, f, j, r: size(a, ORB),
+                                     col: j % 2 ? C.lime : C.jade, step: frondLink }, dress(f, j)));
         }
     }
+    return s.fronds;
 }
 
-// Kelp curtains: every 300 frames three long fronds (16 links, 448 px) fan
-// out below him, alternate rounds 15 degrees round, swaying up to 70 px. From
-// 40 frames in until they draw back, every 30 frames each frond sheds a drop
-// from every other link from the sixth out, all at once and all drifting
-// square to the frond the way its tip is swaying (2.2, easing to 1.4) and
-// sinking (up to 1.2): each shed is a wavy copy of the frond that peels away
-// and sinks.
-const CURTAIN = { links: 16, gap: 28, grow: 2, amp: 70, P: 120, wave: 0.4, back: 240, gone: 280 };
-
-function kelpCurtains(a) {
-    const s = a.store;
-    if (a.t % 300 === 1) {
-        const turn = Math.floor(a.t / 300) % 2 ? 15 : 0;
-        s.fronds = [225, 270, 315].map((dir, i) => (
-            { t0: a.t, x: a.boss.x, y: a.boss.y + 40, dir: dir + turn, ph: i * 1.1, made: 0,
-              cfg: CURTAIN }));
-    }
-    const fronds = s.fronds || [];
-    growFronds(a, fronds);
-    for (const f of fronds) {
-        const t = a.t - f.t0;
-        if (t < 40 || t >= CURTAIN.back || t % 30) continue;
-        const tip = CURTAIN.links - 1;
-        const sway = Math.sign(Math.cos(2 * PI * t / CURTAIN.P - CURTAIN.wave * tip + f.ph)) || 1;
-        for (let j = 5; j < CURTAIN.links; j += 2) {
-            const q = frondAt(f, j, t);
-            shot(a, { x: q.x, y: q.y, dir: f.dir + 90 * sway, v: 2.2, acc: -0.02, vto: 1.4,
-                      sink: 0.015, sinkTo: 1.2, r: ORB, col: (t / 30) % 2 ? C.azure : C.cyan });
+// Kelp hoses: from 40 frames in, each frond's tip sprays in dashes (a drop
+// every 4 frames for 24 frames, then 16 frames off, the fronds staggered by
+// 10) along the way the tip points (6, slowing to 2.6), so the swaying tips
+// lay four waving streams, broken into dashes you can slip between, that
+// sweep across as the current turns. Every 80 frames
+// the bladder halfway along each frond puffs three drops at the player (10
+// degrees apart) that set off slowly (2) and speed up to 5.
+function kelpHoses(a) {
+    const fronds = growFronds(a, (f, j) => (
+        j === FROND.links - 1 ? { r: size(a, BALL), col: C.spring }
+        : j === 7 ? { r: size(a, BALL), col: C.jade } : {}));
+    if (a.t < 40) return;
+    fronds.forEach((f, i) => {
+        const { pts, angs } = frondPath(f, a.t);
+        if (a.t % 4 === 0 && (a.t + i * 10) % 40 < 24) {
+            const tip = pts[FROND.links];
+            shot(a, { x: tip.x, y: tip.y, dir: angs[FROND.links - 1], v: 6, acc: -0.15, vto: 2.6,
+                      r: ORB, col: i % 2 ? C.azure : C.cyan });
         }
-    }
-}
-
-// Reaching kelp: every 150 frames three fronds reach out, one at the player
-// and one 28 degrees either side, growing fast (18 links, 504 px, a link a
-// frame), and sway gently (up to 40 px). 60 frames in they burst: from the
-// third link out, each leaf peels off square to the frond, alternately to
-// either side, setting off slowly and speeding up to 3.5, so each frond
-// becomes two lines opening apart; its tip pops into a ring of eight.
-const REACH = { links: 18, gap: 28, grow: 1, amp: 40, P: 90, wave: 0.35, back: 1e9, gone: 1e9 };
-
-function reachingKelp(a) {
-    const s = a.store;
-    if (a.t % 150 === 1) {
-        const aim = pdir(a.player.x - a.boss.x, a.player.y - a.boss.y - 40);
-        s.fronds = [-28, 0, 28].map((off, i) => (
-            { t0: a.t, x: a.boss.x, y: a.boss.y + 40, dir: aim + off, ph: i * 1.7, made: 0,
-              cfg: REACH }));
-    }
-    const fronds = s.fronds || [];
-    growFronds(a, fronds);
-    for (const f of fronds) {
-        if (a.t - f.t0 !== 60) continue;
-        const t = 60;
-        for (let j = 2; j < REACH.links; j++) {
-            const q = frondAt(f, j, t), side = j % 2 ? 90 : -90;
-            if (j === REACH.links - 1) {
-                for (let k = 0; k < 8; k++) {
-                    shot(a, { x: q.x, y: q.y, dir: f.dir + k * 45, v: 0.5, acc: 0.06, vto: 3,
-                              r: ORB, col: C.spring });
-                }
-                continue;
+        if (a.t % 80 === 0) {
+            const q = pts[8], aim = pdir(a.player.x - q.x, a.player.y - q.y);
+            for (const off of [-10, 0, 10]) {
+                shot(a, { x: q.x, y: q.y, dir: aim + off, v: 2, acc: 0.08, vto: 5,
+                          r: ORB, col: C.spring });
             }
-            shot(a, { x: q.x, y: q.y, dir: f.dir + side, v: 0.4, acc: 0.05, vto: 3.5,
-                      r: ORB, col: side > 0 ? C.jade : C.lime });
         }
-        f.cut = true;
+    });
+}
+
+// Kelp bladders: each frond carries four pods (links 4, 8, 12 and its tip)
+// that swell over 50 frames from an orb to a ball and pop into a ring of ten
+// drops that set off slowly (1) and speed up to 3.5, then grow back. A frond's
+// pods pop root to tip, 12 frames apart, every 160 frames, the fronds taking
+// turns 40 frames apart.
+const PODS = [3, 7, 11, 14], POD_CYCLE = 160, POD_GAP = 12, POD_SWELL = 50;
+
+function kelpPod(b, a) {
+    const u = (a.t - b.popAt) % POD_CYCLE;          // frames since this pod last popped
+    const small = size(a, ORB), big = size(a, BALL);
+    const left = POD_CYCLE - u;                     // frames until it pops again
+    b.r = left <= POD_SWELL ? small + (big - small) * (1 - left / POD_SWELL) : small;
+    if (u === 0 && a.t > 40) {
+        for (let k = 0; k < 10; k++) {
+            shot(a, { x: b.x, y: b.y, dir: k * 36 + b.j * 9, v: 1, acc: 0.05, vto: 3.5,
+                      r: ORB, col: k % 2 ? C.cyan : C.spring });
+        }
     }
+}
+
+function kelpBladders(a) {
+    growFronds(a, (f, j) => {
+        const n = PODS.indexOf(j);
+        if (n < 0) return {};
+        const i = FROND_BASE.indexOf(f.base);
+        return { col: C.spring, pod: kelpPod, popAt: 40 + i * 40 + n * POD_GAP };
+    });
 }
 
 // ---- Bubbles -----------------------------------------------------------------------
@@ -287,8 +291,8 @@ Sketch.set({
     patterns: [
         { name: 'Ripples', loop: () => 420, emit: ripples },
         { name: 'Fountain', loop: () => 80, emit: fountain },
-        { name: 'Kelp curtains', loop: () => 600, emit: kelpCurtains },
-        { name: 'Reaching kelp', loop: () => 150, emit: reachingKelp },
+        { name: 'Kelp hoses', loop: () => 480, emit: kelpHoses },
+        { name: 'Kelp bladders', loop: () => 480, emit: kelpBladders },
         { name: 'Bubbles', loop: () => 270, emit: bubbles },
         { name: 'Tide', loop: () => 200, emit: tide },
     ],
