@@ -9,6 +9,9 @@ const C = { cyan: '#38d6ff', azure: '#448cff', magenta: '#f848e0',
             rose: '#ff80b2', indigo: '#745cff', violet: '#b054fa',
             bone: '#e8eeff' };
 const ORB = 7.0, BALL = 15.0;      // hit radii (`bullet_table`)
+// The "small" toggle draws and hits each a size down (a ball as an orb, an
+// orb as a pellet), which can read better in a sketch.
+const size = (a, r) => (a.opts.small ? (r >= BALL ? ORB : 3.3) : r);
 const PI = Math.PI;
 const dcos = (d) => Math.cos(d * PI / 180), dsin = (d) => Math.sin(d * PI / 180);
 const pdir = (dx, dy) => Math.atan2(-dy, dx) * 180 / PI;
@@ -22,6 +25,7 @@ const pdir = (dx, dy) => Math.atan2(-dy, dx) * 180 / PI;
 function shot(a, o) {
     const b = a.bullet(Object.assign({ v: 4, dir: 270, turn: 0, ease: 1, acc: 0,
                                        vto: 0, from: 0, step: moveShot }, o));
+    b.r = size(a, b.r);
     b.v0 = b.v;
     b.s = 0;
     return b;
@@ -104,7 +108,7 @@ function spirals(a, mode, twin = false, rev = undefined) {
     for (const m of [1, -1]) {
         a.bullet({ x: a.boss.x, y: a.boss.y, sx: a.boss.x, sy: a.boss.y,
                    ox: a.boss.x - m * SPI.dx, oy: a.boss.y + SPI.dy, m, pair, mode,
-                   col: m > 0 ? C.cyan : C.magenta, r: BALL, next: 0, step: penStep,
+                   col: m > 0 ? C.cyan : C.magenta, r: size(a, BALL), next: 0, step: penStep,
                    col2: twin ? (m > 0 ? C.azure : C.bone) : null, rev });
     }
 }
@@ -125,7 +129,7 @@ function penStep(b, a) {
         const k = b.next++, p = PATH[k * SPI.gap], two = b.col2 && k % 2;
         a.bullet({ x: b.ox + b.m * p.x, y: b.oy + p.y, ox: b.ox, oy: b.oy, m: b.m,
                    k, p, pair: b.pair, mode: b.mode, col: two ? b.col2 : b.col,
-                   f: two ? SPI.slow : 1, revAt: b.rev, r: ORB,
+                   f: two ? SPI.slow : 1, revAt: b.rev, r: size(a, ORB),
                    v: 0, dir: 0, live: false, rot: 0, bounced: false,
                    step: pelletStep });
     }
@@ -226,6 +230,7 @@ const RIM_R = 200, RIM_TURN = 120 / 70;
 Sketch.set({
     id: 'sylvia',
     name: "Sylvia's non-spells: spirals and lasers",
+    toggles: [{ id: 'small', label: 'Small bullets' }],
     patterns: [
 
     { name: 'Two spirals: peel', boss: 'step', hold: SPI.hold,
