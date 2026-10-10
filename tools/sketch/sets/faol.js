@@ -234,7 +234,7 @@ Sketch.set({
         { name: 'Ripples', loop: () => 420, emit: ripples },
         { name: 'Fountain', loop: () => 80, emit: fountain },
         { name: 'Kelp', loop: () => 480, emit: kelp },
-        { name: 'Bubbles', loop: () => 135, emit: bubbles },
+        { name: 'Bubbles', loop: () => 270, emit: bubbles },
         { name: 'Tide', loop: () => 200, emit: tide },
     ],
 });
