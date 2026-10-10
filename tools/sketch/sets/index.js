@@ -5,4 +5,5 @@ window.SKETCH_SETS = [
     'mika_n3',
     'mika_n5',
     'sylvia',
+    'corvus',
 ];
