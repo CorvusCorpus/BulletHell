@@ -5,8 +5,9 @@
 (function () {
 'use strict';
 // The game's bullet hues (`palette`).
-const C = { cyan: '#38d6ff', magenta: '#f848e0', rose: '#ff80b2',
-            indigo: '#745cff', violet: '#b054fa', bone: '#e8eeff' };
+const C = { cyan: '#38d6ff', azure: '#448cff', magenta: '#f848e0',
+            rose: '#ff80b2', indigo: '#745cff', violet: '#b054fa',
+            bone: '#e8eeff' };
 const ORB = 7.0, BALL = 15.0;      // hit radii (`bullet_table`)
 const PI = Math.PI;
 const dcos = (d) => Math.cos(d * PI / 180), dsin = (d) => Math.sin(d * PI / 180);
@@ -67,9 +68,10 @@ function almond(a, x0, y0, x1, y1, w, frames, hold, col) {
 // (the game's bullets have no bounce yet). He hops after each pair, holding
 // `hold` frames. The spiral winds `turns` times from radius `r0` to `r1`,
 // counterclockwise from bearing `a0`; the centres are `dx` either side of him
-// and `dy` below.
+// and `dy` below. Interleaved, every second orb is a second shade (blue on
+// the left, white on the right) and moves at `slow` times the speed.
 const SPI = { dx: 300, dy: 170, r0: 18, r1: 190, turns: 2.5, a0: 270,
-              gap: 30, reach: 20, pen: 16, pause: 22, hold: 210 };
+              gap: 30, reach: 20, pen: 16, pause: 22, hold: 210, slow: 0.6 };
 
 // The left spiral's path from its centre, a point every pixel along it:
 // {x, y, ang (bearing from the centre), th (degrees wound), dir (heading)}.
@@ -93,14 +95,16 @@ const SPI_N = Math.floor((PATH.length - 1) / SPI.gap) + 1;   // pellets a spiral
 // Frames from a pair's start to its coming alive.
 const SPI_LIVE = SPI.reach + Math.ceil((PATH.length - 1) / SPI.pen) + SPI.pause;
 
-// Start a pair at the top of each hold; `mode` brings it alive.
-function spirals(a, mode) {
+// Start a pair at the top of each hold; `mode` brings it alive. `twin`
+// interleaves it.
+function spirals(a, mode, twin = false) {
     if (a.t % (SPI.hold + a.GAME.stepMove) !== 1) return;
     const pair = { t0: a.t };
     for (const m of [1, -1]) {
         a.bullet({ x: a.boss.x, y: a.boss.y, sx: a.boss.x, sy: a.boss.y,
                    ox: a.boss.x - m * SPI.dx, oy: a.boss.y + SPI.dy, m, pair, mode,
-                   col: m > 0 ? C.cyan : C.magenta, r: BALL, next: 0, step: penStep });
+                   col: m > 0 ? C.cyan : C.magenta, r: BALL, next: 0, step: penStep,
+                   col2: twin ? (m > 0 ? C.azure : C.bone) : null });
     }
 }
 
@@ -117,9 +121,10 @@ function penStep(b, a) {
     b.x = b.ox + b.m * q.x;
     b.y = b.oy + q.y;
     while (b.next < SPI_N && b.next * SPI.gap <= s) {
-        const k = b.next++, p = PATH[k * SPI.gap];
+        const k = b.next++, p = PATH[k * SPI.gap], two = b.col2 && k % 2;
         a.bullet({ x: b.ox + b.m * p.x, y: b.oy + p.y, ox: b.ox, oy: b.oy, m: b.m,
-                   k, p, pair: b.pair, mode: b.mode, col: b.col, r: ORB,
+                   k, p, pair: b.pair, mode: b.mode, col: two ? b.col2 : b.col,
+                   f: two ? SPI.slow : 1, r: ORB,
                    v: 0, dir: 0, live: false, rot: 0, bounced: false,
                    step: pelletStep });
     }
@@ -150,7 +155,8 @@ function pelletStep(b, a) {
 const PEEL = { span: 72, acc: 0.06, vto: 3.4 };
 const peel = { wait(b, T) {
     if (T < SPI_LIVE + PEEL.span * (SPI_N - 1 - b.k) / SPI_N) return;
-    Object.assign(b, { live: true, dir: mir(b.m, b.p.dir), acc: PEEL.acc, vto: PEEL.vto });
+    Object.assign(b, { live: true, dir: mir(b.m, b.p.dir), acc: PEEL.acc * b.f,
+                       vto: PEEL.vto * b.f });
 } };
 
 // Spin and fling: each spiral turns as a whole the way that unwinds it,
@@ -167,20 +173,21 @@ const fling = { wait(b, T) {
     b.x = b.ox + dcos(ang) * r;
     b.y = b.oy - dsin(ang) * r;
     if (u < FLING.at) return;
-    Object.assign(b, { live: true, dir: ang - b.m * 90, v: w * PI / 180 * r + FLING.kick,
-                       acc: 0 });
+    Object.assign(b, { live: true, dir: ang - b.m * 90,
+                       v: (w * PI / 180 * r + FLING.kick) * b.f, acc: 0 });
 } };
 
 // Inside out: each pellet sets off straight away from its spiral's centre,
 // the innermost first, the last `span` frames after; easing up to `vto`, the
 // inner turns catch the outer and pass through them, so each spiral turns
 // inside out into its mirror image. (At half the span it would settle into a
-// ring instead.)
+// ring instead, which is near what the slower orbs of an interleaved pair do.)
 const INOUT = { acc: 0.06, vto: 4.0 };
 INOUT.span = 2 * (SPI.r1 - SPI.r0) / INOUT.vto;
 const inout = { wait(b, T) {
     if (T < SPI_LIVE + INOUT.span * b.p.th / (SPI.turns * 360)) return;
-    Object.assign(b, { live: true, dir: mir(b.m, b.p.ang), acc: INOUT.acc, vto: INOUT.vto });
+    Object.assign(b, { live: true, dir: mir(b.m, b.p.ang), acc: INOUT.acc * b.f,
+                       vto: INOUT.vto * b.f });
 } };
 
 // The Iris Rim's three arcs: radius round him, and degrees a frame (a third of
@@ -200,6 +207,12 @@ Sketch.set({
 
     { name: 'Two spirals: inside out', boss: 'step', hold: SPI.hold,
       loop: () => 2 * (SPI.hold + 45), emit(a) { spirals(a, inout); } },
+
+    { name: 'Two spirals: spin and fling, interleaved', boss: 'step', hold: SPI.hold,
+      loop: () => 2 * (SPI.hold + 45), emit(a) { spirals(a, fling, true); } },
+
+    { name: 'Two spirals: inside out, interleaved', boss: 'step', hold: SPI.hold,
+      loop: () => 2 * (SPI.hold + 45), emit(a) { spirals(a, inout, true); } },
 
     // Every 100 frames six blades (curved lasers, magenta and indigo by
     // turns) unfurl from him along a spiral. A strand of cyan orbs streams
