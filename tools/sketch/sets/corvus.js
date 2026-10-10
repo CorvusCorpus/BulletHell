@@ -1,7 +1,8 @@
 // Candidates for Corvus's non-spells, from his design: scythes whose blades
 // carry glowing cyan runes, black wings and feathers, a chain, the reaper's
-// harvest, and the crypt's maze. Sketches only; none is in the game. All but
-// the last leave out his gimmick (closing in to strike); "Lunge" uses it.
+// harvest, and the crypt's maze. Sketches only; none is in the game. His
+// lunges are for his spells (the owner's call), so "Lunge" is a spell idea
+// kept here for reference; the rest leave them out.
 (function () {
 'use strict';
 // The game's bullet hues (`palette`).
@@ -46,12 +47,16 @@ const blade = (a, o) => shot(a, Object.assign({ r: KNIFE, len: KLEN, col: C.bone
 
 // ---- Feather dive ----------------------------------------------------------
 
-// Every 60 frames he beats his wings: each throws a fan of nine feathers up
-// and out (10 to 80 degrees off level), which brake to a stop in 26 frames
-// and hang, turning to point at the player. From the outermost in, one every
-// 3 frames, each dives at where the player is then, speeding up to 8.
+// Every 60 frames he beats his wings (`wingBeat`): each throws a fan of nine
+// feathers up and out (10 to 80 degrees off level), which brake to a stop in
+// 26 frames and hang, turning to point at the player. From the outermost in,
+// one every 3 frames, each dives at where the player is then, speeding up
+// to 8.
 function featherDive(a) {
-    if (a.t % 60 !== 1) return;
+    if (a.t % 60 === 1) wingBeat(a);
+}
+
+function wingBeat(a) {
     for (const m of [1, -1]) {
         for (let k = 0; k < 9; k++) {
             const d = 10 + k * 8.75;
@@ -95,6 +100,80 @@ function reapingSlash(a) {
             else shot(a, Object.assign(o, { r: ORB, col: C.cyan }));
         }
     });
+}
+
+// ---- Four blades ---------------------------------------------------------------
+
+// His four blades (two double-bladed scythes) cut a combo of four: two
+// diagonals that cross in an X in front of him, a long low sweep, and a
+// finisher with both blades of one scythe, a mirrored pair of tall crescents
+// either side of him. Each is laid by a blade's tip as it swings round a
+// pivot well away from him, so the cut is a shallow curve across the space
+// in front of him; its reach swells by `sw` mid-swing, and it is swung with a
+// slow start and stop, so the trail is sparse where the blade is fast. Silver
+// blades along the swing make its outer edge, and cyan orbs its inner edge
+// where the crescent is thick (up to 46 px). 12 frames after a cut is drawn
+// it flies off as one: each piece outward from the pivot, leaning 20 degrees
+// into the swing, the middle fastest (1.5 to 6), so the crescent bows as it
+// goes; it brakes to a crawl and 60 frames later speeds up again to 3.5.
+const SLASHES = [
+    // at: frame of the combo it starts; draw: frames it takes; p: its pivot
+    // from him; a0 to a1: the blade's bearing from the pivot; R: its reach.
+    { at: 0,  draw: 9,  p: [300, -250],  a0: 200, a1: 255, R: 520, sw: 0.1 },
+    { at: 14, draw: 9,  p: [-300, -250], a0: 340, a1: 285, R: 520, sw: 0.1 },
+    { at: 30, draw: 11, p: [0, -300],    a0: 238, a1: 302, R: 620, sw: 0.12 },
+    { at: 50, draw: 12, p: [-380, 80],   a0: 45,  a1: -35, R: 460, sw: 0.1 },
+    { at: 50, draw: 12, p: [380, 80],    a0: 135, a1: 215, R: 460, sw: 0.1 },
+];
+const SLASH_N = 26, SLASH_W = 46, SLASH_HOLD = 12;
+
+// Where slash `sl` cut from (px, py) puts its edge at `u` (0 to 1 through the
+// swing), `inset` px in from the tip.
+function slashAt(sl, px, py, u, inset = 0) {
+    const e = u * u * (3 - 2 * u), th = sl.a0 + (sl.a1 - sl.a0) * e;
+    const r = sl.R * (1 - sl.sw + sl.sw * Math.sin(PI * u)) - inset;
+    return { x: px + r * dcos(th), y: py - r * dsin(th) };
+}
+
+// Lay the combo's slashes as they are swung; `t0` is the combo's first frame.
+function bladeCombo(a, t0) {
+    const s = a.store, u = a.t - t0;
+    if (u === 0) s.combo = { bx: a.boss.x, by: a.boss.y, laid: SLASHES.map(() => 0) };
+    const cb = s.combo;
+    SLASHES.forEach((sl, i) => {
+        const f = u - sl.at, way = Math.sign(sl.a1 - sl.a0);
+        const px = cb.bx + sl.p[0], py = cb.by + sl.p[1];
+        while (cb.laid[i] < SLASH_N && f >= 0
+               && Math.floor(cb.laid[i] / (SLASH_N - 1) * sl.draw) <= f) {
+            const j = cb.laid[i]++, w = j / (SLASH_N - 1);
+            const q = slashAt(sl, px, py, w), q2 = slashAt(sl, px, py, Math.min(1, w + 0.01));
+            const q1 = slashAt(sl, px, py, Math.max(0, w - 0.01));
+            const go = sl.draw + SLASH_HOLD - f, mid = Math.sin(PI * w);
+            const fly = (b) => { b.dir = pdir(b.x - px, b.y - py) + way * 20; b.v = 1.5 + 4.5 * mid;
+                                 b.acc = -0.12; b.vto = 1; };
+            const again = (b) => { b.acc = 0.05; b.vto = 3.5; };
+            blade(a, { x: q.x, y: q.y, dir: pdir(q2.x - q1.x, q2.y - q1.y),
+                       ev: [[go, fly], [go + 60, again]] });
+            const thick = SLASH_W * mid;
+            if (thick >= 14) {
+                const qi = slashAt(sl, px, py, w, thick);
+                shot(a, { x: qi.x, y: qi.y, r: ORB, col: C.cyan, ev: [[go, fly], [go + 60, again]] });
+            }
+        }
+    });
+}
+
+// The combo alone, every 120 frames.
+function fourBlades(a) {
+    bladeCombo(a, Math.floor((a.t - 1) / 120) * 120 + 1);
+}
+
+// The 1-2: the combo, then at 100 and 130 frames his wings beat and the
+// feathers dive (`wingBeat`) through what the slashes left. Every 210 frames.
+function bladesAndFeathers(a) {
+    const t0 = Math.floor((a.t - 1) / 210) * 210 + 1, u = a.t - t0;
+    if (u <= 80) bladeCombo(a, t0);
+    if (u === 100 || u === 130) wingBeat(a);
 }
 
 // ---- Boomerang sickles -------------------------------------------------------
@@ -269,7 +348,7 @@ function pendulumChain(a) {
     }
 }
 
-// ---- Lunge (his gimmick) -------------------------------------------------------
+// ---- Lunge (a spell idea: his gimmick) -------------------------------------------------------
 
 // Every 160 frames: he rises 30 px over 10 frames, then dashes in 18 frames
 // (speeding up) to 220 px above where the player was as the dash began,
@@ -322,12 +401,14 @@ Sketch.set({
     name: "Corvus's non-spells: blades, feathers and the crypt",
     toggles: [{ id: 'small', label: 'Small bullets' }],
     patterns: [
+        { name: 'Blades and feathers', loop: () => 210, emit: bladesAndFeathers },
+        { name: 'Four blades', loop: () => 120, emit: fourBlades },
         { name: 'Feather dive', loop: () => 120, emit: featherDive },
         { name: 'Reaping slash', loop: () => 180, emit: reapingSlash },
         { name: 'Boomerang sickles', loop: () => 180, emit: boomerangSickles },
         { name: 'Crypt gates', loop: () => 440, emit: cryptGates },
         { name: 'Pendulum chain', loop: () => 480, emit: pendulumChain },
-        { name: 'Lunge (his gimmick)', loop: () => 320, bossAt: lungeAt, emit: lunge },
+        { name: 'Lunge (spell idea)', loop: () => 320, bossAt: lungeAt, emit: lunge },
     ],
 });
 })();

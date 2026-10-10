@@ -153,10 +153,12 @@ gimmick is the mechanic its attacks are built around.
   Papyrus's in Undertale).
 - **Corvus**, a crow revenant after the grim reaper and Bloodborne. Begins in
   a graveyard and descends deeper into a labyrinthine crypt. Gimmick: he
-  closes on or lunges at the player during patterns with melee attacks.
+  closes on or lunges at the player during patterns with melee attacks. The
+  lunges are for his spells; his non-spells leave them out.
 - **Sylvia**, an egregore after the Cheshire cat. Begins somewhere that
   looks normal and slowly fades into a trippy Wonderland. Gimmick: messing
-  with the game's visuals and controls during attacks.
+  with the game's visuals and controls during attacks. His non-spells carry
+  no gimmick.
 - **Haveri**, a bluejay (a huitzitzilin) mage and alchemist descended from a
   mythical Aztec bird. He lost a wing in a magical explosion and flies on a conjured arcane
   one in its place. Stage undecided. Gimmick: colourful potion vials he
