@@ -147,6 +147,7 @@ function pelletStep(b, a) {
     }
     const held = b.revAt !== undefined
                  && (b.revHow === 'swing' ? swing(b, T) : reversal(b, T));
+    // (A swing never holds the speed; a flip does while it brakes.)
     if (!held && b.acc) b.v = Math.min(b.vto, b.v + b.acc);
     if (b.curl && !b.bounced) { b.dir += b.curl; b.curl *= REV.ease; }
     b.x += dcos(b.dir) * b.v;
@@ -186,24 +187,20 @@ function reversal(b, T) {
 }
 
 // A swing: from frame `revAt` of its pair an orb turns away from its spiral's
-// centre through `turn` degrees over `frames` frames, fastest midway, so it
-// swings out and round to circle the other way without stopping; its speed
-// dips by `dip` at the middle of the turn and comes back. True while it holds
-// the orb's speed. An orb that has bounced is left alone.
-const SWING = { frames: 40, turn: 150, dip: 0.3 };
+// centre at a steady rate, `turn` degrees over `frames` frames, keeping its
+// speed, so it heads out and round the other way. An orb that has bounced is
+// left alone.
+const SWING = { frames: 16, turn: 120 };
 function swing(b, T) {
     if (b.bounced) return false;
     const u = T - b.revAt;
     if (u < 0 || u >= SWING.frames) return false;
     if (u === 0) {
         const rx = b.x - b.ox, ry = b.y - b.oy;
-        b.vsw = b.v;
         b.sw = -Math.sign(rx * dsin(b.dir) + ry * dcos(b.dir)) || 1;
     }
-    const k = Math.PI / SWING.frames, e = Math.sin(k * (u + 0.5));
-    b.dir += b.sw * SWING.turn * k / 2 * e;
-    b.v = u === SWING.frames - 1 ? b.vsw : b.vsw * (1 - SWING.dip * e);
-    return true;
+    b.dir += b.sw * SWING.turn / SWING.frames;
+    return false;
 }
 
 // Peel: from the loose outer end inward over `span` frames, each pellet sets
