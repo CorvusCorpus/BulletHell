@@ -100,16 +100,16 @@ const SPI_N = Math.floor((PATH.length - 1) / SPI.gap) + 1;   // pellets a spiral
 const SPI_LIVE = SPI.reach + Math.ceil((PATH.length - 1) / SPI.pen) + SPI.pause;
 
 // Start a pair at the top of each hold; `mode` brings it alive. `twin`
-// interleaves it; `rev`, if given, is the frame of the pair its orbs reverse,
-// `how` 'flip' (see `reversal`) or 'swing' (see `swing`).
-function spirals(a, mode, twin = false, rev = undefined, how = 'flip') {
+// interleaves it; `rev`, if given, is the frame of the pair its orbs reverse
+// (see `reversal`).
+function spirals(a, mode, twin = false, rev = undefined) {
     if (a.t % (SPI.hold + a.GAME.stepMove) !== 1) return;
     const pair = { t0: a.t };
     for (const m of [1, -1]) {
         a.bullet({ x: a.boss.x, y: a.boss.y, sx: a.boss.x, sy: a.boss.y,
                    ox: a.boss.x - m * SPI.dx, oy: a.boss.y + SPI.dy, m, pair, mode,
                    col: m > 0 ? C.cyan : C.magenta, r: size(a, BALL), next: 0, step: penStep,
-                   col2: twin ? (m > 0 ? C.azure : C.bone) : null, rev, how });
+                   col2: twin ? (m > 0 ? C.azure : C.bone) : null, rev });
     }
 }
 
@@ -129,7 +129,7 @@ function penStep(b, a) {
         const k = b.next++, p = PATH[k * SPI.gap], two = b.col2 && k % 2;
         a.bullet({ x: b.ox + b.m * p.x, y: b.oy + p.y, ox: b.ox, oy: b.oy, m: b.m,
                    k, p, pair: b.pair, mode: b.mode, col: two ? b.col2 : b.col,
-                   f: two ? SPI.slow : 1, revAt: b.rev, revHow: b.how, r: size(a, ORB),
+                   f: two ? SPI.slow : 1, revAt: b.rev, r: size(a, ORB),
                    v: 0, dir: 0, live: false, rot: 0, bounced: false,
                    step: pelletStep });
     }
@@ -145,10 +145,7 @@ function pelletStep(b, a) {
         b.mode.wait(b, T);
         if (!b.live) return;
     }
-    const held = b.revAt !== undefined
-                 && (b.revHow === 'swing' ? swing(b, T) : reversal(b, T));
-    // (A swing never holds the speed; a flip does while it brakes.)
-    if (!held && b.acc) b.v = Math.min(b.vto, b.v + b.acc);
+    if (!reversal(b, T) && b.acc) b.v = Math.min(b.vto, b.v + b.acc);
     if (b.curl && !b.bounced) { b.dir += b.curl; b.curl *= REV.ease; }
     b.x += dcos(b.dir) * b.v;
     b.y -= dsin(b.dir) * b.v;
@@ -184,23 +181,6 @@ function reversal(b, T) {
     }
     b.v = b.vrev * (REV.low + (1 - REV.low) * (u - REV.brake + 1) / REV.again);
     return true;
-}
-
-// A swing: from frame `revAt` of its pair an orb turns away from its spiral's
-// centre at a steady rate, `turn` degrees over `frames` frames, keeping its
-// speed, so it heads out and round the other way. An orb that has bounced is
-// left alone.
-const SWING = { frames: 16, turn: 120 };
-function swing(b, T) {
-    if (b.bounced) return false;
-    const u = T - b.revAt;
-    if (u < 0 || u >= SWING.frames) return false;
-    if (u === 0) {
-        const rx = b.x - b.ox, ry = b.y - b.oy;
-        b.sw = -Math.sign(rx * dsin(b.dir) + ry * dcos(b.dir)) || 1;
-    }
-    b.dir += b.sw * SWING.turn / SWING.frames;
-    return false;
 }
 
 // Peel: from the loose outer end inward over `span` frames, each pellet sets
@@ -262,16 +242,15 @@ Sketch.set({
     { name: 'Two spirals: inside out', boss: 'step', hold: SPI.hold,
       loop: () => 2 * (SPI.hold + 45), emit(a) { spirals(a, inout); } },
 
-    // Peel and fling again, but partway out every orb reverses its swirl: 80
-    // frames into a peel it brakes and flips (`reversal`); 10 frames after a
-    // fling it swings round (`swing`).
+    // Peel and fling again, but partway out every orb reverses its swirl
+    // (`reversal`): 80 frames into a peel, 36 frames after a fling.
     { name: 'Two spirals: peel, reversing', boss: 'step', hold: SPI.hold,
       loop: () => 2 * (SPI.hold + 45),
       emit(a) { spirals(a, peel, false, SPI_LIVE + 80); } },
 
     { name: 'Two spirals: spin and fling, reversing', boss: 'step', hold: SPI.hold,
       loop: () => 2 * (SPI.hold + 45),
-      emit(a) { spirals(a, fling, false, SPI_LIVE + FLING.at + 10, 'swing'); } },
+      emit(a) { spirals(a, fling, false, SPI_LIVE + FLING.at + 36); } },
 
     { name: 'Two spirals: spin and fling, interleaved', boss: 'step', hold: SPI.hold,
       loop: () => 2 * (SPI.hold + 45), emit(a) { spirals(a, fling, true); } },
