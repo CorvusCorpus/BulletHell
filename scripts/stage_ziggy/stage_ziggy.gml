@@ -190,7 +190,7 @@ function warden_vigil(_e, _g, _t) {
         var _base = aim_at(_e.x, _e.y, _g.player.x, _g.player.y);
         for (var _i = 0; _i < 4; _i++) {
             // Long enough to cross the whole field from anywhere.
-            var _l = laser_beam(_e.x, _e.y, _base + _i * 90, 2300, 30,
+            var _l = laser_beam(_e.x, _e.y, _base + _i * 90, 2300, 9,
                                 BCOL_GOLD, 66, 60, 22);
             if (_l != undefined) {
                 _l.src = _e;             // it follows him as he drifts
@@ -359,7 +359,7 @@ function ziggy_sundering_lash(_e, _g, _t) {
         var _base = 90 + irandom_range(-40, 40);
         for (var _i = 0; _i < 3; _i++) {
             // Longer than the field's diagonal, so the beam has no visible end.
-            var _l = laser_beam(_e.x, _e.y, _base + _i * 120, 2400, 44,
+            var _l = laser_beam(_e.x, _e.y, _base + _i * 120, 2400, 13,
                                 BCOL_GOLD, 80, 60, 24);
             if (_l != undefined) {
                 _l.src = _e;

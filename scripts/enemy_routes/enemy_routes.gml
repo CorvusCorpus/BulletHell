@@ -273,10 +273,11 @@ function foe_act(_e, _g) {
     var _done = false;
     var _f = (_m.lt + 1) / _l.dur;
 
+    var _k;
     switch (_l.kind) {
         case Leg.Curve:
         case Leg.Aim:
-            var _k = ease_apply(_l.ease, _f);
+            _k = ease_apply(_l.ease, _f);
             if (_l.kind == Leg.Aim) {
                 _e.x = lerp(_m.x0, _m.tx, _k);
                 _e.y = lerp(_m.y0, _m.ty, _k);
@@ -293,7 +294,7 @@ function foe_act(_e, _g) {
             break;
 
         case Leg.Orbit:
-            var _k = ease_apply(_l.ease, _f);
+            _k = ease_apply(_l.ease, _f);
             var _a = _m.a0 + _l.deg * _m.side * _k;
             var _rr = (_l.r1 < 0) ? _m.rad0 : lerp(_m.rad0, _l.r1, _k);
             _e.x = _m.ox + lengthdir_x(_rr, _a);

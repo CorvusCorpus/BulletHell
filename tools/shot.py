@@ -60,6 +60,7 @@ SCENES = (
     "drafts",       # the rack with the drafting table selected
     "draft_attacks",   # its attack list: the unclaimed patterns
     "draft_spell",  # one of them being fought, through the game's own machinery
+    "draft_lasers", # `Three Lights`: a loose, a curved and a fixed laser together
     "hex_draw",     # `Demon Sealing Hex`: the ward half inscribed
     "hex_seal",     # ...closed, turning, and being fired into
     "hex_scatter",  # ...coming apart, every bead its own way

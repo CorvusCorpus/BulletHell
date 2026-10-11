@@ -1949,10 +1949,20 @@ function hall_bastet(_o, _s, _z, _kind) {
     hall_taper(_o.gilt, _x, _z, 14, 21, _hw + 8, 74, _hw + 8, 74,
                _pa, 0, _s, _kind, HALL_GILT, 0.80);
 
+    // The sprite has clear rows under her base slab, so she is lowered by
+    // them: her lowest swept row rests on the cap, not the sprite's edge.
+    var _vlow = 0;
+    var _parts = global.bastet_parts;
+    for (var _i = 0; _i < array_length(_parts); _i++) {
+        var _rows = _parts[_i].rows;
+        _vlow = max(_vlow, _rows[array_length(_rows) - 1][0]);
+    }
+    var _y0 = _b - (1 - _vlow) * HALL_STATUE_H;
+
     var _mirror = (_s > 0);
-    hall_bastet_sweep(_o.statue, spr_hall_bastet, _x, _b, HALL_STATUE_H, _z,
+    hall_bastet_sweep(_o.statue, spr_hall_bastet, _x, _y0, HALL_STATUE_H, _z,
                       _mirror, HALL_PROP_LIGHT);
-    hall_bastet_sweep(_o.statue_rim, spr_hall_bastet_rim, _x, _b,
+    hall_bastet_sweep(_o.statue_rim, spr_hall_bastet_rim, _x, _y0,
                       HALL_STATUE_H, _z, _mirror, HALL_STATUE_RIM);
 }
 

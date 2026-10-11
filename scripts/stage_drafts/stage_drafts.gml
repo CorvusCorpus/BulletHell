@@ -111,6 +111,11 @@ function draft_list() {
         // before any of his slots uses it.
         { name: "Sand Burst",   col: BCOL_GOLD,    time: 40 * FPS,
           move: BossMove.Close, attack: draft_sand_burst },
+
+        // Placeholder: a test card for how the three kinds of laser look.
+        // `Fixed`, so they all leave from one place.
+        { name: "Three Lights", col: BCOL_VIOLET,  time: 40 * FPS,
+          move: BossMove.Fixed, attack: draft_three_lights },
     ];
 }
 
@@ -282,6 +287,48 @@ function draft_burst_rim(_ring, _g, _t, _cycle) {
                         MIKA_SAND_BRAKE, MIKA_SAND_FLOOR,
                         MIKA_SAND_CURL * _sign, MIKA_SAND_BEND,
                         MIKA_SAND_LIFE);
+    }
+}
+
+/// @desc **Three Lights** (placeholder) -- one of each kind of laser, on a
+///       four-second loop: aimed fans of loose lasers every second (crimson
+///       and azure in turn, odd and even fans in turn), a pinwheel of eight
+///       curved gold lasers every two seconds turning each way in turn, and
+///       every four seconds telegraphed violet beams: a thin pair either side
+///       of where the player is, and in turn one wide beam aimed at him.
+function draft_three_lights(_e, _g, _t) {
+    var _aim = aim_at(_e.x, _e.y, _g.player.x, _g.player.y);
+
+    if ((_t mod 60) == 0) {
+        var _odd = ((_t div 60) mod 2 == 0);
+        var _n = _odd ? 5 : 4;
+        var _col = _odd ? BCOL_CRIMSON : BCOL_AZURE;
+        for (var _i = 0; _i < _n; _i++) {
+            laser_ray(_e.x, _e.y, _aim + (_i - (_n - 1) / 2) * 14,
+                      9, 260, 18, _col, 600, 18);
+        }
+    }
+
+    if ((_t mod 120) == 30) {
+        var _turn = ((_t div 120) mod 2 == 0) ? 1.1 : -1.1;
+        for (var _i = 0; _i < 8; _i++) {
+            laser_curve(_e.x, _e.y, _t * 1.7 + _i * 45, 7, _turn, 22,
+                        BCOL_GOLD, 170, 18);
+        }
+    }
+
+    if ((_t mod 240) == 150) {
+        if ((_t div 240) mod 2 == 0) {
+            for (var _s = -1; _s <= 1; _s += 2) {
+                var _l = laser_beam(_e.x, _e.y, _aim + _s * 24, 2400, 10,
+                                    BCOL_VIOLET, 60, 60, 18);
+                if (_l != undefined) _l.src = _e;
+            }
+        } else {
+            var _w = laser_beam(_e.x, _e.y, _aim, 2400, 44, BCOL_VIOLET, 60,
+                                60, 18);
+            if (_w != undefined) _w.src = _e;
+        }
     }
 }
 

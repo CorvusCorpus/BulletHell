@@ -388,7 +388,7 @@ function mika_three_gates(_e, _g, _t) {
 function mika_gate_beam(_ring, _g, _t) {
     var _c = _t mod 120;
     if (_c == 10) {
-        var _l = ring_beam(_ring, 90 + dsin(_t * 0.7) * 40, 2400, 30,
+        var _l = ring_beam(_ring, 90 + dsin(_t * 0.7) * 40, 2400, 9,
                            BCOL_AMBER, 66, 70, 22);
         if (_l != undefined) _l.turn = ((_ring.spin > 0) ? 1 : -1) * 0.42;
     }

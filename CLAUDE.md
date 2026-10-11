@@ -61,6 +61,11 @@ and is open to change. Earlier agents wrote a great deal of invented
 - **Sand on the far side of an orbit stays live.** It is drawn at full
   strength and hurts like any bullet; dimming or disarming it leaves a
   blind spot.
+- **Mika's hops in his non-spells come between whole turns of his rings**,
+  and nothing is shed while he hops, so no stop leaves a half-laid pattern.
+  N7's reversals happen during its hops.
+- **Sand mustn't leave from the same places every time.** Fixed lanes
+  between the streams are blind spots to sit in, and trivialise the attack.
 - **The hall's ornament is realistic material work**: fine inlay and
   carving of varying weight, never flat fills or lines of one weight (both
   read as cartoon or MS Paint). Mika's library is fancy and pristine, not a
@@ -320,8 +325,9 @@ callback. Things that bite:
 
 **Delay and warnings.** For its `delay` frames a bullet is a harmless,
 stationary warning mark, drawn in a second pass above live bullets. Lasers go
-warn → fire → fade and kill only while firing, at about a third of their
-drawn width.
+warn → fire → fade and kill only while firing, across their white core. A
+ray or a curve given a `delay` waits that long as a faint needle shrinking
+onto where it will be fired from.
 
 **Collision is swept.** The hit test measures distance to the segment the
 bullet moved this frame, behind a bounding-box reject covering the whole
@@ -338,11 +344,27 @@ either kind. Graze pays once per bullet; lasers and ring bands pay on a cooldown
 hit) but not `bullet_clear_all` (phase changes).
 
 **Lasers.** `laser_beam` is anchored and telegraphed; it can follow a `src`
-and re-aim at a `look` point every frame. `laser_ray` travels and is culled
-when its tail leaves; it is drawn as light with a white-hot core, narrowing
-to a point at each end (`spr_bul_ray`, stretched to its length and `wid`),
-and its kill segment stops short of its points. `laser_curve` draws the trail of its head's past
-positions.
+and re-aim at a `look` point every frame. `laser_ray` (a loose laser)
+travels, grows out of where it was fired until it is its full length, and
+is culled when its tail leaves. `laser_curve` is the trail of its head's
+past positions. All three fire in one light (`spr_bul_ray`): a white core
+glowing into a band of the hue, a crisp edge and a faint glow past it, and a
+needle point at each end that keeps its shape at any length (a beam's root
+is cut square under its muzzle instead). The sprite is laid along the laser
+as a textured strip with only its middle stretched (`laser_draw_needle`,
+`laser_draw_curve`), and its `BRAY_*` measurements come from
+`make_bullets.py`. `wid` is the body's width, edge to edge of the hue. They
+kill across the white core (`BRAY_HIT`) and the kill spine stops short of
+each point (`BRAY_INSET`, worked out so the kill width never reaches past
+the drawn light); while one is shorter than its points together it is drawn
+and collided smaller (`laser_grow`), and a beam opens to full width over its
+first frames of fire (`laser_open`). A beam's root is capped by an orb of
+the same light (`laser_draw_orb`, the cross-section turned round its middle),
+`LASER_BEAM_ORB` times its width in radius. Its warning line (still
+`spr_laser_body`, as is a ring arc) and the glow at its root are sized from
+`laser_flare_wid`: `wid` times `LASER_BEAM_FLARE`, but no more than
+`LASER_BEAM_FLARE_ADD` px wider than the light. `spr_laser_node` is no longer
+drawn.
 
 **Rings** (`ring_functions`) are furniture a boss puts down:
 
@@ -703,8 +725,8 @@ owner's Mika sheet in `tools/source/`.
 - The Bastet's outline follows the owner's reference statue, written down as
   points in `make_sanctum.py` (`BASTET_REF`). Her card is a relief of
   separate parts (`BASTET_PARTS`), so her legs, haunch and ears each read.
-  The far ear showing behind the near one is intended (the owner's), for a
-  sense of depth. Her eyes are Ashiah's red. In the hall she is swept into a
+  Her ears are a symmetrical pair (the owner's): the card paints only the
+  near one, and the far ear's solid is its outline at her other side. Her eyes are Ashiah's red. In the hall she is swept into a
   solid part by part (`BASTET_SOLIDS`, written to `scripts/sanctum_table`),
   each part round its own axis at her near or far side, so from above her
   legs are separate forms. The solid samples texels just outside her
@@ -844,9 +866,9 @@ Mika's slots (`mika_slots()` is the source of truth):
 | N1 | Written, in playtesting: the browser sketch's sand disc (`tools/sketch/sets/mika_n1.js`) run 1.5 times as fast, rings included, shedding more often and with a third band. The two rings on their 2.5D orbit shed three bands of yellow and orange sand that keep circling in the rings' plane (`BMod.Orbit`), drifting outward and slowing, and are let go along their paths to drift across the field. He holds whole turns of the rings between hops (`hold`), sheds nothing while he hops, and sand circles the spot it was shed from. Mika himself fires nothing. |
 | N2 | Written, in playtesting: N1 mirrored (turning the other way) with each ring's hue swapped. |
 | N3, N4 | Written, in playtesting: the woven disc, picked from the browser sketches (`tools/sketch/sets/mika_n3.js`). Four rings on N1's orbit, each shedding a pair into one band: one grain circles with the rings as N1's sand does, the other against them at the same rate, so their streams cross. N4 is N3 mirrored with its colours swapped, run at 0.8 of its pace (rings included, so the shape holds) with the same shedding beat, so slower and denser. Health started at N1's times the four-ring blocking measured on the old flat orbit and was trimmed after playtesting. |
-| N5 | Written, in playtesting: pulses, picked from the browser sketches (`tools/sketch/sets/mika_n5.js`). Six rings on his six-ring radius shed the woven disc's pairs (one grain circling with the rings, one against) only in short bursts, every ring at once, so the sand goes out in waves. |
-| N6 | Written, in playtesting: N5 mirrored with its colours swapped, its bursts twice as long and half as often (the same sand a second, in thicker waves with wider lanes between). |
-| N7 | Written, in playtesting: the reversing disc, from the same sketches. Six rings that turn one whole way round, then swing round to the other while Mika hops (his hops are its reversals, so nothing is shed during a turn); sand circles the way the rings were going when it was shed, so fresh sand crosses the old after each reversal and the released sand falls in curtains. Each ring sheds its own sand and a gold band, and as each reversal starts every ring casts a beam aimed at the player, which pivots on that spot as the ring swings round (`mika_mill_bolt`). |
+| N5 | Written, in playtesting: pulses, picked from the browser sketches (`tools/sketch/sets/mika_n5.js`). Six rings on his six-ring radius shed the woven disc's pairs (one grain circling with the rings, one against) only in short bursts, every ring at once, so the sand goes out in waves. The bursts don't divide the rings' turn, so each leaves a little behind where the last one did and the lanes between the waves creep round him; every stop starts on a whole burst. |
+| N6 | Written, in playtesting: N5 mirrored with its colours swapped, its bursts half as long again and half as rare again (the same sand a second, in thicker waves with wider lanes between). |
+| N7 | Written, in playtesting: the reversing disc, from the same sketches. Six rings that turn one whole way round, then swing round to the other while Mika hops (his hops are its reversals, so nothing is shed during a turn); sand circles the way the rings were going when it was shed, so fresh sand crosses the old after each reversal and the released sand falls in curtains. Each ring sheds its own sand and a gold band (let go at the same radius as the own sand, a frame apart, so each curtain is one even line), and as each reversal starts every ring casts a beam aimed at the player, which pivots on that spot as the ring swings round (`mika_mill_bolt`). |
 | S1 | Written, in playtesting: `Storm Cage`. Three rings strung with lightning ride round the player; a sandstorm floods the field; rings stop grains; on a bolt amber sand bursts into slow falling glass and ember grit burns away. |
 | S2 | Written, in playtesting: `Chakram Blitz` (inspired by Murasa's anchors in Touhou 12). Two rings rest at his sides and are thrown at the player in turn; while one waits it loops once round him in 2.5D, larger in front and smaller, dimmer and harmless behind him, timed to be back at rest as its wind-up starts. Each winds up aimed at the player, locks its aim with a brief flash of its lane, charges, is thrown fast with a sharp acceleration and a smooth braking stop, lays a braided double-helix rope that holds still and then comes apart, comes to rest short of the wall with its spin still building like a yo-yo's, sprays a brief pinwheel of bullets, and is pulled back. One ring is out at a time, and the gap between throws shrinks over the attack. |
 | S3 | Old placeholder: `Three Open Gates` |
@@ -868,12 +890,14 @@ Known gaps:
 - Only Mika has a conversation. Ziggy and Velka get the name card alone.
 - `Sand Burst` on the drafting table is Mika's sand thrown as a two-stage
   burst, parked to be tried before any slot uses it.
+- `Three Lights` on the drafting table is a test card for how the three
+  kinds of laser look (`python tools/shot.py draft_lasers`).
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.
 - Stages one and two's fodder can only move as `wave_line` and `wave_cross`
   describe; only stage three's waves fly routes (`enemy_routes`).
 - Missing parts of ph3's shot API:
-  - a hit width per laser (every laser kills at about a third of its drawn
+  - a hit width per laser (each kind of laser kills at a fixed share of its
     width);
   - penetrating player shots;
   - a blend mode per bullet;

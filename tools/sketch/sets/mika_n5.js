@@ -1,6 +1,8 @@
 // Candidates for Mika's N5 (six rings) and N7 (the last non-spell before the
-// Grand Orrery). "Pulses" (N5) and "N7: Reversing disc" are built into the
-// game (`mika_nonspells`); the rest are sketches only.
+// Grand Orrery). "Pulses, turning" (N5), "N6: Pulses, turning" and "N7:
+// Reversing disc" are built into the game (`mika_nonspells`); the rest are
+// sketches only. "Pulses" was N5's first build: every burst left from the same
+// places, so the lanes between them never moved.
 //
 // Six rings on his six-ring radius (300, as the Grand Orrery's), moving along
 // their path as fast as N3's rings do, and sand at N1's pace (`K`). Ember sand
@@ -19,14 +21,17 @@ function six(extra) {
 }
 
 // Shed a woven pair from every ring: one grain circling with the rings, one
-// against them, both starting `off` beyond the ring's present radius.
-function shedPairs(a, off) {
+// against them, both starting `off` beyond the ring's present radius. Ember
+// glints circle with the rings and amber grains against them, or the other
+// way round if `swap`.
+function shedPairs(a, off, swap) {
     const o = a.orbits[0];
+    const pair = [[1, C.ember, MOTE], [-1, C.amber, PELLET]];
+    if (swap) { pair[0][0] = -1; pair[1][0] = 1; }
     for (let i = 0; i < o.rings; i++) {
         const r = a.ringOf(0, i);
         const rad = Math.hypot(r.x - a.boss.x, (r.y - a.boss.y) / o.tilt);
-        for (const [turn, col, rr] of [[1, C.ember, MOTE],
-                                       [-1, C.amber, PELLET]]) {
+        for (const [turn, col, rr] of pair) {
             a.bullet({ x: r.x, y: r.y, ph: r.p, o, turn, rad: rad + off,
                        lim: rad + off + 260, col, r: rr, cull: false,
                        step: discStep });
@@ -55,10 +60,21 @@ Sketch.set({
       emit(a) { if (a.t % 3 === 0) shedPairs(a, 34); } },
 
     // The woven disc on six rings shedding only in bursts: every ring sheds
-    // each frame for 10 frames in 42, so the sand goes out in waves.
-    { name: 'Pulses', loop: () => PERIOD,
-      orbits: [six()],
-      emit(a) { if (a.t % 42 < 10) shedPairs(a, 34); } },
+    // each frame for 10 frames in 42, so the sand goes out in waves. 42
+    // frames is a quarter turn, so the bursts take turns between two sets of
+    // places and the lanes between them never move.
+    pulses('Pulses', 42, 10, -1, false),
+
+    // N5: Pulses whose bursts don't fit the turn. 48 frames turn the rings
+    // 102.9 degrees, 17.1 short of two rings' spacing, so each burst leaves a
+    // little behind where the last one did and the lanes between the waves
+    // creep round.
+    pulses('Pulses, turning', 48, 10, -1, false),
+
+    // N6: the same mirrored, its colours swapped, with bursts half as long
+    // again and half as rare again (72 frames, 25.7 degrees short of three
+    // rings' spacing).
+    pulses('N6: Pulses, turning', 72, 15, 1, true),
 
     // Plain escalation: N1's three bands (each ring's own sand, gold, its own
     // again) on six rings, alternate rings ember and amber.
@@ -83,25 +99,39 @@ Sketch.set({
     // `HOLD` frames, then easing round over `SWING`). Sand keeps circling the
     // way the rings were going when it was shed, so fresh sand crosses the
     // old after each reversal and the disc folds into a new weave. Each
-    // ring's sand in its own colour; a gold band beyond it.
+    // ring's sand in its own colour; a gold band beyond it, let go at the
+    // same radius as the own sand and shed a frame before it, so once loose
+    // each gold grain falls halfway between two of the own sand's and the
+    // curtains are even lines (as the game has it).
     { name: 'N7: Reversing disc', loop: () => 2 * (HOLD + SWING),
       orbits: [six({ turnAt: reversingTurn })],
       emit(a) {
-        if (a.t % 3) return;
+        const beat = a.t % 3;
+        if (beat > 1) return;
         const o = a.orbits[0], dir = reversingDir(a.t);
+        const out = o.radius + 34 + 260;        // where both bands let go
         for (let i = 0; i < 6; i++) {
             const r = a.ringOf(0, i), own = i % 2 ? C.amber : C.ember;
-            for (const [off, col, rr] of [[34, own, i % 2 ? PELLET : MOTE],
-                                          [92, C.gold, PELLET]]) {
-                a.bullet({ x: r.x, y: r.y, ph: r.p, o, turn: dir,
-                           rad: o.radius + off, lim: o.radius + off + 260,
-                           col, r: rr, cull: false, step: discStep });
-            }
+            const [off, col, rr] = beat ? [34, own, i % 2 ? PELLET : MOTE]
+                                        : [34 + 0.9 * K * 53, C.gold, PELLET];
+            a.bullet({ x: r.x, y: r.y, ph: r.p, o, turn: dir,
+                       rad: o.radius + off, lim: out,
+                       col, r: rr, cull: false, step: discStep });
         }
       } },
 
     ],
 });
+
+// Pulses: the woven pair from every ring each frame for `on` frames in every
+// `every`, the rings turning `way` (-1 clockwise), with the colours swapped
+// if `swap`. One loop is whole bursts and whole turns.
+function pulses(name, every, on, way, swap) {
+    const gcd = (x, y) => (y ? gcd(y, x % y) : x);
+    return { name, loop: () => every * PERIOD / gcd(every, PERIOD),
+             orbits: [six({ way })],
+             emit(a) { if (a.t % every < on) shedPairs(a, 34, swap); } };
+}
 
 // N7's reversals: `HOLD` frames turning one way, `SWING` frames easing round
 // to the other (a half cosine), and back.
