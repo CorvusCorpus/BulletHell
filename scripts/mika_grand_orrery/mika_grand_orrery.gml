@@ -482,7 +482,7 @@ function orrery_halo(_e, _k, _t, _u) {
 #macro ORRERY_BEAM_EVERY 240
 #macro ORRERY_BEAM_RAYS 8
 #macro ORRERY_BEAM_LEN 2000
-#macro ORRERY_BEAM_WID 26
+#macro ORRERY_BEAM_WID 8
 #macro ORRERY_BEAM_WARN 70
 #macro ORRERY_BEAM_HOT 50
 

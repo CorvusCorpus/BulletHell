@@ -1123,12 +1123,8 @@ BASTET_ARCH = [
 
 # Her parts, in the reference's frame, used twice: for the relief on the
 # card (`BASTET_PARTS`) and for the solid she is swept into
-# (`BASTET_SOLIDS`). The far ear is the pair's other half, set back and
-# showing past the near one, which is what makes the card read as a head with
-# two sides.
-BASTET_FAR_EAR = [(0.706, 0.124), (0.716, 0.086), (0.736, 0.050),
-                  (0.758, 0.026), (0.776, 0.020), (0.786, 0.040),
-                  (0.790, 0.076), (0.786, 0.110), (0.750, 0.124)]
+# (`BASTET_SOLIDS`). Her ears are a matched pair: the far ear's solid is the
+# near ear's outline set to her other side, so the card paints only one.
 BASTET_HAUNCH = [(0.200, 0.560), (0.320, 0.522), (0.450, 0.548),
                  (0.540, 0.608), (0.576, 0.700), (0.566, 0.792),
                  (0.530, 0.852), (0.450, 0.884), (0.300, 0.896),
@@ -1187,7 +1183,6 @@ BASTET_BASE = [(0.090, 0.916), (0.950, 0.916), (0.963, 0.930),
 # "crease"); one that grows out of what is behind it (the leg out of the
 # chest, the head out of the neck) blends into it ("blend").
 BASTET_PARTS = [
-    (BASTET_FAR_EAR, 0.10, 0.16, "crease", None),
     (None, 0.22, 0.46, "crease", None),           # the body (see below)
     (BASTET_TAIL, 0.30, 0.12, "crease", None),
     (BASTET_HAUNCH, 0.36, 0.58, "crease", None),
@@ -1225,7 +1220,7 @@ BASTET_SOLIDS = [
            (0.340, 0.098), (0.450, 0.112), (0.550, 0.124), (0.650, 0.146),
            (0.800, 0.158), (0.914, 0.150)]),
     ("near ear", BASTET_NEAR_EAR, (0.0, 0.118), None, None, -0.034, 0.015),
-    ("far ear", BASTET_FAR_EAR, (0.0, 0.124), None, None, 0.034, 0.015),
+    ("far ear", BASTET_NEAR_EAR, (0.0, 0.118), None, None, 0.034, 0.015),
     ("near foreleg", BASTET_FORELEG, (0.460, 0.914), None, None, -0.055,
      _FORELEG_DEPTH),
     ("far foreleg", BASTET_FORELEG, (0.460, 0.914), None, None, 0.055,
@@ -1312,7 +1307,7 @@ def bastet(w=512, h=768):
         ImageDraw.Draw(m).polygon([pt(p) for p in pp], fill=255)
         return m
 
-    # --- the silhouette: her outline, the far ear, the far foreleg --------
+    # --- the silhouette: her outline and the parts outside it ------------
     body = shape(BASTET_REF)
     ImageDraw.Draw(body).polygon([pt(p) for p in spline(BASTET_ARCH, n=10)],
                                  fill=0)

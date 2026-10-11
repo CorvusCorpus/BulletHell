@@ -303,7 +303,7 @@ function old_proctor_second_reading(_e, _g, _t) {
 
 function old_proctor_walker(_ring, _g, _t) {
     if (_t == 26) {
-        ring_beam(_ring, 90, 2200, 26, BCOL_AMBER, 60, 90, 20);
+        ring_beam(_ring, 90, 2200, 8, BCOL_AMBER, 60, 90, 20);
     }
     if ((_t mod 46) == 20) {
         ring_fire_tangent(_ring, 6, 3.4, _t * 3.1, BSHAPE_MOTE, BCOL_AMBER,
@@ -545,7 +545,7 @@ function old_mika_three_gates(_e, _g, _t) {
 function old_mika_gate_beam(_ring, _g, _t) {
     var _c = _t mod 120;
     if (_c == 10) {
-        var _l = ring_beam(_ring, 90 + dsin(_t * 0.7) * 40, 2400, 30,
+        var _l = ring_beam(_ring, 90 + dsin(_t * 0.7) * 40, 2400, 9,
                            BCOL_AMBER, 66, 70, 22);
         if (_l != undefined) _l.turn = ((_ring.spin > 0) ? 1 : -1) * 0.42;
     }

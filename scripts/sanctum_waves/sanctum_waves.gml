@@ -729,7 +729,7 @@ function sw_engine_inner(_e, _g, _t) {
     var _lt = foe_leg_t(_e);
     if (((_lt + _d.k * 36) mod 108) != 60) return;
     _d.beam = { x: _e.x, y: _e.y };
-    var _l = laser_beam(_e.x, _e.y, sw_aim(_e, _g), 1800, 20, BCOL_AMBER, 40,
+    var _l = laser_beam(_e.x, _e.y, sw_aim(_e, _g), 1800, 6, BCOL_AMBER, 40,
                         18, 14);
     if (_l != undefined) _l.src = _d.beam;
 }

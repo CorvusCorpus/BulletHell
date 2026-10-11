@@ -643,13 +643,27 @@ function test_laser() {
     for (var _i = 0; _i < 12; _i++) laser_step();
     ok("and is gone afterwards", laser_count() == 0);
 
-    // A ray's body runs backwards from its head.
+    // A ray's body runs backwards from its head, grown out of where it was
+    // fired.
     st_reset();
     var _r = laser_ray(500, 500, 0, 6, 200, 24, BCOL_CRIMSON, 60);
     laser_step();
+    ok("a ray grows out of where it was fired",
+       !laser_hits(_r, 470, 500, 4));
+    for (var _i = 0; _i < 39; _i++) laser_step();
     ok("a ray covers the ground behind its head",
-       laser_hits(_r, 420, 500, 4));
-    ok("and nothing in front of it", !laser_hits(_r, 700, 500, 4));
+       laser_hits(_r, _r.x - 100, 500, 4));
+    ok("and nothing in front of it", !laser_hits(_r, _r.x + 60, 500, 4));
+    ok("nor behind its tail", !laser_hits(_r, _r.x - 260, 500, 4));
+
+    // A delayed ray waits, harmless, where it was fired.
+    st_reset();
+    var _rd = laser_ray(500, 500, 0, 6, 200, 24, BCOL_CRIMSON, 60, 10);
+    for (var _i = 0; _i < 9; _i++) laser_step();
+    ok("a delayed ray holds still and harmless",
+       _rd.x == 500 && !laser_hits(_rd, 500, 500, 40));
+    for (var _i = 0; _i < 12; _i++) laser_step();
+    ok("then fires", _rd.x > 500 && laser_hits(_rd, _rd.x - 20, 500, 4));
 
     st_reset();
     var _c = laser_curve(500, 500, 0, 8, 3, 30, BCOL_ROSE, 400);
@@ -698,7 +712,8 @@ function test_laser_graze() {
     var _l = laser_beam(500, 500, 0, 800, 40, BCOL_GOLD, 10, 200, 10);
     ok("a warning line cannot be grazed",
        laser_graze(700, 520, PLAYER_R) == 0);
-    for (var _i = 0; _i < 10; _i++) laser_step();
+    // Past its warning, and opened to full width (`laser_open`).
+    for (var _i = 0; _i < 12; _i++) laser_step();
     ok("a player well clear of a live beam pays nothing",
        laser_graze(700, 580, PLAYER_R) == 0);
     ok("riding one pays", laser_graze(700, 520, PLAYER_R) == 1);
@@ -2516,7 +2531,7 @@ function test_marks() {
     var _hp = [400, 400, 100000, 100000];
     var _at = [1, 40 * FPS - 1, 40 * FPS, 40 * FPS];
     var _broken = [true, true, false, false];
-    var _surv = [false, false, false, true];
+    var _survives = [false, false, false, true];
     for (var _k = 0; _k < 4; _k++) {
         st_reset();
         var _gk = st_game_at(FIELD_CX, FIELD_Y1 - 200);
@@ -2525,7 +2540,7 @@ function test_marks() {
                                 col: BCOL_GOLD, bg: -1, hp_end: 0,
                                 time: 40 * FPS, move: BossMove.Fixed,
                                 attack: st_attack_idle,
-                                survival: _surv[_k] }],
+                                survival: _survives[_k] }],
                              ziggy_def());
         _ek.boss.entry_t = 0;
         _ek.boss.declare_t = 0;
@@ -3137,7 +3152,7 @@ function test_practice() {
         var _segs = practice_segments(_def);
         var _waves = 0;
         var _seen = array_create(array_length(_def.bosses), 0);
-        var _clean = true;
+        var _replays = true;
         for (var _i = 0; _i < array_length(_segs); _i++) {
             if (_segs[_i].kind == "boss") {
                 _seen[_segs[_i].boss_i]++;
@@ -3145,22 +3160,22 @@ function test_practice() {
             }
             _waves++;
             var _ev = practice_wave_events(_def, _segs[_i].n);
-            if (array_length(_ev) == 0 || _ev[0].at != 30) _clean = false;
+            if (array_length(_ev) == 0 || _ev[0].at != 30) _replays = false;
             for (var _k = 0; _k < array_length(_ev); _k++) {
-                if (ev_role(_ev[_k]) != "") _clean = false;
+                if (ev_role(_ev[_k]) != "") _replays = false;
             }
         }
         var _phases = 0;
         var _once = true;
-        for (var _b = 0; _b < array_length(_def.bosses); _b++) {
-            _phases += array_length(_def.bosses[_b].phases());
-            if (_seen[_b] != 1) _once = false;
+        for (var _bi = 0; _bi < array_length(_def.bosses); _bi++) {
+            _phases += array_length(_def.bosses[_bi].phases());
+            if (_seen[_bi] != 1) _once = false;
         }
         var _enc = stage_count_encounters(_def, _def.build());
         ok(_def.name + ": its waves are numbered as the stage grades them",
            _waves == _enc - _phases);
         ok("...each boss is listed once", _once);
-        ok("...and a wave replays alone, from frame 30", _clean);
+        ok("...and a wave replays alone, from frame 30", _replays);
     }
 
     // A whole fight's timeline brings its boss on as the stage does.
@@ -3590,7 +3605,7 @@ function test_counter() {
     _g.practice = undefined;
     _b.hp = _b.hp_max * lerp(_bot, _top, 0.5);
     for (var _i = 0; _i < 150; _i++) hud_step(_h, _g);
-    var _n = array_length(_ph);
+    _n = array_length(_ph);
     ok("a stage reads it as that attack's equal share of the whole fight",
        _h.pct_roll == floor((_n - 2.5) / _n * 1000 + 0.0001));
     st_reset();
@@ -3952,12 +3967,23 @@ function test_mika_disc_runs() {
         var _peak = 0, _free = 0, _hop_shed = 0, _slow = 0, _top = 0;
         var _turns = array_create(_run, 0), _still = array_create(_run, false);
         var _was = undefined;
+        // Runs of frames on which it sheds, and the shortest and longest of
+        // those that ended.
+        var _burst = 0, _short = 999999, _long = 0;
         for (var _f = 0; _f < _run; _f++) {
             boss_act(_e, _g);
             var _n0 = bullet_count();
             ring_step(_g);
             // Sand is only shed while he holds still.
-            if (!boss_holding(_e) && bullet_count() > _n0) _hop_shed++;
+            var _shed = bullet_count() > _n0;
+            if (!boss_holding(_e) && _shed) _hop_shed++;
+            if (_shed) {
+                _burst++;
+            } else if (_burst > 0) {
+                _short = min(_short, _burst);
+                _long = max(_long, _burst);
+                _burst = 0;
+            }
             // How far his first ring turned this frame, and whether he held.
             if (global.ring_n > 0) {
                 var _a = global.rings[0].ang;
@@ -3987,6 +4013,10 @@ function test_mika_disc_runs() {
            _hop_shed == 0);
         ok("and its rings turn at full speed while he holds (" + string(_slow)
            + " slow frames)", _slow == 0);
+        // A hop never cuts a burst short (a pulsing mill's bursts, or one
+        // frame's shedding for the others).
+        ok("and every burst of its sand is whole (" + string(_short) + " to "
+           + string(_long) + " frames)", _long > 0 && _short == _long);
     }
     st_reset();
 }

@@ -190,7 +190,7 @@ function husk_rootbound(_e, _g, _t) {
     if (_cycle == 0) {
         var _base = aim_at(_e.x, _e.y, _g.player.x, _g.player.y);
         for (var _i = 0; _i < 3; _i++) {
-            var _l = laser_beam(_e.x, _e.y, _base + _i * 120, 2300, 28,
+            var _l = laser_beam(_e.x, _e.y, _base + _i * 120, 2300, 8,
                                 BCOL_SPRING, 66, 60, 22);
             if (_l != undefined) {
                 _l.src = _e;
@@ -287,7 +287,7 @@ function velka_witchlight(_e, _g, _t) {
     if (_cycle == 0) {
         var _base = _t * 0.7;
         for (var _i = 0; _i < 5; _i++) {
-            var _l = laser_beam(_e.x, _e.y, _base + _i * 72, 2400, 26,
+            var _l = laser_beam(_e.x, _e.y, _base + _i * 72, 2400, 8,
                                 BCOL_CYAN, 70, 66, 24);
             if (_l != undefined) {
                 _l.src = _e;

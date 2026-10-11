@@ -561,37 +561,76 @@ def sh_nova(w, h, frame=0, frames=4, **_):
 # ---------------------------------------------------------------------------
 # The ray
 #
-# A travelling laser (`laser_ray`), drawn as light in the manner of Touhou's
-# loose lasers, one frame per hue like a bullet: a white-hot core fading
-# through the hue to nothing at its edges, narrowing to a soft point at each
-# end. It has no dark contour, since it is drawn additively (`laser_draw`).
-# It is not a bullet shape: `laser_draw_ray` stretches it to the ray's length
-# and width. Its measurements go into the table (`BRAY_*`).
+# The light of a loose laser (`laser_ray`) and a curved one (`laser_curve`),
+# one frame per hue like a bullet. Across: a white core glowing out into a
+# band of the hue, a crisp edge, and a faint glow just past it. Along: a
+# needle point at each end, the same size whatever the laser's length, and
+# the core stopping short of each point, so the hue's band runs round it.
+# It has no dark contour, since it is drawn additively (`laser_draw`).
+#
+# Laid out end to end as [glow | point | body | point | glow]. The body is
+# the same in every column, so a laser of any length is drawn by stretching
+# only that part (`laser_draw_needle`, `laser_draw_curve`); the points keep
+# their shape. Its measurements go into the table (`BRAY_*`).
 # ---------------------------------------------------------------------------
 
-RAY_W, RAY_H = 128, 32
-RAY_TAPER = 26.0              # how far each end narrows to its point
-RAY_X0 = 1.0                  # the tail's point, in sprite px
-RAY_X1 = RAY_W - 1.0          # the head's point
-RAY_CORE = 0.22               # the white core's share of the half width
+RAY_B = 12.0                  # half the body's width, to the edge of the hue
+RAY_GLOW = 4.0                # how far the glow reaches past the edge
+RAY_TIP = 3.6 * RAY_B         # how far each end narrows to its point
+RAY_TIP_POW = 2.0             # the point's curve: 1 is a straight cone
+RAY_W = 256                   # long enough for the curve's UVs (see GML)
+RAY_H = int(math.ceil(2 * (RAY_B + RAY_GLOW)))
+# White within RAY_CORE0 of the half width, the hue from RAY_CORE1, measured
+# in from the edge so the band is even round the points.
+RAY_CORE0, RAY_CORE1 = 0.26, 0.64
+# Half the width that kills, as a share of `RAY_B`: the middle of the core's
+# fade into the hue, so what kills is what is white.
+RAY_HIT = 0.45
+RAY_GLOW_A = 0.30
+
+
+def _ray_half(d):
+    """The body's half width at `d` px from a point."""
+    f = np.clip(np.asarray(d, dtype=np.float64) / RAY_TIP, 0, 1)
+    return np.where(np.asarray(d) > 0, RAY_B * (1 - (1 - f) ** RAY_TIP_POW), 0)
+
+
+def _ray_inset():
+    """How far from a point the killing spine stops: the least distance at
+    which a disc of the kill radius, centred on the spine, lies inside the
+    body, so a hit near a point never comes before the player's hitbox
+    overlaps the drawn light."""
+    k = RAY_HIT * RAY_B
+    e = k
+    while e < RAY_TIP + k:
+        d = np.linspace(e - k, e + k, 241)
+        need = np.sqrt(np.maximum(k * k - (d - e) ** 2, 0))
+        if np.all(_ray_half(d) >= need - 1e-6):
+            return e
+        e += 0.05
+    return e
 
 
 def build_ray():
     """Every hue of the ray, and its measurements in sprite pixels."""
+    from scipy import ndimage
     ss = SS
     xs = (np.arange(RAY_W * ss, dtype=np.float32) + 0.5) / ss
     ys = (np.arange(RAY_H * ss, dtype=np.float32) + 0.5) / ss
-    # Half the width, full along the middle and rounding to a point at each
-    # end; then how far across that half each sample is.
-    end = np.minimum(xs - RAY_X0, RAY_X1 - xs)
-    half = (RAY_H / 2.0 - 1.0) * np.clip(end / RAY_TAPER, 0, 1) ** 0.55
+    # The body: full width along the middle, narrowing to a point at each end.
+    d_end = np.minimum(xs - RAY_GLOW, (RAY_W - RAY_GLOW) - xs)
+    half = _ray_half(d_end).astype(np.float32)
     v = np.abs(ys - RAY_H / 2.0)[:, None]
-    t = np.where(half[None, :] > 0, v / np.maximum(half[None, :], 1e-6), 9.0)
-    glow = np.clip(1 - t, 0, 1) ** 0.75
-    core = np.clip(1 - t / RAY_CORE, 0, 1) ** 1.5
-    alpha = np.clip(glow * 0.85 + core * 0.3, 0, 1)
-    # White only along the core, the hue through the body.
-    w = np.clip((t - 0.04) / 0.26, 0, 1)
+    inside = v < half[None, :]
+    # Signed distance to the body's edge, px; positive outside.
+    sd = (ndimage.distance_transform_edt(~inside)
+          - ndimage.distance_transform_edt(inside)) / ss
+    cover = np.clip(0.5 - sd, 0, 1)
+    glow = RAY_GLOW_A * np.clip(1 - np.maximum(sd, 0) / RAY_GLOW, 0, 1) ** 1.6
+    alpha = np.maximum(cover, glow)
+    r0 = RAY_B * (1 - RAY_CORE1)
+    r1 = RAY_B * (1 - RAY_CORE0)
+    w = np.clip((sd + r1) / (r1 - r0), 0, 1)
     w = w * w * (3 - 2 * w)
 
     images = []
@@ -607,10 +646,13 @@ def build_ray():
                        0)
         images.append(A.from_arrays(rgb, a))
     geom = {
-        "BODY0": RAY_X0,
-        "BODY1": RAY_X1,
+        "W": float(RAY_W),
         "THICK": float(RAY_H),
-        "TAPER": RAY_TAPER,
+        "BODY": RAY_B,
+        "GLOW": RAY_GLOW,
+        "TIP": RAY_TIP,
+        "HIT": RAY_HIT,
+        "INSET": _ray_inset(),
     }
     return images, geom
 
@@ -941,10 +983,13 @@ def write_table(table, ray_geom):
     lines.append("#macro BCOL_COUNT %d" % len(A.BULLET_HUES))
     lines.append("")
 
-    # The ray (`spr_bul_ray`, `laser_draw_ray`), in sprite pixels: where its
-    # tail and head points are, its drawn width, and how far each end narrows
-    # to its point. The sprite's origin is midway between the points.
-    for key in ("BODY0", "BODY1", "THICK", "TAPER"):
+    # The ray (`spr_bul_ray`, `laser_draw_needle`, `laser_draw_curve`), in
+    # sprite pixels: its size, half its body's width (the laser's `wid` is
+    # the whole body), how far the glow reaches past the body's edge and past
+    # each point, how far each end narrows to its point, the half width that
+    # kills as a share of BODY, and how far in from each point the killing
+    # spine stops.
+    for key in ("W", "THICK", "BODY", "GLOW", "TIP", "HIT", "INSET"):
         v = ray_geom[key]
         lines.append("#macro BRAY_%s %s" % (key, ("%d" % v) if isinstance(v, int)
                                              else ("%.2f" % v)))

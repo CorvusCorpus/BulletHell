@@ -14,6 +14,7 @@ function shot_scene_list() {
               "result", "rank", "practice_ready", "practice_result",
               "bullets",
               "motion", "drafts", "draft_attacks", "draft_spell",
+              "draft_lasers",
               "hex_draw", "hex_seal", "hex_scatter", "hex_gaps",
               "hex_burst",
               "grove", "grove_arrive", "grove_turn", "grove_blood",
@@ -178,6 +179,12 @@ function shot_scene_prepare(_name) {
             global.stage_def = draft_stage_def();
             // `Falling Sky`.
             global.practice = practice_new(draft_stage_def(), 0, 1);
+            break;
+
+        case "draft_lasers":
+            global.stage_def = draft_stage_def();
+            global.practice = practice_new(draft_stage_def(), 0,
+                                           shot_draft_index("Three Lights"));
             break;
 
         case "mika_attacks":
@@ -496,6 +503,13 @@ function shot_pose(_scene, _g) {
             // draft from the practice request.
             _g.player.x = FIELD_CX - 40;
             _g.player.y = FIELD_Y1 - 240;
+            return 200 + PRACTICE_READY + BOSS_SPELL_LEAD;
+
+        case "draft_lasers":
+            // As `draft_spell`; untouchable, so a hit doesn't clear the field.
+            _g.player.x = FIELD_CX - 40;
+            _g.player.y = FIELD_Y1 - 240;
+            _g.player.untouchable = true;
             return 200 + PRACTICE_READY + BOSS_SPELL_LEAD;
 
         case "practice_result":
@@ -1010,4 +1024,13 @@ function shot_rope_lab(_t) {
             _lab.bead[_i]++;
         }
     }
+}
+
+/// @desc The drafting table's row named `_name`, or 0.
+function shot_draft_index(_name) {
+    var _l = draft_list();
+    for (var _i = 0; _i < array_length(_l); _i++) {
+        if (_l[_i].name == _name) return _i;
+    }
+    return 0;
 }
