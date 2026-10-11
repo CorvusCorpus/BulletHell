@@ -223,6 +223,82 @@ const inout = { wait(b, T) {
                        vto: INOUT.vto * b.f });
 } };
 
+// ---- Eye lasers ----------------------------------------------------------------
+
+// These use only what the game's lasers do (`laser_functions`): a curve turns
+// at a fixed rate, so each blade is an arc of a circle; a ray is a needle
+// that grows out of where it was fired; either can wait first as a mark.
+
+// The fixed turn, degrees a frame, of a head at `spd` on a circle of radius `R`.
+const turnFor = (spd, R) => spd / R * 180 / PI;
+
+// Iris bloom: every 90 frames twelve curved blades (magenta and indigo by
+// turns) wait 20 frames as marks on a ring 50 px round him, then fire 40
+// degrees off straight out and curl back the other way (arcs of radius 290),
+// 8 a frame for 50 frames: the iris's pinwheel of blades sweeping out over
+// the field. Alternate volleys curl the other way, and each volley is turned
+// 15 degrees on from the last, so the gaps never open in the same place
+// twice running. 12 frames after the blades fire, 24 cyan orbs leave the same
+// ring along the same arcs, two to each gap, slowly (3.5), and run straight
+// once they have come as far round as the blades.
+const BLOOM = { every: 90, n: 12, r0: 50, off: 40, R: 290, spd: 8, life: 50, wid: 14,
+                delay: 20, step: 15, orb: 3.5 };
+
+function irisBloom(a) {
+    const u = (a.t - 1) % BLOOM.every, k = Math.floor((a.t - 1) / BLOOM.every);
+    const way = k % 2 ? -1 : 1, base = k * BLOOM.step;
+    if (u === 0) {
+        for (let i = 0; i < BLOOM.n; i++) {
+            const th = base + i * 360 / BLOOM.n;
+            a.laser({ kind: 'curve', x: a.boss.x + dcos(th) * BLOOM.r0, y: a.boss.y - dsin(th) * BLOOM.r0,
+                      dir: th + way * BLOOM.off, turn: -way * turnFor(BLOOM.spd, BLOOM.R),
+                      spd: BLOOM.spd, hot: BLOOM.life, wid: BLOOM.wid, delay: BLOOM.delay,
+                      col: i % 2 ? C.indigo : C.magenta });
+        }
+    }
+    if (u === BLOOM.delay + 12) {
+        const run = Math.round(BLOOM.spd * BLOOM.life / BLOOM.orb);
+        for (let i = 0; i < 2 * BLOOM.n; i++) {
+            const th = base + (i + 0.5) * 180 / BLOOM.n;
+            shot(a, { x: a.boss.x + dcos(th) * BLOOM.r0, y: a.boss.y - dsin(th) * BLOOM.r0,
+                      v: BLOOM.orb, dir: th + way * BLOOM.off, turn: -way * turnFor(BLOOM.orb, BLOOM.R),
+                      r: ORB, col: C.cyan, at: run, then: (b) => { b.turn = 0; } });
+        }
+    }
+}
+
+// Striations: three arms of needles stream from a ring 60 px round him that
+// turns 1.5 degrees a frame: every 4 frames each arm fires a needle (30 long,
+// 10 wide) that waits 10 frames as a mark, then flies at 8, leaning 20 degrees
+// the ring's way and turning 0.6 a frame back against it, so each arm sweeps
+// out as a curving spiral of dashes (their points don't hurt, so there is a
+// gap at each join). Every 240 frames the ring turns back and the arms wind
+// the other way. Every 60 frames sixteen cyan orbs leave him slowly (1.5) and
+// speed up to 4.
+const STRI = { r0: 60, spin: 1.5, flip: 240, every: 4, len: 30, wid: 10, spd: 8,
+               lean: 20, turn: 0.6, delay: 10 };
+
+function striations(a) {
+    const ph = Math.floor((a.t - 1) / STRI.flip), u = (a.t - 1) % STRI.flip;
+    const way = ph % 2 ? -1 : 1;
+    const th = STRI.spin * (way > 0 ? u : STRI.flip - u);
+    if (a.t % STRI.every === 0) {
+        for (const arm of [0, 120, 240]) {
+            const d = th + arm;
+            a.laser({ kind: 'ray', x: a.boss.x + dcos(d) * STRI.r0, y: a.boss.y - dsin(d) * STRI.r0,
+                      dir: d + way * STRI.lean, turn: -way * STRI.turn, spd: STRI.spd,
+                      len: STRI.len, wid: STRI.wid, hot: 600, delay: STRI.delay,
+                      col: arm === 120 ? C.indigo : arm ? C.violet : C.magenta });
+        }
+    }
+    if (a.t % 60 === 30) {
+        for (let i = 0; i < 16; i++) {
+            shot(a, { x: a.boss.x, y: a.boss.y, dir: th + i * 22.5 + 11.25, v: 1.5, acc: 0.05,
+                      vto: 4, r: ORB, col: C.cyan });
+        }
+    }
+}
+
 // The Iris Rim's three arcs: radius round him, and degrees a frame (a third of
 // a turn in 70 frames).
 const RIM_R = 200, RIM_TURN = 120 / 70;
@@ -232,6 +308,9 @@ Sketch.set({
     name: "Sylvia's non-spells: spirals and lasers",
     toggles: [{ id: 'small', label: 'Small bullets' }],
     patterns: [
+
+    { name: 'Iris bloom', loop: () => 4 * BLOOM.every, emit: irisBloom },
+    { name: 'Striations', loop: () => 2 * STRI.flip, emit: striations },
 
     { name: 'Two spirals: peel', boss: 'step', hold: SPI.hold,
       loop: () => 2 * (SPI.hold + 45), emit(a) { spirals(a, peel); } },
