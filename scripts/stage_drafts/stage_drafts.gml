@@ -127,6 +127,11 @@ function draft_list() {
         { name: "",             col: BCOL_CYAN,    time: 40 * FPS,
           move: BossMove.Step, hold: SYLVIA_SPI_HOLD,
           attack: draft_sylvia_fling },
+
+        // Sylvia's "Iris bloom" sketch with blades that reach the walls
+        // (`draft_sylvia`). `Fixed`: in the sketch he holds still.
+        { name: "",             col: BCOL_INDIGO,  time: 40 * FPS,
+          move: BossMove.Fixed, attack: draft_sylvia_iris },
     ];
 }
 
