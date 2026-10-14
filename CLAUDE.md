@@ -903,7 +903,8 @@ Known gaps:
 - Two of Sylvia's non-spell sketches are on the drafting table as its last
   two non-spells (`draft_sylvia`): "Two spirals: peel" and "Two spirals: spin
   and fling", ported from `tools/sketch/sets/sylvia.js`, which is still only
-  on the `ccr-cda6bb78-gpm5ox` branch. Photograph them with `python
+  on the `ccr-cda6bb78-gpm5ox` branch, but laying darts on two arms a spiral
+  where the sketch has orbs on one. Photograph them with `python
   tools/shot.py draft_peel` and `draft_fling` (`--burst` offsets count from
   the attack's start).
 - There is no options screen: no volume, window mode, key remapping or
