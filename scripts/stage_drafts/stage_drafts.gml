@@ -161,11 +161,11 @@ function draft_list() {
           hp: SYLVIA_DRAFT_HP,
           move: BossMove.Fixed, attack: draft_sylvia_rosette },
 
-        // Iris Rosette slowed, from where Mika stands for his centred spells.
+        // Iris Rosette slowed and larger, from the middle of the field.
         // Placeholder name.
         { name: "Slow Rosette", col: BCOL_INDIGO,  time: 40 * FPS,
           hp: SYLVIA_DRAFT_HP,
-          move: BossMove.Fixed, at: { x: FIELD_CX, y: FIELD_CY - 60 },
+          move: BossMove.Fixed, at: { x: FIELD_CX, y: FIELD_CY },
           attack: draft_sylvia_slow_rosette },
     ];
 }

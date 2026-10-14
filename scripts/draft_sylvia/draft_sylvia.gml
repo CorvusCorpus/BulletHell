@@ -309,7 +309,9 @@ function sylvia_spin_task(_u) {
 // trail node every `1 / SLOW` frames, so they are as long as at full pace,
 // and leave at `LAUNCH` times their speed, easing to `SETTLE` times it (by
 // 1/e in `SETTLE_T` frames at full pace) along the same arcs; each runs as
-// far as at a steady speed.
+// far as at a steady speed. It is also `SLOW_SCALE` times the size (every
+// distance and speed, not its timing), cast from the middle of the field, so
+// the loops just reach the corners the player can get to.
 //
 // The orbs are persistent while they follow their arcs, which carry them out
 // past the field's edge and back; they are culled as usual once they run
@@ -331,6 +333,7 @@ function sylvia_spin_task(_u) {
 #macro SYLVIA_IRIS_LOOP_TURN 360
 #macro SYLVIA_IRIS_LOOP_RUN 160
 #macro SYLVIA_IRIS_SLOW 0.5
+#macro SYLVIA_IRIS_SLOW_SCALE 1.3
 #macro SYLVIA_IRIS_LAUNCH 2.0
 #macro SYLVIA_IRIS_SETTLE 0.8
 #macro SYLVIA_IRIS_SETTLE_T 25
@@ -358,12 +361,12 @@ function draft_sylvia_rosette(_e, _g, _t) {
 }
 
 /// @desc **Slow Rosette** (Sylvia's, a draft spell; placeholder name): Iris
-///       Rosette at `SLOW` of its pace, its blades launched and settling.
-///       Its row puts him where Mika stands for his centred spells.
+///       Rosette at `SLOW` of its pace and `SLOW_SCALE` of its size, its
+///       blades launched and settling. Its row puts him in the middle.
 function draft_sylvia_slow_rosette(_e, _g, _t) {
     sylvia_iris(_e, _t, SYLVIA_IRIS_ROSETTE_ARC,
                 ceil(SYLVIA_IRIS_ROSETTE_LIFE / SYLVIA_IRIS_SLOW), -1,
-                SYLVIA_IRIS_SLOW, true);
+                SYLVIA_IRIS_SLOW, true, SYLVIA_IRIS_SLOW_SCALE);
 }
 
 /// @desc An iris bloom whose blades run `_life` frames on arcs of radius
@@ -371,13 +374,16 @@ function draft_sylvia_slow_rosette(_e, _g, _t) {
 ///       round their arcs and then run straight. `_pace` scales its speeds,
 ///       and stretches its rhythm and marks to match. With `_settle`, the
 ///       blades launch and settle (`LAUNCH`, `SETTLE`), each running as far
-///       as `_life` frames would take it at a steady speed.
+///       as `_life` frames would take it at a steady speed. `_scale` sizes
+///       the whole of it: every distance and speed, not its timing.
 function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1,
-                     _settle = false) {
+                     _settle = false, _scale = 1) {
     var _every = floor(SYLVIA_IRIS_EVERY / _pace + 0.5);
     var _delay = floor(SYLVIA_IRIS_DELAY / _pace + 0.5);
-    var _spd = SYLVIA_IRIS_SPD * _pace;
-    var _orb = SYLVIA_IRIS_ORB * _pace;
+    var _spd = SYLVIA_IRIS_SPD * _pace * _scale;
+    var _orb = SYLVIA_IRIS_ORB * _pace * _scale;
+    var _r0 = SYLVIA_IRIS_R0 * _scale;
+    _arc *= _scale;
     // Frames between a blade's trail nodes, so a slow blade is as long.
     var _gap = max(1, floor(1 / _pace + 0.5));
     var _u = _t mod _every;
@@ -412,8 +418,8 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1,
         var _for = (_turn_deg < 0) ? -1 : floor(_turn_deg / _turn + 0.5);
         for (var _i = 0; _i < SYLVIA_IRIS_N; _i++) {
             var _th = _base + _i * 360 / SYLVIA_IRIS_N;
-            var _l = laser_curve(_e.x + lengthdir_x(SYLVIA_IRIS_R0, _th),
-                                 _e.y + lengthdir_y(SYLVIA_IRIS_R0, _th),
+            var _l = laser_curve(_e.x + lengthdir_x(_r0, _th),
+                                 _e.y + lengthdir_y(_r0, _th),
                                  _th + _way * SYLVIA_IRIS_OFF, _go,
                                  -_way * _turn, SYLVIA_IRIS_WID,
                                  ((_i mod 2) == 0) ? BCOL_MAGENTA
@@ -437,8 +443,8 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1,
             : floor(_turn_deg / _bend + 0.5);
         for (var _j = 0; _j < 2 * SYLVIA_IRIS_N; _j++) {
             var _at = _base + (_j + 0.5) * 180 / SYLVIA_IRIS_N;
-            var _o = fire(_e.x + lengthdir_x(SYLVIA_IRIS_R0, _at),
-                          _e.y + lengthdir_y(SYLVIA_IRIS_R0, _at),
+            var _o = fire(_e.x + lengthdir_x(_r0, _at),
+                          _e.y + lengthdir_y(_r0, _at),
                           _orb, _at + _way * SYLVIA_IRIS_OFF,
                           BSHAPE_ORB, BCOL_CYAN);
             if (_o == undefined) break;

@@ -922,8 +922,9 @@ Known gaps:
   sketch's arcs, but each blade loops once and then runs straight out past
   the player (`draft_iris_loop`). Last, `Slow Rosette` (a placeholder name)
   is Iris Rosette slowed to half its pace, its blades as long and launched
-  at twice their speed to settle to a drift, cast from where Mika stands for
-  his centred spells (`draft_slow_rosette`). The iris drafts' orbs are
+  at twice their speed to settle to a drift, the whole 1.3 times the size
+  and cast from the middle of the field so its loops reach the corners
+  (`draft_slow_rosette`). The iris drafts' orbs are
   persistent while they loop, so none is culled outside the field and lost.
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.
