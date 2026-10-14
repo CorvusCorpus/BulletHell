@@ -1,5 +1,7 @@
 // Candidates for Mika's N3, the four-ring non-spell. "Woven disc" is the one
-// built into the game; the rest are sketches only.
+// built into the game; the rest are sketches only. "Shear" to "N4: Long gusts
+// + sandfall" keep the woven disc and change only how its sand is let go
+// (`release`).
 //
 // "Counter discs": two pairs on two orbits turning opposite ways, each
 // shedding a disc as N1 does; read as messy (the two families never line
@@ -19,6 +21,10 @@ const PELLET = 3.3, MOTE = 4.3;
 // The sand's pace, as N1's: grow, hold, brake and floor are the original
 // sketch's run 1.5 times as fast.
 const K = 1.5;
+
+// N4 against N3: turning the other way, colours swapped, at 0.8 of the pace
+// (`release`).
+const N4 = { way: 1, swap: true, pace: 0.8 };
 
 Sketch.set({
     id: 'mika_n3',
@@ -65,6 +71,25 @@ Sketch.set({
             }
         }
       } },
+
+    // Variations on the woven disc that leave the disc alone and change only
+    // the sand once it is let go, which in "Woven disc" reaches the player as
+    // an even, steady drizzle. `release(name, opts)`, below, says what each
+    // option does. N3's way round, colours and pace unless a pattern says
+    // otherwise; the N4 rows are N4's (mirrored, colours swapped, 0.8 pace).
+    release('Shear', { flr: [1.35, 0.6] }),
+    release('Crosswind', { curl: -0.7, bend: 75 }),
+    release('Sandfall', { fall: 1.4 }),
+    release('Gusts', { gust: 40 }),
+    release('Long gusts + sandfall', { gust: 72, fall: 1.4 }),
+    release('Tides', { tide: 90, lobes: 3, tideTurn: 0.6 }),
+    release('Tides, two lobes', { tide: 110, lobes: 2, tideTurn: 0.9 }),
+    release('Tides + shear', { tide: 90, lobes: 3, tideTurn: 0.6,
+                               flr: [1.35, 0.6] }),
+    release('Tides + sandfall', { tide: 90, lobes: 3, tideTurn: 0.6,
+                                  fall: 1.4 }),
+    release('N4: Tides', { tide: 90, lobes: 3, tideTurn: 0.6, ...N4 }),
+    release('N4: Long gusts + sandfall', { gust: 72, fall: 1.4, ...N4 }),
 
     // "Ring shots", tried in N4 and scratched (the ring shots didn't look good
     // against the sandstorm): the woven disc turning N4's
@@ -169,6 +194,68 @@ Sketch.set({
 
     ],
 });
+
+/* The woven disc with its let-go changed (see the variations above). Options:
+ *   way, swap,     the rings' way round (-1 clockwise, N3's), whether the
+ *   pace           colours are swapped, and the pace of the whole (rings and
+ *                  sand together, as `mika_woven_disc`'s `_pace`; N4's is 0.8)
+ *   flr            [with, against]: each family's drifting speed once braked,
+ *                  as a multiple of the disc's (`2.0 * K`), so the two
+ *                  families cross at different speeds
+ *   curl, bend     once braked, each grain turns `curl` degrees a frame until
+ *                  it has bent `bend`, the two families opposite ways (with
+ *                  `curl` positive the family circling with the rings turns
+ *                  the rings' way)
+ *   fall           once braked, a grain eases into a downward drift this fast
+ *   gust           a grain that reaches the let-go radius keeps circling there
+ *                  until the next of every `gust` frames, then all go at once
+ *   tide, lobes,   the let-go radius swells and shrinks by `tide` px round the
+ *   tideTurn       disc in `lobes` lobes, which turn `tideTurn` degrees a frame
+ *                  against the rings, so the sand leaves in arms that sweep
+ * `loop` is four turns of the rings, not an exact repeat when gusts or tides
+ * don't divide it.
+ */
+function release(name, opt) {
+    const way = opt.way || -1, k = opt.pace || 1, period = 114 / k;
+    const fam = opt.swap ? [[1, C.amber, PELLET], [-1, C.ember, MOTE]]
+                         : [[1, C.ember, MOTE], [-1, C.amber, PELLET]];
+    return { name, loop: () => Math.round(4 * period),
+      orbits: [{ rings: 4, radius: 205, period, way }],
+      emit(a) {
+        if (a.t % 2) return;
+        const o = a.orbits[0];
+        for (let i = 0; i < 4; i++) {
+            const r = a.ringOf(0, i);
+            for (const [turn, col, rr] of fam) {
+                a.bullet({ x: r.x, y: r.y, ph: r.p, o, turn, opt, k,
+                           rad: o.radius + 34, lim: o.radius + 334, col,
+                           r: rr, cull: false, step: releaseStep });
+            }
+        }
+      } };
+}
+
+function releaseStep(b, a) {
+    const o = b.o, opt = b.opt, k = b.k, ox = b.x, oy = b.y;
+    b.ph += b.turn * (360 / o.period) * Math.pow(o.radius / b.rad, 1.5);
+    let lim = b.lim;
+    if (opt.tide) {
+        lim += opt.tide * a.dsin(opt.lobes * (a.orbOf(b.ph, o)
+                                               + o.way * opt.tideTurn * k * a.t));
+    }
+    if (b.rad < lim) b.rad += 0.9 * K * k;
+    const q = a.onOrbit(b.ph, b.rad, a.boss, o);
+    b.x = q.x; b.y = q.y;
+    if (b.rad < lim || (opt.gust && a.t % Math.round(opt.gust / k))) return;
+    const vx = b.x - ox, vy = b.y - oy;
+    const f = opt.flr ? opt.flr[b.turn > 0 ? 0 : 1] : 1;
+    a.grain({ x: b.x, y: b.y, v: Math.hypot(vx, vy) * 1.5,
+              dir: a.pdir(vx, vy), hold: Math.round(10 / (K * k)),
+              brake: 0.05 * K * K * k * k, flr: 2.0 * K * k * f, col: b.col,
+              r: b.r, curl: (opt.curl || 0) * k * b.turn * o.way,
+              bend: opt.bend || 0, fall: (opt.fall || 0) * k });
+    b.dead = true;
+}
 
 function woven(name, rings, beat, k, period) {
     return { name, loop: () => period * beat,
