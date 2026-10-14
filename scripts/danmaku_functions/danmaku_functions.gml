@@ -653,6 +653,11 @@ function bullet_apply_mod(_u, _tx, _ty) {
 ///       - `free_at`: the frame of its life it is let go, along its path at
 ///         `fling` times its speed there. It holds that speed for `hold`
 ///         frames, then brakes by `brake` a frame to `flr`.
+///       - `tide` (optional): a let-go that varies round the orbit, a struct
+///         `{amp, lobes, turn, t}`. A bullet is then let go at
+///         `free_at + amp * (1 + dsin(lobes * (angle + turn * t)))`: up to
+///         `2 * amp` frames late, in `lobes` lobes round the centre that turn
+///         `turn` degrees a frame. Its owner sets `t` each frame.
 ///       Passes `undefined` through.
 function bullet_orbit(_u, _o, _ang, _rad) {
     if (_u == undefined) return undefined;
@@ -699,6 +704,13 @@ function bullet_orbit_step(_u) {
     else _u.angle += _u.spin;
 
     if (_u.life < _o.free_at) return;
+    var _tide = _o[$ "tide"];
+    if (_tide != undefined
+        && _u.life < _o.free_at + _tide.amp
+                     * (1 + dsin(_tide.lobes * (_u.mod_a
+                                                + _tide.turn * _tide.t)))) {
+        return;
+    }
     _u.bmod = BMod.Plain;
     _u.mod_s = undefined;
     _u.spd *= _o.fling;

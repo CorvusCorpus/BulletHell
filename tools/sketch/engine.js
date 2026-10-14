@@ -167,7 +167,9 @@ function grain(o) {
 
 /* A bullet with its own behaviour: `step(b, api)` moves it each frame and sets
  * `b.dead` to remove it. Set `cull: false` for one that may leave the field and
- * come back. A bullet on the far side of an orbit is drawn and hits like any
+ * come back. `draw(g, view)` draws it instead of a dot (in field pixels times
+ * `view`), and `hit(b, player)` says whether it touches the player instead of
+ * the distance test (for a beam). A bullet on the far side of an orbit is drawn and hits like any
  * other, as in the game (the owner's rule: a dimmed or harmless far side is a
  * blind spot). */
 function bullet(o) {
@@ -237,7 +239,8 @@ function step() {
     if (inv > 0) { inv--; return; }
     if (!pl.show) return;
     for (const b of B) {
-        if (Math.hypot(b.x - pl.x, b.y - pl.y) < b.r + GAME.playerR) {
+        if (b.hit ? b.hit(b, pl)
+                  : Math.hypot(b.x - pl.x, b.y - pl.y) < b.r + GAME.playerR) {
             hits++;
             inv = 90;
             break;
@@ -248,6 +251,7 @@ function step() {
 function dot(b, alpha) {
     const s = VIEW;
     g.globalAlpha = alpha;
+    if (b.draw) { b.draw(g, s); g.globalAlpha = 1; return; }
     if (b.len) { shard(b); g.globalAlpha = 1; return; }
     if (b.hollow) {
         // A hollow ring shot: its hit radius is about the ring's middle.

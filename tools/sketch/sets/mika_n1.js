@@ -1,9 +1,9 @@
 // Candidates for Mika's N1 on the 2.5D orbit: two rings throwing amber and
-// ember sand. Sketches only; none is in the game yet.
+// ember sand. "Sand disc, faster" is N1 in the game and "N2: Sand disc,
+// faster" N2; the rest are sketches only.
 //
-// The orbit is N1's (radius 205, tilt 0.53) turning clockwise on screen,
-// which is N2's way (`way: -1`); N1 itself turns the other way (`way: 1`).
-// The period is 172 frames a turn rather than the game's 171.4 (2.1 degrees a
+// The orbit is N1's (radius 205, tilt 0.53) turning clockwise on screen
+// (`way: -1`); N2 turns the other way. The period is 172 frames a turn rather than the game's 171.4 (2.1 degrees a
 // frame) so that a GIF loops exactly; the woven net uses 174, because it
 // throws every third frame.
 (function () {
@@ -126,19 +126,13 @@ Sketch.set({
     // The sand disc with everything running 1.5 times as fast (the rings'
     // turn included, so the shape is the same), shedding every other frame,
     // with a third band. What N1 runs in the game, between his hops
-    // (`mika_nonspells`).
-    { name: 'Sand disc, faster', orbit: { period: 114 }, emit(a) {
-        if (a.t % 2) return;
-        const k = 172 / a.orbit.period;          // how much faster
-        for (let i = 0; i < 2; i++) {
-            const r = a.ring(i), own = i ? C.amber : C.ember;
-            for (const [off, col] of [[34, own], [92, C.gold], [150, own]]) {
-                a.bullet({ x: r.x, y: r.y, ph: r.p, rad: a.orbit.radius + off,
-                           lim: a.orbit.radius + off + 300, k, col, r: PELLET,
-                           cull: false, step: discFastStep });
-            }
-        }
-    } },
+    // (`mika_nonspells`): ring 0's own sand ember glints, ring 1's amber
+    // grains, the middle band gold.
+    discFaster('Sand disc, faster', -1, false),
+
+    // N2: N1 mirrored, its hues swapped (ring 0 amber glints, ring 1 ember
+    // grains).
+    discFaster('N2: Sand disc, faster', 1, true),
 
     // As a ring reaches either side, it drops a whirl of sand that sinks,
     // drawing in toward the middle; whirls on the two sides spin opposite
@@ -202,6 +196,25 @@ function discStep(b, a) {
 }
 
 // `discStep` with time running `b.k` times as fast: the same paths.
+// The faster sand disc turning `way`, with the two rings' hues swapped if
+// `swap`. Ring 0 throws glints (`MOTE`) and ring 1 grains (`PELLET`).
+function discFaster(name, way, swap) {
+    return { name, orbit: { period: 114, way }, emit(a) {
+        if (a.t % 2) return;
+        const k = 172 / a.orbit.period;          // how much faster
+        for (let i = 0; i < 2; i++) {
+            const r = a.ring(i), own = (i > 0) !== swap ? C.amber : C.ember;
+            const rr = i ? PELLET : MOTE;
+            for (const [off, col, sz] of [[34, own, rr], [92, C.gold, PELLET],
+                                          [150, own, rr]]) {
+                a.bullet({ x: r.x, y: r.y, ph: r.p, rad: a.orbit.radius + off,
+                           lim: a.orbit.radius + off + 300, k, col, r: sz,
+                           cull: false, step: discFastStep });
+            }
+        }
+    } };
+}
+
 function discFastStep(b, a) {
     const o = a.orbit, k = b.k, ox = b.x, oy = b.y;
     b.ph += (360 / o.period) * Math.pow(o.radius / b.rad, 1.5);

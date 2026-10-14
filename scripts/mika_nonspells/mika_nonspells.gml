@@ -256,6 +256,10 @@ function mika_sand_burst(_ring, _at, _dir, _look, _hold, _brake, _floor,
 ///         `pace` 1 (`MIKA_DISC_FREE`).
 ///       - `pulse`, `pulse_on`: a disc that sheds only `pulse_on` frames in
 ///         every `pulse` (0: steadily).
+///       - `tide`, `lobes`, `tide_turn`: a disc whose let-go swells and
+///         shrinks round it by `tide` px (0: none) in `lobes` lobes, which
+///         turn `tide_turn` degrees a frame against the rings at `pace` 1
+///         (`mika_disc_tide`).
 ///       `flr` not `floor`: see the note in `mika_sand_burst`.
 function mika_mill_shape(_spec) {
     return {
@@ -279,6 +283,9 @@ function mika_mill_shape(_spec) {
         free: _spec[$ "free"] ?? MIKA_DISC_FREE,
         pulse: _spec[$ "pulse"] ?? 0,
         pulse_on: _spec[$ "pulse_on"] ?? 0,
+        tide: _spec[$ "tide"] ?? 0,
+        lobes: _spec[$ "lobes"] ?? 0,
+        tide_turn: _spec[$ "tide_turn"] ?? 0,
     };
 }
 
@@ -531,6 +538,7 @@ function mika_mill_ring_for(_cycle, _a0, _way, _hue, _mill, _flip,
         _ring.behind = (_far > 0);
 
         if (disc != undefined) {
+            if (disc.tide != undefined) disc.tide.t = _t;
             // The swing too (now, not at the lead frame), so a rocking disc's
             // sand circles the way the rings are going as it is shed.
             mika_disc_shed(_ring, _t, cyc, hue,
@@ -704,25 +712,42 @@ function mika_disc() {
 /// @desc An orbit for a disc's sand (see `bullet_orbit`), round (`_x`, `_y`)
 ///       at the rings' tilt, turning `_way` at the rings' rate at their
 ///       radius. It never moves: the grains on it circle that spot. They are
-///       let go after `_free` frames (-1: the mill's `free`). The mill's
-///       `pace` runs the sand's numbers faster or slower together, so its
-///       paths keep their shape.
-function mika_disc_orbit(_x, _y, _way, _mill, _free = -1) {
+///       let go after `_free` frames (-1: the mill's `free`), or with a tide
+///       (`_tide`, from `mika_disc_tide`) up to its swell before or after.
+///       The mill's `pace` runs the sand's numbers faster or slower together,
+///       so its paths keep their shape.
+function mika_disc_orbit(_x, _y, _way, _mill, _free = -1, _tide = undefined) {
     var _k = _mill.pace;
+    var _at = floor(((_free >= 0) ? _free : _mill.free) / _k + 0.5);
+    if (_tide != undefined) _at -= _tide.amp;
     return { x: _x, y: _y, tilt: MIKA_MILL_TILT, way: _way,
              rate: _mill.orbit, ref: _mill.dist, grow: MIKA_DISC_GROW * _k,
-             free_at: floor(((_free >= 0) ? _free : _mill.free) / _k + 0.5),
+             free_at: _at, tide: _tide,
              fling: MIKA_DISC_FLING,
              hold: floor(MIKA_DISC_HOLD / _k + 0.5),
              brake: MIKA_DISC_BRAKE * _k * _k, flr: MIKA_DISC_FLOOR * _k };
 }
 
+/// @desc A disc's tide (see `bullet_orbit`), or `undefined` if its mill has
+///       none: the let-go swells and shrinks by the mill's `tide` px round
+///       the disc in `lobes` lobes, turning against the rings (`_way`), so
+///       the sand leaves in arms that sweep round. In frames of the grain's
+///       life, at the mill's pace. The rings set its `t` each frame.
+function mika_disc_tide(_way, _mill) {
+    if (_mill.tide <= 0) return undefined;
+    var _k = _mill.pace;
+    return { amp: _mill.tide / (MIKA_DISC_GROW * _k), lobes: _mill.lobes,
+             turn: _way * _mill.tide_turn * _k, t: 0 };
+}
+
 /// @desc What a disc's rings share: the centre its sand circles now (`x`,
 ///       `y`, moved by `mika_disc_shed` when Mika has landed somewhere new),
-///       the orbits round it, one per direction (`mika_disc_orbit_way`), and
-///       the frame he last landed (`land`, -1 while he hops).
+///       the orbits round it, one per direction (`mika_disc_orbit_way`), the
+///       frame he last landed (`land`, -1 while he hops), and its tide
+///       (`mika_disc_tide`), shared by every orbit so a new centre keeps it.
 function mika_disc_holder(_e, _way, _mill) {
-    return { x: _e.x, y: _e.y, way: _way, mill: _mill, by_way: {}, land: -1 };
+    return { x: _e.x, y: _e.y, way: _way, mill: _mill, by_way: {}, land: -1,
+             tide: mika_disc_tide(_way, _mill) };
 }
 
 /// @desc The orbit round the disc's present centre turning `_w` (with the
@@ -734,7 +759,8 @@ function mika_disc_orbit_way(_disc, _w, _free = -1) {
     var _key = string(_q) + "/" + string(_free);
     var _o = _disc.by_way[$ _key];
     if (_o == undefined) {
-        _o = mika_disc_orbit(_disc.x, _disc.y, _q / 20, _disc.mill, _free);
+        _o = mika_disc_orbit(_disc.x, _disc.y, _q / 20, _disc.mill, _free,
+                             _disc.tide);
         _disc.by_way[$ _key] = _o;
     }
     return _o;
@@ -791,21 +817,29 @@ function mika_disc_grain(_o, _ang, _rad, _shape, _col) {
 }
 
 // ---------------------------------------------------------------------------
-// N3 and N4 -- the woven disc
+// N3 and N4 -- the woven disc, with tides
 //
 // The disc on four rings, a quarter turn apart on N1's orbit and at its speed.
 // Each ring sheds a pair into one band: one grain circles with the rings as
 // N1's sand does, the other against them at the same rate, so the two are let
-// go as mirror images and their streams cross. Picked from the browser
-// sketches (`tools/sketch/sets/mika_n3.js`, "Woven disc").
+// go as mirror images and their streams cross. Where the sand is let go
+// swells and shrinks round the disc in lobes that turn against the rings, so
+// it leaves in arms that sweep round. Picked from the browser sketches
+// (`tools/sketch/sets/mika_n3.js`, "Tides" and "N4: Tides").
 // ---------------------------------------------------------------------------
 
 #macro MIKA_WOVEN_RINGS 4
 
+// The tide: px either side of the plain let-go radius, lobes round the disc,
+// and degrees a frame the lobes turn (at N3's pace).
+#macro MIKA_TIDE 90
+#macro MIKA_TIDE_LOBES 3
+#macro MIKA_TIDE_TURN 0.6
+
 /// @desc N3 and N4's mill: four rings shedding a pair into one band, the
 ///       grain circling with them of shape `_with_shape` and colour
 ///       `_with_col`, the one circling against them `_back_shape`,
-///       `_back_col`. `_pace` runs the whole of it -- the rings' turn and
+///       `_back_col`, let go on the tide (`MIKA_TIDE`). `_pace` runs the whole of it -- the rings' turn and
 ///       wind-up too, so the shape holds -- faster or slower than N1's; the
 ///       shedding beat stays, so a slower one lays its sand closer.
 function mika_woven_disc(_with_shape, _with_col, _back_shape, _back_col,
@@ -814,6 +848,7 @@ function mika_woven_disc(_with_shape, _with_col, _back_shape, _back_col,
         rings: MIKA_WOVEN_RINGS, dist: MIKA_MILL_DIST,
         orbit: MIKA_DISC_ORBIT * _pace, beat: MIKA_DISC_BEAT,
         wind: floor(MIKA_DISC_WIND / _pace + 0.5), disc: true, pace: _pace,
+        tide: MIKA_TIDE, lobes: MIKA_TIDE_LOBES, tide_turn: MIKA_TIDE_TURN,
         bands: [ mika_disc_band(MIKA_DISC_IN, _with_shape, _with_col),
                  mika_disc_band(MIKA_DISC_IN, _back_shape, _back_col, true) ],
     });

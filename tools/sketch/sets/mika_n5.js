@@ -95,17 +95,24 @@ Sketch.set({
         }
       } },
 
-    // N7 candidate: six rings whose turn reverses every few seconds (holding
+    // N7: six rings whose turn reverses after every whole turn (holding
     // `HOLD` frames, then easing round over `SWING`). Sand keeps circling the
     // way the rings were going when it was shed, so fresh sand crosses the
     // old after each reversal and the disc folds into a new weave. Each
     // ring's sand in its own colour; a gold band beyond it, let go at the
     // same radius as the own sand and shed a frame before it, so once loose
     // each gold grain falls halfway between two of the own sand's and the
-    // curtains are even lines (as the game has it).
+    // curtains are even lines (as the game has it). As each reversal starts
+    // every ring casts a beam at the player (`mika_mill_bolt`). Nothing is
+    // shed during a swing, when in the game Mika hops (the sketch holds him
+    // still).
     { name: 'N7: Reversing disc', loop: () => 2 * (HOLD + SWING),
       orbits: [six({ turnAt: reversingTurn })],
       emit(a) {
+        if (a.t % (HOLD + SWING) === HOLD) {
+            for (let i = 0; i < 6; i++) bolt(a, i);
+        }
+        if (a.t % (HOLD + SWING) >= HOLD) return;
         const beat = a.t % 3;
         if (beat > 1) return;
         const o = a.orbits[0], dir = reversingDir(a.t);
@@ -134,8 +141,60 @@ function pulses(name, every, on, way, swap) {
 }
 
 // N7's reversals: `HOLD` frames turning one way, `SWING` frames easing round
-// to the other (a half cosine), and back.
-const HOLD = 150, SWING = 30;
+// to the other (a half cosine), and back. As the game: a whole turn
+// (`MIKA_REVERSE_HOLD`), and his hop (`MIKA_REVERSE_SWING`).
+const HOLD = PERIOD, SWING = 45;
+
+// N7's bolt (`mika_mill_bolt`): from ring `i`'s middle, trained on where the
+// player is as it is cast, so it pivots on that spot as the ring swings round.
+// A thin warning for `WARN` frames, then a beam for `HOT` that kills across
+// its core (`MIKA_BOLT_*`, `BRAY_HIT`).
+const WARN = 66, HOT = 42, WID = 10, CORE = 0.45;
+function bolt(a, i) {
+    const p = a.player;
+    a.bullet({ x: 0, y: 0, i, lx: p.x, ly: p.y, cull: false, r: 0,
+               step: boltStep, draw: boltDraw, hit: boltHit });
+}
+
+function boltStep(b, a) {
+    const r = a.ringOf(0, b.i);
+    b.x = r.x; b.y = r.y;
+    b.dir = a.pdir(b.lx - b.x, b.ly - b.y);
+    if (b.age > WARN + HOT) b.dead = true;
+}
+
+function boltEnd(b) {
+    const d = b.dir * Math.PI / 180;
+    return [b.x + Math.cos(d) * 2400, b.y - Math.sin(d) * 2400];
+}
+
+function boltDraw(g, s) {
+    const [ex, ey] = boltEnd(this);
+    const hot = this.age > WARN;
+    g.lineCap = 'round';
+    for (const [w, col, al] of hot ? [[WID * 2.2, '#5ad1e6', 0.35],
+                                      [WID, '#5ad1e6', 1],
+                                      [WID * CORE, '#ffffff', 1]]
+                                   : [[2, '#5ad1e6', 0.5]]) {
+        g.globalAlpha = al;
+        g.strokeStyle = col;
+        g.lineWidth = Math.max(1, w * s);
+        g.beginPath();
+        g.moveTo(this.x * s, this.y * s);
+        g.lineTo(ex * s, ey * s);
+        g.stroke();
+    }
+}
+
+function boltHit(b, p) {
+    if (b.age <= WARN) return false;
+    const [ex, ey] = boltEnd(b);
+    const dx = ex - b.x, dy = ey - b.y;
+    const u = Math.max(0, Math.min(1, ((p.x - b.x) * dx + (p.y - b.y) * dy)
+                                      / (dx * dx + dy * dy)));
+    return Math.hypot(b.x + dx * u - p.x, b.y + dy * u - p.y)
+           < WID * CORE / 2 + 4.0;
+}
 
 // The rings' direction at frame `t`, 1 one way and -1 the other, eased.
 function reversingDir(t) {

@@ -1,7 +1,8 @@
-// Candidates for Mika's N3, the four-ring non-spell. "Woven disc" is the one
-// built into the game; the rest are sketches only. "Shear" to "N4: Long gusts
-// + sandfall" keep the woven disc and change only how its sand is let go
-// (`release`).
+// Candidates for Mika's N3 and N4, the four-ring non-spells. "Tides" and "N4:
+// Tides" are built into the game; the rest are sketches only. "Woven disc" was
+// N3 before the tides (its sand reached the player as an even drizzle).
+// "Shear" to "N4: Long gusts + sandfall" keep the woven disc and change only
+// how its sand is let go (`release`).
 //
 // "Counter discs": two pairs on two orbits turning opposite ways, each
 // shedding a disc as N1 does; read as messy (the two families never line
@@ -54,8 +55,8 @@ Sketch.set({
 
     // A: each ring sheds a pair into the disc, one circling with the rings
     // as N1's sand does and one against them at the same rate, so the two are
-    // let go as mirror images of each other and their streams cross. The
-    // owner's pick: what N3 runs in the game (`mika_nonspells`).
+    // let go as mirror images of each other and their streams cross. N3 as it
+    // was before the tides.
     { name: 'Woven disc', loop: () => 114,
       orbits: [{ rings: 4, radius: 205, period: 114, way: -1 }],
       emit(a) {
