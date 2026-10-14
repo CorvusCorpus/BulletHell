@@ -1,7 +1,8 @@
 /// @desc Sylvia's non-spells as drafts on the drafting table, from the
 ///       browser sketch `sylvia.js`: N1 and N2 from "Two spirals: peel" and
-///       "Two spirals: spin and fling", and "Iris bloom" (at the end of this
-///       file). Placeholders: he has no stage or sprite yet.
+///       "Two spirals: spin and fling", and "Iris bloom" and a spell from it
+///       (at the end of this file). Placeholders: he has no stage or sprite
+///       yet.
 ///
 /// At the top of each hold he sends out pens (balls) to two points beside and
 /// below him. From each point the pens wind outward along the arms of a
@@ -281,15 +282,18 @@ function sylvia_spin_task(_u) {
 //
 // Every `EVERY` frames `N` curved lasers (magenta and indigo by turns) wait
 // `DELAY` frames as marks on a ring `R0` round him, then fire `OFF` degrees
-// off straight out and curl back the other way along arcs of radius `ARC`, at
-// `SPD` px a frame for `LIFE` frames: a pinwheel of blades sweeping out over
+// off straight out and curl back the other way along arcs, at `SPD` px a
+// frame: a pinwheel of blades sweeping out over
 // the field. Alternate volleys curl the other way, and each is turned `STEP`
 // degrees on from the last. Soon after the blades fire, twice as many cyan
 // orbs leave the same ring along the same arcs, two to each gap, at `ORB`,
 // and run straight once they have come as far round as the blades.
 //
 // The sketch's blades run 50 frames on arcs of radius 290 and die well short
-// of the player; these run on wider arcs until they near the walls.
+// of the player; the non-spell's run on wider arcs (`ARC`) until they near
+// the walls (`LIFE`). The spell, **Iris Rosette** (a placeholder name), keeps
+// the sketch's arcs and runs each blade a little over a whole loop
+// (`ROSETTE_*`), so the blades fold into a turning flower round him.
 // ---------------------------------------------------------------------------
 
 #macro SYLVIA_IRIS_EVERY 90
@@ -302,12 +306,25 @@ function sylvia_spin_task(_u) {
 #macro SYLVIA_IRIS_WID 14
 #macro SYLVIA_IRIS_DELAY 20
 #macro SYLVIA_IRIS_STEP 15
+#macro SYLVIA_IRIS_ROSETTE_ARC 290
+#macro SYLVIA_IRIS_ROSETTE_LIFE 240
 #macro SYLVIA_IRIS_ORB 3.5
 // Frames after the blades fire that the orbs go live.
 #macro SYLVIA_IRIS_ORB_AT 12
 
 /// @desc **Iris bloom** (Sylvia's, a draft).
 function draft_sylvia_iris(_e, _g, _t) {
+    sylvia_iris(_e, _t, SYLVIA_IRIS_ARC, SYLVIA_IRIS_LIFE);
+}
+
+/// @desc **Iris Rosette** (Sylvia's, a draft spell; placeholder name).
+function draft_sylvia_rosette(_e, _g, _t) {
+    sylvia_iris(_e, _t, SYLVIA_IRIS_ROSETTE_ARC, SYLVIA_IRIS_ROSETTE_LIFE);
+}
+
+/// @desc An iris bloom whose blades run `_life` frames on arcs of radius
+///       `_arc`.
+function sylvia_iris(_e, _t, _arc, _life) {
     var _u = _t mod SYLVIA_IRIS_EVERY;
     var _k = _t div SYLVIA_IRIS_EVERY;
     var _way = ((_k mod 2) == 0) ? 1 : -1;
@@ -315,7 +332,7 @@ function draft_sylvia_iris(_e, _g, _t) {
 
     if (_u == 0) {
         // Degrees a frame that keep a head at `SPD` on a circle of `ARC`.
-        var _turn = radtodeg(SYLVIA_IRIS_SPD / SYLVIA_IRIS_ARC);
+        var _turn = radtodeg(SYLVIA_IRIS_SPD / _arc);
         for (var _i = 0; _i < SYLVIA_IRIS_N; _i++) {
             var _th = _base + _i * 360 / SYLVIA_IRIS_N;
             laser_curve(_e.x + lengthdir_x(SYLVIA_IRIS_R0, _th),
@@ -323,16 +340,15 @@ function draft_sylvia_iris(_e, _g, _t) {
                         _th + _way * SYLVIA_IRIS_OFF, SYLVIA_IRIS_SPD,
                         -_way * _turn, SYLVIA_IRIS_WID,
                         ((_i mod 2) == 0) ? BCOL_MAGENTA : BCOL_INDIGO,
-                        SYLVIA_IRIS_LIFE, SYLVIA_IRIS_DELAY);
+                        _life, SYLVIA_IRIS_DELAY);
         }
     }
 
     // Fired with a mark, so they go live `ORB_AT` frames after the blades.
     if (_u == SYLVIA_IRIS_DELAY + SYLVIA_IRIS_ORB_AT - BULLET_DELAY_DEFAULT) {
-        var _bend = radtodeg(SYLVIA_IRIS_ORB / SYLVIA_IRIS_ARC);
+        var _bend = radtodeg(SYLVIA_IRIS_ORB / _arc);
         // The frames an orb takes to come as far round as a blade's head.
-        var _run = floor(SYLVIA_IRIS_SPD * SYLVIA_IRIS_LIFE / SYLVIA_IRIS_ORB
-                         + 0.5);
+        var _run = floor(SYLVIA_IRIS_SPD * _life / SYLVIA_IRIS_ORB + 0.5);
         for (var _j = 0; _j < 2 * SYLVIA_IRIS_N; _j++) {
             var _at = _base + (_j + 0.5) * 180 / SYLVIA_IRIS_N;
             var _o = fire(_e.x + lengthdir_x(SYLVIA_IRIS_R0, _at),

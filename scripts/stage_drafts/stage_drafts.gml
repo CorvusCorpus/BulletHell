@@ -132,6 +132,11 @@ function draft_list() {
         // (`draft_sylvia`). `Fixed`: in the sketch he holds still.
         { name: "",             col: BCOL_INDIGO,  time: 40 * FPS,
           move: BossMove.Fixed, attack: draft_sylvia_iris },
+
+        // The same with the sketch's arcs and blades that loop, as a spell.
+        // Placeholder name.
+        { name: "Iris Rosette", col: BCOL_MAGENTA, time: 40 * FPS,
+          move: BossMove.Fixed, attack: draft_sylvia_rosette },
     ];
 }
 
