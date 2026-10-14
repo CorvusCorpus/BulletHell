@@ -47,7 +47,6 @@
   },
   "name":"Bullet Hell",
   "resources":[
-    {"id":{"name":"draft_sylvia","path":"scripts/draft_sylvia/draft_sylvia.yy",},},
     {"id":{"name":"obj_boot","path":"objects/obj_boot/obj_boot.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},
     {"id":{"name":"obj_practice","path":"objects/obj_practice/obj_practice.yy",},},
@@ -70,6 +69,7 @@
     {"id":{"name":"constants","path":"scripts/constants/constants.yy",},},
     {"id":{"name":"cutin_table","path":"scripts/cutin_table/cutin_table.yy",},},
     {"id":{"name":"danmaku_functions","path":"scripts/danmaku_functions/danmaku_functions.yy",},},
+    {"id":{"name":"draft_sylvia","path":"scripts/draft_sylvia/draft_sylvia.yy",},},
     {"id":{"name":"enemy_functions","path":"scripts/enemy_functions/enemy_functions.yy",},},
     {"id":{"name":"enemy_routes","path":"scripts/enemy_routes/enemy_routes.yy",},},
     {"id":{"name":"fx_functions","path":"scripts/fx_functions/fx_functions.yy",},},

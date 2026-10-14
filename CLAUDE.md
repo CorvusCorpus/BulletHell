@@ -916,7 +916,9 @@ Known gaps:
   blades that run a whole loop, so they fold into a flower round him
   (`draft_rosette`). Between them a second iris bloom non-spell keeps the
   sketch's arcs, but each blade loops once and then runs straight out past
-  the player (`draft_iris_loop`).
+  the player (`draft_iris_loop`). Last, `Slow Rosette` (a placeholder name)
+  is Iris Rosette slowed to half its pace, cast from the middle of the field
+  (`draft_slow_rosette`).
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.
 - Stages one and two's fodder can only move as `wave_line` and `wave_cross`

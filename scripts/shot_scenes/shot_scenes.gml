@@ -15,7 +15,7 @@ function shot_scene_list() {
               "bullets",
               "motion", "drafts", "draft_attacks", "draft_spell",
               "draft_lasers", "draft_peel", "draft_fling", "draft_iris",
-              "draft_rosette", "draft_iris_loop",
+              "draft_rosette", "draft_iris_loop", "draft_slow_rosette",
               "hex_draw", "hex_seal", "hex_scatter", "hex_gaps",
               "hex_burst",
               "grove", "grove_arrive", "grove_turn", "grove_blood",
@@ -184,10 +184,13 @@ function shot_scene_prepare(_name) {
 
         case "draft_lasers":
         case "draft_rosette":
+        case "draft_slow_rosette":
             global.stage_def = draft_stage_def();
+            var _spell = "Three Lights";
+            if (_name == "draft_rosette") _spell = "Iris Rosette";
+            if (_name == "draft_slow_rosette") _spell = "Slow Rosette";
             global.practice = practice_new(draft_stage_def(), 0,
-                shot_draft_index((_name == "draft_lasers") ? "Three Lights"
-                                                           : "Iris Rosette"));
+                                           shot_draft_index(_spell));
             break;
 
         case "draft_peel":
@@ -523,6 +526,7 @@ function shot_pose(_scene, _g) {
 
         case "draft_lasers":
         case "draft_rosette":
+        case "draft_slow_rosette":
             // As `draft_spell`; untouchable, so a hit doesn't clear the field.
             _g.player.x = FIELD_CX - 40;
             _g.player.y = FIELD_Y1 - 240;

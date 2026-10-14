@@ -86,8 +86,9 @@ function draft_boss_spawn(_g) {
 // ---------------------------------------------------------------------------
 
 /// @desc Every unassigned attack. A name makes a row a spell; `move` is
-///       optional (default drift), and so is a `Step` row's `hold`. To add an
-///       idea: one row here and its function below.
+///       optional (default drift), and so are a `Step` row's `hold` and a
+///       `Fixed` row's `at`. To add an idea: one row here and its function
+///       below.
 function draft_list() {
     return [
         { name: "",             col: BCOL_INDIGO,  time: 30 * FPS,
@@ -142,6 +143,11 @@ function draft_list() {
         // Placeholder name.
         { name: "Iris Rosette", col: BCOL_MAGENTA, time: 40 * FPS,
           move: BossMove.Fixed, attack: draft_sylvia_rosette },
+
+        // Iris Rosette slowed, from the middle of the field. Placeholder name.
+        { name: "Slow Rosette", col: BCOL_INDIGO,  time: 40 * FPS,
+          move: BossMove.Fixed, at: { x: FIELD_CX, y: FIELD_CY },
+          attack: draft_sylvia_slow_rosette },
     ];
 }
 
@@ -167,6 +173,7 @@ function draft_phases() {
             attack: _d.attack,
         };
         if (_d[$ "hold"] != undefined) _row.hold = _d.hold;
+        if (_d[$ "at"] != undefined) _row.at = _d.at;
         array_push(_out, _row);
     }
     return _out;
