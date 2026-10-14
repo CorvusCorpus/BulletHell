@@ -1,11 +1,13 @@
-/// @desc Two of Sylvia's non-spell sketches, "Two spirals: peel" and "Two
-///       spirals: spin and fling" (the browser sketch `sylvia.js`), as drafts
-///       on the drafting table. Placeholders: he has no stage or sprite yet.
+/// @desc Sylvia's N1 and N2, from his non-spell sketches "Two spirals: peel"
+///       and "Two spirals: spin and fling" (the browser sketch `sylvia.js`),
+///       as drafts on the drafting table. Placeholders: he has no stage or
+///       sprite yet.
 ///
 /// At the top of each hold he sends out pens (balls) to two points beside and
 /// below him. From each point the pens wind outward along the arms of a
-/// spiral, laying still darts: the left spiral cyan, the right its mirror
-/// image in magenta. A short pause after the last dart the spirals come alive.
+/// spiral, laying still darts: in N1 the left spiral cyan and the right its
+/// mirror image in magenta, in N2 the other way round. A short pause after
+/// the last dart the spirals come alive.
 /// In `peel` each dart sets off along its arm where it lies, from the loose
 /// outer ends inward; in `spin and fling` each spiral spins up as a whole the
 /// way that unwinds it and every dart is let go along its circle, so the
@@ -56,13 +58,13 @@
 // The attacks
 // ---------------------------------------------------------------------------
 
-/// @desc **Two spirals: peel** (Sylvia's, a draft).
+/// @desc Sylvia's N1, **Two spirals: peel** (a draft).
 function draft_sylvia_peel(_e, _g, _t) {
     var _cyc = SYLVIA_SPI_HOLD + BOSS_STEP_MOVE;
     if ((_t mod _cyc) == 0) sylvia_spirals(_e, false);
 }
 
-/// @desc **Two spirals: spin and fling** (Sylvia's, a draft).
+/// @desc Sylvia's N2, **Two spirals: spin and fling** (a draft).
 function draft_sylvia_fling(_e, _g, _t) {
     var _cyc = SYLVIA_SPI_HOLD + BOSS_STEP_MOVE;
     if ((_t mod _cyc) == 0) sylvia_spirals(_e, true);
@@ -164,7 +166,8 @@ function sylvia_spirals(_e, _fling) {
                 off: _j * 360 / SYLVIA_SPI_ARMS,
                 ox: _e.x - _m * SYLVIA_SPI_DX, oy: _e.y + SYLVIA_SPI_DY,
                 sx: _e.x, sy: _e.y,
-                col: (_m > 0) ? BCOL_CYAN : BCOL_MAGENTA,
+                // N1's left spiral is cyan; N2 swaps the colours.
+                col: ((_m > 0) != _fling) ? BCOL_CYAN : BCOL_MAGENTA,
                 fling: _fling,
                 laid: 0,            // darts the pen has laid
                 spin_task: undefined,
