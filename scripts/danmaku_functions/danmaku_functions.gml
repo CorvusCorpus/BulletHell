@@ -79,6 +79,9 @@ function bullet_blank() {
         // (`bullet_bounce`).
         bounce: 0,
 
+        // Never culled for leaving the field (`bullet_persist`).
+        persist: false,
+
         grazed: false,
     };
 }
@@ -176,6 +179,7 @@ function fire(_x, _y, _spd, _dir, _shape, _col, _delay = BULLET_DELAY_DEFAULT) {
     _b.q_at = infinity;
     _b.resist = false;
     _b.bounce = 0;
+    _b.persist = false;
     _b.grazed = false;
 
     // A vote for this shape's shot cue; `sfx_step` turns a frame's votes into
@@ -424,6 +428,23 @@ function bullet_expire_at(_u, _at, _frames = BULLET_FADE_DEFAULT) {
     return bullet_schedule(_u, _at, BQ.Fade, _frames);
 }
 
+/// @desc From `_at`, a persistent bullet (`bullet_persist`) is culled like any
+///       other once it leaves the field.
+function bullet_cull_at(_u, _at) {
+    return bullet_schedule(_u, _at, BQ.Cull);
+}
+
+/// @desc Make a bullet persistent: it is never culled for leaving the field,
+///       so it can go out and come back. Clears still take it, a phase
+///       change's always. Give it a `bullet_cull_at` once it is leaving for
+///       good, or it holds a pool slot until the attack ends. Passes
+///       `undefined` through.
+function bullet_persist(_u) {
+    if (_u == undefined) return undefined;
+    _u.persist = true;
+    return _u;
+}
+
 /// @desc The burst behind `BQ.Split` and `BQ.Shed`. Children take the
 ///       parent's shape and colour and a short warning delay. `_dress(child,
 ///       k)` is called on each (with `undefined` if the pool refused it).
@@ -498,6 +519,10 @@ function bullet_run_queue(_u, _tx, _ty) {
 
             case BQ.Fade:
                 bullet_fade(_u, _e.a);
+                break;
+
+            case BQ.Cull:
+                _u.persist = false;
                 break;
         }
     }
@@ -656,7 +681,7 @@ function bullet_step(_tx, _ty) {
 
         _u.life = _life + 1;
 
-        if (_x < _l || _x > _r || _y < _t || _y > _b) {
+        if ((_x < _l || _x > _r || _y < _t || _y > _b) && !_u.persist) {
             bullet_kill_at(_i);
         }
     }

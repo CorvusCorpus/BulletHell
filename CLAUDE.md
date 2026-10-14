@@ -305,7 +305,7 @@ function, usually a method bound to a struct its bullets share, places the
 bullet every frame until it says the bullet is spent or lets it go; it isn't
 culled meanwhile. `bullet_bounce` lets the side walls turn a bullet back a
 given number of times. Scheduled events are `BQ` entries (`Aim`, `Move`,
-`Accel`, `Turn`, `Force`, `Split`, `Shed`, `Graphic`, `Fade`), added with
+`Accel`, `Turn`, `Force`, `Split`, `Shed`, `Graphic`, `Fade`, `Cull`), added with
 the `bullet_*_at` helpers, at most `BULLET_QUEUE_MAX` per bullet. Split and
 shed children inherit the parent's shape and colour, and can be dressed by a
 callback. Things that bite:
@@ -341,7 +341,9 @@ it notes grazes and `bullet_graze_commit` pays them only if nothing hit him.
 off. A long bullet's spine is stretched back over the frame's travel,
 which is along its heading (`bullet_spine_dist`); `bullet_reach_dist` gives
 either kind. Graze pays once per bullet; lasers and ring bands pay on a cooldown.
-`resist` bullets survive `bullet_clear_circle` (bombs, the clear after a
+A bullet given `bullet_persist` is never culled for leaving the field, so it
+can go out and come back, until a `Cull` event (`bullet_cull_at`); clears
+still take it. `resist` bullets survive `bullet_clear_circle` (bombs, the clear after a
 hit) but not `bullet_clear_all` (phase changes).
 
 **Lasers.** `laser_beam` is anchored and telegraphed; it can follow a `src`
@@ -350,7 +352,8 @@ travels, grows out of where it was fired until it is its full length, and
 is culled when its tail leaves. `laser_curve` is the trail of its head's
 past positions, one a frame (or one every `node_gap` frames, so a slow
 curve is as long as a fast one); its head turns at a fixed rate, for as
-long as it lives or for `_turn_for` frames and then straight. All three fire in one light (`spr_bul_ray`): a white core
+long as it lives or for `_turn_for` frames and then straight, and it can
+ease its speed while keeping its path (`laser_curve_ease`). All three fire in one light (`spr_bul_ray`): a white core
 glowing into a band of the hue, a crisp edge and a faint glow past it, and a
 needle point at each end that keeps its shape at any length (a beam's root
 is cut square under its muzzle instead). The sprite is laid along the laser
@@ -918,8 +921,10 @@ Known gaps:
   (`draft_rosette`). Between them a second iris bloom non-spell keeps the
   sketch's arcs, but each blade loops once and then runs straight out past
   the player (`draft_iris_loop`). Last, `Slow Rosette` (a placeholder name)
-  is Iris Rosette slowed to half its pace, its blades as long, cast from
-  where Mika stands for his centred spells (`draft_slow_rosette`).
+  is Iris Rosette slowed to half its pace, its blades as long and launched
+  at twice their speed to settle to a drift, cast from where Mika stands for
+  his centred spells (`draft_slow_rosette`). The iris drafts' orbs are
+  persistent while they loop, so none is culled outside the field and lost.
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.
 - Stages one and two's fodder can only move as `wave_line` and `wave_cross`
@@ -929,9 +934,7 @@ Known gaps:
     width);
   - penetrating player shots;
   - a blend mode per bullet;
-  - a query for the bullets inside a circle;
-  - a cull margin per bullet. `CULL_MARGIN` is global, so a bullet cannot
-    leave the field and come back.
+  - a query for the bullets inside a circle.
 - `bullet_clear_circle` turns every Nth cleared bullet into an item in the
   order it sweeps them, not by position.
 - Frame cost: the grove is the expensive stage, at roughly 10 ms a frame,

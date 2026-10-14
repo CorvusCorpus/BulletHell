@@ -621,6 +621,7 @@ enum BQ {
     Shed,       // the same, `d` pixels out from the parent, which *lives*
     Graphic,    // shape `a`, colour `b`
     Fade,       // start fading out, over `a` frames
+    Cull,       // stop being persistent (`bullet_persist`)
 }
 
 /// "Leave this field as it is", for `BQ.Move` arguments where zero is an

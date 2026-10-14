@@ -691,6 +691,34 @@ function test_laser() {
     ok("and its newest node is its head",
        _cg.nx[_cg.node_n - 1] == _cg.x && _cg.ny[_cg.node_n - 1] == _cg.y);
 
+    // Easing its speed, a curve keeps to the circle it was fired on.
+    st_reset();
+    var _ce = laser_curve_ease(laser_curve(500, 500, 90, 9, 2, 30, BCOL_ROSE,
+                                           400), 3, 0.05);
+    // The circle through its first three positions, while it is fast.
+    var _px = [], _py = [];
+    for (var _i = 0; _i < 3; _i++) {
+        laser_step();
+        _px[_i] = _ce.x;
+        _py[_i] = _ce.y;
+    }
+    var _ax = _px[1] - _px[0], _ay = _py[1] - _py[0];
+    var _bx = _px[2] - _px[0], _by = _py[2] - _py[0];
+    var _dd = 2 * (_ax * _by - _ay * _bx);
+    var _a2 = _ax * _ax + _ay * _ay, _b2 = _bx * _bx + _by * _by;
+    var _cx = _px[0] + (_by * _a2 - _ay * _b2) / _dd;
+    var _cy = _py[0] + (_ax * _b2 - _bx * _a2) / _dd;
+    var _rad = point_distance(_cx, _cy, _px[0], _py[0]);
+    var _round = true;
+    for (var _i = 0; _i < 120; _i++) {
+        laser_step();
+        if (abs(point_distance(_ce.x, _ce.y, _cx, _cy) - _rad) > 1.5) {
+            _round = false;
+        }
+    }
+    ok("a curve easing its speed keeps to its circle",
+       _round && abs(_ce.spd - 3) < 0.1);
+
     // The light at a beam's root must never outlive the beam.
     st_reset();
     var _b2 = laser_beam(400, 300, 0, 900, 40, BCOL_CYAN, 30, 24, 12);
@@ -4017,6 +4045,23 @@ function test_bullet_task() {
         bullet_step(FIELD_CX, FIELD_Y1);
     }
     ok("and with none left it leaves", bullet_count() == 0);
+
+    // A persistent bullet goes out past the cull margin and lives, until a
+    // `Cull` event; a phase change's clear takes it regardless.
+    st_reset();
+    _u = bullet_persist(fire(FIELD_CX, FIELD_Y0 + 10, 8, 90, BSHAPE_ORB,
+                             BCOL_CYAN, 0));
+    bullet_cull_at(_u, 60);
+    for (var _f = 0; _f < 50; _f++) bullet_step(FIELD_CX, FIELD_Y1);
+    ok("a persistent bullet lives out past the cull margin",
+       bullet_count() == 1 && _u.y < FIELD_Y0 - CULL_MARGIN);
+    for (var _f = 0; _f < 20; _f++) bullet_step(FIELD_CX, FIELD_Y1);
+    ok("and is culled once it stops being persistent", bullet_count() == 0);
+    st_reset();
+    bullet_persist(fire(FIELD_CX, FIELD_CY, 0, 0, BSHAPE_ORB, BCOL_CYAN, 0));
+    bullet_clear_all(false);
+    ok("a phase change's clear takes a persistent bullet",
+       bullet_count() == 0);
     st_reset();
 }
 

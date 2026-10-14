@@ -306,7 +306,14 @@ function sylvia_spin_task(_u) {
 // placeholder name), is Iris Rosette from the middle of the field with the
 // whole pattern slowed to `SLOW` of its pace: every speed, and the volleys'
 // rhythm and marks with it, so the flower keeps its shape. Its blades keep a
-// trail node every `1 / SLOW` frames, so they are as long as at full pace.
+// trail node every `1 / SLOW` frames, so they are as long as at full pace,
+// and leave at `LAUNCH` times their speed, easing to `SETTLE` times it (by
+// 1/e in `SETTLE_T` frames at full pace) along the same arcs; each runs as
+// far as at a steady speed.
+//
+// The orbs are persistent while they follow their arcs, which carry them out
+// past the field's edge and back; they are culled as usual once they run
+// straight.
 // ---------------------------------------------------------------------------
 
 #macro SYLVIA_IRIS_EVERY 90
@@ -324,6 +331,9 @@ function sylvia_spin_task(_u) {
 #macro SYLVIA_IRIS_LOOP_TURN 360
 #macro SYLVIA_IRIS_LOOP_RUN 160
 #macro SYLVIA_IRIS_SLOW 0.5
+#macro SYLVIA_IRIS_LAUNCH 2.0
+#macro SYLVIA_IRIS_SETTLE 0.8
+#macro SYLVIA_IRIS_SETTLE_T 25
 #macro SYLVIA_IRIS_ORB 3.5
 // Frames after the blades fire that the orbs go live.
 #macro SYLVIA_IRIS_ORB_AT 12
@@ -348,19 +358,22 @@ function draft_sylvia_rosette(_e, _g, _t) {
 }
 
 /// @desc **Slow Rosette** (Sylvia's, a draft spell; placeholder name): Iris
-///       Rosette at `SLOW` of its pace. Its row puts him where Mika stands
-///       for his centred spells.
+///       Rosette at `SLOW` of its pace, its blades launched and settling.
+///       Its row puts him where Mika stands for his centred spells.
 function draft_sylvia_slow_rosette(_e, _g, _t) {
     sylvia_iris(_e, _t, SYLVIA_IRIS_ROSETTE_ARC,
                 ceil(SYLVIA_IRIS_ROSETTE_LIFE / SYLVIA_IRIS_SLOW), -1,
-                SYLVIA_IRIS_SLOW);
+                SYLVIA_IRIS_SLOW, true);
 }
 
 /// @desc An iris bloom whose blades run `_life` frames on arcs of radius
 ///       `_arc`; given `_turn_deg`, blades and orbs turn that many degrees
 ///       round their arcs and then run straight. `_pace` scales its speeds,
-///       and stretches its rhythm and marks to match.
-function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1) {
+///       and stretches its rhythm and marks to match. With `_settle`, the
+///       blades launch and settle (`LAUNCH`, `SETTLE`), each running as far
+///       as `_life` frames would take it at a steady speed.
+function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1,
+                     _settle = false) {
     var _every = floor(SYLVIA_IRIS_EVERY / _pace + 0.5);
     var _delay = floor(SYLVIA_IRIS_DELAY / _pace + 0.5);
     var _spd = SYLVIA_IRIS_SPD * _pace;
@@ -372,21 +385,45 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1) {
     var _way = ((_k mod 2) == 0) ? 1 : -1;
     var _base = _k * SYLVIA_IRIS_STEP;
 
+    // How far a blade's head runs: `_life` frames at a steady speed.
+    var _dist = _spd * _life;
+
     if (_u == 0) {
-        // Degrees a frame that keep a head at `_spd` on a circle of `_arc`.
-        var _turn = radtodeg(_spd / _arc);
+        var _go = _spd;
+        var _head = _life;
+        var _share = 0;
+        if (_settle) {
+            // Out at `LAUNCH` times the speed; the frames it then takes, easing
+            // toward `SETTLE` times it, to run as far (as `laser_step_curve`
+            // eases: before each move).
+            _go = _spd * SYLVIA_IRIS_LAUNCH;
+            _share = 1 - exp(-_pace / SYLVIA_IRIS_SETTLE_T);
+            var _v = _go;
+            var _run = 0;
+            _head = 0;
+            while (_run < _dist) {
+                _v += (_spd * SYLVIA_IRIS_SETTLE - _v) * _share;
+                _run += _v;
+                _head++;
+            }
+        }
+        // Degrees a frame that keep a head at `_go` on a circle of `_arc`.
+        var _turn = radtodeg(_go / _arc);
         var _for = (_turn_deg < 0) ? -1 : floor(_turn_deg / _turn + 0.5);
         for (var _i = 0; _i < SYLVIA_IRIS_N; _i++) {
             var _th = _base + _i * 360 / SYLVIA_IRIS_N;
             var _l = laser_curve(_e.x + lengthdir_x(SYLVIA_IRIS_R0, _th),
                                  _e.y + lengthdir_y(SYLVIA_IRIS_R0, _th),
-                                 _th + _way * SYLVIA_IRIS_OFF, _spd,
+                                 _th + _way * SYLVIA_IRIS_OFF, _go,
                                  -_way * _turn, SYLVIA_IRIS_WID,
                                  ((_i mod 2) == 0) ? BCOL_MAGENTA
                                                    : BCOL_INDIGO,
-                                 _life, _delay, _for);
+                                 _head, _delay, _for);
             if (_l == undefined) break;
             _l.node_gap = _gap;
+            if (_settle) {
+                laser_curve_ease(_l, _spd * SYLVIA_IRIS_SETTLE, _share);
+            }
         }
     }
 
@@ -395,8 +432,8 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1) {
               - BULLET_DELAY_DEFAULT) {
         var _bend = radtodeg(_orb / _arc);
         // The frames an orb takes to come as far round as a blade's head.
-        var _run = (_turn_deg < 0)
-            ? floor(_spd * _life / _orb + 0.5)
+        var _round = (_turn_deg < 0)
+            ? floor(_dist / _orb + 0.5)
             : floor(_turn_deg / _bend + 0.5);
         for (var _j = 0; _j < 2 * SYLVIA_IRIS_N; _j++) {
             var _at = _base + (_j + 0.5) * 180 / SYLVIA_IRIS_N;
@@ -406,7 +443,10 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1) {
                           BSHAPE_ORB, BCOL_CYAN);
             if (_o == undefined) break;
             _o.turn = -_way * _bend;
-            bullet_turn_at(_o, _run, 0);
+            bullet_turn_at(_o, _round, 0);
+            // Its arc carries it out past the edge and back.
+            bullet_persist(_o);
+            bullet_cull_at(_o, _round);
         }
     }
 }

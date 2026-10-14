@@ -63,6 +63,10 @@ function laser_blank() {
         // Frames between a curve's nodes (`laser_step_curve`), and frames
         // since its last.
         node_gap: 1, node_t: 0,
+        // A curve easing its speed (`laser_curve_ease`): the speed it eases
+        // toward (-1: none), the share of the gap it closes a frame, and its
+        // turn per pixel, which keeps its path whatever its speed.
+        spd_to: -1, spd_ease: 0, bend: 0,
         col: BCOL_BONE,
         warn: 60, hot: 120, fade: 20,
         src: undefined,          // a struct with x/y the origin follows
@@ -96,6 +100,9 @@ function laser_alloc() {
     _l.turn_for = -1;
     _l.node_gap = 1;
     _l.node_t = 0;
+    _l.spd_to = -1;
+    _l.spd_ease = 0;
+    _l.bend = 0;
     _l.src = undefined;
     _l.look = undefined;
     _l.node_n = 0;
@@ -188,6 +195,17 @@ function laser_curve(_x, _y, _dir, _spd, _turn, _wid, _col, _life,
     return _l;
 }
 
+/// @desc Have curve `_l` ease its speed toward `_to`, closing `_share` of the
+///       gap every frame, and turn in step with its speed so it keeps the
+///       path it was fired on. Passes `undefined` through.
+function laser_curve_ease(_l, _to, _share) {
+    if (_l == undefined) return undefined;
+    _l.spd_to = _to;
+    _l.spd_ease = _share;
+    _l.bend = (_l.spd != 0) ? _l.turn / _l.spd : 0;
+    return _l;
+}
+
 // ---------------------------------------------------------------------------
 // The step
 // ---------------------------------------------------------------------------
@@ -277,6 +295,13 @@ function laser_step_ray(_l) {
 function laser_step_curve(_l) {
     if (laser_step_delay(_l)) return;
     if (_l.phase == LaserPhase.Fire) {
+        if (_l.spd_to >= 0) {
+            // Turned by the mean of the last step's speed and this one's, so
+            // the steps stay chords of one circle as the speed changes.
+            var _was = _l.spd;
+            _l.spd += (_l.spd_to - _l.spd) * _l.spd_ease;
+            _l.turn = _l.bend * (_was + _l.spd) * 0.5;
+        }
         if (_l.turn_for != 0) {
             _l.dir += _l.turn;
             if (_l.turn_for > 0) _l.turn_for--;
