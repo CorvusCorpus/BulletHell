@@ -182,14 +182,14 @@ function mika_slots() {
         // the rings between hops (`hold`, counted from the end of the wind-up,
         // `hold_from`); nothing is shed while he hops.
         //
-        // The non-spells' health is about what a headless bot (focused fire,
-        // dodging, under him when it can be) had dealt 15 seconds in, 13 on
-        // N7's shorter clock. It deals most early: as the sand builds up it
-        // is pushed out from under him, and on N4 and N7 its damage stops
-        // growing at all after 20 seconds or so. His rings stop most of the
-        // fire, so `par` is set from the clock (`MIKA_N_PAR`) rather than
-        // priced on every shot landing.
-        { name: "", col: BCOL_AMBER, hp: 290, time: 35 * FPS,
+        // The non-spells' health is midway between the first guesses and
+        // what a headless bot (focused fire, dodging, under him when it can
+        // be) had dealt 15 seconds in, 13 on N7's shorter clock. It deals
+        // most early: as the sand builds up it is pushed out from under him,
+        // and on N4 and N7 its damage stops growing at all after 20 seconds
+        // or so. His rings stop most of the fire, so `par` is set from the
+        // clock (`MIKA_N_PAR`) rather than priced on every shot landing.
+        { name: "", col: BCOL_AMBER, hp: 365, time: 35 * FPS,
           par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_DISC_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n1_sanddisc,
@@ -202,7 +202,7 @@ function mika_slots() {
           fire_at: STORM_STRIKE },
 
         // N2 -- N1 mirrored, with its hues swapped.
-        { name: "", col: BCOL_AMBER, hp: 290, time: 35 * FPS,
+        { name: "", col: BCOL_AMBER, hp: 365, time: 35 * FPS,
           par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_DISC_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n2_sanddisc,
@@ -215,7 +215,7 @@ function mika_slots() {
           attack: mika_chakram_blitz, fire_at: CHAKRAM_FIRST },
 
         // N3 -- the woven disc (`mika_nonspells`), held between hops as N1 is.
-        { name: "", col: BCOL_AMBER, hp: 145, time: 35 * FPS,
+        { name: "", col: BCOL_AMBER, hp: 197.5, time: 35 * FPS,
           par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_DISC_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n3_woven,
@@ -226,7 +226,7 @@ function mika_slots() {
 
         // N4 -- N3 mirrored, with its colours swapped, slower and denser
         // (`MIKA_N4_PACE`).
-        { name: "", col: BCOL_AMBER, hp: 140, time: 35 * FPS,
+        { name: "", col: BCOL_AMBER, hp: 195, time: 35 * FPS,
           par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_N4_STAY,
           hold_from: MIKA_N4_WIND, attack: mika_n4_woven,
@@ -234,7 +234,7 @@ function mika_slots() {
         mika_unwritten_row(true, 4),     // S4
 
         // N5 -- pulses (`mika_nonspells`), held between hops as N1 is.
-        { name: "", col: BCOL_AMBER, hp: 140, time: 35 * FPS,
+        { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
           par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_SIX_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n5_pulses,
@@ -243,7 +243,7 @@ function mika_slots() {
 
         // N6 -- N5 mirrored, with its colours swapped and thicker, rarer
         // pulses.
-        { name: "", col: BCOL_AMBER, hp: 140, time: 35 * FPS,
+        { name: "", col: BCOL_AMBER, hp: 180, time: 35 * FPS,
           par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_SIX_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n6_pulses,
@@ -253,7 +253,7 @@ function mika_slots() {
         // N7 -- the reversing disc (`mika_nonspells`), with a bolt from every
         // ring at each reversal. His hops are its reversals: a whole turn each
         // way between them. A shorter clock.
-        { name: "", col: BCOL_AMBER, hp: 90, time: 30 * FPS,
+        { name: "", col: BCOL_AMBER, hp: 140, time: 30 * FPS,
           par: MIKA_N_PAR * 30 * FPS,
           move: BossMove.Step, hold: MIKA_REVERSE_HOLD,
           hold_from: MIKA_DISC_WIND, attack: mika_n7_reversing,

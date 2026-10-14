@@ -876,8 +876,9 @@ Mika's slots (`mika_slots()` is the source of truth):
 | S8 | Written, in playtesting: `Grand Orrery`. He holds the middle and throws out all six rings, which come out as the mill's do onto six orbits (each drawn as a gold line) clear of the bottom middle, evenly spaced and at one rate, alternate rings turning the other way; bolts string between rings that come close. A rage spell: a ring wakes (lit) for each sixth of his health lost, from the inside out (and all of them in the last 20 seconds), each firing its own pattern (corona spiral, pinwheel, comets, halo, a star of eight fixed beams, one aimed at the player, rings of darts in every direction). Photograph the whole with `python tools/shot.py orrery_rage`, which holds him at his threshold. |
 | S4–S7 | Stubs (`Unwritten Spell 4` to `7`) |
 
-Each non-spell's health is about what a headless bot (focused fire,
-dodging, under him when it can be) had dealt 15 seconds in (13 on N7):
+Each non-spell's health is midway between its first guess and what a
+headless bot (focused fire, dodging, under him when it can be) had dealt
+15 seconds in (13 on N7):
 his rings stop most of the fire, and the sand pushes the player out from
 under him as it builds up. Their `par` is a share of the clock
 (`MIKA_N_PAR`).
