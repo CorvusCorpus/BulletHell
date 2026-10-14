@@ -171,6 +171,8 @@ gimmick is the mechanic its attacks are built around.
 
 ## How to work here
 
+- Commit and push straight to `main` (owner's call); no feature branches or
+  pull requests.
 - Do what was asked and no more. Don't write rules, constraints or
   justifications into docs, comments or tests that the owner didn't state. If
   you make a judgement call, say so in your reply rather than recording it as
