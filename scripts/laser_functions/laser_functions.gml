@@ -60,6 +60,9 @@ function laser_blank() {
         // Frames a curve's head has left to turn before it runs straight, or
         // -1 to turn for as long as it lives.
         turn_for: -1,
+        // Frames between a curve's nodes (`laser_step_curve`), and frames
+        // since its last.
+        node_gap: 1, node_t: 0,
         col: BCOL_BONE,
         warn: 60, hot: 120, fade: 20,
         src: undefined,          // a struct with x/y the origin follows
@@ -91,6 +94,8 @@ function laser_alloc() {
     _l.spd = 0;
     _l.turn = 0;
     _l.turn_for = -1;
+    _l.node_gap = 1;
+    _l.node_t = 0;
     _l.src = undefined;
     _l.look = undefined;
     _l.node_n = 0;
@@ -164,7 +169,9 @@ function laser_ray(_x, _y, _dir, _spd, _len, _wid, _col, _life, _delay = 0) {
 ///       `_life` is how long the head lives, from when it fires; the trail
 ///       then drains away behind it. `_delay` is as `laser_ray`'s. With
 ///       `_turn_for` (frames), the head stops turning after that long and
-///       runs straight.
+///       runs straight. Its trail keeps `CURVE_NODES` nodes, one a frame; a
+///       slow curve can keep one every `node_gap` frames instead (set on the
+///       laser it returns), so it is as long as a faster one.
 function laser_curve(_x, _y, _dir, _spd, _turn, _wid, _col, _life,
                      _delay = 0, _turn_for = -1) {
     var _l = laser_alloc();
@@ -276,15 +283,29 @@ function laser_step_curve(_l) {
         }
         _l.x += lengthdir_x(_l.spd, _l.dir);
         _l.y += lengthdir_y(_l.spd, _l.dir);
-        curve_push(_l, _l.x, _l.y);
+        // A node every `node_gap` frames; between them the newest follows
+        // the head.
+        _l.node_t++;
+        if (_l.node_n < 2 || _l.node_t >= _l.node_gap) {
+            _l.node_t = 0;
+            curve_push(_l, _l.x, _l.y);
+        } else {
+            _l.nx[_l.node_n - 1] = _l.x;
+            _l.ny[_l.node_n - 1] = _l.y;
+        }
         if (_l.t >= _l.hot) {
             _l.phase = LaserPhase.Fade;
             _l.t = 0;
         }
     } else {
-        // The head stops and the tail drains a node a frame; collision reads
-        // the same nodes, so the drained part is no longer dangerous.
-        curve_drop_oldest(_l);
+        // The head stops and the tail drains a node every `node_gap` frames;
+        // collision reads the same nodes, so the drained part is no longer
+        // dangerous.
+        _l.node_t++;
+        if (_l.node_t >= _l.node_gap) {
+            _l.node_t = 0;
+            curve_drop_oldest(_l);
+        }
         if (_l.node_n <= 1) {
             _l.phase = LaserPhase.Done;
         }

@@ -680,6 +680,17 @@ function test_laser() {
     ok("a curve given turn_for turns that long, then runs straight",
        abs(angle_difference(_cs.dir, 30)) < 0.01);
 
+    // Half the speed, a node every other frame: as long as a full-speed one.
+    st_reset();
+    var _cf = laser_curve(300, 500, 0, 8, 0, 30, BCOL_ROSE, 400);
+    var _cg = laser_curve(300, 600, 0, 4, 0, 30, BCOL_ROSE, 400);
+    _cg.node_gap = 2;
+    for (var _i = 0; _i < 200; _i++) laser_step();
+    ok("a curve with a node every other frame keeps a trail as long",
+       _cg.node_n <= CURVE_NODES && abs(_cg.span - _cf.span) < 10);
+    ok("and its newest node is its head",
+       _cg.nx[_cg.node_n - 1] == _cg.x && _cg.ny[_cg.node_n - 1] == _cg.y);
+
     // The light at a beam's root must never outlive the beam.
     st_reset();
     var _b2 = laser_beam(400, 300, 0, 900, 40, BCOL_CYAN, 30, 24, 12);
@@ -3218,19 +3229,21 @@ function test_drafts() {
     ok("a blank id reads back as nothing cleared",
        !progress_stage(_def.id).cleared);
 
-    // Each draft owns an equal share of the bar, and a name makes it a spell.
+    // Each draft owns its health's share of the bar, and a name makes it a
+    // spell.
     var _l = draft_list();
     var _ph = draft_phases();
     var _n = array_length(_l);
     ok("there is a phase per draft", array_length(_ph) == _n);
-    var _even = true;
+    var _owned = true;
     var _prev = 1.0;
-    var _span = 1 / _n;
     for (var _i = 0; _i < _n; _i++) {
-        if (abs((_prev - _ph[_i].hp_end) - _span) > 0.001) _even = false;
+        var _share = draft_hp(_l[_i]) / draft_hp_total();
+        if (abs((_prev - _ph[_i].hp_end) - _share) > 0.001) _owned = false;
         _prev = _ph[_i].hp_end;
     }
-    ok("every draft owns the same span of the bar", _even);
+    ok("every draft owns its health's span of the bar, the last ending at 0",
+       _owned && _ph[_n - 1].hp_end == 0);
     var _kinds = true;
     for (var _i = 0; _i < _n; _i++) {
         var _named = (_l[_i].name != "");
@@ -3242,8 +3255,8 @@ function test_drafts() {
     var _g = st_game_at(GAME_CX, GAME_H - 300);
     var _b = draft_boss_spawn(_g);
     ok("the draft boss reaches the field", _b != undefined);
-    ok_near("and one slot is worth a fixed amount of health",
-            _b.hp_max / _n, DRAFT_SLOT_HP, 0.001);
+    ok_near("and its health is its drafts' summed",
+            _b.hp_max, draft_hp_total(), 0.001);
 
     var _named_i = -1;
     for (var _i = 0; _i < _n; _i++) {

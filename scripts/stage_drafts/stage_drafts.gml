@@ -54,9 +54,22 @@ function draft_stage_def() {
 // The caster
 // ---------------------------------------------------------------------------
 
-/// @desc Health per draft. The boss's total is this times the number of
-///       drafts, so each draft owns the same share however many there are.
+/// @desc Health of a draft whose row gives none (a row's `hp` gives its
+///       own). The boss's total is the sum of its drafts'.
 #macro DRAFT_SLOT_HP 360
+
+/// @desc Draft `_d`'s health: its row's `hp`, or `DRAFT_SLOT_HP`.
+function draft_hp(_d) {
+    return _d[$ "hp"] ?? DRAFT_SLOT_HP;
+}
+
+/// @desc The draft boss's whole health: every draft's, summed.
+function draft_hp_total() {
+    var _l = draft_list();
+    var _sum = 0;
+    for (var _i = 0; _i < array_length(_l); _i++) _sum += draft_hp(_l[_i]);
+    return max(1, _sum);
+}
 
 function draft_boss_def() {
     return {
@@ -74,8 +87,7 @@ function draft_boss_def() {
 }
 
 function draft_boss_spawn(_g) {
-    var _b = boss_spawn(FIELD_CX, FIELD_Y0 - 200,
-                        DRAFT_SLOT_HP * max(1, array_length(draft_list())),
+    var _b = boss_spawn(FIELD_CX, FIELD_Y0 - 200, draft_hp_total(),
                         draft_phases(), draft_boss_def());
     if (_b != undefined) _b.boss.home_y = BOSS_HOME_Y;
     return _b;
@@ -86,9 +98,9 @@ function draft_boss_spawn(_g) {
 // ---------------------------------------------------------------------------
 
 /// @desc Every unassigned attack. A name makes a row a spell; `move` is
-///       optional (default drift), and so are a `Step` row's `hold` and a
-///       `Fixed` row's `at`. To add an idea: one row here and its function
-///       below.
+///       optional (default drift), and so are its `hp` (default
+///       `DRAFT_SLOT_HP`), a `Step` row's `hold` and a `Fixed` row's `at`.
+///       To add an idea: one row here and its function below.
 function draft_list() {
     return [
         { name: "",             col: BCOL_INDIGO,  time: 30 * FPS,
@@ -122,52 +134,63 @@ function draft_list() {
         // peel" and "spin and fling" (`draft_sylvia`), a pair of spirals laid
         // each hold.
         { name: "",             col: BCOL_MAGENTA, time: 40 * FPS,
+          hp: SYLVIA_DRAFT_HP,
           move: BossMove.Step, hold: SYLVIA_SPI_HOLD,
           attack: draft_sylvia_peel },
 
         { name: "",             col: BCOL_CYAN,    time: 40 * FPS,
+          hp: SYLVIA_DRAFT_HP,
           move: BossMove.Step, hold: SYLVIA_SPI_HOLD,
           attack: draft_sylvia_fling },
 
         // Sylvia's "Iris bloom" sketch with blades that reach the walls
         // (`draft_sylvia`). `Fixed`: in the sketch he holds still.
         { name: "",             col: BCOL_INDIGO,  time: 40 * FPS,
+          hp: SYLVIA_DRAFT_HP,
           move: BossMove.Fixed, attack: draft_sylvia_iris },
 
         // The same with the sketch's arcs, the blades looping once and then
         // running straight out.
         { name: "",             col: BCOL_VIOLET,  time: 40 * FPS,
+          hp: SYLVIA_DRAFT_HP,
           move: BossMove.Fixed, attack: draft_sylvia_iris_loop },
 
         // The same with the sketch's arcs and blades that loop, as a spell.
         // Placeholder name.
         { name: "Iris Rosette", col: BCOL_MAGENTA, time: 40 * FPS,
+          hp: SYLVIA_DRAFT_HP,
           move: BossMove.Fixed, attack: draft_sylvia_rosette },
 
-        // Iris Rosette slowed, from the middle of the field. Placeholder name.
+        // Iris Rosette slowed, from where Mika stands for his centred spells.
+        // Placeholder name.
         { name: "Slow Rosette", col: BCOL_INDIGO,  time: 40 * FPS,
-          move: BossMove.Fixed, at: { x: FIELD_CX, y: FIELD_CY },
+          hp: SYLVIA_DRAFT_HP,
+          move: BossMove.Fixed, at: { x: FIELD_CX, y: FIELD_CY - 60 },
           attack: draft_sylvia_slow_rosette },
     ];
 }
 
-/// @desc The phase table derived from `draft_list`: equal shares of the bar,
-///       kind and background from whether the row is named. Built fresh on
-///       every call, because phase structs are mutable.
+/// @desc The phase table derived from `draft_list`: each draft's threshold
+///       from its health (`draft_hp`), kind and background from whether the
+///       row is named. Built fresh on every call, because phase structs are
+///       mutable.
 function draft_phases() {
     var _l = draft_list();
     var _n = array_length(_l);
+    var _total = draft_hp_total();
+    var _spent = 0;
     var _out = [];
     for (var _i = 0; _i < _n; _i++) {
         var _d = _l[_i];
+        _spent += draft_hp(_d);
         var _spell = (_d.name != "");
         var _row = {
             kind: _spell ? AttackKind.Spell : AttackKind.NonSpell,
             name: _d.name,
             col: _d.col,
             bg: _spell ? _d.col : -1,
-            // An equal share, and the last one lands exactly on zero.
-            hp_end: 1 - (_i + 1) / _n,
+            // Its share of the whole, and the last lands exactly on zero.
+            hp_end: (_i == _n - 1) ? 0 : 1 - _spent / _total,
             time: _d.time,
             move: _d[$ "move"] ?? BossMove.Drift,
             attack: _d.attack,

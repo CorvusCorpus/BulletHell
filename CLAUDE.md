@@ -348,8 +348,9 @@ hit) but not `bullet_clear_all` (phase changes).
 and re-aim at a `look` point every frame. `laser_ray` (a loose laser)
 travels, grows out of where it was fired until it is its full length, and
 is culled when its tail leaves. `laser_curve` is the trail of its head's
-past positions; its head turns at a fixed rate, for as long as it lives or
-for `_turn_for` frames and then straight. All three fire in one light (`spr_bul_ray`): a white core
+past positions, one a frame (or one every `node_gap` frames, so a slow
+curve is as long as a fast one); its head turns at a fixed rate, for as
+long as it lives or for `_turn_for` frames and then straight. All three fire in one light (`spr_bul_ray`): a white core
 glowing into a band of the hue, a crisp edge and a faint glow past it, and a
 needle point at each end that keeps its shape at any length (a beam's root
 is cut square under its muzzle instead). The sprite is laid along the laser
@@ -582,9 +583,9 @@ ordinary run with an empty timeline:
 - Nothing is written to the save. Best scores live in `global.practice_best`
   for the session only.
 
-The drafting table works the same way. Each draft gets an equal share of the
-draft boss's bar, the boss's health is `DRAFT_SLOT_HP` times the number of
-drafts, and the table has no `build`, so it can only be practised.
+The drafting table works the same way. Each draft's health is its row's
+`hp` (`DRAFT_SLOT_HP` if it gives none), the boss's health is their sum, and
+the table has no `build`, so it can only be practised.
 
 **Audio.** `sfx(cue)` only casts a vote; `sfx_step()` resolves each frame's
 votes: one voice per cue, at most `SFX_VOICES` a frame, and the count scales
@@ -917,8 +918,8 @@ Known gaps:
   (`draft_rosette`). Between them a second iris bloom non-spell keeps the
   sketch's arcs, but each blade loops once and then runs straight out past
   the player (`draft_iris_loop`). Last, `Slow Rosette` (a placeholder name)
-  is Iris Rosette slowed to half its pace, cast from the middle of the field
-  (`draft_slow_rosette`).
+  is Iris Rosette slowed to half its pace, its blades as long, cast from
+  where Mika stands for his centred spells (`draft_slow_rosette`).
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.
 - Stages one and two's fodder can only move as `wave_line` and `wave_cross`

@@ -20,6 +20,11 @@
 /// bound to a struct for its arm. A pen's life is its pair's clock; a dart
 /// knows the clock from the frame it was laid.
 
+// Each of his drafts' health: three times `DRAFT_SLOT_HP`. Full focused fire,
+// every shot landing, deals 30 a second (`rank_full_fire`), so this is about
+// 36 seconds of it against a 40-second clock.
+#macro SYLVIA_DRAFT_HP 1080
+
 // The spirals: centres `DX` either side of him and `DY` below, each of `ARMS`
 // arms evenly round. An arm winds `TURNS` times counterclockwise from radius
 // `R0` at bearing `A0` (plus its share of the turn) out to `R1` (the right
@@ -300,7 +305,8 @@ function sylvia_spin_task(_u) {
 // turn as far and run straight too. The second spell, **Slow Rosette** (a
 // placeholder name), is Iris Rosette from the middle of the field with the
 // whole pattern slowed to `SLOW` of its pace: every speed, and the volleys'
-// rhythm and marks with it, so the flower keeps its shape.
+// rhythm and marks with it, so the flower keeps its shape. Its blades keep a
+// trail node every `1 / SLOW` frames, so they are as long as at full pace.
 // ---------------------------------------------------------------------------
 
 #macro SYLVIA_IRIS_EVERY 90
@@ -342,7 +348,8 @@ function draft_sylvia_rosette(_e, _g, _t) {
 }
 
 /// @desc **Slow Rosette** (Sylvia's, a draft spell; placeholder name): Iris
-///       Rosette at `SLOW` of its pace. Its row puts him in the middle.
+///       Rosette at `SLOW` of its pace. Its row puts him where Mika stands
+///       for his centred spells.
 function draft_sylvia_slow_rosette(_e, _g, _t) {
     sylvia_iris(_e, _t, SYLVIA_IRIS_ROSETTE_ARC,
                 ceil(SYLVIA_IRIS_ROSETTE_LIFE / SYLVIA_IRIS_SLOW), -1,
@@ -358,6 +365,8 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1) {
     var _delay = floor(SYLVIA_IRIS_DELAY / _pace + 0.5);
     var _spd = SYLVIA_IRIS_SPD * _pace;
     var _orb = SYLVIA_IRIS_ORB * _pace;
+    // Frames between a blade's trail nodes, so a slow blade is as long.
+    var _gap = max(1, floor(1 / _pace + 0.5));
     var _u = _t mod _every;
     var _k = _t div _every;
     var _way = ((_k mod 2) == 0) ? 1 : -1;
@@ -369,12 +378,15 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1) {
         var _for = (_turn_deg < 0) ? -1 : floor(_turn_deg / _turn + 0.5);
         for (var _i = 0; _i < SYLVIA_IRIS_N; _i++) {
             var _th = _base + _i * 360 / SYLVIA_IRIS_N;
-            laser_curve(_e.x + lengthdir_x(SYLVIA_IRIS_R0, _th),
-                        _e.y + lengthdir_y(SYLVIA_IRIS_R0, _th),
-                        _th + _way * SYLVIA_IRIS_OFF, _spd,
-                        -_way * _turn, SYLVIA_IRIS_WID,
-                        ((_i mod 2) == 0) ? BCOL_MAGENTA : BCOL_INDIGO,
-                        _life, _delay, _for);
+            var _l = laser_curve(_e.x + lengthdir_x(SYLVIA_IRIS_R0, _th),
+                                 _e.y + lengthdir_y(SYLVIA_IRIS_R0, _th),
+                                 _th + _way * SYLVIA_IRIS_OFF, _spd,
+                                 -_way * _turn, SYLVIA_IRIS_WID,
+                                 ((_i mod 2) == 0) ? BCOL_MAGENTA
+                                                   : BCOL_INDIGO,
+                                 _life, _delay, _for);
+            if (_l == undefined) break;
+            _l.node_gap = _gap;
         }
     }
 

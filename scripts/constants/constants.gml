@@ -174,8 +174,8 @@
 #macro HIT_MARK_OUT 12
 #macro HIT_MARK_LOCK_R 44
 
-// How many past positions a curved laser keeps, so its length is a number of
-// frames.
+// How many past positions a curved laser keeps, one every `node_gap` frames
+// (usually every frame), so its length is a number of frames.
 #macro CURVE_NODES 64
 
 // ---------------------------------------------------------------------------
