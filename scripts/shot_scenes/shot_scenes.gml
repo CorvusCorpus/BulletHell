@@ -15,7 +15,7 @@ function shot_scene_list() {
               "bullets",
               "motion", "drafts", "draft_attacks", "draft_spell",
               "draft_lasers", "draft_peel", "draft_fling", "draft_iris",
-              "draft_rosette",
+              "draft_rosette", "draft_iris_loop",
               "hex_draw", "hex_seal", "hex_scatter", "hex_gaps",
               "hex_burst",
               "grove", "grove_arrive", "grove_turn", "grove_blood",
@@ -193,8 +193,10 @@ function shot_scene_prepare(_name) {
         case "draft_peel":
         case "draft_fling":
         case "draft_iris":
+        case "draft_iris_loop":
             global.stage_def = draft_stage_def();
             var _fn = draft_sylvia_iris;
+            if (_name == "draft_iris_loop") _fn = draft_sylvia_iris_loop;
             if (_name == "draft_peel") _fn = draft_sylvia_peel;
             if (_name == "draft_fling") _fn = draft_sylvia_fling;
             global.practice = practice_new(draft_stage_def(), 0,
@@ -530,6 +532,7 @@ function shot_pose(_scene, _g) {
         case "draft_peel":
         case "draft_fling":
         case "draft_iris":
+        case "draft_iris_loop":
             // Non-spells, so no declaration; untouchable, as `draft_lasers`.
             // `--burst` offsets count from the attack's first frame.
             _g.player.x = FIELD_CX - 40;

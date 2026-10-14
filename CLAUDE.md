@@ -348,7 +348,8 @@ hit) but not `bullet_clear_all` (phase changes).
 and re-aim at a `look` point every frame. `laser_ray` (a loose laser)
 travels, grows out of where it was fired until it is its full length, and
 is culled when its tail leaves. `laser_curve` is the trail of its head's
-past positions. All three fire in one light (`spr_bul_ray`): a white core
+past positions; its head turns at a fixed rate, for as long as it lives or
+for `_turn_for` frames and then straight. All three fire in one light (`spr_bul_ray`): a white core
 glowing into a band of the hue, a crisp edge and a faint glow past it, and a
 needle point at each end that keeps its shape at any length (a beam's root
 is cut square under its muzzle instead). The sprite is laid along the laser
@@ -913,7 +914,9 @@ Known gaps:
   it with `python tools/shot.py draft_iris`. After it, `Iris Rosette`
   (a placeholder name) is the same as a spell, with the sketch's arcs and
   blades that run a whole loop, so they fold into a flower round him
-  (`draft_rosette`).
+  (`draft_rosette`). Between them a second iris bloom non-spell keeps the
+  sketch's arcs, but each blade loops once and then runs straight out past
+  the player (`draft_iris_loop`).
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.
 - Stages one and two's fodder can only move as `wave_line` and `wave_cross`

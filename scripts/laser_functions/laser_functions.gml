@@ -57,6 +57,9 @@ function laser_blank() {
         t: 0,
         x: 0, y: 0, dir: 0,
         len: 100, wid: 20, spd: 0, turn: 0,
+        // Frames a curve's head has left to turn before it runs straight, or
+        // -1 to turn for as long as it lives.
+        turn_for: -1,
         col: BCOL_BONE,
         warn: 60, hot: 120, fade: 20,
         src: undefined,          // a struct with x/y the origin follows
@@ -87,6 +90,7 @@ function laser_alloc() {
     _l.t = 0;
     _l.spd = 0;
     _l.turn = 0;
+    _l.turn_for = -1;
     _l.src = undefined;
     _l.look = undefined;
     _l.node_n = 0;
@@ -158,15 +162,18 @@ function laser_ray(_x, _y, _dir, _spd, _len, _wid, _col, _life, _delay = 0) {
 /// @desc A trail laid down by a head moving at `_spd` and turning `_turn`
 ///       degrees a frame, drawn in a ray's light (`laser_draw_curve`).
 ///       `_life` is how long the head lives, from when it fires; the trail
-///       then drains away behind it. `_delay` is as `laser_ray`'s.
+///       then drains away behind it. `_delay` is as `laser_ray`'s. With
+///       `_turn_for` (frames), the head stops turning after that long and
+///       runs straight.
 function laser_curve(_x, _y, _dir, _spd, _turn, _wid, _col, _life,
-                     _delay = 0) {
+                     _delay = 0, _turn_for = -1) {
     var _l = laser_alloc();
     if (_l == undefined) return undefined;
     _l.kind = LaserKind.Curve;
     _l.phase = (_delay > 0) ? LaserPhase.Warn : LaserPhase.Fire;
     _l.x = _x; _l.y = _y; _l.dir = _dir;
     _l.spd = _spd; _l.turn = _turn; _l.wid = _wid;
+    _l.turn_for = _turn_for;
     _l.col = _col;
     _l.warn = _delay; _l.hot = _life; _l.fade = CURVE_NODES;
     _l.node_n = 0;
@@ -263,7 +270,10 @@ function laser_step_ray(_l) {
 function laser_step_curve(_l) {
     if (laser_step_delay(_l)) return;
     if (_l.phase == LaserPhase.Fire) {
-        _l.dir += _l.turn;
+        if (_l.turn_for != 0) {
+            _l.dir += _l.turn;
+            if (_l.turn_for > 0) _l.turn_for--;
+        }
         _l.x += lengthdir_x(_l.spd, _l.dir);
         _l.y += lengthdir_y(_l.spd, _l.dir);
         curve_push(_l, _l.x, _l.y);

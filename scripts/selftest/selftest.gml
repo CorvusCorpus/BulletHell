@@ -674,6 +674,12 @@ function test_laser() {
     for (var _i = 0; _i < 100; _i++) laser_step();
     ok("and the trail is capped", _c.node_n <= CURVE_NODES);
 
+    st_reset();
+    var _cs = laser_curve(500, 500, 0, 8, 3, 30, BCOL_ROSE, 400, 0, 10);
+    for (var _i = 0; _i < 20; _i++) laser_step();
+    ok("a curve given turn_for turns that long, then runs straight",
+       abs(angle_difference(_cs.dir, 30)) < 0.01);
+
     // The light at a beam's root must never outlive the beam.
     st_reset();
     var _b2 = laser_beam(400, 300, 0, 900, 40, BCOL_CYAN, 30, 24, 12);

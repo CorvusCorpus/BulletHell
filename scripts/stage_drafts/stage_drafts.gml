@@ -133,6 +133,11 @@ function draft_list() {
         { name: "",             col: BCOL_INDIGO,  time: 40 * FPS,
           move: BossMove.Fixed, attack: draft_sylvia_iris },
 
+        // The same with the sketch's arcs, the blades looping once and then
+        // running straight out.
+        { name: "",             col: BCOL_VIOLET,  time: 40 * FPS,
+          move: BossMove.Fixed, attack: draft_sylvia_iris_loop },
+
         // The same with the sketch's arcs and blades that loop, as a spell.
         // Placeholder name.
         { name: "Iris Rosette", col: BCOL_MAGENTA, time: 40 * FPS,
