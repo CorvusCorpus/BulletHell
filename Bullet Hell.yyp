@@ -47,6 +47,7 @@
   },
   "name":"Bullet Hell",
   "resources":[
+    {"id":{"name":"draft_sylvia","path":"scripts/draft_sylvia/draft_sylvia.yy",},},
     {"id":{"name":"obj_boot","path":"objects/obj_boot/obj_boot.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},
     {"id":{"name":"obj_practice","path":"objects/obj_practice/obj_practice.yy",},},

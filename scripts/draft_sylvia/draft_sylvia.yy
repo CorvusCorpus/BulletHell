@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"draft_sylvia",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"draft_sylvia",
+  "parent":{
+    "name":"content",
+    "path":"folders/Scripts/content.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

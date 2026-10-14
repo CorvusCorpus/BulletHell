@@ -75,6 +75,10 @@ function bullet_blank() {
         // Survives `bullet_clear_circle` (bombs), not `bullet_clear_all`.
         resist: false,
 
+        // How many more times the field's side walls turn it back
+        // (`bullet_bounce`).
+        bounce: 0,
+
         grazed: false,
     };
 }
@@ -171,6 +175,7 @@ function fire(_x, _y, _spd, _dir, _shape, _col, _delay = BULLET_DELAY_DEFAULT) {
     _b.q_i = 0;
     _b.q_at = infinity;
     _b.resist = false;
+    _b.bounce = 0;
     _b.grazed = false;
 
     // A vote for this shape's shot cue; `sfx_step` turns a frame's votes into
@@ -552,6 +557,28 @@ function bullet_step(_tx, _ty) {
                 _u.life = _life + 1;
                 continue;
             }
+            if (_u.bmod == BMod.Task) {
+                // Its task places it, and it isn't culled while the task has
+                // it. A task that lets it go moves it from the next frame.
+                _u.px = _u.x;
+                _u.py = _u.y;
+                if (_u.mod_s(_u)) {
+                    bullet_kill_at(_i);
+                    continue;
+                }
+                // While the task has it, `dir` and `spd` follow its motion on
+                // screen; one that lets it go has set them itself.
+                if (_u.bmod == BMod.Task) {
+                    var _mx = _u.x - _u.px;
+                    var _my = _u.y - _u.py;
+                    _u.spd = sqrt(_mx * _mx + _my * _my);
+                    if (_u.spd > 0) _u.dir = point_direction(0, 0, _mx, _my);
+                }
+                if (_oriented[_u.shape]) _u.angle = _u.dir;
+                else _u.angle += _u.spin;
+                _u.life = _life + 1;
+                continue;
+            }
             bullet_apply_mod(_u, _tx, _ty);
         }
 
@@ -598,6 +625,24 @@ function bullet_step(_tx, _ty) {
             }
             _x += lengthdir_x(_spd, _dir);
             _y += lengthdir_y(_spd, _dir);
+        }
+
+        // Past a side wall with a bounce left: mirrored back into the field,
+        // its heading, turn and sideways velocity with it.
+        if ((_x < FIELD_X0 || _x > FIELD_X1) && _u.bounce > 0) {
+            _u.bounce--;
+            _x = (_x < FIELD_X0) ? 2 * FIELD_X0 - _x : 2 * FIELD_X1 - _x;
+            _dir = 180 - _dir;
+            _u.dir = _dir;
+            if (_u.cart) {
+                _u.vx = -_u.vx;
+                _u.ax = -_u.ax;
+                var _vlo = _u.vx_min;
+                _u.vx_min = -_u.vx_max;
+                _u.vx_max = -_vlo;
+            } else {
+                _u.turn = -_u.turn;
+            }
         }
         _u.x = _x;
         _u.y = _y;
@@ -715,6 +760,38 @@ function bullet_orbit_step(_u) {
     _u.mod_s = undefined;
     _u.spd *= _o.fling;
     bullet_accel_at(_u, _u.life + _o.hold, -_o.brake, _o.flr);
+}
+
+// ---------------------------------------------------------------------------
+// Tasks (`BMod.Task`) and bounces
+// ---------------------------------------------------------------------------
+
+/// @desc Hand bullet `_u` to a task, ph3's way of moving a shot by script: from
+///       its first live frame, `_task(bullet)` is called once a frame instead
+///       of the bullet moving itself. It sets `x` and `y` (the hit test sweeps
+///       from where it was, and `dir` and `spd` follow). It returns true when
+///       the bullet is spent, or lets it go by setting `bmod` back to
+///       `BMod.Plain` with its own `dir` and `spd`. The bullet isn't culled
+///       while its task has it. `mod_a` and `mod_b` are free for the task's
+///       own use; it is usually a method bound to a struct its bullets share.
+///       Passes `undefined` through.
+function bullet_task(_u, _task) {
+    if (_u == undefined) return undefined;
+    bullet_repolar(_u);
+    _u.bmod = BMod.Task;
+    _u.mod_s = _task;
+    _u.acc = 0;
+    _u.turn = 0;
+    return _u;
+}
+
+/// @desc Let the field's side walls turn bullet `_u` back `_times` times
+///       (mirrored, see `bullet_step`); after that it leaves as usual. Passes
+///       `undefined` through.
+function bullet_bounce(_u, _times) {
+    if (_u == undefined) return undefined;
+    _u.bounce = _times;
+    return _u;
 }
 
 // ---------------------------------------------------------------------------

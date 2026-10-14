@@ -80,6 +80,7 @@ function selftest_run() {
     test_music();
     test_attacks_run();
     test_bullet_orbit();
+    test_bullet_task();
     test_mika_disc_runs();
     test_bullet_cost();
 
@@ -3942,6 +3943,61 @@ function test_bullet_orbit() {
         bullet_step(FIELD_CX, FIELD_Y1);
     }
     ok("and then leaves the field", bullet_count() == 0);
+    st_reset();
+}
+
+/// @desc `BMod.Task`: a task places its bullet every frame, which isn't
+///       culled while it has it and dies when the task says it is spent; a
+///       task that lets it go leaves an ordinary bullet. And a bounce turns a
+///       bullet back off a side wall as many times as it is given.
+function test_bullet_task() {
+    st_reset();
+    var _hold = { at_x: -2000, spent: false };
+    var _u = bullet_task(fire(0, 0, 0, 0, BSHAPE_ORB, BCOL_CYAN, 0),
+                         method(_hold, function(_b) {
+                             _b.x = at_x;
+                             _b.y = FIELD_CY;
+                             return spent;
+                         }));
+    for (var _f = 0; _f < 20; _f++) bullet_step(FIELD_CX, FIELD_Y1);
+    ok("a task places its bullet, and it isn't culled while it has it",
+       bullet_count() == 1 && _u.x == -2000 && _u.y == FIELD_CY);
+    _hold.spent = true;
+    bullet_step(FIELD_CX, FIELD_Y1);
+    ok("and it dies when the task says it is spent", bullet_count() == 0);
+
+    st_reset();
+    var _go = { at: 5 };
+    _u = bullet_task(fire(FIELD_CX, FIELD_CY, 0, 0, BSHAPE_ORB, BCOL_CYAN, 0),
+                     method(_go, function(_b) {
+                         _b.x += 2;
+                         if (_b.life >= at) {
+                             _b.bmod = BMod.Plain;
+                             _b.mod_s = undefined;
+                             _b.dir = 0;
+                             _b.spd = 6;
+                         }
+                         return false;
+                     }));
+    bullet_step(FIELD_CX, FIELD_Y1);
+    ok("its dir and spd follow the task's motion",
+       abs(_u.spd - 2) < 0.01 && abs(angle_difference(_u.dir, 0)) < 0.01);
+    for (var _f = 0; _f < 10; _f++) bullet_step(FIELD_CX, FIELD_Y1);
+    ok("a task can let it go as an ordinary bullet",
+       _u.bmod == BMod.Plain && _u.spd == 6);
+
+    st_reset();
+    _u = bullet_bounce(fire(FIELD_X1 - 3, FIELD_CY, 8, 30, BSHAPE_ORB,
+                            BCOL_CYAN, 0), 1);
+    bullet_step(FIELD_CX, FIELD_Y1);
+    ok("a bounce turns it back off a side wall, mirrored",
+       _u.x <= FIELD_X1 && abs(angle_difference(_u.dir, 150)) < 0.01
+       && _u.bounce == 0);
+    _u.dir = 0;
+    for (var _f = 0; _f < 200 && bullet_count() > 0; _f++) {
+        bullet_step(FIELD_CX, FIELD_Y1);
+    }
+    ok("and with none left it leaves", bullet_count() == 0);
     st_reset();
 }
 

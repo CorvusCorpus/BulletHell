@@ -86,8 +86,8 @@ function draft_boss_spawn(_g) {
 // ---------------------------------------------------------------------------
 
 /// @desc Every unassigned attack. A name makes a row a spell; `move` is
-///       optional (default drift). To add an idea: one row here and its
-///       function below.
+///       optional (default drift), and so is a `Step` row's `hold`. To add an
+///       idea: one row here and its function below.
 function draft_list() {
     return [
         { name: "",             col: BCOL_INDIGO,  time: 30 * FPS,
@@ -116,6 +116,16 @@ function draft_list() {
         // `Fixed`, so they all leave from one place.
         { name: "Three Lights", col: BCOL_VIOLET,  time: 40 * FPS,
           move: BossMove.Fixed, attack: draft_three_lights },
+
+        // Sylvia's non-spell sketches "Two spirals: peel" and "spin and
+        // fling" (`draft_sylvia`), a pair of spirals laid each hold.
+        { name: "",             col: BCOL_MAGENTA, time: 40 * FPS,
+          move: BossMove.Step, hold: SYLVIA_SPI_HOLD,
+          attack: draft_sylvia_peel },
+
+        { name: "",             col: BCOL_CYAN,    time: 40 * FPS,
+          move: BossMove.Step, hold: SYLVIA_SPI_HOLD,
+          attack: draft_sylvia_fling },
     ];
 }
 
@@ -129,7 +139,7 @@ function draft_phases() {
     for (var _i = 0; _i < _n; _i++) {
         var _d = _l[_i];
         var _spell = (_d.name != "");
-        array_push(_out, {
+        var _row = {
             kind: _spell ? AttackKind.Spell : AttackKind.NonSpell,
             name: _d.name,
             col: _d.col,
@@ -139,7 +149,9 @@ function draft_phases() {
             time: _d.time,
             move: _d[$ "move"] ?? BossMove.Drift,
             attack: _d.attack,
-        });
+        };
+        if (_d[$ "hold"] != undefined) _row.hold = _d.hold;
+        array_push(_out, _row);
     }
     return _out;
 }

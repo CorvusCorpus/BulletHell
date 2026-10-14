@@ -604,6 +604,7 @@ enum BMod {
     Home,       // steers toward the player, weakly, for as long as it lives
     Wander,     // drifts on a sine
     Orbit,      // rides a tilted orbit round a moving centre (`bullet_orbit`)
+    Task,       // placed by its own function every frame (`bullet_task`)
 }
 
 /// What a bullet can be told to do at a frame (ph3's `AddPattern` family).
