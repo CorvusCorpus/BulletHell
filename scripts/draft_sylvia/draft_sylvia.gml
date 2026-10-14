@@ -54,11 +54,12 @@
 
 // Spin and fling: each spiral spins up over `RAMP` frames to `SPIN` degrees a
 // frame, and `AT` frames after it came alive every dart is let go along its
-// circle at the speed it had there, plus `KICK`.
+// circle at `PACE` times the speed it had there plus `KICK`.
 #macro SYLVIA_FLING_RAMP 40
 #macro SYLVIA_FLING_SPIN 2.0
 #macro SYLVIA_FLING_AT 64
 #macro SYLVIA_FLING_KICK 1.0
+#macro SYLVIA_FLING_PACE 0.85
 
 // ---------------------------------------------------------------------------
 // The attacks
@@ -278,7 +279,7 @@ function sylvia_spin_task(_u) {
     _u.bmod = BMod.Plain;
     _u.mod_s = undefined;
     _u.dir = _ang - m * 90;
-    _u.spd = degtorad(_w) * _r + SYLVIA_FLING_KICK;
+    _u.spd = (degtorad(_w) * _r + SYLVIA_FLING_KICK) * SYLVIA_FLING_PACE;
     return false;
 }
 
