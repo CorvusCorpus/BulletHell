@@ -142,6 +142,9 @@ function mika_def() {
     };
 }
 
+// A non-spell's par (`rank_attack_par`), as a share of its clock.
+#macro MIKA_N_PAR 0.7
+
 /// @desc The fifteen slots, one row each in fight order. This is the only
 ///       list to edit; `mika_phases` derives the phase table from it.
 ///
@@ -177,10 +180,17 @@ function mika_slots() {
     return [
         // N1 -- the disc (`mika_nonspells`). `Step`, holding whole turns of
         // the rings between hops (`hold`, counted from the end of the wind-up,
-        // `hold_from`); nothing is shed while he hops. Its health is the bead mill's (priced for his rings blocking
-        // part of the player's fire) plus six seconds of full focused fire
-        // (`rank_full_fire`), for the disc's start before its sand comes loose.
-        { name: "", col: BCOL_AMBER, hp: 440, time: 35 * FPS,
+        // `hold_from`); nothing is shed while he hops.
+        //
+        // The non-spells' health is about what a headless bot (focused fire,
+        // dodging, under him when it can be) had dealt 15 seconds in, 13 on
+        // N7's shorter clock. It deals most early: as the sand builds up it
+        // is pushed out from under him, and on N4 and N7 its damage stops
+        // growing at all after 20 seconds or so. His rings stop most of the
+        // fire, so `par` is set from the clock (`MIKA_N_PAR`) rather than
+        // priced on every shot landing.
+        { name: "", col: BCOL_AMBER, hp: 290, time: 35 * FPS,
+          par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_DISC_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n1_sanddisc,
           fire_at: MIKA_DISC_WIND },
@@ -191,8 +201,9 @@ function mika_slots() {
           move: BossMove.Fixed, attack: mika_storm_cage,
           fire_at: STORM_STRIKE },
 
-        // N2 -- N1 mirrored, with its hues swapped; its health is N1's.
-        { name: "", col: BCOL_AMBER, hp: 440, time: 35 * FPS,
+        // N2 -- N1 mirrored, with its hues swapped.
+        { name: "", col: BCOL_AMBER, hp: 290, time: 35 * FPS,
+          par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_DISC_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n2_sanddisc,
           fire_at: MIKA_DISC_WIND },
@@ -204,11 +215,8 @@ function mika_slots() {
           attack: mika_chakram_blitz, fire_at: CHAKRAM_FIRST },
 
         // N3 -- the woven disc (`mika_nonspells`), held between hops as N1 is.
-        // Four rings block more of the player's fire: measured headlessly on
-        // the old flat orbit, 16% of shots reached him against 24% for two,
-        // so its health was N1's times 0.69 (not measured on the 2.5D orbit),
-        // since trimmed from playtesting.
-        { name: "", col: BCOL_AMBER, hp: 250, time: 35 * FPS,
+        { name: "", col: BCOL_AMBER, hp: 145, time: 35 * FPS,
+          par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_DISC_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n3_woven,
           fire_at: MIKA_DISC_WIND },
@@ -217,26 +225,26 @@ function mika_slots() {
           time: 44 * FPS, attack: mika_three_gates },
 
         // N4 -- N3 mirrored, with its colours swapped, slower and denser
-        // (`MIKA_N4_PACE`); its health is N3's.
-        { name: "", col: BCOL_AMBER, hp: 250, time: 35 * FPS,
+        // (`MIKA_N4_PACE`).
+        { name: "", col: BCOL_AMBER, hp: 140, time: 35 * FPS,
+          par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_N4_STAY,
           hold_from: MIKA_N4_WIND, attack: mika_n4_woven,
           fire_at: MIKA_N4_WIND },
         mika_unwritten_row(true, 4),     // S4
 
-        // N5 -- pulses (`mika_nonspells`), held between hops as N1 is. Six
-        // rings block more of the player's fire than four: on the old flat
-        // orbit 14% of shots reached him against 16%, so its health is N3's
-        // times 14/16 (a first guess, not measured on the 2.5D orbit).
-        { name: "", col: BCOL_AMBER, hp: 220, time: 35 * FPS,
+        // N5 -- pulses (`mika_nonspells`), held between hops as N1 is.
+        { name: "", col: BCOL_AMBER, hp: 140, time: 35 * FPS,
+          par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_SIX_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n5_pulses,
           fire_at: MIKA_DISC_WIND },
         mika_unwritten_row(true, 5),     // S5
 
         // N6 -- N5 mirrored, with its colours swapped and thicker, rarer
-        // pulses; its health is N5's.
-        { name: "", col: BCOL_AMBER, hp: 220, time: 35 * FPS,
+        // pulses.
+        { name: "", col: BCOL_AMBER, hp: 140, time: 35 * FPS,
+          par: MIKA_N_PAR * 35 * FPS,
           move: BossMove.Step, hold: MIKA_SIX_STAY,
           hold_from: MIKA_DISC_WIND, attack: mika_n6_pulses,
           fire_at: MIKA_DISC_WIND },
@@ -244,9 +252,9 @@ function mika_slots() {
 
         // N7 -- the reversing disc (`mika_nonspells`), with a bolt from every
         // ring at each reversal. His hops are its reversals: a whole turn each
-        // way between them. A shorter clock; its health is N5's scaled by 30/35 for it
-        // (a first guess).
-        { name: "", col: BCOL_AMBER, hp: 190, time: 30 * FPS,
+        // way between them. A shorter clock.
+        { name: "", col: BCOL_AMBER, hp: 90, time: 30 * FPS,
+          par: MIKA_N_PAR * 30 * FPS,
           move: BossMove.Step, hold: MIKA_REVERSE_HOLD,
           hold_from: MIKA_DISC_WIND, attack: mika_n7_reversing,
           fire_at: MIKA_DISC_WIND },
