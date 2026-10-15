@@ -25,9 +25,11 @@
  *                     changes) and `turnAt(t)` (degrees turned by frame `t`,
  *                     for a turn that isn't steady); see `orbitRadius`.
  *   patterns          [{name, emit(api), step?(api), orbit?, orbits?, boss?,
- *                     loop?}]
+ *                     bossAt?(api), loop?}]
  * A pattern's `orbit` overrides fields of the set's, its `orbits` replaces
- * them (each over the set's `orbit`), and its `boss` the set's. `loop` is the frames
+ * them (each over the set's `orbit`), and its `boss` the set's. `bossAt`
+ * returns where the boss is each frame ({x, y}), for a pattern that moves him
+ * itself. `loop` is the frames
  * after which it repeats exactly (default one orbit), used for GIFs.
  */
 (function () {
@@ -116,6 +118,12 @@ function onOrbit(p, rad, c = boss, o = orbit) {
 
 // `BossMove.Step` (`boss_move_step`): hold, hop to the next station, hold.
 function stepBoss() {
+    if (pat.bossAt) {
+        const q = pat.bossAt(api);
+        boss.x = q.x;
+        boss.y = q.y;
+        return;
+    }
     if (moves !== 'step') return;
     const cyc = GAME.stepHold + GAME.stepMove;
     const n = Math.floor(t / cyc);
