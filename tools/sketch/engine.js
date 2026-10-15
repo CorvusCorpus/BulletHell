@@ -25,10 +25,15 @@
  *                     changes) and `turnAt(t)` (degrees turned by frame `t`,
  *                     for a turn that isn't steady); see `orbitRadius`.
  *   patterns          [{name, emit(api), step?(api), orbit?, orbits?, boss?,
- *                     loop?}]
+ *                     hold?, bossAt?(api), loop?}]
  * A pattern's `orbit` overrides fields of the set's, its `orbits` replaces
- * them (each over the set's `orbit`), and its `boss` the set's. `loop` is the frames
+ * them (each over the set's `orbit`), and its `boss` the set's. `hold` is the
+ * frames a stepping boss holds between hops (a phase's `hold`; default
+ * BOSS_STEP_HOLD). `bossAt` returns where the boss is each frame ({x, y}), for a
+ * pattern that moves him itself. `loop` is the frames
  * after which it repeats exactly (default one orbit), used for GIFs.
+ *
+ * A pattern fires through `api.grain`, `api.bullet` and `api.laser` (see each).
  */
 (function () {
 'use strict';
@@ -67,7 +72,7 @@ const wrap = (a) => ((a % 360) + 360) % 360;
 const sets = {};
 let set = null, pat = null, orbit = null, orbits = [], moves = 'still';
 const boss = { x: GAME.bossX, y: GAME.bossY };
-let t = 0, B = [], hits = 0, inv = 0, store = {};
+let t = 0, B = [], L = [], hits = 0, inv = 0, store = {};
 const opts = {};
 const pl = { x: GAME.playerX, y: GAME.playerY, tx: GAME.playerX,
              ty: GAME.playerY, focus: false, show: true };
@@ -116,10 +121,16 @@ function onOrbit(p, rad, c = boss, o = orbit) {
 
 // `BossMove.Step` (`boss_move_step`): hold, hop to the next station, hold.
 function stepBoss() {
+    if (pat.bossAt) {
+        const q = pat.bossAt(api);
+        boss.x = q.x;
+        boss.y = q.y;
+        return;
+    }
     if (moves !== 'step') return;
-    const cyc = GAME.stepHold + GAME.stepMove;
+    const hold = pat.hold || GAME.stepHold, cyc = hold + GAME.stepMove;
     const n = Math.floor(t / cyc);
-    const to = (t % cyc < GAME.stepHold) ? n : n + 1;
+    const to = (t % cyc < hold) ? n : n + 1;
     const tx = GAME.bossX + dsin(to * 137) * GAME.stepX;
     const ty = GAME.bossY + dsin(to * 71) * GAME.stepY;
     boss.x += (tx - boss.x) * GAME.stepRate;
@@ -129,7 +140,8 @@ function stepBoss() {
 // Is the boss holding still (`boss_holding`)? Always, unless it steps.
 function holding() {
     if (moves !== 'step') return true;
-    return t % (GAME.stepHold + GAME.stepMove) < GAME.stepHold;
+    const hold = pat.hold || GAME.stepHold;
+    return t % (hold + GAME.stepMove) < hold;
 }
 
 // Did ring `i`'s phase pass `deg` (mod 360) on this frame?
@@ -195,6 +207,159 @@ function stepGrain(b) {
     b.y += -dsin(b.dir) * b.v + b.dy;
 }
 
+// ---- lasers --------------------------------------------------------------------
+
+/* A laser, after `laser_functions`. All three kinds are drawn in the game's
+ * light (`spr_bul_ray`): a white core in a band of its colour `wid` wide, edge
+ * to edge, a faint glow past that, and a needle point at each end BRAY.tip
+ * widths long (a beam's root is square, under an orb of the same light). Each
+ * kills only while firing and only across its white core (BRAY.hit of its half
+ * width), and a ray's or a curve's kill spine stops BRAY.inset widths short of
+ * each point. While one is shorter than its points together it is drawn and
+ * collided smaller (`laser_grow`).
+ *   'beam' (the default) is anchored at (x, y) and runs `len` toward `dir`: a
+ *          thin warning line for `warn` frames, then lethal for `hot` (opening
+ *          to full width over its first 3), then narrowing away over `fade`.
+ *          It turns `turn` degrees a frame, or re-aims at `look` ({x, y}).
+ *   'ray'  is a loose needle whose head travels at `spd`, turning `turn` a
+ *          frame, growing out of where it was fired until it is `len` long;
+ *          lethal for `hot` frames, then fading over 14. It is gone once it
+ *          has wholly left the field and its margin.
+ *   'curve' is the trail of a head moving at `spd` and turning `turn` degrees
+ *          a frame for `hot` frames, at most CURVE_NODES nodes long; then it
+ *          drains a node a frame, harmless.
+ * A ray or a curve given a `delay` first waits that long as a faint needle
+ * shrinking onto where it will fire. Any laser may take `step(l, api)`, run
+ * first each frame. Sketch only, not in the game: a curve's `hold` (frames its
+ * whole trail stays lethal after its head stops, before it drains), and
+ * changing a curve's `turn` from its `step` (the game's curves turn at a
+ * fixed rate, so each draws an arc of a circle). */
+const CURVE_NODES = 64;
+const BRAY = { hit: 0.45, tip: 3.6, inset: 1.0 };   // BRAY_HIT, BRAY_TIP and BRAY_INSET per BRAY_BODY
+const LASER_CULL = 160;                             // CULL_MARGIN
+
+function laser(o) {
+    const l = Object.assign({
+        kind: 'beam', x: 0, y: 0, dir: 270, len: 1400, wid: 30, col: COL.cyan,
+        warn: 30, hot: 60, fade: 12, spd: 8, turn: 0, hold: 0, delay: 0, age: 0, run: 0,
+    }, o);
+    if (l.kind === 'curve') { l.nx = [l.x]; l.ny = [l.y]; }
+    if (l.kind === 'ray') l.fade = 14;
+    l.x0 = l.x;
+    l.y0 = l.y;
+    L.push(l);
+    return l;
+}
+
+// Advance laser `l` a frame; true once it is spent.
+function stepLaser(l) {
+    l.age++;
+    if (l.step) l.step(l, api);
+    if (l.kind === 'beam') {
+        if (l.look) l.dir = pdir(l.look.x - l.x, l.look.y - l.y);
+        else l.dir += l.turn;
+        return l.age >= l.warn + l.hot + l.fade;
+    }
+    const u = l.age - l.delay;
+    if (u <= 0) return false;
+    if (l.kind === 'ray') {
+        l.dir += l.turn;
+        l.x += dcos(l.dir) * l.spd;
+        l.y -= dsin(l.dir) * l.spd;
+        l.run += Math.abs(l.spd);
+        const span = Math.min(l.len, l.run);
+        const tx = l.x - dcos(l.dir) * span, ty = l.y + dsin(l.dir) * span;
+        const gone = Math.min(l.x, tx) > GAME.fieldW + LASER_CULL || Math.max(l.x, tx) < -LASER_CULL
+                  || Math.min(l.y, ty) > GAME.fieldH + LASER_CULL || Math.max(l.y, ty) < -LASER_CULL;
+        return gone || u >= l.hot + l.fade;
+    }
+    if (u <= l.hot) {
+        l.dir += l.turn;
+        l.x += dcos(l.dir) * l.spd;
+        l.y -= dsin(l.dir) * l.spd;
+        l.nx.push(l.x); l.ny.push(l.y);
+        if (l.nx.length > CURVE_NODES) { l.nx.shift(); l.ny.shift(); }
+        return false;
+    }
+    if (u <= l.hot + l.hold) return false;
+    l.nx.shift(); l.ny.shift();
+    return l.nx.length <= 1;
+}
+
+function laserLethal(l) {
+    if (l.kind === 'beam') return l.age >= l.warn && l.age < l.warn + l.hot;
+    const u = l.age - l.delay;
+    if (u <= 0) return false;
+    return u <= l.hot + (l.kind === 'curve' ? l.hold : 0);
+}
+
+// The points along laser `l`'s spine, tail (or root) first.
+function laserSpine(l) {
+    if (l.kind === 'curve') return l.nx.map((x, k) => ({ x, y: l.ny[k] }));
+    if (l.kind === 'ray') {
+        const span = Math.min(l.len, l.run);
+        return [{ x: l.x - dcos(l.dir) * span, y: l.y + dsin(l.dir) * span }, { x: l.x, y: l.y }];
+    }
+    return [{ x: l.x, y: l.y }, { x: l.x + dcos(l.dir) * l.len, y: l.y - dsin(l.dir) * l.len }];
+}
+
+function arcLengths(pts) {
+    const cum = [0];
+    for (let k = 1; k < pts.length; k++) {
+        cum.push(cum[k - 1] + Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y));
+    }
+    return cum;
+}
+
+// The point `d` along polyline `pts` (with arc lengths `cum`).
+function pointAlong(pts, cum, d) {
+    let k = 1;
+    while (k < pts.length - 1 && cum[k] < d) k++;
+    const seg = cum[k] - cum[k - 1], f = seg > 0 ? Math.max(0, Math.min(1, (d - cum[k - 1]) / seg)) : 0;
+    return { x: pts[k - 1].x + (pts[k].x - pts[k - 1].x) * f,
+             y: pts[k - 1].y + (pts[k].y - pts[k - 1].y) * f };
+}
+
+// The part of `pts` from `a` along it to `b` short of its end.
+function trimmed(pts, a, b) {
+    const cum = arcLengths(pts), total = cum[cum.length - 1];
+    if (a + b >= total) return [];
+    const out = [pointAlong(pts, cum, a)];
+    for (let k = 1; k < pts.length - 1; k++) if (cum[k] > a && cum[k] < total - b) out.push(pts[k]);
+    out.push(pointAlong(pts, cum, total - b));
+    return out;
+}
+
+// How much of its full width laser `l` is drawn and collided at while it
+// fires: a beam opening, and any laser shorter than its points together.
+function laserScale(l, pts) {
+    const ends = l.kind === 'beam' ? 1 : 2;
+    const cum = arcLengths(pts), total = cum[cum.length - 1];
+    let k = Math.min(1, total / (ends * BRAY.tip * l.wid));
+    if (l.kind === 'beam') k *= Math.min(1, (l.age - l.warn + 1) / 3);
+    return k;
+}
+
+// Does laser `l` touch a circle of radius `rad` at (x, y)?
+function laserHit(l, x, y, rad) {
+    if (!laserLethal(l)) return false;
+    let pts = laserSpine(l);
+    if (pts.length < 2) return false;
+    const k = laserScale(l, pts), inset = BRAY.inset * l.wid * k;
+    pts = trimmed(pts, l.kind === 'beam' ? 0 : inset, inset);
+    let best = Infinity;
+    for (let j = 0; j + 1 < pts.length; j++) {
+        best = Math.min(best, segDist(x, y, pts[j].x, pts[j].y, pts[j + 1].x, pts[j + 1].y));
+    }
+    return best < rad + l.wid * 0.5 * BRAY.hit * k;
+}
+
+function segDist(px, py, x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y1 - y0, dd = dx * dx + dy * dy;
+    const u = dd ? Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / dd)) : 0;
+    return Math.hypot(px - x0 - u * dx, py - y0 - u * dy);
+}
+
 // ---- the frame ---------------------------------------------------------------
 
 const api = {
@@ -209,7 +374,7 @@ const api = {
     get player() { return pl; },
     opts, get store() { return store; },
     ring: (i) => ringAt(i, t), ringAt, passed, rim, orbOf, onOrbit,
-    grain, bullet,
+    grain, bullet, laser,
 };
 
 function step() {
@@ -217,6 +382,12 @@ function step() {
     stepBoss();
     if (pat.step) pat.step(api);
     pat.emit(api);
+    for (let k = L.length - 1; k >= 0; k--) {
+        if (stepLaser(L[k])) {
+            L[k] = L[L.length - 1];
+            L.pop();
+        }
+    }
     for (let k = B.length - 1; k >= 0; k--) {
         const b = B[k];
         b.age++;
@@ -238,13 +409,12 @@ function step() {
 
     if (inv > 0) { inv--; return; }
     if (!pl.show) return;
-    for (const b of B) {
-        if (b.hit ? b.hit(b, pl)
-                  : Math.hypot(b.x - pl.x, b.y - pl.y) < b.r + GAME.playerR) {
-            hits++;
-            inv = 90;
-            break;
-        }
+    const hit = B.some((b) => b.hit ? b.hit(b, pl)
+                                    : Math.hypot(b.x - pl.x, b.y - pl.y) < b.r + GAME.playerR)
+             || L.some((l) => laserHit(l, pl.x, pl.y, GAME.playerR));
+    if (hit) {
+        hits++;
+        inv = 90;
     }
 }
 
@@ -275,10 +445,11 @@ function dot(b, alpha) {
 }
 
 // A long bullet (`len` set: a crystal or shard), drawn as a pointed diamond
-// `len` long along its heading, with a pale core.
+// `len` long along its heading (or along `face`, if set), with a pale core.
 function shard(b) {
     const s = VIEW, L = b.len * s * 0.5, W = Math.max(2, b.r * s * 1.4);
-    const ux = dcos(b.dir), uy = -dsin(b.dir), vx = -uy, vy = ux;
+    const d = b.face !== undefined ? b.face : b.dir;
+    const ux = dcos(d), uy = -dsin(d), vx = -uy, vy = ux;
     const x = b.x * s, y = b.y * s;
     for (const [k, col] of [[1, b.col], [0.45, '#ffffff']]) {
         g.fillStyle = col;
@@ -290,6 +461,83 @@ function shard(b) {
         g.closePath();
         g.fill();
     }
+}
+
+// Fill light along `pts` (field coordinates) `w` wide, narrowing to a needle
+// point `tip` long at its tail (if `tail`) and its head (if `head`).
+function ribbon(pts, w, tip, tail, head) {
+    const cum = arcLengths(pts), total = cum[cum.length - 1];
+    if (total <= 0 || w <= 0) return;
+    const at = new Set(cum);
+    if (tail && tip < total) at.add(tip);
+    if (head && total - tip > 0) at.add(total - tip);
+    const ds = [...at].sort((p, q) => p - q), P = ds.map((d) => pointAlong(pts, cum, d));
+    const left = [], right = [];
+    for (let k = 0; k < P.length; k++) {
+        const p0 = P[Math.max(0, k - 1)], p1 = P[Math.min(P.length - 1, k + 1)];
+        const tl = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+        const nx = -(p1.y - p0.y) / tl, ny = (p1.x - p0.x) / tl;
+        let h = w / 2;
+        if (tail) h *= Math.min(1, ds[k] / tip);
+        if (head) h *= Math.min(1, (total - ds[k]) / tip);
+        left.push([P[k].x + nx * h, P[k].y + ny * h]);
+        right.push([P[k].x - nx * h, P[k].y - ny * h]);
+    }
+    const s = VIEW;
+    g.beginPath();
+    g.moveTo(left[0][0] * s, left[0][1] * s);
+    for (const [x, y] of left.slice(1)) g.lineTo(x * s, y * s);
+    for (const [x, y] of right.reverse()) g.lineTo(x * s, y * s);
+    g.closePath();
+    g.fill();
+}
+
+// A laser in its light: glow, band of hue, white core. A beam's warning is a
+// thin line that brightens in its last stretch; a ray's or curve's delay is a
+// faint needle shrinking onto where it will fire. A fading ray or beam narrows;
+// a draining curve is drawn faint, as it is harmless.
+function drawLaser(l) {
+    const s = VIEW;
+    if (l.kind === 'beam' && l.age < l.warn) {
+        const f = l.age / l.warn;
+        g.strokeStyle = l.col;
+        g.globalAlpha = f < 0.75 ? 0.3 : 0.3 + (f - 0.75) * 2;
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.moveTo(l.x * s, l.y * s);
+        g.lineTo((l.x + dcos(l.dir) * l.len) * s, (l.y - dsin(l.dir) * l.len) * s);
+        g.stroke();
+        g.globalAlpha = 1;
+        return;
+    }
+    if (l.kind !== 'beam' && l.age <= l.delay) {
+        const f = l.age / l.delay, n = (l.kind === 'ray' ? l.len : 60) * (1 + 1.5 * (1 - f));
+        g.fillStyle = l.col;
+        g.globalAlpha = 0.15 + 0.35 * f;
+        ribbon([{ x: l.x0, y: l.y0 }, { x: l.x0 + dcos(l.dir) * n, y: l.y0 - dsin(l.dir) * n }],
+               l.wid * 0.6 * (1 + 0.5 * (1 - f)), BRAY.tip * l.wid * 0.6, true, true);
+        g.globalAlpha = 1;
+        return;
+    }
+    const pts = laserSpine(l);
+    if (pts.length < 2) return;
+    let k = laserScale(l, pts), alpha = 1;
+    if (l.kind === 'beam' && l.age >= l.warn + l.hot) k *= Math.max(0, 1 - (l.age - l.warn - l.hot) / l.fade);
+    if (l.kind === 'ray' && l.age - l.delay > l.hot) k *= Math.max(0, 1 - (l.age - l.delay - l.hot) / l.fade);
+    if (l.kind === 'curve' && !laserLethal(l)) alpha = 0.45;
+    const w = l.wid * k, tip = BRAY.tip * w, tail = l.kind !== 'beam';
+    for (const [m, col, a] of [[1.7, l.col, 0.22], [1, l.col, 0.9], [0.45, '#ffffff', 0.95]]) {
+        g.fillStyle = col;
+        g.globalAlpha = a * alpha;
+        ribbon(pts, w * m, tip * m, tail, true);
+        if (l.kind === 'beam') {
+            // The orb capping its root, LASER_BEAM_ORB (1) widths in radius.
+            g.beginPath();
+            g.arc(l.x * s, l.y * s, w * (m > 1 ? 1.35 : m) * s, 0, 7);
+            g.fill();
+        }
+    }
+    g.globalAlpha = 1;
 }
 
 function drawRing(r) {
@@ -329,6 +577,7 @@ function draw() {
     g.ellipse(boss.x * s, boss.y * s, 22, 30, 0, 0, 7);
     g.fill(); g.stroke();
     for (const r of rings) if (!r.behind) drawRing(r);
+    for (const l of L) drawLaser(l);
     for (const b of B) dot(b, 1);
 
     if (pl.show) {
@@ -354,7 +603,7 @@ function draw() {
 // ---- control -----------------------------------------------------------------
 
 function restart() {
-    t = 0; B = []; hits = 0; inv = 0; store = {};
+    t = 0; B = []; L = []; hits = 0; inv = 0; store = {};
     boss.x = GAME.bossX;
     boss.y = GAME.bossY;
     pl.x = pl.tx = GAME.playerX;
@@ -413,6 +662,7 @@ window.Sketch = {
     get grains() { return B.length; },
     // The live bullets, for measuring a pattern (read only).
     get bullets() { return B; },
+    get lasers() { return L; },
     get hits() { return hits; },
     // The frames after which the current pattern repeats exactly.
     get loop() { return pat.loop ? pat.loop(orbit) : (orbit ? orbit.period : 120); },
