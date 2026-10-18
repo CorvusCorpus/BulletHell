@@ -132,7 +132,7 @@ in role and design.
 ### Yokai Zone
 
 - **Oscura**, on the outskirts: a male quadruped hakutaku who wears glasses,
-  with a design after a snow leopard.
+  with a design after a snow leopard. Ice spells and attacks.
 - **Mikoto and Rena**, who intercept: Mikoto a male chibi kitsune, Rena a
   female nogitsune. The game's only duo boss fight.
 - **Ayana**, the penultimate boss: a feminine male moon rabbit, with lunar
