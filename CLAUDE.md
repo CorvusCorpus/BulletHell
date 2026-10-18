@@ -131,22 +131,29 @@ in role and design.
 
 ### Yokai Zone
 
-- **Oscura**, on the outskirts.
-- **Mikoto and Rena**, who intercept: a duo boss.
-- **Ayana**, the penultimate boss.
-- **Kara**, the zone's final boss.
+- **Oscura**, on the outskirts: a male quadruped hakutaku who wears glasses,
+  with a design after a snow leopard.
+- **Mikoto and Rena**, who intercept: Mikoto a male chibi kitsune, Rena a
+  female nogitsune. The game's only duo boss fight.
+- **Ayana**, the penultimate boss: a feminine male moon rabbit, with lunar
+  spells.
+- **Kara**, the zone's final boss: a female daitengu, a muscular eagle
+  warrior who wields a giant battleaxe.
 
 ### Demon Ruins
 
 - **Ziggy**, a fiend imp, on the outskirts: the tutorial boss, with a
   "level 1" feel. No major gimmick; fire and rock attacks.
-- **Athena**, an assassin, who intercepts.
+- **Athena**, an assassin, who intercepts: an anthropomorphic spider ninja.
+  Her attacks make heavy use of shuriken shot types; maybe a sticky
+  web mechanic.
 - **Sylvia**, the penultimate boss: a skill check, not impossible but a boss
   to come back to later. An egregore after the Cheshire cat. Begins somewhere
   that looks normal and slowly fades into a trippy Wonderland. Gimmick:
   messing with the game's visuals and controls during attacks.
-- **Florentius**, the demon king: the zone's final boss and the game's last
-  boss, locked.
+- **Florentius**, the demon king: the zone's final boss and the game's
+  standard final boss, locked. A male humanoid oni, feminine yet giant
+  (ten feet tall).
 
 ### Eternal Forest
 
@@ -190,10 +197,13 @@ in role and design.
 
 ### Crystal Caverns
 
-- **Zeek**, on the outskirts, before the caverns.
-- **Sally**, who intercepts.
-- **Zalerus**, the penultimate boss.
-- **Sapphire**, the zone's final boss.
+- **Zeek**, on the outskirts, before the caverns: a male quadruped zebra (an
+  Ixion), a technician. A sci-fi harness round his chest carries robot
+  hands, with which he crafts and engineers tools and gadgets.
+- **Sally**, who intercepts: a salamander-kobold with candles on her horns.
+- **Zalerus**, the penultimate boss: a large dragon with gold-plated scales.
+- **Sapphire**, the zone's final boss: a quadruped feline carbuncle, a time
+  mage. Gimmick: slowing, reversing and stopping time in her spells.
 
 ### Secret boss
 
