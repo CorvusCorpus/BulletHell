@@ -929,8 +929,9 @@ Known gaps:
 - Sylvia's "Iris blooms" sketch is the drafting table's last non-spell
   (`draft_sylvia_blooms`): sets of rose seeds, each set at a random turn,
   curve out braking to a stop, and each spins out a spiral of cyan and
-  magenta rice. Unlike the sketch, the seeds curve and the spirals are rice
-  and denser. A seed is a task (`sylvia_seed_task`) that fires its own
+  magenta rice. The sets come in pairs, a one-two with a rest after each
+  pair. Unlike the sketch, the seeds curve, the spirals are rice and
+  denser, and the sets are paired. A seed is a task (`sylvia_seed_task`) that fires its own
   bloom. Photograph it with `python tools/shot.py draft_blooms`.
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.

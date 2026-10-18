@@ -461,20 +461,23 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1,
 // ---------------------------------------------------------------------------
 // Iris blooms
 //
-// From the sketch "Iris blooms". Every `EVERY` frames `SEEDS` seeds (rose
-// balls) leave him evenly round, the set at a random turn, so no two sets lay
-// the same paths. Each leaves at `SPD` and brakes by `BRAKE` a frame, curving
-// along an arc of radius `ARC` (the way the set's blooms spin) until it stops,
-// and there spins out a small iris: `VOLLEYS` volleys of `ARMS` rice, cyan
-// and magenta by turns, one every `GAP` frames at `SHOT` px a frame, the
-// bloom turning `SPIN` degrees a frame, so its arms wind into a spiral. The
-// seed is spent with its last volley. Alternate sets spin the other way.
+// From the sketch "Iris blooms". Sets of `SEEDS` seeds (rose balls) come in
+// pairs, a one-two: the second set `EVERY` frames after the first, then
+// `REST` frames before the next pair. A set's seeds leave him evenly round,
+// the set at a random turn, so no two sets lay the same paths. Each leaves at
+// `SPD` and brakes by `BRAKE` a frame, curving along an arc of radius `ARC`
+// (the way the set's blooms spin) until it stops, and there spins out a small
+// iris: `VOLLEYS` volleys of `ARMS` rice, cyan and magenta by turns, one
+// every `GAP` frames at `SHOT` px a frame, the bloom turning `SPIN` degrees a
+// frame, so its arms wind into a spiral. The seed is spent with its last
+// volley. A pair's second set spins the other way.
 //
 // A seed is moved by a task (`sylvia_seed_task`), which fires its bloom: a
 // bullet's queue holds too few events for this many volleys.
 // ---------------------------------------------------------------------------
 
 #macro SYLVIA_BLOOMS_EVERY 90
+#macro SYLVIA_BLOOMS_REST 150
 #macro SYLVIA_BLOOMS_SEEDS 5
 #macro SYLVIA_BLOOMS_SPD 10
 #macro SYLVIA_BLOOMS_BRAKE 0.22
@@ -487,9 +490,11 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1,
 
 /// @desc **Iris blooms** (Sylvia's, a draft).
 function draft_sylvia_blooms(_e, _g, _t) {
-    if ((_t mod SYLVIA_BLOOMS_EVERY) != 0) return;
+    var _cyc = SYLVIA_BLOOMS_EVERY + SYLVIA_BLOOMS_REST;
+    var _c = _t mod _cyc;
+    if (_c != 0 && _c != SYLVIA_BLOOMS_EVERY) return;
 
-    var _way = (((_t div SYLVIA_BLOOMS_EVERY) mod 2) == 0) ? 1 : -1;
+    var _way = (_c == 0) ? 1 : -1;
     var _base = random(360);
     for (var _i = 0; _i < SYLVIA_BLOOMS_SEEDS; _i++) {
         var _dir = _base + _i * 360 / SYLVIA_BLOOMS_SEEDS;
