@@ -1,8 +1,8 @@
 /// @desc Sylvia's non-spells as drafts on the drafting table, from the
 ///       browser sketch `sylvia.js`: N1 and N2 from "Two spirals: peel" and
-///       "Two spirals: spin and fling", and "Iris bloom" in two versions and
-///       two spells from it (at the end of this file). Placeholders: he has no stage or sprite
-///       yet.
+///       "Two spirals: spin and fling", "Iris bloom" in two versions and
+///       two spells from it, and "Iris blooms" (at the end of this file).
+///       Placeholders: he has no stage or sprite yet.
 ///
 /// At the top of each hold he sends out pens (balls) to two points beside and
 /// below him. From each point the pens wind outward along the arms of a
@@ -456,4 +456,71 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1,
             bullet_cull_at(_o, _round);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Iris blooms
+//
+// The sketch "Iris blooms". Every `EVERY` frames `SEEDS` seeds (rose balls)
+// leave him evenly round at `SPD`, braking by `BRAKE` a frame until they
+// stop, and each spins out a small iris where it stopped: `VOLLEYS` volleys of
+// `ARMS` orbs, cyan and magenta by turns, one every `GAP` frames at `ORB` px a
+// frame, the bloom turning `SPIN` degrees a frame, so every bloom is a
+// pinwheel. The seed bursts with its last volley. Each set of seeds is turned
+// `STEP` degrees on from the last, and alternate sets spin the other way.
+// ---------------------------------------------------------------------------
+
+#macro SYLVIA_BLOOMS_EVERY 90
+#macro SYLVIA_BLOOMS_SEEDS 5
+#macro SYLVIA_BLOOMS_SPD 10
+#macro SYLVIA_BLOOMS_BRAKE 0.22
+#macro SYLVIA_BLOOMS_STEP 36
+#macro SYLVIA_BLOOMS_ARMS 4
+#macro SYLVIA_BLOOMS_VOLLEYS 5
+#macro SYLVIA_BLOOMS_GAP 6
+#macro SYLVIA_BLOOMS_SPIN 7
+#macro SYLVIA_BLOOMS_ORB 3.6
+
+/// @desc **Iris blooms** (Sylvia's, a draft).
+function draft_sylvia_blooms(_e, _g, _t) {
+    if ((_t mod SYLVIA_BLOOMS_EVERY) != 0) return;
+
+    var _k = _t div SYLVIA_BLOOMS_EVERY;
+    var _way = ((_k mod 2) == 0) ? 1 : -1;
+    // The seed's frame (its life) on which it stops: the queue runs before it
+    // moves, so it bursts there having come as far as it will.
+    var _stop = ceil(SYLVIA_BLOOMS_SPD / SYLVIA_BLOOMS_BRAKE) - 1;
+    var _dress = method(undefined, sylvia_bloom_dress);
+    for (var _i = 0; _i < SYLVIA_BLOOMS_SEEDS; _i++) {
+        var _dir = 90 + _k * SYLVIA_BLOOMS_STEP
+                   + _i * 360 / SYLVIA_BLOOMS_SEEDS;
+        var _u = fire(_e.x, _e.y, SYLVIA_BLOOMS_SPD, _dir, BSHAPE_BALL,
+                      BCOL_ROSE);
+        if (_u == undefined) break;
+        bullet_accel_at(_u, 0, -SYLVIA_BLOOMS_BRAKE, 0);
+
+        // A volley's heading is the bloom's turn, not the seed's: the burst
+        // is offset from the seed's heading, so take that back off.
+        for (var _v = 0; _v < SYLVIA_BLOOMS_VOLLEYS; _v++) {
+            var _at = _v * SYLVIA_BLOOMS_GAP;
+            var _off = _way * _at * SYLVIA_BLOOMS_SPIN - _dir;
+            if (_v < SYLVIA_BLOOMS_VOLLEYS - 1) {
+                bullet_shed_at(_u, _stop + _at, SYLVIA_BLOOMS_ARMS,
+                               SYLVIA_BLOOMS_ORB, _off, 0, _dress);
+            } else {
+                bullet_split_at(_u, _stop + _at, SYLVIA_BLOOMS_ARMS,
+                                SYLVIA_BLOOMS_ORB, _off, _dress);
+            }
+        }
+    }
+}
+
+/// @desc A bloom's orb `_k`: born wearing its seed's graphic, so made an orb,
+///       cyan and magenta by turns round the volley.
+function sylvia_bloom_dress(_c, _k) {
+    if (_c == undefined) return;
+    _c.shape = BSHAPE_ORB;
+    _c.col = ((_k mod 2) == 0) ? BCOL_CYAN : BCOL_MAGENTA;
+    _c.r = global.bshape_radius[BSHAPE_ORB];
+    _c.spin = global.bshape_spin[BSHAPE_ORB];
 }

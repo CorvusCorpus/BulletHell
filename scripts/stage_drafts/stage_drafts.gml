@@ -167,6 +167,12 @@ function draft_list() {
           hp: SYLVIA_DRAFT_HP,
           move: BossMove.Fixed, at: { x: FIELD_CX, y: FIELD_CY },
           attack: draft_sylvia_slow_rosette },
+
+        // Sylvia's "Iris blooms" sketch: seeds that stop and burst into small
+        // spirals (`draft_sylvia`). `Fixed`: in the sketch he holds still.
+        { name: "",             col: BCOL_ROSE,    time: 40 * FPS,
+          hp: SYLVIA_DRAFT_HP,
+          move: BossMove.Fixed, attack: draft_sylvia_blooms },
     ];
 }
 
