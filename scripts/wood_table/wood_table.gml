@@ -86,4 +86,16 @@ function wood_table_init() {
         { file: "wood/stone_01.vbuf", kind: "stone", size: 390.8 },
         { file: "wood/stone_02.vbuf", kind: "stone", size: 328.7 },
     ];
+
+    // The canopy: tiles laid out from the path's middle (x across it, z
+    // down it, `period` deep), which the wood repeats down the path and
+    // the shader bends onto it; `gap`, where its clumps thin out over
+    // the path (all but gone at the first, full at the second); and the
+    // hedge across the far end, laid out the same way.
+    global.wood_canopy = {
+        tiles: ["wood/canopy_00.vbuf", "wood/canopy_01.vbuf", "wood/canopy_02.vbuf"],
+        period: 1600.0,
+        gap: [120.0, 420.0],
+        hedge: "wood/hedge.vbuf",
+    };
 }

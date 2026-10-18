@@ -1415,7 +1415,8 @@ function test_wood() {
     var _b = bg_wood();
     var _missing = "";
     var _sets = [["tree", _b.trees], ["far tree", _b.trees_far],
-                 ["charm", _b.charms], ["prop", _b.props]];
+                 ["charm", _b.charms], ["prop", _b.props],
+                 ["canopy", _b.canopy]];
     for (var _s = 0; _s < array_length(_sets); _s++) {
         var _l = _sets[_s][1];
         for (var _i = 0; _i < array_length(_l); _i++) {
@@ -1423,6 +1424,7 @@ function test_wood() {
         }
     }
     if (_b.wrap == -1) _missing += "rope ";
+    if (_b.hedge == -1) _missing += "hedge ";
     ok("every mesh of the wood loads " + _missing, _missing == "");
     ok("...and there are trees, charms and ground cover to load",
        array_length(_b.trees) > 0 && array_length(_b.charms) > 0
@@ -1432,7 +1434,8 @@ function test_wood() {
     var _l = [spr_wood_bark, spr_wood_bark_n, spr_wood_floor, spr_wood_floor_n,
               spr_wood_path, spr_wood_path_n, spr_wood_foliage, spr_wood_flat_n,
               spr_wood_charm, spr_wood_glow, spr_wood_star, spr_wood_moon,
-              spr_wood_ring, spr_wood_cloud, spr_wood_puff];
+              spr_wood_ring, spr_wood_cloud, spr_wood_puff, spr_wood_canopy,
+              spr_wood_canopy_light];
     var _bad = "";
     for (var _i = 0; _i < array_length(_l); _i++) {
         for (var _f = 0; _f < sprite_get_number(_l[_i]); _f++) {

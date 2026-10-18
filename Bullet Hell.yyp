@@ -41,6 +41,10 @@
   ],
   "ForcedPrefabProjectReferences":[],
   "IncludedFiles":[
+    {"$GMIncludedFile":"","%Name":"hedge.vbuf","CopyToMask":-1,"filePath":"datafiles/wood","name":"hedge.vbuf","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
+    {"$GMIncludedFile":"","%Name":"canopy_02.vbuf","CopyToMask":-1,"filePath":"datafiles/wood","name":"canopy_02.vbuf","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
+    {"$GMIncludedFile":"","%Name":"canopy_01.vbuf","CopyToMask":-1,"filePath":"datafiles/wood","name":"canopy_01.vbuf","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
+    {"$GMIncludedFile":"","%Name":"canopy_00.vbuf","CopyToMask":-1,"filePath":"datafiles/wood","name":"canopy_00.vbuf","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"stone_02.vbuf","CopyToMask":-1,"filePath":"datafiles/wood","name":"stone_02.vbuf","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"stone_01.vbuf","CopyToMask":-1,"filePath":"datafiles/wood","name":"stone_01.vbuf","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"stone_00.vbuf","CopyToMask":-1,"filePath":"datafiles/wood","name":"stone_00.vbuf","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
@@ -96,6 +100,8 @@
   },
   "name":"Bullet Hell",
   "resources":[
+    {"id":{"name":"spr_wood_canopy_light","path":"sprites/spr_wood_canopy_light/spr_wood_canopy_light.yy",},},
+    {"id":{"name":"spr_wood_canopy","path":"sprites/spr_wood_canopy/spr_wood_canopy.yy",},},
     {"id":{"name":"spr_wood_foliage","path":"sprites/spr_wood_foliage/spr_wood_foliage.yy",},},
     {"id":{"name":"obj_boot","path":"objects/obj_boot/obj_boot.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},

@@ -83,6 +83,21 @@ uniform vec3 u_haze_b;
 uniform vec4 u_fogp;           // density, falloff with height, base height, most
 uniform vec2 u_fogfar;         // where the wood starts to end, and is gone
 
+// The canopy overhead. `u_canopy`: 1 while drawing the canopy itself; where
+// the gap over the path starts to close and is closed (from its middle);
+// and the share of the moonlight the gap lets through. `u_mouth`: the mouth
+// of the wood ahead, where the gap starts to widen, where it is widest, how
+// far it reaches there, and where the canopy is gone. `u_cookie` is the
+// light the canopy lets through, a tiling mask `u_cookiep.x` across; under
+// the canopy at least `u_cookiep.y` of the moonlight gets through, and
+// `u_cookiep.z` of the sky's light and `u_cookiep.w` of the air's colour are
+// left.
+uniform sampler2D u_cookie;
+uniform vec4 u_canopy;
+uniform vec4 u_mouth;
+uniform vec4 u_cookiep;
+uniform float u_fogk;          // the fog's distance is reckoned at this share (the far hedge)
+
 uniform vec4 u_lpos[LIGHTS];   // xyz, reach (0: off)
 uniform vec4 u_lcol[LIGHTS];   // colour (already scaled), unused
 
@@ -99,6 +114,25 @@ vec3 sky_col(vec3 d, float bl) {
     vec3 haze = mix(u_haze_a, u_haze_b, bl);
     c += haze * (0.20 * pow(m, 4.0) + 0.42 * pow(m, 30.0)) * (0.35 + 0.65 * u_light);
     return c;
+}
+
+// The path's middle at depth `z`: the same as `path_x` in the vertex
+// stage and `wood_path_x`; change them together.
+float path_x(float z) {
+    return 150.0 * sin(z * 0.000982) + 60.0 * sin(z * 0.002327 + 1.3);
+}
+
+// How open the sky is over `p` (1 open, 0 under the canopy), from the gap
+// over the path and the mouth of the wood ahead; and (`.y`) the mouth's part
+// alone, which is what thins the canopy itself away.
+vec2 canopy_open(vec3 p) {
+    float ahead = p.z - u_eye.z;
+    float x = abs(p.x - path_x(p.z));
+    float gap = u_canopy.w * (1.0 - smoothstep(u_canopy.y, u_canopy.z, x));
+    float mouth = smoothstep(u_mouth.x, u_mouth.y, ahead)
+                * (1.0 - smoothstep(u_mouth.z, u_mouth.z + 700.0, x));
+    mouth = max(mouth, smoothstep(u_mouth.y, u_mouth.w, ahead));
+    return vec2(max(gap, mouth), mouth);
 }
 
 // The texture's normal map applied to `N` (the frame from derivatives).
@@ -158,9 +192,7 @@ void main() {
         // own height so leaves lie over it.
         vec4 fl = texture2D(gm_BaseTexture, v_uv);
         vec4 pa = texture2D(u_tex2, v_uv * 1.3);
-        float pz = p.z;
-        float px = 150.0 * sin(pz * 0.000982) + 60.0 * sin(pz * 0.002327 + 1.3);
-        float a = abs(p.x - px) + (fl.a - 0.5) * 120.0;
+        float a = abs(p.x - path_x(p.z)) + (fl.a - 0.5) * 120.0;
         path = 1.0 - smoothstep(120.0, 230.0, a);
         tex = mix(fl, pa, path);
         vec3 nm = mix(texture2D(u_nmap, v_uv).rgb, texture2D(u_nmap2, v_uv * 1.3).rgb, path);
@@ -185,7 +217,17 @@ void main() {
         // far frond neither dissolves nor turns to a hard stair-step).
         tex = texture2D(u_tex2, v_uv);
         float fw = max(fwidth(tex.a), 0.0001);
-        tex.a = clamp((tex.a - 0.5) / fw + 0.5, 0.0, 1.0);
+        float cut = 0.5;
+        if (u_canopy.x > 0.5) {
+            // The canopy's alpha climbs with the depth into its picture, so
+            // a higher cut-off eats it from its twig tips in: it thins away
+            // toward the mouth ahead. Drawn small, it is cut a little lower,
+            // so its fine twigs aren't lost to the mipmaps first.
+            float lod = log2(max(max(fwidth(v_uv.x) * 2048.0,
+                                     fwidth(v_uv.y) * 1024.0), 1.0));
+            cut = mix(0.5 - 0.04 * min(lod, 3.0), 1.02, canopy_open(p).y);
+        }
+        tex.a = clamp((tex.a - cut) / fw + 0.5, 0.0, 1.0);
     } else if (kind > 3.5) {
         // A solid pictured from the foliage sheet (a stone, a bone).
         tex = texture2D(u_tex2, v_uv);
@@ -235,15 +277,28 @@ void main() {
         return;
     }
 
+    // --- the canopy ----------------------------------------------------
+    // How open the sky is over this, which the sky's light, the air's colour
+    // and (through the mask, below) the moonlight go by.
+    vec2 co = canopy_open(p);
+
     // --- the sky --------------------------------------------------------
     // The sky's light goes with the moon's at totality.
     vec3 amb = mix(mix(u_bounce_a, u_bounce_b, bl), mix(u_sky_a, u_sky_b, bl),
                    N.y * 0.5 + 0.5) * ao * mix(0.35, 1.0, u_light);
+    amb *= mix(u_cookiep.z, 1.0, co.x);
 
     // --- the moon -------------------------------------------------------
     vec3 L = u_moon;
     float ndl = dot(N, L);
     float sh = moon_shadow(v_shadow, ndl);
+    if (u_canopy.x < 0.5) {
+        // Under the canopy, the moonlight gets through its gaps: the mask,
+        // laid from the path's middle as the canopy is.
+        vec2 cu = vec2(p.x - path_x(p.z), p.z) / u_cookiep.x;
+        float lace = mix(u_cookiep.y, 1.0, texture2D(u_cookie, cu).r);
+        sh *= mix(lace, 1.0, co.x);
+    }
     vec3 mc = mix(u_moon_a, u_moon_b, bl) * u_light;
     vec3 dif = amb + mc * max(ndl, 0.0) * sh * (0.55 + 0.45 * ao);
     // The rim: an edge seen against the moon catches its light.
@@ -291,10 +346,14 @@ void main() {
     float od = (abs(dh) > 0.5)
                ? (exp(-f * h0) - exp(-f * h1)) / (f * dh)
                : exp(-f * h0);
-    float fog = 1.0 - exp(-u_fogp.x * dist * od);
+    float fdist = dist * u_fogk;
+    float fog = 1.0 - exp(-u_fogp.x * fdist * od);
     fog = min(fog, u_fogp.w);
-    fog = max(fog, smoothstep(u_fogfar.x, u_fogfar.y, dist));
-    vec3 fc = sky_col(-V, bl);
+    fog = max(fog, smoothstep(u_fogfar.x, u_fogfar.y, fdist));
+    // Under the canopy the air is dark; toward the mouth ahead it holds the
+    // moon's light.
+    float gloom = mix(u_cookiep.w, 1.0, co.x);
+    vec3 fc = sky_col(-V, bl) * gloom;
     c = mix(c, fc, fog);
 
     // The mist on the ground: a thin layer the far wood stands in to its
@@ -306,9 +365,9 @@ void main() {
     float om = (abs(dm) > 0.5)
                ? (exp(-fm * m0) - exp(-fm * m1)) / (fm * dm)
                : exp(-fm * m0);
-    float mist = 1.0 - exp(-u_mist.x * dist * om);
-    vec3 mcol = mix(u_mist_a, u_mist_b, bl) + mix(u_haze_a, u_haze_b, bl)
-                * 0.25 * pow(max(dot(-V, u_moon_vis), 0.0), 6.0) * u_light;
+    float mist = 1.0 - exp(-u_mist.x * fdist * om);
+    vec3 mcol = (mix(u_mist_a, u_mist_b, bl) + mix(u_haze_a, u_haze_b, bl)
+                 * 0.25 * pow(max(dot(-V, u_moon_vis), 0.0), 6.0) * u_light) * gloom;
     c = mix(c, mcol, clamp(mist, 0.0, 0.85));
 
     gl_FragColor = vec4(c, alpha);

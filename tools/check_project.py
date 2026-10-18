@@ -1760,6 +1760,30 @@ def check_shader_uniforms_one_stage():
                  "zero. Give each stage its own name." % (name, u))
 
 
+_ATTRIBUTE = re.compile(r"^\s*attribute\s+\w+\s+(\w+)\s*;", re.M)
+
+
+def check_shader_attributes_read():
+    """A vertex shader must read every attribute it declares.
+
+    The compiled shader drops an attribute that is never read, and GameMaker
+    numbers texture coordinates among the ones that are left: `sh_wood_shadow`
+    never read `in_TextureCoord`, so its `in_TextureCoord1` got the first
+    set's data, and for a long while nothing it meant to leave out of the
+    moon's shadows was left out. Nothing reports it.
+    """
+    for path in sorted(glob.glob(os.path.join(ROOT, "shaders", "*", "*.vsh"))):
+        with open(path, encoding="utf-8-sig") as fh:
+            src = _strip_noise(fh.read())
+        body = _ATTRIBUTE.sub("", src)
+        for name in _ATTRIBUTE.findall(src):
+            if not re.search(r"\b%s\b" % re.escape(name), body):
+                fail("%s declares attribute %s and never reads it -- the "
+                     "compiled shader drops it, and the attributes after it "
+                     "can read the wrong data. Read it (a branch that never "
+                     "runs will do) or don't declare it." % (rel(path), name))
+
+
 def _body(src, header):
     """The text between the braces of the definition that starts with
     `header` (a regex), or None."""
@@ -1784,12 +1808,14 @@ _NUMBER = re.compile(r"(?<![\w.])(\d+\.\d*|\.\d+|\d+)(?![\w.])")
 
 
 def check_wood_ground_agrees():
-    """The wood's path and ground are written three times: in GML
+    """The wood's path and ground are written more than once: in GML
     (`wood_path_x`, `wood_ground_y`), which places the trees and the camera,
     and in both of its vertex shaders (`path_x`, `ground`), which raise what
-    is drawn and what casts the moon's shadows. Apart, trees float or sink
-    and shadows come loose from their trees, with no error. The GML's numbers
-    must be the shaders' in the same order, and the two shaders' copies (and
+    is drawn and what casts the moon's shadows; and the path again in its
+    fragment shader, which lays the path's texture and the canopy's light.
+    Apart, trees float or sink, shadows come loose from their trees, and the
+    canopy's gap leaves the path, with no error. The GML's numbers must be
+    the shaders' in the same order, and the two vertex shaders' copies (and
     their `lane`) the same text.
     """
     gml_path = os.path.join(ROOT, "scripts", "bg_wood", "bg_wood.gml")
@@ -1833,6 +1859,16 @@ def check_wood_ground_agrees():
                  "one ground and drawn on another. Change them together."
                  % rel(path))
         copies.append(parts)
+    frag = os.path.join(ROOT, "shaders", "sh_wood", "sh_wood.fsh")
+    if os.path.exists(frag):
+        body = _body(read(frag), r"\bfloat\s+path_x\s*\(")
+        path_n = len(_NUMBER.findall(_body(gml, r"\bfunction\s+wood_path_x\s*\(")))
+        got = [float(n) for n in _NUMBER.findall(body or "")]
+        if body is None or len(got) != path_n or any(
+                abs(a - b) > 1e-9 * max(1.0, abs(a)) for a, b in zip(got, want)):
+            fail("%s's path_x doesn't have the numbers of bg_wood's "
+                 "wood_path_x -- the path's texture and the canopy's gap "
+                 "would leave the path. Change them together." % rel(frag))
     for fn in ("path_x", "ground", "lane"):
         if copies[0][fn] != copies[1][fn]:
             fail("sh_wood and sh_wood_shadow have different %s -- the shadow "
@@ -1906,6 +1942,7 @@ def main():
     check_hall_frame_textures()
     check_hall_buffer_textures()
     check_shader_uniforms_one_stage()
+    check_shader_attributes_read()
     check_wood_ground_agrees()
     check_sprites_not_blank()
     check_enum_references()

@@ -1539,6 +1539,23 @@ enum BossMove {
 #macro WOOD_FRONT_MIST_N make_colour_rgb(60, 150, 160)
 #macro WOOD_FRONT_MIST_B make_colour_rgb(160, 50, 40)
 #macro WOOD_FRONT_MIST_A 0.07
+// The canopy (`wood_draw_canopy`): trees nearer than `WOOD_CANOPY_NEAR` are
+// drawn after it, so their twigs lie over it; the share of the moonlight the
+// gap over the path lets through; the mouth of the wood ahead (where the gap
+// starts to widen, where it is widest, how far it reaches either side of
+// the path's middle there, and where the canopy is gone); the world size of
+// the mask of light it lets through; and under it, the least of the
+// moonlight that gets through the mask, and the share of the sky's light and
+// of the air's colour that is left.
+#macro WOOD_CANOPY_NEAR 1800
+#macro WOOD_CANOPY_GAP_OPEN 0.85
+#macro WOOD_MOUTH [2600, 4200, 1300, 5400]
+#macro WOOD_CANOPY_LIGHT_P 2400
+#macro WOOD_GLOOM [0.06, 0.45, 0.35]
+// The hedge across the far end: how far ahead it stands, and the share of
+// its distance the fog is reckoned at (under 1 keeps it a silhouette).
+#macro WOOD_HEDGE_D 6500
+#macro WOOD_HEDGE_FOG 0.45
 
 // The palettes, night (`_N`) and blood (`_B`), as `[r, g, b]` in 0..1 (over 1
 // is brighter than white): the sky's light from above and from the ground,
@@ -1589,6 +1606,7 @@ enum BossMove {
 #macro WOOD_MAT_BARK [0.08, 12, 0.5, 1.6]
 #macro WOOD_MAT_PROP [0.10, 16, 0.55, 1.2]
 #macro WOOD_MAT_CHARM [0.25, 24, 0, 0]
+#macro WOOD_MAT_CANOPY [0.04, 10, 0.08, 1.2]
 
 // The turn, as the grove's: the share of it the wavefront launches at, where
 // it starts (world units ahead), how deep its edge is, how wide the band of

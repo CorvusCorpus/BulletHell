@@ -19,6 +19,8 @@ uniform vec3 u_lorg;     // the shadow camera's position
 uniform vec3 u_ldir;     // ...the way it looks
 uniform float u_lrange;  // ...and how deep its box is
 uniform vec4 u_lane;     // the flight's lane (as `sh_wood`'s)
+uniform float u_raise;   // 1: stand on the ground (as `sh_wood`'s)
+uniform float u_follow;  // 1: laid out from the path's middle (as `sh_wood`'s)
 
 float path_x(float z) {
     return 150.0 * sin(z * 0.000982) + 60.0 * sin(z * 0.002327 + 1.3);
@@ -56,8 +58,9 @@ void main() {
     float conform = ex.z - kind * 4.0;
     mat4 W = gm_Matrices[MATRIX_WORLD];
     vec3 wp = (W * vec4(in_Position, 1.0)).xyz;
+    if (u_follow > 0.5) wp.x += path_x(wp.z);
     vec3 anc = (W * vec4(ex.x, 0.0, ex.y, 1.0)).xyz;
-    wp.y += mix(ground(anc.xz), ground(wp.xz), conform);
+    if (u_raise > 0.5) wp.y += mix(ground(anc.xz), ground(wp.xz), conform);
     if (ex.w > 0.0) {
         float ph = dot(wp.xz, vec2(0.0021, 0.0017));
         float gust = 0.6 + 0.4 * sin(u_time * 0.013 + ph * 2.3);
@@ -66,7 +69,11 @@ void main() {
         wp.xz += u_wind.zw * sway * u_wind.x * ex.w;
         wp.y -= abs(sway) * u_wind.x * ex.w * 0.15;
     }
-    wp = lane(wp);
+    if (u_raise > 0.5) wp = lane(wp);
+    // Every attribute is read (this never comes true), so none is dropped
+    // from the compiled shader: with one dropped, `in_TextureCoord1` read
+    // another attribute's data, and nothing was culled below.
+    if (in_Colour.a < -1.0) wp += in_Normal + vec3(in_TextureCoord, 0.0);
     v_depth = dot(wp - u_lorg, u_ldir) / u_lrange;
     vec4 cp = gm_Matrices[MATRIX_PROJECTION] * (gm_Matrices[MATRIX_VIEW] * vec4(wp, 1.0));
     if (kind > 0.5 && kind < 3.5) cp = vec4(0.0, 0.0, -10.0, 1.0);

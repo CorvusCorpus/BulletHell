@@ -180,6 +180,13 @@ function wood_load(_b) {
         }
         array_push(_l, _i);
     }
+    // The canopy's tiles, and the hedge across the far end.
+    var _cn = global.wood_canopy;
+    _b.canopy = array_create(array_length(_cn.tiles), -1);
+    for (var _i = 0; _i < array_length(_cn.tiles); _i++) {
+        _b.canopy[_i] = wood_load_strip(_b, _cn.tiles[_i]);
+    }
+    _b.hedge = wood_load_strip(_b, _cn.hedge);
 }
 
 /// @desc Free what the wood holds outside its struct (`bg_free`).
@@ -955,7 +962,8 @@ function wood_uniforms() {
                       "u_bounce_a", "u_bounce_b", "u_moon_a", "u_moon_b",
                       "u_rim_a", "u_rim_b", "u_hor_a", "u_hor_b", "u_zen_a",
                       "u_zen_b", "u_haze_a", "u_haze_b", "u_fogp", "u_fogfar",
-                      "u_lpos", "u_lcol"];
+                      "u_lpos", "u_lcol", "u_follow", "u_canopy", "u_mouth",
+                      "u_cookiep", "u_fogk"];
         for (var _i = 0; _i < array_length(_names); _i++) {
             _u[$ _names[_i]] = shader_get_uniform(sh_wood, _names[_i]);
         }
@@ -963,6 +971,7 @@ function wood_uniforms() {
         _u.s_tex2 = shader_get_sampler_index(sh_wood, "u_tex2");
         _u.s_nmap2 = shader_get_sampler_index(sh_wood, "u_nmap2");
         _u.s_shadow = shader_get_sampler_index(sh_wood, "u_shadowmap");
+        _u.s_cookie = shader_get_sampler_index(sh_wood, "u_cookie");
     }
     return _u;
 }
@@ -1131,6 +1140,19 @@ function wood_shader(_b) {
     shader_set_uniform_f(_u.u_fogfar, WOOD_FAR * 0.78, WOOD_FAR * 0.97);
     shader_set_uniform_f_array(_u.u_lpos, _l.lpos);
     shader_set_uniform_f_array(_u.u_lcol, _l.lcol);
+    // The canopy: what it lets through, and how it opens.
+    shader_set_uniform_f(_u.u_follow, 0);
+    var _gap = global.wood_canopy.gap;
+    shader_set_uniform_f(_u.u_canopy, 0, _gap[0], _gap[1], WOOD_CANOPY_GAP_OPEN);
+    var _mo = WOOD_MOUTH;
+    shader_set_uniform_f(_u.u_mouth, _mo[0], _mo[1], _mo[2], _mo[3]);
+    var _gl = WOOD_GLOOM;
+    shader_set_uniform_f(_u.u_cookiep, WOOD_CANOPY_LIGHT_P, _gl[0], _gl[1], _gl[2]);
+    shader_set_uniform_f(_u.u_fogk, 1);
+    texture_set_stage(_u.s_cookie, sprite_get_texture(spr_wood_canopy_light, 0));
+    gpu_set_texrepeat_ext(_u.s_cookie, true);
+    gpu_set_tex_filter_ext(_u.s_cookie, true);
+    gpu_set_tex_mip_enable_ext(_u.s_cookie, mip_markedonly);
     texture_set_stage(_u.s_shadow, surface_get_texture(_b.shadow));
     gpu_set_tex_filter_ext(_u.s_shadow, false);
     gpu_set_tex_mip_enable_ext(_u.s_shadow, mip_off);
@@ -1276,9 +1298,19 @@ function wood_draw_back(_b, _fill) {
         matrix_set(matrix_world, _pr.mat);
         vertex_submit(_vb, pr_trianglelist, _bt);
     }
+    wood_draw_hedge(_b);
+    // The trees far to near, with the canopy drawn among them: the trees
+    // further than `WOOD_CANOPY_NEAR` before it, the nearer after, so their
+    // twigs are laid over the canopy behind them.
     wood_mat(WOOD_MAT_BARK);
+    var _near2 = sqr(WOOD_CANOPY_NEAR);
+    var _canopy = false;
     for (var _i = 0; _i < _b.seen_n; _i++) {
         var _tr = _b.seen[_i];
+        if (!_canopy && _tr.d2 <= _near2) {
+            wood_draw_canopy(_b);
+            _canopy = true;
+        }
         matrix_set(matrix_world, _tr.mat);
         // A tree is drawn whole or without its fine twigs by its row, never
         // by its distance: swapping one for the other as a tree came closer
@@ -1288,6 +1320,7 @@ function wood_draw_back(_b, _fill) {
                                              : _b.trees[_tr.mesh];
         if (_vb != -1) vertex_submit(_vb, pr_trianglestrip, _bt);
     }
+    if (!_canopy) wood_draw_canopy(_b);
 
     shader_set_uniform_f(_u.u_moss, 0);
     wood_draw_charms(_b);
@@ -1311,6 +1344,62 @@ function wood_draw_back(_b, _fill) {
 
     matrix_set(matrix_world, _old_w);
     wood_post(_b, _x0, _y0, _w, _h);
+}
+
+/// @desc The canopy's tiles from the far end in, each one of the tiles
+///       (`wood_table`) chosen by its place down the path and maybe
+///       mirrored, laid from the path's middle (the shader moves it onto
+///       the path). Its clumps thin away into the mouth ahead in the shader
+///       (`canopy_open`); past the end of the wood the fog hides the rest.
+///       Leaves the trees' state as it found it.
+function wood_draw_canopy(_b) {
+    var _n = array_length(_b.canopy);
+    if (_n <= 0) return;
+    var _u = wood_uniforms();
+    var _p = global.wood_canopy.period;
+    var _gap = global.wood_canopy.gap;
+    shader_set_uniform_f(_u.u_follow, 1);
+    shader_set_uniform_f(_u.u_raise, 0);
+    shader_set_uniform_f(_u.u_canopy, 1, _gap[0], _gap[1], WOOD_CANOPY_GAP_OPEN);
+    wood_mat(WOOD_MAT_CANOPY);
+    wood_textures(spr_wood_bark_n, spr_wood_canopy, spr_wood_flat_n);
+    var _bt = sprite_get_texture(spr_wood_bark, 0);
+    var _k0 = floor((_b.cam_z - _p) / _p);
+    var _k1 = floor((_b.cam_z + WOOD_FAR) / _p);
+    for (var _k = _k1; _k >= _k0; _k--) {
+        var _vb = _b.canopy[floor(wood_hash(_k, 701) * _n) mod _n];
+        if (_vb == -1) continue;
+        var _mx = (wood_hash(_k, 702) < 0.5) ? -1 : 1;
+        matrix_set(matrix_world, matrix_build(0, 0, _k * _p, 0, 0, 0, _mx, 1, 1));
+        vertex_submit(_vb, pr_trianglestrip, _bt);
+    }
+    shader_set_uniform_f(_u.u_follow, 0);
+    shader_set_uniform_f(_u.u_raise, 1);
+    shader_set_uniform_f(_u.u_canopy, 0, _gap[0], _gap[1], WOOD_CANOPY_GAP_OPEN);
+    wood_mat(WOOD_MAT_BARK);
+    wood_textures(spr_wood_bark_n, spr_wood_foliage, spr_wood_flat_n);
+}
+
+/// @desc The hedge across the far end, kept `WOOD_HEDGE_D` ahead of the
+///       camera so the ground is never seen to stop, laid from the path's
+///       middle as the canopy is (low where the path goes into it). Its fog
+///       is reckoned nearer than it stands, so it reads as a ragged
+///       silhouette across the foot of the moon.
+function wood_draw_hedge(_b) {
+    if (_b.hedge == -1) return;
+    var _u = wood_uniforms();
+    shader_set_uniform_f(_u.u_follow, 1);
+    shader_set_uniform_f(_u.u_raise, 0);
+    shader_set_uniform_f(_u.u_fogk, WOOD_HEDGE_FOG);
+    wood_mat(WOOD_MAT_CANOPY);
+    wood_textures(spr_wood_bark_n, spr_wood_canopy, spr_wood_flat_n);
+    matrix_set(matrix_world, matrix_build(0, 0, _b.cam_z + WOOD_HEDGE_D,
+                                          0, 0, 0, 1, 1, 1));
+    vertex_submit(_b.hedge, pr_trianglestrip, sprite_get_texture(spr_wood_bark, 0));
+    shader_set_uniform_f(_u.u_follow, 0);
+    shader_set_uniform_f(_u.u_raise, 1);
+    shader_set_uniform_f(_u.u_fogk, 1);
+    wood_textures(spr_wood_bark_n, spr_wood_foliage, spr_wood_flat_n);
 }
 
 /// @desc The charms in view, each under its own swing, its glowing parts lit
@@ -1590,6 +1679,8 @@ function wood_draw_shadow(_b) {
     shader_set_uniform_f(_u("u_ldir"), -_L[0], -_L[1], -_L[2]);
     shader_set_uniform_f(_u("u_lrange"), WOOD_SHADOW_RANGE);
     wood_lane(_u("u_lane"));
+    shader_set_uniform_f(_u("u_raise"), 1);
+    shader_set_uniform_f(_u("u_follow"), 0);
 
     // Every tree whose sphere crosses the box across the light casts (its
     // far mesh: the fine twigs throw nothing worth the map's texels).
@@ -1627,6 +1718,22 @@ function wood_draw_shadow(_b) {
             if (_vb == -1) continue;
             matrix_set(matrix_world, _t.mat);
             vertex_submit(_vb, pr_trianglelist, -1);
+        }
+    }
+    // ...and the canopy's boughs over the ground in view.
+    var _n = array_length(_b.canopy);
+    if (_n > 0) {
+        shader_set_uniform_f(_u("u_raise"), 0);
+        shader_set_uniform_f(_u("u_follow"), 1);
+        var _p = global.wood_canopy.period;
+        var _k0 = floor((_b.cam_z - _p) / _p);
+        var _k1 = floor((_b.cam_z + WOOD_SHADOW_REACH + _p) / _p);
+        for (var _k = _k0; _k <= _k1; _k++) {
+            var _vb = _b.canopy[floor(wood_hash(_k, 701) * _n) mod _n];
+            if (_vb == -1) continue;
+            var _mx = (wood_hash(_k, 702) < 0.5) ? -1 : 1;
+            matrix_set(matrix_world, matrix_build(0, 0, _k * _p, 0, 0, 0, _mx, 1, 1));
+            vertex_submit(_vb, pr_trianglestrip, -1);
         }
     }
     shader_reset();

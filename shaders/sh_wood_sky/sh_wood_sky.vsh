@@ -14,6 +14,9 @@ varying vec4 v_ex;
 
 void main() {
     vec4 wp = gm_Matrices[MATRIX_WORLD] * vec4(in_Position, 1.0);
+    // Every attribute is read (this never comes true), so none is dropped
+    // from the compiled shader and the rest keep their data.
+    if (in_Colour.a < -1.0) wp.xyz += in_Normal;
     // The world matrix carries the camera's position as its translation.
     v_dir = wp.xyz - gm_Matrices[MATRIX_WORLD][3].xyz;
     v_col = in_Colour;

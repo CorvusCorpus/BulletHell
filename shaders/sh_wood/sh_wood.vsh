@@ -33,6 +33,7 @@ uniform mat4 u_shadow;   // world to the moon's shadow map
 uniform float u_ground;  // 1: the ground's own tiles
 uniform float u_raise;   // 1: stand on the ground (0 for what is placed whole, the charms)
 uniform vec4 u_lane;     // the flight's lane (see `lane`)
+uniform float u_follow;  // 1: laid out from the path's middle (the canopy, the hedge), so moved onto it
 
 // The path's middle at depth `z`, and the ground's height at `p` (x, z).
 // The same numbers as `wood_path_x` and `wood_ground_y`; change both.
@@ -73,6 +74,7 @@ void main() {
 
     mat4 W = gm_Matrices[MATRIX_WORLD];
     vec3 wp = (W * vec4(in_Position, 1.0)).xyz;
+    if (u_follow > 0.5) wp.x += path_x(wp.z);
     vec3 wn = (W * vec4(in_Normal, 0.0)).xyz;
     float wl = length(wn);
     wn = (wl > 0.0001) ? wn / wl : vec3(0.0, 1.0, 0.0);
