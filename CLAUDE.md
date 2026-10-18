@@ -121,53 +121,87 @@ and is open to change. Earlier agents wrote a great deal of invented
 
 ## The roster
 
-From the owner, and confirmed for the game; not the whole cast. A boss's
-gimmick is the mechanic its attacks are built around.
+From the owner, and final. Five zones of four bosses each: one on the
+zone's outskirts, a second who intercepts, a penultimate boss and the zone's
+final boss. Then a secret boss. The order of play isn't decided beyond being
+branching or near-linear within each zone, with Ziggy first and Florentius
+last. A boss's gimmick is the mechanic its attacks are built around.
+Noxus, a wulver tinkerer, was cut: he overlapped too much with Mika and Zeek
+in role and design.
 
-- **Ziggy**, a fiend imp: the tutorial boss. His stage is undecided, probably
-  near Szuix's castle with a "level 1" feel. No major gimmick; fire and rock
-  attacks.
-- **Velka**, a druid witch fox (a banshee) from Celtic myth. A dark forest at
-  night, witch charms and skulls in the trees, a full moon that turns to a
-  blood moon during the stage. Gimmick: wisp enemies that spawn during her
-  non-spells and some spells.
-- **Mika**, Ashiah's high priest and archmage. The library of Ashiah's
-  palace, holding the archives of the life of everyone who ever lived.
-  Gimmick: metal chakram rings that block the player's fire, and electric
-  lasers that turn sand bullets into glass shards. He is also the midboss of
-  Ashiah's stage.
-- **Ashiah**, an Egyptian cat descended from Anubis and Bastet, the living
-  incarnation of the God of Death. A major boss, near twenty attacks. His
-  palace's sanctum and throne room, on the border between this world and the
-  afterlife. Gimmick: regions that sap life gradually.
-- **Vin'Zhen**, a qilin, the incarnation of the God of Life (Ashiah's
-  complement). A major boss, in the heart of his forest. Gimmick undecided.
-- **Astyr**, a jackalope, Vin'Zhen's forest ranger. Vin'Zhen's forest.
-  Gimmick: hops about like a rabbit while firing arrows rapidly.
-- **Faol**, an urisk (a Highland goat-legged water spirit) with some kelpie in
-  him. He was human; becoming one of Vin'Zhen's followers made him immortal,
-  and over the decades since he has slowly changed into something more like a
-  cryptid. An awkward, shy recluse, self-conscious about looking scary or
-  creepy to visitors. By and in Vin'Zhen's lake. Gimmick:
-  sinking, a gravity that drifts the player's movement downward (like
-  Papyrus's in Undertale).
-- **Corvus**, a crow revenant after the grim reaper and Bloodborne. Begins in
-  a graveyard and descends deeper into a labyrinthine crypt. Gimmick: he
-  closes on or lunges at the player during patterns with melee attacks.
-- **Sylvia**, an egregore after the Cheshire cat. Begins somewhere that
-  looks normal and slowly fades into a trippy Wonderland. Gimmick: messing
-  with the game's visuals and controls during attacks.
-- **Haveri**, a bluejay (a huitzitzilin) mage and alchemist descended from a
-  mythical Aztec bird. He lost a wing in a magical explosion and flies on a conjured arcane
-  one in its place. Stage undecided. Gimmick: colourful potion vials he
-  throws, which explode or react with one another.
-- **Noxus**, a wulver tinkerer with technical gimmicks, such as remotely
-  detonated bombs. Stage undecided, maybe a cave.
-- **Kremlatiel**, a seraphic wyvern, the hidden superboss. An ascent into the
-  sky against a glowing sunrise; angelic attacks with big blinding lasers.
-  Unlocked by clearing every other boss at a certain rank, which lets her
-  book be bought in the game's shop (not built yet). Inspired by Bayonetta's
-  Rodin fights.
+### Yokai Zone
+
+- **Oscura**, on the outskirts.
+- **Mikoto and Rena**, who intercept: a duo boss.
+- **Ayana**, the penultimate boss.
+- **Kara**, the zone's final boss.
+
+### Demon Ruins
+
+- **Ziggy**, a fiend imp, on the outskirts: the tutorial boss, with a
+  "level 1" feel. No major gimmick; fire and rock attacks.
+- **Athena**, an assassin, who intercepts.
+- **Sylvia**, the penultimate boss: a skill check, not impossible but a boss
+  to come back to later. An egregore after the Cheshire cat. Begins somewhere
+  that looks normal and slowly fades into a trippy Wonderland. Gimmick:
+  messing with the game's visuals and controls during attacks.
+- **Florentius**, the demon king: the zone's final boss and the game's last
+  boss, locked.
+
+### Eternal Forest
+
+- **Haveri**, on the outskirts: a bluejay (a huitzitzilin) mage and alchemist
+  descended from a mythical Aztec bird. He lost a wing in a magical explosion
+  and flies on a conjured arcane one in its place. Gimmick: colourful potion
+  vials he throws, which explode or react with one another.
+- **Astyr**, who intercepts: a jackalope, Vin'Zhen's forest ranger. Gimmick:
+  hops about like a rabbit while firing arrows rapidly.
+- **Faol**, the penultimate boss: an urisk (a Highland goat-legged water
+  spirit) with some kelpie in him. He was human; becoming one of Vin'Zhen's
+  followers made him immortal, and over the decades since he has slowly
+  changed into something more like a cryptid. An awkward, shy recluse,
+  self-conscious about looking scary or creepy to visitors. By and in
+  Vin'Zhen's lake. Gimmick: sinking, a gravity that drifts the player's
+  movement downward (like Papyrus's in Undertale).
+- **Vin'Zhen** ("Vinny"), the zone's final boss: a qilin, the incarnation of
+  the God of Life (Ashiah's complement). A major boss, in the heart of his
+  forest. Gimmick undecided.
+
+### Land of the Dead
+
+- **Velka**, on the outskirts, in the forest of the dead: a druid witch fox
+  (a banshee) from Celtic myth. A dark forest at night, witch charms and
+  skulls in the trees, a full moon that turns to a blood moon during the
+  stage. Gimmick: wisp enemies that spawn during her non-spells and some
+  spells.
+- **Corvus**, who intercepts, in the crypt passage to the underworld: a crow
+  revenant after the grim reaper and Bloodborne. Begins in a graveyard and
+  descends deeper into a labyrinthine crypt. Gimmick: he closes on or lunges
+  at the player during patterns with melee attacks.
+- **Mika**, the penultimate boss: Ashiah's high priest and archmage. The
+  library of Ashiah's palace, holding the archives of the life of everyone
+  who ever lived. Gimmick: metal chakram rings that block the player's fire,
+  and electric lasers that turn sand bullets into glass shards. He is also
+  the midboss of Ashiah's stage.
+- **Ashiah**, the zone's final boss: an Egyptian cat descended from Anubis
+  and Bastet, the living incarnation of the God of Death. A major boss, near
+  twenty attacks. His palace's sanctum and throne room, on the border between
+  this world and the afterlife. Gimmick: regions that sap life gradually.
+
+### Crystal Caverns
+
+- **Zeek**, on the outskirts, before the caverns.
+- **Sally**, who intercepts.
+- **Zalerus**, the penultimate boss.
+- **Sapphire**, the zone's final boss.
+
+### Secret boss
+
+- **Kremu**, a vendor, who becomes **Kremlatiel**, a seraphic wyvern: the
+  hidden superboss. An ascent into the sky against a glowing sunrise;
+  angelic attacks with big blinding lasers. Unlocked by clearing every other
+  boss at a certain rank, which lets her book be bought in the game's shop
+  (not built yet). Inspired by Bayonetta's Rodin fights.
 
 ## How to work here
 
