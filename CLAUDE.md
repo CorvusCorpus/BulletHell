@@ -186,7 +186,8 @@ in role and design.
   revenant after the grim reaper and Bloodborne. Begins in a graveyard and
   descends deeper into a labyrinthine crypt. Gimmick: he closes on or lunges
   at the player during patterns with melee attacks.
-- **Mika**, the penultimate boss: Ashiah's high priest and archmage. The
+- **Mika**, the penultimate boss: an Anubian fennec, black and gold in body
+  and markings, Ashiah's high priest and archmage. The
   library of Ashiah's palace, holding the archives of the life of everyone
   who ever lived. Gimmick: metal chakram rings that block the player's fire,
   and electric lasers that turn sand bullets into glass shards. He is also
@@ -199,7 +200,7 @@ in role and design.
 ### Crystal Caverns
 
 - **Zeek**, on the outskirts, before the caverns: a male quadruped zebra (an
-  Ixion), a technician. A sci-fi harness round his chest carries robot
+  Ixion, after Final Fantasy's), a technician. A sci-fi harness round his chest carries robot
   hands, with which he crafts and engineers tools and gadgets.
 - **Sally**, who intercepts: a salamander-kobold with candles on her horns.
 - **Zalerus**, the penultimate boss: a large male dragon with gold-plated
