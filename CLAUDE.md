@@ -927,10 +927,11 @@ Known gaps:
   (`draft_slow_rosette`). The iris drafts' orbs are
   persistent while they loop, so none is culled outside the field and lost.
 - Sylvia's "Iris blooms" sketch is the drafting table's last non-spell
-  (`draft_sylvia_blooms`), ported as it is: every second and a half five
-  rose seeds brake to a stop and each spins out a four-armed pinwheel of
-  cyan and magenta orbs (`bullet_shed_at`, then a split with the last
-  volley). Photograph it with `python tools/shot.py draft_blooms`.
+  (`draft_sylvia_blooms`): sets of rose seeds, each set at a random turn,
+  curve out braking to a stop, and each spins out a spiral of cyan and
+  magenta rice. Unlike the sketch, the seeds curve and the spirals are rice
+  and denser. A seed is a task (`sylvia_seed_task`) that fires its own
+  bloom. Photograph it with `python tools/shot.py draft_blooms`.
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.
 - Stages one and two's fodder can only move as `wave_line` and `wave_cross`
