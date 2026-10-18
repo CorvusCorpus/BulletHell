@@ -5,41 +5,43 @@
 /// and a far one without the fine twigs), and what the wood places it
 /// by: its species, its height, the trunk's radius at the foot, how far
 /// it spreads from its axis, and the points a charm can hang from, in
-/// its own space (y up, the foot at the origin, reaching toward +x).
-/// The charms are triangle lists (the trees are strips).
+/// its own space (y up, the foot at the origin, reaching toward +x):
+/// each `[x, y, z, r, tx, ty, tz]`, the underside of a limb of radius
+/// `r` running along `t`. The charms are triangle lists (the trees are
+/// strips).
 
 function wood_table_init() {
     global.wood_trees = [
         { file: "wood/tree_00.vbuf", far: "wood/tree_00_far.vbuf",
           species: "oak", height: 1084.3, r0: 53.0, spread: 797.0,
-          hangs: [[477.8, 455.3, -70.5], [312.7, 497.9, 137.6], [249.4, 749.7, -183.9], [192.6, 412.6, 113.7], [89.6, 656.2, -53.2]] },
+          hangs: [[477.8, 455.3, -70.5, 3.0, 0.504, 0.330, -0.798], [312.7, 497.9, 137.6, 8.0, 0.826, 0.545, 0.145], [249.4, 749.7, -183.9, 3.8, 0.746, 0.347, -0.568], [192.6, 412.6, 113.7, 11.4, 0.820, 0.402, 0.408], [89.6, 656.2, -53.2, 6.7, 0.398, 0.471, -0.787]] },
         { file: "wood/tree_01.vbuf", far: "wood/tree_01_far.vbuf",
           species: "oak", height: 999.1, r0: 54.2, spread: 644.0,
-          hangs: [[449.1, 497.1, 59.7], [349.8, 474.2, -15.4], [238.0, 419.4, -40.9], [215.7, 653.5, 35.9], [186.7, 412.5, 211.9]] },
+          hangs: [[449.1, 497.1, 59.7, 4.6, 0.713, 0.011, 0.701], [349.8, 474.2, -15.4, 7.9, 0.826, 0.353, 0.439], [238.0, 419.4, -40.9, 11.2, 0.886, 0.464, 0.003], [215.7, 653.5, 35.9, 2.8, 0.735, 0.413, 0.537], [186.7, 412.5, 211.9, 9.8, 0.699, 0.436, 0.567]] },
         { file: "wood/tree_02.vbuf", far: "wood/tree_02_far.vbuf",
           species: "oak", height: 727.5, r0: 53.8, spread: 700.9,
-          hangs: [[339.3, 426.7, -229.1], [292.9, 462.5, 111.9], [223.1, 429.2, 12.8], [76.3, 505.9, 105.9]] },
+          hangs: [[339.3, 426.7, -229.1, 3.1, 0.257, 0.482, -0.838], [292.9, 462.5, 111.9, 5.0, 0.611, 0.250, 0.751], [223.1, 429.2, 12.8, 7.5, 0.422, 0.268, 0.866], [76.3, 505.9, 105.9, 7.3, -0.567, 0.524, 0.635]] },
         { file: "wood/tree_03.vbuf", far: "wood/tree_03_far.vbuf",
           species: "crook", height: 749.6, r0: 25.7, spread: 442.4,
-          hangs: [[51.6, 457.6, -118.9]] },
+          hangs: [[51.6, 457.6, -118.9, 3.7, 0.207, 0.266, -0.942]] },
         { file: "wood/tree_04.vbuf", far: "wood/tree_04_far.vbuf",
           species: "crook", height: 745.5, r0: 26.9, spread: 406.8,
-          hangs: [[184.0, 472.8, 207.4]] },
+          hangs: [[184.0, 472.8, 207.4, 4.1, 0.552, -0.120, 0.825]] },
         { file: "wood/tree_05.vbuf", far: "wood/tree_05_far.vbuf",
           species: "snag", height: 1702.4, r0: 58.6, spread: 504.1,
           hangs: [] },
         { file: "wood/tree_06.vbuf", far: "wood/tree_06_far.vbuf",
           species: "snag", height: 1497.5, r0: 67.5, spread: 555.9,
-          hangs: [[330.1, 700.2, -108.9], [212.3, 915.9, 14.0], [210.4, 721.1, -68.5], [122.5, 784.6, 85.5]] },
+          hangs: [[330.1, 700.2, -108.9, 8.5, 0.871, -0.254, -0.421], [212.3, 915.9, 14.0, 3.8, 0.080, 0.271, 0.959], [210.4, 721.1, -68.5, 14.4, 0.934, -0.235, -0.270], [122.5, 784.6, 85.5, 4.8, 0.499, 0.388, 0.775]] },
         { file: "wood/tree_07.vbuf", far: "wood/tree_07_far.vbuf",
           species: "weeper", height: 985.6, r0: 38.0, spread: 589.3,
-          hangs: [[283.3, 461.4, -101.9], [262.1, 582.5, 6.1], [153.2, 531.1, 4.1], [149.9, 421.6, -66.7]] },
+          hangs: [[283.3, 461.4, -101.9, 3.7, 0.974, 0.167, -0.155], [262.1, 582.5, 6.1, 3.7, 0.940, 0.337, 0.053], [153.2, 531.1, 4.1, 6.3, 0.885, 0.466, 0.006], [149.9, 421.6, -66.7, 6.0, 0.869, 0.298, -0.395]] },
         { file: "wood/tree_08.vbuf", far: "wood/tree_08_far.vbuf",
           species: "weeper", height: 863.5, r0: 38.7, spread: 697.2,
-          hangs: [[159.0, 473.2, -300.8]] },
+          hangs: [[159.0, 473.2, -300.8, 4.1, 0.729, 0.405, -0.553]] },
         { file: "wood/tree_09.vbuf", far: "wood/tree_09_far.vbuf",
           species: "ancient", height: 834.3, r0: 100.0, spread: 750.1,
-          hangs: [[494.4, 416.6, 118.0], [121.7, 420.0, 349.5]] },
+          hangs: [[494.4, 416.6, 118.0, 8.6, 0.835, 0.242, 0.495], [121.7, 420.0, 349.5, 4.8, 0.699, -0.381, 0.605]] },
         { file: "wood/tree_10.vbuf", far: "wood/tree_10_far.vbuf",
           species: "sapling", height: 264.0, r0: 6.1, spread: 204.3,
           hangs: [] },
@@ -51,13 +53,37 @@ function wood_table_init() {
     // The charms: each hangs from its origin (where its cord is tied),
     // down -y, facing -z; `glow` is where its light is, in its own space.
     global.wood_charms = [
-        { name: "skull", file: "wood/charm_skull.vbuf", glow: [0.0, -82.8, -9.0], drop: 103.3 },
-        { name: "bones", file: "wood/charm_bones.vbuf", glow: [0.0, -73.1, -6.0], drop: 94.6 },
-        { name: "ring", file: "wood/charm_ring.vbuf", glow: [0.0, -66.5, -3.0], drop: 134.7 },
-        { name: "lantern", file: "wood/charm_lantern.vbuf", glow: [0.0, -60.4, 0.0], drop: 87.7 },
-        { name: "plaque", file: "wood/charm_plaque.vbuf", glow: [0.0, -66.2, -8.0], drop: 88.2 },
-        { name: "fetish", file: "wood/charm_fetish.vbuf", glow: [0.0, -30.4, -4.0], drop: 66.2 },
-        { name: "spine", file: "wood/charm_spine.vbuf", glow: [0.0, -88.6, -3.0], drop: 89.4 },
-        { name: "effigy", file: "wood/charm_effigy.vbuf", glow: [0.0, -39.8, -6.0], drop: 98.0 },
+        { name: "skull", file: "wood/charm_skull.vbuf", glow: [0.0, -72.8, -12.0], drop: 93.3 },
+        { name: "ladder", file: "wood/charm_ladder.vbuf", glow: [0.0, -82.8, -3.0], drop: 97.0 },
+        { name: "ring", file: "wood/charm_ring.vbuf", glow: [0.0, -57.1, -3.0], drop: 85.8 },
+        { name: "lantern", file: "wood/charm_lantern.vbuf", glow: [0.0, -56.2, 0.0], drop: 83.5 },
+        { name: "plaque", file: "wood/charm_plaque.vbuf", glow: [0.0, -56.3, -8.0], drop: 80.3 },
+        { name: "pouch", file: "wood/charm_pouch.vbuf", glow: [7.5, -47.1, -7.0], drop: 61.1 },
+        { name: "bones", file: "wood/charm_bones.vbuf", glow: [0.0, -62.1, -6.0], drop: 81.8 },
+        { name: "spine", file: "wood/charm_spine.vbuf", glow: [0.0, -89.1, -3.0], drop: 89.9 },
+        { name: "effigy", file: "wood/charm_effigy.vbuf", glow: [0.0, -41.1, -6.0], drop: 99.3 },
+    ];
+
+    // The rope wound round a limb where a charm is tied, round its x axis
+    // at radius 1 (the wood scales it by the limb's radius).
+    global.wood_wrap = "wood/charm_wrap.vbuf";
+
+    // The ground cover: patches of small things (a triangle list each,
+    // `size` the radius it spreads to) and standing stones (`size` their
+    // height), each in its own space with the ground at y = 0.
+    global.wood_props = [
+        { file: "wood/patch_00.vbuf", kind: "ferns", size: 310.4 },
+        { file: "wood/patch_01.vbuf", kind: "ferns", size: 290.2 },
+        { file: "wood/patch_02.vbuf", kind: "rocks", size: 257.3 },
+        { file: "wood/patch_03.vbuf", kind: "bones", size: 259.9 },
+        { file: "wood/patch_04.vbuf", kind: "bones", size: 248.6 },
+        { file: "wood/patch_05.vbuf", kind: "log", size: 291.8 },
+        { file: "wood/patch_06.vbuf", kind: "stump", size: 296.6 },
+        { file: "wood/patch_07.vbuf", kind: "heather", size: 264.8 },
+        { file: "wood/patch_08.vbuf", kind: "ferns", size: 305.6 },
+        { file: "wood/patch_09.vbuf", kind: "rocks", size: 236.0 },
+        { file: "wood/stone_00.vbuf", kind: "stone", size: 285.6 },
+        { file: "wood/stone_01.vbuf", kind: "stone", size: 390.8 },
+        { file: "wood/stone_02.vbuf", kind: "stone", size: 328.7 },
     ];
 }

@@ -20,11 +20,24 @@ import math
 import numpy as np
 
 import wood_mesh as M
+import wood_tex as TX
 
 GOLDEN = math.pi * (3.0 - math.sqrt(5.0))
 
 # Below this radius a branch is a ribbon rather than a tube.
 RIBBON_R = 2.4
+
+# Ivy up a trunk (`Tree.ivy`): the chance a tree of each species has it.
+IVY_ODDS = {"oak": 0.6, "ancient": 0.85, "snag": 0.5, "crook": 0.3,
+            "weeper": 0.3, "sapling": 0.0}
+
+# Hanging vines (`Tree.vine_sites`): the chance a point along a limb has
+# one, how long they are, and how far toward the path (local +x) one may
+# hang (a vine over the path hung in front of the camera like a scratch on
+# the picture).
+VINE_ODDS = 0.05
+VINE_LEN = (110.0, 380.0)
+VINE_X = 60.0
 
 # Where a charm can hang (`Tree.hang_sites`): how far below the tie it
 # needs open air, how wide that air must be, how far apart two sites must
@@ -280,6 +293,7 @@ class Tree:
         self.roots(trunk)
         self.height = float(max(b.pts[:, 1].max() for b in self.branches))
         self.hangs = self.hang_sites()
+        self.vines = self.vine_sites()
 
     # -- where charms hang ----------------------------------------------------
 
@@ -331,12 +345,43 @@ class Tree:
                 if not (HANG_Y[0] < P[i][1] < HANG_Y[1]):
                     continue
                 p = P[i] - np.array([0.0, r * 0.9, 0.0])
-                if any(np.linalg.norm(p - q) < apart for q in sites):
+                if any(np.linalg.norm(p - q["p"]) < apart for q in sites):
                     continue
                 if not open_below(p):
                     continue
-                sites.append(p)
+                t = Tn[i] / max(np.linalg.norm(Tn[i]), 1e-9)
+                sites.append({"p": p, "axis": P[i].copy(), "r": r, "t": t})
         return sites
+
+    # -- what hangs from the limbs ---------------------------------------------
+
+    def vine_sites(self):
+        """Strands hanging from the limbs, as in a wood gone wild: from
+        points along limbs and branches with room below, each a length that
+        stops short of the ground."""
+        rng = np.random.default_rng(self.seed + 4242)
+        out = []
+        for b in self.branches:
+            if b.root or b.level == 0 or b.level > 2:
+                continue
+            P, R = b.pts, b.rad
+            n = len(P)
+            if n < 4:
+                continue
+            for i in range(int(n * 0.2), n - 1):
+                if R[i] < 1.0 or rng.random() > VINE_ODDS:
+                    continue
+                if P[i][0] > VINE_X:
+                    continue
+                y = P[i][1]
+                if y < 260:
+                    continue
+                ln = min(rng.uniform(*VINE_LEN), y - 140.0)
+                if ln < 60:
+                    continue
+                out.append((P[i] - np.array([0.0, R[i] * 0.8, 0.0]), ln,
+                            rng.uniform(0.7, 1.3), rng.random()))
+        return out
 
     def limb(self, level, start, d, length, r, parent, reach, v0=0.0):
         sp, rng = self.sp, self.rng
@@ -485,7 +530,108 @@ class Tree:
                     strip.add(M.ribbon(tip, [float(R[-1]), float(R[-1]) * 0.5, 0.05],
                                        twig_tint, ao=float(ao[-1]),
                                        sway=float(sway[-1])))
+        if lod == 0:
+            irng = np.random.default_rng(self.seed + 777)
+            if irng.random() < IVY_ODDS.get(self.species, 0.0):
+                for part in self.ivy(irng):
+                    strip.add(part)
+            # Leafy vines hanging from the limbs: a stem that curls a little
+            # as it falls and turns up at its end, ivy leaves along it.
+            vrng = np.random.default_rng(self.seed + 5151)
+            vt = np.array([0.30, 0.32, 0.22]) * tint
+            for top, ln, w, ph in self.vines:
+                k = max(4, int(ln / 14))
+                t = np.linspace(0.0, 1.0, k)
+                curl = np.stack([np.sin(t * 2.6 + ph * 6.0) * ln * 0.06,
+                                 -t * ln + ln * 0.08 * t ** 6,
+                                 np.cos(t * 2.1 + ph * 6.0) * ln * 0.05], 1)
+                pts = top[None, :] + curl
+                strip.add(M.ribbon(pts, (0.75 - 0.3 * t) * w, vt, ao=0.85,
+                                   sway=0.25 + 0.75 * t))
+                for j in range(1, k):
+                    f = j / (k - 1)
+                    for side in (-1.0, 1.0):
+                        if vrng.random() > 0.8:
+                            continue
+                        c = pts[j] + np.array([side * 3.0, 0.0, vrng.normal(0, 2.0)])
+                        size = vrng.uniform(8.0, 12.0) * (1.0 - 0.25 * f)
+                        yaw = vrng.uniform(0.0, math.tau)
+                        nrm = np.array([math.cos(yaw), 0.35, math.sin(yaw)])
+                        nrm /= np.linalg.norm(nrm)
+                        right = np.cross(np.array([0.0, 1.0, 0.0]), nrm)
+                        right /= max(np.linalg.norm(right), 1e-9)
+                        up = np.cross(nrm, right)
+                        h = size * 0.5
+                        corners = (c - right * h - up * h, c + right * h - up * h,
+                                   c + right * h + up * h, c - right * h + up * h)
+                        cell = "ivy%d" % vrng.integers(0, 4)
+                        sw = 0.25 + 0.75 * f
+                        strip.add(M.card(corners, TX.cell_rect(cell, 0.04),
+                                         np.array([1.0, 1.0, 1.0]) * vrng.uniform(0.75, 1.05),
+                                         normal=nrm, ao=0.9, sway=(sw, sw, sw, sw)))
         return strip
+
+    def ivy(self, rng):
+        """Ivy climbing the trunk: a stem winding up from near the foot,
+        its leaves laid on the bark round it, thinning out toward the top.
+        Leaves are cards from the foliage sheet's ivy cells."""
+        trunk = self.branches[0]
+        P, R = trunk.pts, trunk.rad
+        s = M.arclen(P)
+        T, N, B = M.frames(P)
+        y0 = 25.0
+        i0 = int(np.searchsorted(P[:, 1], y0))
+        if i0 >= len(P) - 2:
+            return []
+        top = min(rng.uniform(300, 820), float(P[-1, 1]) * 0.8)
+        th = rng.random() * math.tau
+        turn = rng.uniform(0.004, 0.009) * (1 if rng.random() < 0.5 else -1)
+        stem, leaves = [], []
+        a = float(s[i0])
+        while True:
+            i = int(np.clip(np.searchsorted(s, a) - 1, 0, len(P) - 2))
+            f = (a - s[i]) / max(s[i + 1] - s[i], 1e-6)
+            c = P[i] + (P[i + 1] - P[i]) * f
+            if c[1] > top:
+                break
+            r = R[i] + (R[i + 1] - R[i]) * f
+            # The buttresses swell the foot.
+            r *= 1.0 + 0.5 * math.exp(-max(c[1] + 40.0, 0.0) / 90.0)
+            th += turn * 9.0 + rng.normal(0, 0.05)
+            out = math.cos(th) * N[i] + math.sin(th) * B[i]
+            p = c + out * (r + 1.2)
+            stem.append(p)
+            up_frac = (c[1] - y0) / max(top - y0, 1.0)
+            for k in range(2):
+                if rng.random() > 0.85 - 0.45 * up_frac:
+                    continue
+                aa = th + rng.normal(0, 0.35)
+                o2 = math.cos(aa) * N[i] + math.sin(aa) * B[i]
+                lc = c + o2 * (r + 2.2) + T[i] * rng.normal(0, 6.0)
+                size = rng.uniform(9.0, 15.0) * (1.0 - 0.3 * up_frac)
+                right = np.cross(o2, T[i])
+                right /= max(np.linalg.norm(right), 1e-9)
+                tilt = rng.normal(0, 0.5)
+                up = T[i] * math.cos(tilt) + right * math.sin(tilt)
+                right = np.cross(o2, up)
+                nrm = o2 + up * rng.uniform(0.0, 0.5)
+                nrm /= np.linalg.norm(nrm)
+                h = size * 0.5
+                corners = (lc - right * h - up * h, lc + right * h - up * h,
+                           lc + right * h + up * h, lc - right * h + up * h)
+                cell = "ivy%d" % rng.integers(0, 4)
+                tint = np.array([1.0, 1.0, 1.0]) * rng.uniform(0.75, 1.1)
+                v = M.card(corners, TX.cell_rect(cell, 0.04), tint,
+                           normal=nrm, ao=0.9, sway=(0.05, 0.08, 0.1, 0.12))
+                leaves.append(v)
+            a += 9.0
+        parts = []
+        if len(stem) >= 2:
+            st = np.array(stem)
+            parts.append(M.ribbon(st, np.full(len(st), 1.1), np.array([0.30, 0.32, 0.22]),
+                                  ao=0.8))
+        parts.extend(leaves)
+        return parts
 
     def info(self):
         """What the wood needs to place it: its height, the trunk's radius
@@ -493,5 +639,6 @@ class Tree:
         hang points."""
         allp = np.concatenate([b.pts for b in self.branches])
         spread = float(np.sqrt(allp[:, 0] ** 2 + allp[:, 2] ** 2).max())
-        return dict(height=self.height, r0=self.r0, spread=spread,
-                    hangs=[tuple(map(float, h)) for h in self.hangs])
+        hangs = [tuple(float(v) for v in (*h["p"], h["r"], *h["t"]))
+                 for h in self.hangs]
+        return dict(height=self.height, r0=self.r0, spread=spread, hangs=hangs)

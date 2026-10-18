@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """The witch charms that hang in the wood's trees (`tools/make_wood.py`
-writes them out), modelled after the grove's sprites: a horned skull, a star
-of bones, a ring strung like a web, a lantern, a rune plaque, a mobile of
-blades, a string of vertebrae, and a stick figure.
+writes them out), after the owner's Velka commission and the grove's
+sprites: a horned skull under crossed bones with a triple spiral on its
+brow, bones bound in tiers like a ladder, an iron ring with a spiral worked
+across it, a cage lantern, an arrowhead of bone with a rune, a leather
+pouch, a star of bones, a string of vertebrae, and a stick figure.
 
-Each charm hangs from its cord: its origin is where the cord is tied to the
-branch, and it hangs down -y, facing -z (toward the camera flying up +z).
-Parts are textured from the charm sheet (`wood_tex.charm_sheet`): bone, old
-wood, cord and iron, one quadrant each. The parts that glow (a skull's eyes,
-a carved rune, a lantern's light) are `KIND_GLOW` vertices, drawn as their
-own light; the wood also puts a point light there (`glow` in the table).
+Each charm hangs from its cord, a dark rope with knots in it: its origin is
+where the cord is tied under the limb, and it hangs down -y, facing -z
+(toward the camera flying up +z). The wood winds a turn of rope round the
+limb there (`rope_wrap`). Parts are textured from the charm sheet
+(`wood_tex.charm_sheet`): bone, old wood, cord and iron, one quadrant each.
+The parts that glow (a skull's sockets and its spiral, a carved rune, a
+lantern's light) are `KIND_GLOW` vertices, drawn as their own light; the
+wood also puts a point light there (`glow` in the table).
 
 Charms are triangle lists rather than strips (a marching-cubes skull is a
 soup of triangles).
@@ -32,15 +36,17 @@ GLOW_TINT = (1.0, 1.0, 1.0)
 
 def strip_to_list(v):
     """A strip's triangles as a list, dropping the joins (triangles with two
-    corners in one place)."""
+    of the same vertex). A vertex is its position and its texture
+    coordinates together: a ribbon's two edges share a position until the
+    shader spreads them apart, and only their side tells them apart."""
     if len(v) < 3:
         return v[:0]
+    key = np.concatenate([v["pos"], v["uv"]], axis=1)
     idx = []
-    p = v["pos"]
     for i in range(len(v) - 2):
         a, b, c = i, i + 1, i + 2
-        if (np.allclose(p[a], p[b]) or np.allclose(p[b], p[c])
-                or np.allclose(p[a], p[c])):
+        if (np.allclose(key[a], key[b]) or np.allclose(key[b], key[c])
+                or np.allclose(key[a], key[c])):
             continue
         idx.extend((a, b, c))
     return v[np.array(idx, int)]
@@ -91,17 +97,28 @@ def tube_part(pts, radii, sides, rect, tint=(1, 1, 1), kind=M.KIND_SOLID,
     return remap_uv(v, rect)
 
 
-def cord(length, r=0.55, tint=(0.30, 0.26, 0.22), kinks=0.0, rng=None):
-    """The cord a charm hangs by, from its tie (the origin) down."""
+ROPE = (0.16, 0.13, 0.11)
+ROPE_KNOT = (0.26, 0.21, 0.17)
+
+
+def cord(length, r=1.1, tint=ROPE, kinks=0.0, rng=None, top=(0.0, 0.0, 0.0)):
+    """The rope a charm hangs by, from its tie (`top`, the origin unless
+    given) down `length`: dark, thick enough to read against the fog, with a
+    knot or two along it."""
     n = max(3, int(length / 8))
     pts = np.zeros((n, 3))
     pts[:, 1] = -np.linspace(0, length, n)
+    pts += np.asarray(top, float)
     if rng is not None and kinks:
         pts[1:-1, 0] += rng.normal(0, kinks, n - 2)
         pts[1:-1, 2] += rng.normal(0, kinks, n - 2)
-    v = M.ribbon(pts, np.full(n, r), np.asarray(tint, float), ao=1.0,
-                 sway=np.linspace(0, 0.0, n))
-    return strip_to_list(v)
+    parts = [strip_to_list(M.ribbon(pts, np.full(n, r), np.asarray(tint, float),
+                                    ao=1.0, sway=np.zeros(n)))]
+    if rng is not None and length > 30:
+        for f in rng.uniform(0.3, 0.8, 1 if length < 60 else 2):
+            parts.append(sphere_part(pts[0] + (0, -length * f, 0), r * 1.9,
+                                     CORD, ROPE_KNOT, n=6, sy=0.8))
+    return np.concatenate(parts)
 
 
 def sphere_part(c, r, rect, tint=(1, 1, 1), kind=M.KIND_SOLID, n=10, sy=1.0):
@@ -214,32 +231,107 @@ def eye_lights():
     return np.concatenate(out)
 
 
+def flat_strip(path, width, z_off, normal, kind=M.KIND_GLOW, tint=GLOW_TINT):
+    """A flat band of `width` along a polyline in the plane facing `normal`
+    (a carved or painted line), as triangles."""
+    P = np.asarray(path, float)
+    n = len(P)
+    nrm = np.asarray(normal, float)
+    nrm = nrm / np.linalg.norm(nrm)
+    tris = []
+    for i in range(n - 1):
+        d = P[i + 1] - P[i]
+        side = np.cross(nrm, d)
+        side = side / max(np.linalg.norm(side), 1e-9) * width * 0.5
+        a0, a1 = P[i] - side, P[i] + side
+        b0, b1 = P[i + 1] - side, P[i + 1] + side
+        tris.extend([a0, a1, b1, a0, b1, b0])
+    tris = np.array(tris) + nrm * z_off
+    k = len(tris)
+    col = np.ones((k, 4))
+    col[:, :3] = tint
+    ex = np.zeros((k, 4))
+    ex[:, 2] = kind * 4
+    v = M.verts(tris, np.tile(nrm, (k, 1)), col, np.full((k, 2), 0.5), ex)
+    return remap_uv(v, BONE)
+
+
+def triskelion(centre, size, normal, up):
+    """Three spiral arms turning out of one centre (the Celtic triple
+    spiral), in the plane facing `normal`, as a glowing painted line."""
+    c = np.asarray(centre, float)
+    nrm = np.asarray(normal, float) / np.linalg.norm(normal)
+    u = np.asarray(up, float)
+    u = u - np.dot(u, nrm) * nrm
+    u /= np.linalg.norm(u)
+    r = np.cross(nrm, u)
+    out = []
+    for k in range(3):
+        a0 = k * math.tau / 3
+        pts = []
+        for t in np.linspace(0.0, 1.0, 26):
+            # Out from the centre, then curling back on itself at the end.
+            rad = size * (0.15 + 0.85 * math.sin(t * math.pi * 0.62))
+            ang = a0 + t * 4.2
+            pts.append(c + (math.cos(ang) * r + math.sin(ang) * u) * rad)
+        out.append(flat_strip(pts, size * 0.16, 0.3, nrm))
+    return np.concatenate(out)
+
+
+def skull_surface(p0, d):
+    """Where a ray from `p0` along `d` first meets the skull, and the
+    surface's normal there."""
+    d = np.asarray(d, float) / np.linalg.norm(d)
+    p = np.asarray(p0, float)
+    for _ in range(200):
+        s = float(skull_sdf(p[None, :])[0])
+        if s < 0.05:
+            break
+        p = p + d * max(s * 0.8, 0.05)
+    e = 0.05
+    g = np.array([float(skull_sdf((p + np.array(o))[None, :])[0]
+                        - skull_sdf((p - np.array(o))[None, :])[0])
+                  for o in ((e, 0, 0), (0, e, 0), (0, 0, e))])
+    return p, g / max(np.linalg.norm(g), 1e-9)
+
+
 # ---------------------------------------------------------------------------
 # The charms
 # ---------------------------------------------------------------------------
 
 def charm_skull(rng):
+    """A horned skull hung under two crossed bones, a triple spiral painted
+    on its brow, its sockets lit."""
     c = Charm()
-    drop = rng.uniform(40, 70)
-    c.add(cord(drop - 8, rng=rng, kinks=0.6))
-    # Two short ties to the horn tips.
+    drop = rng.uniform(26, 40)
+    c.add(cord(drop, rng=rng, kinks=0.5))
+    # Two bones crossed and bound where the cord comes down.
+    y = -drop
     for s in (-1, 1):
-        c.add(strip_to_list(M.ribbon(np.array([[0, -drop + 8, 0],
-                                               [s * 10, -drop - 4, 4]]),
-                                     np.array([0.5, 0.5]),
-                                     np.array([0.30, 0.26, 0.22]))))
+        a = np.array([-16.0 * s, y + 9.0, -1.0])
+        b = np.array([16.0 * s, y - 9.0, 1.0])
+        c.add(bone(a, b, 1.9))
+    c.add(sphere_part((0, y, -0.5), 3.2, CORD, ROPE_KNOT))
+    c.add(cord(14, rng=rng, top=(0, y - 2, 0)))
+    for s in (-1, 1):
+        c.add(strip_to_list(M.ribbon(np.array([[0, y - 14, 0],
+                                               [s * 10, y - 26, 4]]),
+                                     np.array([0.9, 0.9]), np.array(ROPE))))
     sk = skull_mesh()
-    # Hung by the horns: the skull below the tie, its face toward -z and
-    # tipped a little down.
     rot = M.rot_axis(np.array([1.0, 0.0, 0.0]), math.radians(-12))
-    off = np.array([0.0, -drop - 26.0, 0.0])
-    c.add(M.transform(sk, rot, off, 1.35))
-    c.add(M.transform(eye_lights(), rot, off, 1.35))
-    c.glow = (0.0, -drop - 24.0, -9.0)
+    off = np.array([0.0, y - 40.0, 0.0])
+    sc = 1.35
+    c.add(M.transform(sk, rot, off, sc))
+    c.add(M.transform(eye_lights(), rot, off, sc))
+    # The spiral on its brow.
+    p, nrm = skull_surface((0.0, 7.5, -30.0), (0.0, -0.05, 1.0))
+    tri = triskelion(p, 4.2, nrm, (0.0, 1.0, 0.0))
+    c.add(M.transform(tri, rot, off, sc))
+    c.glow = (0.0, y - 38.0, -12.0)
     return c
 
 
-def bone(a, b, r):
+def bone(a, b, r, tint=(0.90, 0.86, 0.78)):
     """A long bone: a shaft with knobbed ends."""
     a = np.asarray(a, float)
     b = np.asarray(b, float)
@@ -248,69 +340,96 @@ def bone(a, b, r):
     radii = r * (0.62 + 0.55 * (np.exp(-(t / 0.10) ** 2) + np.exp(-((1 - t) / 0.10) ** 2)))
     radii[0] *= 0.6
     radii[-1] *= 0.6
-    return tube_part(pts, radii, 7, BONE, (0.90, 0.86, 0.78))
+    return tube_part(pts, radii, 7, BONE, tint)
 
 
 def charm_bones(rng):
+    """A star of six bones bound at the middle, a light in the knot."""
     c = Charm()
-    drop = rng.uniform(35, 60)
+    drop = rng.uniform(30, 50)
     c.add(cord(drop, rng=rng, kinks=0.5))
-    ctr = np.array([0.0, -drop - 26.0, 0.0])
+    ctr = np.array([0.0, -drop - 22.0, 0.0])
     n = 6
     for k in range(n):
         a = k * math.tau / n + rng.normal(0, 0.12)
         d = np.array([math.cos(a), math.sin(a), rng.normal(0, 0.1)])
-        c.add(bone(ctr + d * 3, ctr + d * rng.uniform(22, 30), rng.uniform(1.8, 2.4)))
-    # The binding knot, and a glowing bead in it.
-    c.add(sphere_part(ctr + (0, 0, -1.5), 4.2, CORD, (0.45, 0.36, 0.30)))
+        c.add(bone(ctr + d * 3, ctr + d * rng.uniform(18, 24), rng.uniform(1.6, 2.1)))
+    c.add(sphere_part(ctr + (0, 0, -1.5), 4.2, CORD, ROPE_KNOT))
     c.add(sphere_part(ctr + (0, 0, -4.8), 2.2, BONE, GLOW_TINT, kind=M.KIND_GLOW))
     c.glow = tuple(ctr + (0, 0, -6.0))
     return c
 
 
-def charm_ring(rng):
-    """A bent-willow ring strung with a web, cords hanging from it with
-    beads, a light at its heart."""
+def charm_ladder(rng):
+    """Bones bound across a cord in tiers, like rungs, two small bones
+    dangling from the lowest."""
     c = Charm()
-    drop = rng.uniform(30, 55)
+    drop = rng.uniform(24, 36)
+    tiers = 3
+    gap = 22.0
+    c.add(cord(drop + gap * (tiers - 1) + 6, rng=rng, kinks=0.3))
+    for k in range(tiers):
+        y = -drop - k * gap
+        ln = rng.uniform(15, 19) * (1.0 - 0.08 * k)
+        tw = rng.normal(0, 0.12)
+        a = np.array([-ln * math.cos(tw), y + ln * math.sin(tw) * 0.3, -ln * math.sin(tw)])
+        b = -a + np.array([0, 2 * y, 0])
+        c.add(bone(a, b, rng.uniform(1.7, 2.1)))
+        c.add(sphere_part((0, y, -0.4), 2.6, CORD, ROPE_KNOT))
+    y = -drop - (tiers - 1) * gap
+    for s in (-1, 1):
+        top = np.array([s * 13.0, y, 0.0])
+        ln = rng.uniform(8, 14)
+        c.add(strip_to_list(M.ribbon(np.array([top, top + (0, -ln, 0)]),
+                                     np.array([0.6, 0.6]), np.array(ROPE))))
+        c.add(bone(top + (0, -ln, 0), top + (s * 2, -ln - 13, 0), 1.2))
+    c.add(sphere_part((0, y - 9, -1.0), 2.0, BONE, GLOW_TINT, kind=M.KIND_GLOW))
+    c.glow = (0.0, y - 9.0, -3.0)
+    return c
+
+
+def charm_ring(rng):
+    """A hand-forged iron ring hung from a bone bar, a spiral rune worked
+    across it that glows, and a hook hanging under it."""
+    c = Charm()
+    drop = rng.uniform(26, 40)
     c.add(cord(drop, rng=rng, kinks=0.4))
-    R = 22.0
-    ctr = np.array([0.0, -drop - R, 0.0])
-    th = np.linspace(0, math.tau, 25)
-    ring = ctr[None, :] + np.stack([np.cos(th) * R, np.sin(th) * R, np.zeros_like(th)], 1)
-    c.add(tube_part(ring, np.full(len(th), 1.9), 6, WOOD, (0.62, 0.52, 0.42)))
-    # The web: spokes and a spiral of thread, as ribbons.
-    for k in range(7):
-        a = k * math.tau / 7
-        p = np.array([ctr, ctr + np.array([math.cos(a) * R, math.sin(a) * R, 0])])
-        c.add(strip_to_list(M.ribbon(p, np.array([0.28, 0.28]), np.array([0.7, 0.68, 0.62]))))
+    y = -drop
+    c.add(bone((-14.0, y, 0.0), (14.0, y + 1.0, 0.0), 1.8))
+    c.add(sphere_part((0, y, -0.4), 2.6, CORD, ROPE_KNOT))
+    R = 17.0
+    ctr = np.array([0.0, y - 6.0 - R, 0.0])
+    for s in (-1, 1):
+        c.add(strip_to_list(M.ribbon(np.array([[s * 9.0, y, 0.0],
+                                               [s * 4.0, ctr[1] + R - 1.0, 0.0]]),
+                                     np.array([0.7, 0.7]), np.array(ROPE))))
+    th = np.linspace(0, math.tau, 33)
+    wob = 1.0 + 0.03 * np.sin(th * 3.0 + rng.random() * 6)
+    ring = ctr[None, :] + np.stack([np.cos(th) * R * wob, np.sin(th) * R * wob,
+                                    np.zeros_like(th)], 1)
+    c.add(tube_part(ring, np.full(len(th), 1.7), 6, IRON, (0.55, 0.53, 0.52)))
+    # The spiral across it, an S-curl as on the old charms.
     sp = []
-    for t in np.linspace(0, 1, 60):
-        a = t * math.tau * 3.0
-        rr = R * (0.18 + 0.75 * t)
-        sp.append(ctr + np.array([math.cos(a) * rr, math.sin(a) * rr, 0]))
-    c.add(strip_to_list(M.ribbon(np.array(sp), np.full(60, 0.22), np.array([0.7, 0.68, 0.62]))))
-    # Hanging cords with beads and a feather-like blade at the end.
-    for k, a in enumerate((-110, -90, -70)):
-        a = math.radians(a)
-        top = ctr + np.array([math.cos(a) * R, math.sin(a) * R, 0])
-        ln = rng.uniform(26, 40)
-        p = np.array([top, top + (0, -ln, 0)])
-        c.add(strip_to_list(M.ribbon(p, np.array([0.4, 0.4]), np.array([0.3, 0.26, 0.22]))))
-        c.add(sphere_part(top + (0, -ln * 0.45, 0), 2.0, BONE, (0.85, 0.8, 0.72)))
-        blade = np.array([top + (0, -ln, 0), top + (0, -ln - 12, 0)])
-        c.add(tube_part(blade, np.array([2.0, 0.2]), 4, BONE, (0.8, 0.76, 0.7)))
-    c.add(sphere_part(ctr + (0, 0, -1.0), 3.4, BONE, GLOW_TINT, kind=M.KIND_GLOW))
+    for t in np.linspace(-1.0, 1.0, 40):
+        a = t * 3.6
+        rr = R * 0.62 * abs(t) ** 0.8
+        sgn = 1.0 if t >= 0 else -1.0
+        sp.append(ctr + np.array([math.cos(a) * rr * sgn, math.sin(a) * rr * sgn, 0.0]))
+    c.add(flat_strip(sp, 1.7, 0.6, (0.0, 0.0, -1.0)))
+    # The hook below.
+    hook = np.array([[0, ctr[1] - R, 0], [0, ctr[1] - R - 7, 0], [2, ctr[1] - R - 11, 0],
+                     [4.5, ctr[1] - R - 9, 0]])
+    c.add(tube_part(hook, np.array([0.9, 0.8, 0.7, 0.4]), 4, IRON, (0.5, 0.48, 0.47)))
     c.glow = tuple(ctr + (0, 0, -3.0))
     return c
 
 
 def charm_lantern(rng):
-    """An iron cage lantern: a ring at the top and bottom, bars bowed
-    between them, a cap and a hook; the witch-light inside."""
+    """An iron cage lantern: bars bowed between a cap and a foot; the
+    witch-light inside."""
     c = Charm()
-    drop = rng.uniform(25, 45)
-    c.add(cord(drop, r=0.7, rng=rng))
+    drop = rng.uniform(25, 40)
+    c.add(cord(drop, rng=rng))
     top = -drop
     h = 34.0
     ctr = np.array([0.0, top - h * 0.55, 0.0])
@@ -322,7 +441,6 @@ def charm_lantern(rng):
         rr = 3.5 + (rmax - 3.5) * np.sin(np.pi * t) ** 0.8
         pts = np.stack([np.cos(a) * rr, top - 6 - t * h, np.sin(a) * rr], 1)
         c.add(tube_part(pts, np.full(9, 0.9), 4, IRON, (0.55, 0.52, 0.5)))
-    # Cap and foot.
     cap = np.array([[0, top, 0], [0, top - 3, 0], [0, top - 7, 0]])
     c.add(tube_part(cap, np.array([1.5, 4.5, 4.0]), 8, IRON, (0.5, 0.48, 0.46)))
     foot = np.array([[0, top - 6 - h + 1, 0], [0, top - 6 - h - 2, 0], [0, top - 6 - h - 6, 0]])
@@ -333,18 +451,17 @@ def charm_lantern(rng):
 
 
 def charm_plaque(rng):
-    """A pentagon of old wood, a rune cut in its face that glows."""
+    """An arrowhead of pale bone hung point down, a rune cut in its face
+    that glows."""
     c = Charm()
-    drop = rng.uniform(30, 55)
-    for s in (-1, 1):
-        p = np.array([[0, 0, 0], [s * 12, -drop, 0]])
-        c.add(strip_to_list(M.ribbon(p, np.array([0.55, 0.55]), np.array([0.3, 0.26, 0.22]))))
-    w, hgt, th = 30.0, 42.0, 3.0
-    y0 = -drop
-    outline = np.array([[-w / 2, y0], [w / 2, y0], [w / 2, y0 - hgt * 0.6],
-                        [0, y0 - hgt], [-w / 2, y0 - hgt * 0.6]])
+    drop = rng.uniform(28, 44)
+    c.add(cord(drop, rng=rng, kinks=0.3))
+    th = 2.4
+    y0 = -drop - 2.0
+    outline = np.array([[-9.0, y0], [9.0, y0], [13.0, y0 - 12.0],
+                        [0.0, y0 - 40.0], [-13.0, y0 - 12.0]])
+    w, hgt = 26.0, 40.0
     tris = []
-    # Front and back faces as fans, and the edge as quads.
     for z, nz in ((-th, -1.0), (th, 1.0)):
         for i in range(1, len(outline) - 1):
             for q in (outline[0], outline[i], outline[i + 1]):
@@ -361,46 +478,45 @@ def charm_plaque(rng):
     n = len(tris)
     uv = np.stack([(tris[:, 0] + w / 2) / w, (y0 - tris[:, 1]) / hgt], 1)
     col = np.ones((n, 4))
-    col[:, :3] = (0.62, 0.54, 0.46)
+    col[:, :3] = (0.92, 0.88, 0.78)
     ex = np.zeros((n, 4))
     ex[:, 2] = M.KIND_SOLID * 4
-    c.add(remap_uv(M.verts(tris[:, :3], tris[:, 3:], col, uv, ex), WOOD))
-    # The rune: three strokes, just proud of the front face.
-    z = -th - 0.4
-    strokes = [((0, y0 - 9), (0, y0 - 33)), ((0, y0 - 16), (-8, y0 - 9)),
-               ((0, y0 - 22), (8, y0 - 15)), ((0, y0 - 28), (-6, y0 - 22))]
-    for (ax, ay), (bx, by) in strokes:
-        d = np.array([bx - ax, by - ay])
-        d /= np.linalg.norm(d)
-        nx = np.array([-d[1], d[0]]) * 1.3
-        quad = [(ax - nx[0], ay - nx[1]), (bx - nx[0], by - nx[1]),
-                (bx + nx[0], by + nx[1]), (ax + nx[0], ay + nx[1])]
-        tri = np.array([[quad[i][0], quad[i][1], z] for i in (0, 1, 2, 0, 2, 3)])
-        cc = np.ones((6, 4))
-        exx = np.zeros((6, 4))
-        exx[:, 2] = M.KIND_GLOW * 4
-        c.add(remap_uv(M.verts(tri, np.tile([0, 0, -1.0], (6, 1)), cc,
-                               np.full((6, 2), 0.5), exx), BONE))
-    c.glow = (0.0, y0 - 20, -8.0)
+    c.add(remap_uv(M.verts(tris[:, :3], tris[:, 3:], col, uv, ex), BONE))
+    # The rune: a stem with a crossbar and two branches up.
+    strokes = [[(0, y0 - 7), (0, y0 - 31)], [(-6, y0 - 12), (6, y0 - 12)],
+               [(0, y0 - 18), (-6.5, y0 - 10)], [(0, y0 - 18), (6.5, y0 - 10)]]
+    for st in strokes:
+        pts = [(x, yy, 0.0) for x, yy in st]
+        c.add(flat_strip(pts, 1.8, th + 0.3, (0.0, 0.0, -1.0)))
+    c.glow = (0.0, y0 - 16, -8.0)
     return c
 
 
-def charm_fetish(rng):
-    """A crossbar hung with blades of bone on threads."""
+def charm_pouch(rng):
+    """A dark leather pouch cinched at the neck, a pale stone tied on."""
     c = Charm()
-    drop = rng.uniform(25, 45)
-    c.add(cord(drop, rng=rng))
+    drop = rng.uniform(30, 46)
+    c.add(cord(drop + 4, rng=rng, kinks=0.4))
     y = -drop
-    bar = np.array([[-26, y + 1.5, 0], [0, y, 0], [26, y + 2, 0]])
-    c.add(tube_part(bar, np.array([1.8, 2.0, 1.6]), 6, WOOD, (0.6, 0.5, 0.42)))
-    for k, x in enumerate(np.linspace(-22, 22, 5)):
-        ln = rng.uniform(10, 22)
-        p = np.array([[x, y, 0], [x, y - ln, 0]])
-        c.add(strip_to_list(M.ribbon(p, np.array([0.35, 0.35]), np.array([0.3, 0.26, 0.22]))))
-        blade = np.array([[x, y - ln, 0], [x, y - ln - 8, 0], [x, y - ln - 20, 0]])
-        c.add(tube_part(blade, np.array([0.6, 3.2, 0.3]), 4, BONE, (0.86, 0.82, 0.74)))
-    c.add(sphere_part((0, y - 3, -1.5), 2.6, BONE, GLOW_TINT, kind=M.KIND_GLOW))
-    c.glow = (0.0, y - 4, -4.0)
+    prof = [(0.5, 0.0), (2.6, -1.5), (4.0, -3.0), (2.8, -4.5), (3.4, -6.5),
+            (7.5, -10.0), (10.0, -15.0), (10.6, -20.0), (9.4, -25.0),
+            (6.0, -28.5), (0.4, -30.0)]
+    pts = np.array([[0.0, y + yy, 0.0] for _, yy in prof])
+    radii = np.array([r for r, _ in prof])
+    v = tube_part(pts, radii, 10, CORD, (0.42, 0.30, 0.24))
+    # Lumps: push each vertex out a little by a pattern round it.
+    p = v["pos"]
+    ang = np.arctan2(p[:, 2], p[:, 0])
+    k = 1.0 + 0.10 * np.sin(ang * 3 + p[:, 1] * 0.4) * np.clip((-(p[:, 1] - y) - 8) / 10, 0, 1)
+    v["pos"][:, 0] *= k
+    v["pos"][:, 2] *= k
+    c.add(v)
+    c.add(sphere_part((0.0, y - 4.0, 0.0), 3.6, CORD, ROPE_KNOT, sy=0.6))
+    # A stone on a short tie at the neck, glowing.
+    c.add(strip_to_list(M.ribbon(np.array([[3.0, y - 4.0, -2.0], [7.0, y - 14.0, -4.0]]),
+                                 np.array([0.5, 0.5]), np.array(ROPE))))
+    c.add(sphere_part((7.5, y - 16.0, -4.5), 2.4, BONE, GLOW_TINT, kind=M.KIND_GLOW))
+    c.glow = (7.5, y - 16.0, -7.0)
     return c
 
 
@@ -428,7 +544,7 @@ def charm_effigy(rng):
     """A stick figure of twigs bound with cord: a body, arms, legs, a head
     of a knot, hung by its neck."""
     c = Charm()
-    drop = rng.uniform(25, 45)
+    drop = rng.uniform(25, 40)
     c.add(cord(drop, rng=rng))
     y = -drop
     tint = (0.55, 0.46, 0.38)
@@ -439,18 +555,33 @@ def charm_effigy(rng):
     for s in (-1, 1):
         leg = np.array([[0, y - 38, 0], [s * 8, y - 52, 0], [s * 10, y - 62, 0]])
         c.add(tube_part(leg, np.array([1.3, 1.1, 0.8]), 5, WOOD, tint))
-    c.add(sphere_part((0, y - 3, 0), 4.2, CORD, (0.45, 0.36, 0.30)))
+    c.add(sphere_part((0, y - 3, 0), 4.2, CORD, ROPE_KNOT))
     for yy in (y - 13, y - 38):
-        c.add(sphere_part((0, yy, 0), 2.3, CORD, (0.45, 0.36, 0.30)))
+        c.add(sphere_part((0, yy, 0), 2.3, CORD, ROPE_KNOT))
     c.add(sphere_part((0, y - 3, -3.5), 1.6, BONE, GLOW_TINT, kind=M.KIND_GLOW))
     c.glow = (0.0, y - 4, -6.0)
     return c
 
 
+def rope_wrap(seed=3):
+    """Rope wound round a limb where a charm is tied: three turns round the
+    local x axis (the limb's direction), of radius a little over 1, so the
+    wood scales it by the limb's own radius."""
+    rng = np.random.default_rng(seed)
+    n = 110
+    t = np.linspace(0.0, 1.0, n)
+    ang = t * 3.0 * math.tau + math.pi * 0.5
+    x = -1.0 + 2.0 * t
+    rr = 1.12 + 0.03 * rng.normal(size=n)
+    pts = np.stack([x, np.cos(ang) * rr, np.sin(ang) * rr], 1)
+    return tube_part(pts, np.full(n, 0.20), 6, CORD, np.array(ROPE) * 1.5)
+
+
 CHARMS = [
-    ("skull", charm_skull), ("bones", charm_bones), ("ring", charm_ring),
+    ("skull", charm_skull), ("ladder", charm_ladder), ("ring", charm_ring),
     ("lantern", charm_lantern), ("plaque", charm_plaque),
-    ("fetish", charm_fetish), ("spine", charm_spine), ("effigy", charm_effigy),
+    ("pouch", charm_pouch), ("bones", charm_bones), ("spine", charm_spine),
+    ("effigy", charm_effigy),
 ]
 
 

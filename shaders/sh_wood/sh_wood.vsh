@@ -23,6 +23,7 @@ varying vec4 v_col;
 varying vec2 v_uv;
 varying vec4 v_shadow;
 varying vec4 v_info;     // kind, ribbon side, ribbon coverage, ribbon width in px
+varying float v_up;      // how high up its own mesh a vertex is (moss keeps low)
 
 uniform vec3 u_cam;
 uniform float u_time;
@@ -127,6 +128,7 @@ void main() {
         v_uv = vec2(in_TextureCoord.x * 0.05 + 0.5, wp.y * 0.004);
     }
 
+    v_up = in_Position.y * scl;
     v_pos = wp;
     v_nrm = wn;
     v_col = in_Colour;

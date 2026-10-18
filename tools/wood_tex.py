@@ -670,3 +670,201 @@ def ring(n=512, r=0.893, width=0.035):
     a *= np.clip((1.0 - d) * 12, 0, 1)
     a = np.clip(a / a.max(), 0, 1)
     return to_img(np.full((n, n, 3), 255.0), a * 255)
+
+
+# ---------------------------------------------------------------------------
+# The foliage sheet: leaves, fronds and grass for cards, and stone and bone
+# for the ground's props
+# ---------------------------------------------------------------------------
+
+FOLIAGE = 1024
+CELL = FOLIAGE // 4
+
+# Where each thing is on the sheet, as (column, row, columns wide). The
+# props and the trees read these to lay their cards and solids on it.
+FOLIAGE_CELLS = {
+    "ivy0": (0, 0, 1), "ivy1": (1, 0, 1), "ivy2": (2, 0, 1), "ivy3": (3, 0, 1),
+    "fern0": (0, 1, 1), "fern1": (1, 1, 1), "bracken0": (2, 1, 1), "bracken1": (3, 1, 1),
+    "grass0": (0, 2, 1), "grass1": (1, 2, 1), "stone": (2, 2, 2),
+    "bone": (0, 3, 1), "moss_stone": (1, 3, 1), "heather": (2, 3, 1), "heather1": (3, 3, 1),
+}
+
+
+def cell_rect(name, inset=0.0):
+    """A cell's texture rectangle (u0, v0, u1, v1), inset by `inset` of a
+    cell (so mipmaps don't bleed in from the neighbours)."""
+    c, r, w = FOLIAGE_CELLS[name]
+    s = 1.0 / 4.0
+    i = inset * s
+    return (c * s + i, r * s + i, (c + w) * s - i, (r + 1) * s - i)
+
+
+def _ivy_leaf(d, cx, cy, size, ang, col, vein):
+    """An ivy leaf: five lobes, the middle one longest, on a short stalk."""
+    pts = []
+    for k in range(64):
+        t = k / 64 * math.tau
+        lob = 0.62 + 0.38 * abs(math.cos(t * 2.5)) ** 1.6
+        top = 1.0 + 0.35 * max(0.0, math.cos(t - math.pi / 2))
+        rr = size * lob * top * (0.92 if math.sin(t) > 0 else 1.0)
+        pts.append((rr * math.cos(t), -rr * math.sin(t) * 1.05))
+    ca, sa = math.cos(ang), math.sin(ang)
+    poly = [(cx + x * ca - y * sa, cy + x * sa + y * ca) for x, y in pts]
+    d.polygon(poly, fill=col)
+    for k in range(5):
+        t = math.pi / 2 + (k - 2) * 0.72
+        ex = size * 0.85 * math.cos(t)
+        ey = -size * 0.85 * math.sin(t)
+        d.line([(cx, cy + size * 0.1), (cx + ex * ca - ey * sa, cy + ex * sa + ey * ca)],
+               fill=vein, width=max(1, int(size * 0.05)))
+
+
+def _frond(d, w, h, rng, base, tip):
+    """A fern frond standing up the cell: a curved stem with pairs of
+    leaflets, each lobed, shrinking toward the tip."""
+    n = 18
+    pts = []
+    x, y = w * 0.5, h * 0.98
+    ang = -math.pi / 2 + rng.normal(0, 0.05)
+    for i in range(n + 1):
+        pts.append((x, y))
+        ang += 0.025 + rng.normal(0, 0.01)
+        x += math.cos(ang) * h * 0.92 / n
+        y += math.sin(ang) * h * 0.92 / n
+    for i in range(1, n):
+        t = i / n
+        px, py = pts[i]
+        qx, qy = pts[i + 1]
+        dx, dy = qx - px, qy - py
+        dl = math.hypot(dx, dy) or 1
+        nx, ny = -dy / dl, dx / dl
+        # Lance-shaped: widest a quarter of the way up, tapering to the tip.
+        ln = w * 0.36 * (1.0 - t) ** 0.85 * min(1.0, t * 5.0)
+        c = tuple(int(base[k] + (tip[k] - base[k]) * t) for k in range(3)) + (255,)
+        for s in (-1, 1):
+            lx, ly = px, py
+            seg = 7
+            for j in range(seg):
+                f = (j + 1) / seg
+                ex = px + (nx * s * 0.8 + dx / dl * 0.55) * ln * f
+                ey = py + (ny * s * 0.8 + dy / dl * 0.55) * ln * f + ln * 0.10 * f * f
+                r = max(1.5, ln * 0.11 * (1 - f * 0.7))
+                d.ellipse([ex - r, ey - r * 0.7, ex + r, ey + r * 0.7], fill=c)
+                d.line([(lx, ly), (ex, ey)], fill=c, width=max(1, int(r * 0.6)))
+                lx, ly = ex, ey
+    d.line(pts, fill=tuple(int(v * 0.7) for v in base) + (255,), width=max(2, int(w * 0.012)))
+
+
+def _grass(d, w, h, rng, cols):
+    for k in range(70):
+        x0 = w * 0.5 + rng.normal(0, w * 0.06)
+        lean = rng.normal(0, 0.45)
+        ln = h * rng.uniform(0.45, 0.95)
+        pts = []
+        x, y = x0, h * 0.99
+        a = -math.pi / 2 + lean * 0.4
+        for i in range(8):
+            pts.append((x, y))
+            a += lean * 0.08 + 0.02 * (1 if lean > 0 else -1)
+            x += math.cos(a) * ln / 8
+            y += math.sin(a) * ln / 8
+        c = cols[rng.integers(len(cols))]
+        wid = rng.uniform(2.0, 4.5)
+        for i in range(len(pts) - 1):
+            ww = max(1, int(wid * (1 - i / len(pts))))
+            d.line([pts[i], pts[i + 1]], fill=c, width=ww)
+
+
+def _heather(d, w, h, rng):
+    """Low heather in flower: wiry dark stems, spikes of small purple
+    bells (the purple of the flowering moss in the Velka commission)."""
+    for k in range(26):
+        x0 = w * 0.5 + rng.normal(0, w * 0.12)
+        ln = h * rng.uniform(0.35, 0.8)
+        lean = rng.normal(0, 0.25)
+        x1 = x0 + lean * ln
+        y1 = h * 0.98 - ln
+        d.line([(x0, h * 0.98), (x1, y1)], fill=(52, 40, 46, 255), width=2)
+        for j in range(14):
+            f = 0.35 + 0.65 * j / 14
+            bx = x0 + (x1 - x0) * f + rng.normal(0, 2.0)
+            by = h * 0.98 + (y1 - h * 0.98) * f
+            r = rng.uniform(2.5, 4.5) * (1.2 - f * 0.5)
+            c = (int(rng.uniform(104, 136)), int(rng.uniform(58, 78)),
+                 int(rng.uniform(118, 150)), 255)
+            d.ellipse([bx - r, by - r, bx + r, by + r], fill=c)
+
+
+def foliage_sheet(seed=81):
+    """The foliage sheet (`FOLIAGE_CELLS`): ivy leaves, fern fronds green
+    and dead, grass, heather, and two opaque materials, stone and bone, for
+    the ground's props. Cards are cut out by alpha; a card's picture stands
+    on the bottom of its cell."""
+    rng = np.random.default_rng(seed)
+    ss = 2
+    N = FOLIAGE * ss
+    C = CELL * ss
+    img = Image.new("RGBA", (N, N), (0, 0, 0, 0))
+
+    def cell_canvas(name):
+        c, r, w = FOLIAGE_CELLS[name]
+        return Image.new("RGBA", (C * w, C), (0, 0, 0, 0)), (c * C, r * C)
+
+    for k in range(4):
+        cv, at = cell_canvas("ivy%d" % k)
+        d = ImageDraw.Draw(cv)
+        base = [(38, 70, 40), (46, 82, 44), (34, 62, 38), (52, 76, 46)][k]
+        _ivy_leaf(d, C * 0.5, C * 0.55, C * 0.36, rng.normal(0, 0.15),
+                  base + (255,), tuple(min(255, int(v * 1.6)) for v in base) + (255,))
+        img.alpha_composite(cv, at)
+
+    for k, name in enumerate(("fern0", "fern1", "bracken0", "bracken1")):
+        cv, at = cell_canvas(name)
+        d = ImageDraw.Draw(cv)
+        if k < 2:
+            _frond(d, C, C, rng, (56, 84, 42), (84, 104, 52))
+        else:
+            _frond(d, C, C, rng, (112, 64, 34), (150, 98, 54))
+        img.alpha_composite(cv, at)
+
+    for k, name in enumerate(("grass0", "grass1")):
+        cv, at = cell_canvas(name)
+        d = ImageDraw.Draw(cv)
+        cols = ([(92, 98, 58), (110, 104, 64), (70, 84, 50), (124, 112, 72)] if k == 0
+                else [(80, 92, 56), (60, 76, 46), (98, 96, 60)])
+        _grass(d, C, C, rng, [c + (255,) for c in cols])
+        img.alpha_composite(cv, at)
+
+    for name in ("heather", "heather1"):
+        cv, at = cell_canvas(name)
+        _heather(ImageDraw.Draw(cv), C, C, rng)
+        img.alpha_composite(cv, at)
+
+    down = img.resize((FOLIAGE, FOLIAGE), Image.LANCZOS)
+    arr = np.asarray(down).astype(float).copy()
+
+    def fill(name, rgb):
+        c, r, w = FOLIAGE_CELLS[name]
+        arr[r * CELL:(r + 1) * CELL, c * CELL:(c + w) * CELL, :3] = rgb
+        arr[r * CELL:(r + 1) * CELL, c * CELL:(c + w) * CELL, 3] = 255
+
+    sw = CELL * 2
+    g = unit(spectral(CELL, seed + 1, beta=2.2, fmin=2, m=sw))
+    g2 = unit(spectral(CELL, seed + 2, beta=0.6, fmin=40, m=sw))
+    lich = smoothstep(0.62, 0.8, unit(spectral(CELL, seed + 3, beta=2.0, fmin=4, m=sw)))
+    stone = lerp3(np.array([62, 64, 66], float), np.array([118, 118, 114], float),
+                  0.6 * g + 0.4 * g2)
+    stone = lerp3(stone, np.array([150, 156, 140], float), lich * 0.5)
+    fill("stone", stone)
+    mg = unit(spectral(CELL, seed + 4, beta=1.0, fmin=20))
+    mp = smoothstep(0.35, 0.65, unit(spectral(CELL, seed + 5, beta=2.4, fmin=2)))
+    ms = lerp3(np.array([70, 72, 70], float), np.array([62, 96, 40], float), mp)
+    ms *= (0.8 + 0.4 * mg)[..., None]
+    fill("moss_stone", ms)
+    bp = unit(spectral(CELL, seed + 6, beta=0.9, fmin=30))
+    bs = unit(spectral(CELL, seed + 7, beta=2.4, fmin=2))
+    bone = lerp3(np.array([206, 198, 178], float), np.array([140, 118, 90], float),
+                 smoothstep(0.55, 0.95, bs) * 0.8)
+    bone *= (0.85 + 0.2 * bp)[..., None]
+    fill("bone", bone)
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")

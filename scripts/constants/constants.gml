@@ -1452,13 +1452,11 @@ enum BossMove {
 // How far ahead the wood is drawn, and how far behind the camera.
 #macro WOOD_FAR 7200
 #macro WOOD_BEHIND 500
-// Trees: the nearest row's distance from the path's middle, the clearance any
-// trunk keeps from it, and the distance (squared) past which a tree is drawn
-// without its fine twigs.
+// Trees: the nearest row's distance from the path's middle, and the
+// clearance any trunk keeps from it.
 #macro WOOD_ROW0_IN 280
 #macro WOOD_ROW0_OUT 520
 #macro WOOD_PATH_CLEAR 230
-#macro WOOD_LOD_D2 7840000
 
 // The ground's tiles: their depth, columns across, rows along, and half
 // their width.
@@ -1483,15 +1481,12 @@ enum BossMove {
 // how strong it is at night (the eclipse takes it away).
 #macro WOOD_MOON_DIR [0.30, 0.62, 0.72]
 #macro WOOD_NIGHT_LIGHT 1.0
-// The moon's shadow map: its size in texels, the width of its box in world
-// units, how deep the box is, how far ahead of the camera it is centred, how
-// far shadows reach before they fade, the depth bias, and how dark a shadow
-// is.
+// The moon's shadow map: its size in texels, how deep its box is along the
+// light, how far ahead of the camera the ground it covers runs (shadows fade
+// out before there), the depth bias, and how dark a shadow is.
 #macro WOOD_SHADOW_SIZE 2048
-#macro WOOD_SHADOW_W 4400
-#macro WOOD_SHADOW_RANGE 8000
-#macro WOOD_SHADOW_AHEAD 1800
-#macro WOOD_SHADOW_REACH 3600
+#macro WOOD_SHADOW_RANGE 11000
+#macro WOOD_SHADOW_REACH 3400
 #macro WOOD_SHADOW_BIAS 0.0015
 #macro WOOD_SHADOW_DARK 0.85
 // The lane the camera flies down, which the shaders keep clear (a limb
@@ -1518,8 +1513,10 @@ enum BossMove {
 #macro WOOD_CHARM_COL_N make_colour_rgb(120, 255, 170)
 #macro WOOD_CHARM_COL_B make_colour_rgb(255, 128, 56)
 #macro WOOD_CHARM_GLOW 4.0
-#macro WOOD_CHARM_POW 2.2
-#macro WOOD_CHARM_REACH 640
+#macro WOOD_CHARM_POW 0.8
+#macro WOOD_CHARM_REACH 560
+// ...and how much of the witch-lights a charm itself takes.
+#macro WOOD_CHARM_LIT 0.3
 #macro WOOD_CHARM_FLARE 700
 // The wisps: how many, the stretch of wood each keeps to, their colours,
 // their light, and the size of a glow's core.
@@ -1563,10 +1560,22 @@ enum BossMove {
 #macro WOOD_FOG_BASE 0
 #macro WOOD_FOG_OPEN 0.0035
 
+// Moss and lichen on the bark (albedo), and the mist lying on the ground:
+// its density, how fast it thins with height, the height it is measured
+// from, how much thicker it is in the opening, and its colour (night and
+// blood).
+#macro WOOD_MOSS_COL [0.20, 0.31, 0.11]
+#macro WOOD_LICHEN_COL [0.30, 0.21, 0.34]
+#macro WOOD_MIST [0.0013, 0.022, -10]
+#macro WOOD_MIST_OPEN 4.0
+#macro WOOD_MIST_N [0.090, 0.270, 0.310]
+#macro WOOD_MIST_B [0.260, 0.070, 0.070]
+
 // Surfaces, as `sh_wood` takes them: gloss, shininess, translucency, and how
 // strongly the normal map bends the light.
 #macro WOOD_MAT_GROUND [0.15, 18, 0, 1.2]
-#macro WOOD_MAT_BARK [0.08, 12, 0, 1.6]
+#macro WOOD_MAT_BARK [0.08, 12, 0.5, 1.6]
+#macro WOOD_MAT_PROP [0.10, 16, 0.55, 1.2]
 #macro WOOD_MAT_CHARM [0.25, 24, 0, 0]
 
 // The turn, as the grove's: the share of it the wavefront launches at, where

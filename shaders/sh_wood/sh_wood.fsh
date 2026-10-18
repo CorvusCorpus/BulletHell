@@ -28,9 +28,10 @@ varying vec4 v_col;
 varying vec2 v_uv;
 varying vec4 v_shadow;
 varying vec4 v_info;
+varying float v_up;
 
 uniform sampler2D u_nmap;      // the base texture's normal map
-uniform sampler2D u_tex2;      // the ground: the path
+uniform sampler2D u_tex2;      // the ground: the path; the rest: the foliage sheet
 uniform sampler2D u_nmap2;     // ...and its normal map
 uniform sampler2D u_shadowmap;
 uniform vec4 u_shadowp;        // texel size, bias, how dark, fade distance
@@ -47,6 +48,16 @@ uniform float u_floor;
 uniform float u_alpharef;
 uniform vec4 u_mat;            // gloss, shininess, translucency, bump
 uniform vec3 u_glowcol;        // a glow's light
+uniform float u_plain;         // 1: ribbons in their own colour, untextured (cords)
+uniform float u_lightk;        // how much the witch-lights light this (charms take less)
+uniform float u_moss;          // 1: moss and lichen grow on this (bark)
+uniform vec3 u_mosscol;
+uniform vec3 u_lichencol;
+// The mist lying on the ground: density, how fast it thins with height, the
+// height it is measured from; and its colour, night and blood.
+uniform vec4 u_mist;
+uniform vec3 u_mist_a;
+uniform vec3 u_mist_b;
 
 uniform vec3 u_moon;           // toward the moonlight
 uniform vec3 u_moon_vis;       // toward the moon's disc
@@ -166,12 +177,43 @@ void main() {
         float edge = clamp((1.0 - abs(s)) * v_info.w * 0.5, 0.0, 1.0);
         cover = edge * v_info.z;
         tex = texture2D(gm_BaseTexture, v_uv);
+        tex.rgb = mix(tex.rgb, vec3(0.62), u_plain);
         tex.a = 1.0;
+    } else if (kind > 1.5 && kind < 2.5) {
+        // A card (a frond, grass, an ivy leaf): its picture from the foliage
+        // sheet, its cut-out edge kept a pixel wide at any distance (so a
+        // far frond neither dissolves nor turns to a hard stair-step).
+        tex = texture2D(u_tex2, v_uv);
+        float fw = max(fwidth(tex.a), 0.0001);
+        tex.a = clamp((tex.a - 0.5) / fw + 0.5, 0.0, 1.0);
+    } else if (kind > 3.5) {
+        // A solid pictured from the foliage sheet (a stone, a bone).
+        tex = texture2D(u_tex2, v_uv);
+        tex.a = 1.0;
+        if (dot(N, V) < 0.0) N = -N;
     } else {
         tex = texture2D(gm_BaseTexture, v_uv);
         if (kind < 0.5) {
             if (dot(N, V) < 0.0) N = -N;
-            N = bump(N, p, v_uv, texture2D(u_nmap, v_uv).rgb, u_mat.w);
+            float bumpk = u_mat.w;
+            if (u_moss > 0.5) {
+                // Moss on what faces up and round the foot of a trunk, thick
+                // where the bark stands proud; a little purple lichen in
+                // patches on what faces the side.
+                float hgt = tex.a;
+                float lo = 1.0 - smoothstep(30.0, 170.0, v_up);
+                float moss = smoothstep(0.20, 0.62, N.y + (hgt - 0.5) * 0.7);
+                moss = max(moss, lo * smoothstep(0.25, 0.6, hgt + 0.2));
+                float patch = texture2D(gm_BaseTexture, v_uv * 0.23 + vec2(0.37, 0.11)).a;
+                moss *= smoothstep(0.32, 0.6, patch);
+                float lich = smoothstep(0.80, 0.92, texture2D(gm_BaseTexture,
+                                        v_uv * 0.41 + vec2(0.71, 0.53)).a)
+                             * (1.0 - moss) * smoothstep(0.55, 0.85, hgt);
+                tex.rgb = mix(tex.rgb, u_mosscol * (0.75 + 0.5 * hgt), moss);
+                tex.rgb = mix(tex.rgb, u_lichencol, lich * 0.75);
+                bumpk *= 1.0 - 0.6 * moss;
+            }
+            N = bump(N, p, v_uv, texture2D(u_nmap, v_uv).rgb, bumpk);
             tex.a = 1.0;
         }
     }
@@ -186,7 +228,7 @@ void main() {
     vec3 alb = tex.rgb * v_col.rgb;
     float ao = v_col.a;
 
-    if (kind > 2.5) {
+    if (kind > 2.5 && kind < 3.5) {
         // A glow: its own light, as it is.
         vec3 c = alb * u_glowcol;
         gl_FragColor = vec4(c, alpha);
@@ -209,8 +251,9 @@ void main() {
     float rimf = pow(1.0 - max(dot(N, V), 0.0), 3.0);
     vec3 rim = mix(u_rim_a, u_rim_b, bl) * u_light * rimf
                * (0.15 + 0.85 * facing * facing) * mix(0.35, 1.0, sh);
-    // Through a leaf from behind.
-    vec3 trans = mc * u_mat.z * max(-ndl, 0.0) * facing * sh;
+    // Through a leaf from behind (cards only: bark lets no light through).
+    float trk = (kind > 1.5 && kind < 2.5) ? u_mat.z : 0.0;
+    vec3 trans = mc * trk * max(-ndl, 0.0) * facing * sh;
     vec3 H = normalize(L + V);
     vec3 spc = mc * u_mat.x * pow(max(dot(N, H), 0.0), u_mat.y) * step(0.0, ndl) * sh;
 
@@ -228,9 +271,9 @@ void main() {
         float att = win / (1.0 + 14.0 * x * x);
         vec3 Ld = d3 / max(r, 0.001);
         float nl = dot(N, Ld);
-        vec3 lc = u_lcol[i].rgb * att;
+        vec3 lc = u_lcol[i].rgb * att * u_lightk;
         pl += lc * clamp((nl + 0.3) / 1.3, 0.0, 1.0);
-        pl += lc * u_mat.z * max(-nl, 0.0);
+        pl += lc * trk * max(-nl, 0.0);
         spc += lc * u_mat.x * pow(max(dot(N, normalize(Ld + V)), 0.0), u_mat.y) * step(0.0, nl);
     }
 
@@ -253,6 +296,20 @@ void main() {
     fog = max(fog, smoothstep(u_fogfar.x, u_fogfar.y, dist));
     vec3 fc = sky_col(-V, bl);
     c = mix(c, fc, fog);
+
+    // The mist on the ground: a thin layer the far wood stands in to its
+    // knees, lit by the sky it lies under.
+    float m0 = u_eye.y - u_mist.z;
+    float m1 = p.y - u_mist.z;
+    float fm = u_mist.y;
+    float dm = m1 - m0;
+    float om = (abs(dm) > 0.5)
+               ? (exp(-fm * m0) - exp(-fm * m1)) / (fm * dm)
+               : exp(-fm * m0);
+    float mist = 1.0 - exp(-u_mist.x * dist * om);
+    vec3 mcol = mix(u_mist_a, u_mist_b, bl) + mix(u_haze_a, u_haze_b, bl)
+                * 0.25 * pow(max(dot(-V, u_moon_vis), 0.0), 6.0) * u_light;
+    c = mix(c, mcol, clamp(mist, 0.0, 0.85));
 
     gl_FragColor = vec4(c, alpha);
 }

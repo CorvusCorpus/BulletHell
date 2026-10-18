@@ -76,6 +76,9 @@ function bg_wood() {
     wood_build_ground(_b);
     wood_build_sky(_b);
     _b.rows = wood_rows_new();
+    _b.prop_rows = wood_prop_rows_new();
+    _b.prop_seen = [];
+    _b.prop_n = 0;
     // This frame's trees in view, far to near, and the charms hanging from
     // them (`wood_gather`).
     _b.seen = [];
@@ -155,11 +158,27 @@ function wood_load(_b) {
         }
         array_push(_l, _i);
     }
-    // The charms (triangle lists).
+    // The charms (triangle lists), and the rope wound round a limb where
+    // one is tied.
     var _nc = array_length(global.wood_charms);
     _b.charms = array_create(_nc, -1);
     for (var _i = 0; _i < _nc; _i++) {
         _b.charms[_i] = wood_load_strip(_b, global.wood_charms[_i].file);
+    }
+    _b.wrap = wood_load_strip(_b, global.wood_wrap);
+    // The ground cover, indexed by kind.
+    var _np = array_length(global.wood_props);
+    _b.props = array_create(_np, -1);
+    _b.prop_kinds = {};
+    for (var _i = 0; _i < _np; _i++) {
+        var _p = global.wood_props[_i];
+        _b.props[_i] = wood_load_strip(_b, _p.file);
+        var _l = _b.prop_kinds[$ _p.kind];
+        if (_l == undefined) {
+            _l = [];
+            _b.prop_kinds[$ _p.kind] = _l;
+        }
+        array_push(_l, _i);
     }
 }
 
@@ -456,6 +475,8 @@ function wood_rows_new() {
     for (var _r = 0; _r < array_length(_rows); _r++) {
         var _row = _rows[_r];
         var _n = ceil((WOOD_FAR + WOOD_BEHIND) / _row.slot) + 3;
+        // (Every slot from behind the camera to `WOOD_FAR` ahead is kept
+        // filled, `wood_gather`, so the shadow pass finds every caster.)
         _row.n = _n;
         _row.cache = array_create(_n, undefined);
         for (var _i = 0; _i < _n; _i++) {
@@ -463,6 +484,73 @@ function wood_rows_new() {
         }
     }
     return _rows;
+}
+
+/// @desc The ground cover's rows, as the trees': how far from the path, the
+///       slot length, the chance a slot holds a patch a side, and which kinds
+///       grow there (`wood_props`). Standing stones are a row of their own,
+///       far apart.
+function wood_prop_rows_new() {
+    var _rows = [
+        { inner: 250, outer: 700, slot: 300, chance: 0.75,
+          kinds: ["ferns", "ferns", "rocks", "bones", "heather", "stump", "ferns"] },
+        { inner: 700, outer: 1600, slot: 340, chance: 0.8,
+          kinds: ["ferns", "log", "rocks", "stump", "bones", "heather", "ferns"] },
+        { inner: 1600, outer: 3000, slot: 420, chance: 0.65,
+          kinds: ["ferns", "rocks", "log", "heather"] },
+        { inner: 900, outer: 2600, slot: 1500, chance: 0.55,
+          kinds: ["stone"] },
+    ];
+    for (var _r = 0; _r < array_length(_rows); _r++) {
+        var _row = _rows[_r];
+        var _n = ceil((WOOD_FAR + WOOD_BEHIND) / _row.slot) + 3;
+        _row.n = _n;
+        _row.cache = array_create(_n, undefined);
+        for (var _i = 0; _i < _n; _i++) {
+            _row.cache[_i] = { idx: -999999, trees: [] };
+        }
+    }
+    return _rows;
+}
+
+/// @desc Work out slot `_i` of prop row `_r` (as `wood_slot_fill` does for
+///       trees). A patch is turned at random and mirrored at random, so the
+///       few there are don't repeat.
+function wood_prop_slot_fill(_b, _row, _r, _slot, _i) {
+    _slot.idx = _i;
+    _slot.trees = [];
+    for (var _s = -1; _s <= 1; _s += 2) {
+        var _key = _i * 17 + _r * 739 + (_s + 1) * 47 + 5000;
+        if (wood_hash(_key, 1) > _row.chance) continue;
+        var _kinds = _row.kinds;
+        var _kind = _kinds[floor(wood_hash(_key, 2) * array_length(_kinds))
+                           mod array_length(_kinds)];
+        var _list = _b.prop_kinds[$ _kind];
+        if (_list == undefined) continue;
+        var _m = _list[floor(wood_hash(_key, 3) * array_length(_list))
+                       mod array_length(_list)];
+        if (_b.props[_m] == -1) continue;
+        var _info = global.wood_props[_m];
+        var _z = (_i + 0.15 + 0.7 * wood_hash(_key, 4)) * _row.slot;
+        var _off = lerp(_row.inner, _row.outer, wood_hash(_key, 5));
+        var _x = wood_path_x(_z) + _s * _off;
+        var _sc = 0.85 + 0.35 * wood_hash(_key, 7);
+        var _mz = (wood_hash(_key, 8) < 0.5) ? -1 : 1;
+        var _stone = (_kind == "stone");
+        var _rad = (_stone ? _info.size * 0.6 : _info.size) * _sc;
+        array_push(_slot.trees, {
+            mesh: _m,
+            x: _x,
+            z: _z,
+            y: wood_ground_y(_x, _z),
+            mat: matrix_build(_x, 0, _z, 0, wood_hash(_key, 6) * 360, 0,
+                              _sc, _sc, _sc * _mz),
+            cy: _stone ? _info.size * _sc * 0.5 : 30,
+            rad: _rad,
+            stone: _stone,
+            d2: 0,
+        });
+    }
 }
 
 /// @desc Work out slot `_i` of row `_r`: for each side of the path, whether a
@@ -505,27 +593,41 @@ function wood_slot_fill(_b, _row, _r, _slot, _i) {
             charms: [],
         };
         array_push(_slot.trees, _t);
-        if (_r <= 1) wood_hang_charms(_t, _info, _key);
+        if (_r <= 1) wood_hang_charms(_t, _info, _key, _i * 4 + _r * 2
+                                                        + ((_s > 0) ? 5 : 0));
     }
 }
 
+/// @desc Which charm hangs `_n`th in the wood's turn of them: a fixed
+///       shuffle of every kind, so neighbouring charms are never alike
+///       (`wood_hang_charms` steps through it by slot).
+function wood_charm_kind(_n) {
+    static _perm = [4, 0, 6, 2, 8, 1, 5, 3, 7];
+    var _k = array_length(global.wood_charms);
+    var _p = _perm[((_n mod 9) + 9) mod 9];
+    return _p mod _k;
+}
+
 /// @desc Hang charms from a tree near the path: one (two, on a big tree) of
-///       its hang points over the path side, by chance, each with a charm
-///       of its own kind and swing. The point a charm hangs from is fixed in
-///       the world once worked out; only its swing moves.
-function wood_hang_charms(_t, _info, _key) {
+///       its hang points (the underside of a limb, `wood_table`), by chance,
+///       each tied on with a turn of rope round the limb. Their kinds go in
+///       turn by slot (`wood_charm_kind` of `_turn`), so two alike never
+///       hang together. Where a charm hangs from is fixed in the world once
+///       worked out; only its swing moves.
+function wood_hang_charms(_t, _info, _key, _turn) {
     var _hp = _info.hangs;
     var _n = array_length(_hp);
     if (_n == 0) return;
     if (wood_hash(_key, 21) > WOOD_CHARM_ODDS) return;
     var _count = (_info.height > 900 && wood_hash(_key, 22) < 0.45) ? 2 : 1;
-    var _nk = array_length(global.wood_charms);
+    var _first = floor(wood_hash(_key, 23) * min(_n, 6)) mod _n;
     for (var _c = 0; _c < _count; _c++) {
         // The first few points are the furthest over the path; one in the
         // lane is passed over (its limb is lifted out of the lane).
-        var _h = _hp[floor(wood_hash(_key, 23 + _c) * min(_n, 6)) mod _n];
+        var _h = _hp[(_first + _c * 2) mod _n];
+        if (_c > 0 && _n < 3) break;
         var _p = matrix_transform_vertex(_t.mat, _h[0], _h[1], _h[2]);
-        var _kind = floor(wood_hash(_key, 25 + _c) * _nk) mod _nk;
+        var _kind = wood_charm_kind(_turn + _c * 3);
         var _drop = global.wood_charms[_kind].drop * WOOD_CHARM_SCALE * 1.15;
         if (abs(_p[0] - wood_path_x(_p[2])) < WOOD_LANE_W * 1.1
             && _p[1] + _t.y - _drop < WOOD_LANE_TOP + 60) continue;
@@ -542,8 +644,36 @@ function wood_hang_charms(_t, _info, _key) {
             seed: _key * 0.37 + _c,
             mat: matrix_build_identity(),
             light: [0, 0, 0],
+            wrap: wood_wrap_matrix(_t, _h),
         });
     }
+}
+
+/// @desc The matrix that winds the rope wrap round the limb a charm hangs
+///       from: the wrap's x axis along the limb, its radius the limb's
+///       (both carried through the tree's own turn, scale and mirror), at the
+///       limb's axis over the tie, standing on the tree's ground.
+function wood_wrap_matrix(_t, _h) {
+    var _r = _h[3];
+    var _a = matrix_transform_vertex(_t.mat, _h[0], _h[1] + _r * 0.9, _h[2]);
+    var _e = matrix_transform_vertex(_t.mat, _h[0] + _h[4], _h[1] + _r * 0.9 + _h[5],
+                                     _h[2] + _h[6]);
+    var _tx = _e[0] - _a[0], _ty = _e[1] - _a[1], _tz = _e[2] - _a[2];
+    var _tl = max(0.0001, sqrt(_tx * _tx + _ty * _ty + _tz * _tz));
+    // The tree's scale is the length its matrix gives the unit tangent.
+    var _rw = _r * _tl;
+    _tx /= _tl; _ty /= _tl; _tz /= _tl;
+    // Up, made square to the limb, then the third axis.
+    var _ux = -_tx * _ty, _uy = 1 - _ty * _ty, _uz = -_tz * _ty;
+    var _ul = max(0.0001, sqrt(_ux * _ux + _uy * _uy + _uz * _uz));
+    _ux /= _ul; _uy /= _ul; _uz /= _ul;
+    var _wx = _ty * _uz - _tz * _uy;
+    var _wy = _tz * _ux - _tx * _uz;
+    var _wz = _tx * _uy - _ty * _ux;
+    return [_tx * _rw, _ty * _rw, _tz * _rw, 0,
+            _ux * _rw, _uy * _rw, _uz * _rw, 0,
+            _wx * _rw, _wy * _rw, _wz * _rw, 0,
+            _a[0], _a[1] + _t.y, _a[2], 1];
 }
 
 /// @desc Gather this frame's trees in view into `_b.seen`, far to near.
@@ -580,6 +710,35 @@ function wood_gather(_b) {
     // Far to near, so a twig's soft edge blends over what is behind it.
     if (array_length(_b.seen) > _b.seen_n) array_resize(_b.seen, _b.seen_n);
     array_sort(_b.seen, function(_p, _q) { return sign(_q.d2 - _p.d2); });
+
+    // The ground cover in view, the same way.
+    _b.prop_n = 0;
+    var _prows = _b.prop_rows;
+    for (var _r = 0; _r < array_length(_prows); _r++) {
+        var _row = _prows[_r];
+        var _i0 = floor((_cz - WOOD_BEHIND) / _row.slot);
+        var _i1 = floor((_cz + WOOD_FAR) / _row.slot);
+        for (var _i = _i0; _i <= _i1; _i++) {
+            var _slot = _row.cache[((_i mod _row.n) + _row.n) mod _row.n];
+            if (_slot.idx != _i) wood_prop_slot_fill(_b, _row, _r, _slot, _i);
+            var _tr = _slot.trees;
+            for (var _k = 0; _k < array_length(_tr); _k++) {
+                var _t = _tr[_k];
+                var _dx = _t.x - _b.cam_x;
+                var _dz = _t.z - _cz;
+                var _f = _dx * _fx + _dz * _fz;
+                if (_f < -_t.rad) continue;
+                var _s = _dx * _rx + _dz * _rz;
+                if (abs(_s) - _t.rad * 1.15 > max(_f, 0) * _th) continue;
+                _t.d2 = _dx * _dx + _dz * _dz;
+                if (_b.prop_n >= array_length(_b.prop_seen)) array_push(_b.prop_seen, _t);
+                else _b.prop_seen[_b.prop_n] = _t;
+                _b.prop_n++;
+            }
+        }
+    }
+    if (array_length(_b.prop_seen) > _b.prop_n) array_resize(_b.prop_seen, _b.prop_n);
+    array_sort(_b.prop_seen, function(_p, _q) { return sign(_q.d2 - _p.d2); });
 
     // The charms on them, swung for this frame.
     _b.charm_n = 0;
@@ -788,6 +947,8 @@ function wood_uniforms() {
         var _names = ["u_cam", "u_eye", "u_time", "u_wind", "u_pix",
                       "u_shadow", "u_ground", "u_floor", "u_shadowp", "u_lorg", "u_ldir", "u_lrange",
                       "u_alpharef", "u_mat", "u_glowcol", "u_raise", "u_lane",
+                      "u_plain", "u_lightk", "u_moss", "u_mosscol", "u_lichencol", "u_mist",
+                      "u_mist_a", "u_mist_b",
                       "u_moon",
                       "u_moon_vis",
                       "u_light", "u_wave", "u_flare", "u_sky_a", "u_sky_b",
@@ -933,6 +1094,16 @@ function wood_shader(_b) {
     shader_set_uniform_f(_u.u_alpharef, 0.02);
     shader_set_uniform_f(_u.u_glowcol, 1, 1, 1);
     shader_set_uniform_f(_u.u_raise, 1);
+    shader_set_uniform_f(_u.u_plain, 0);
+    shader_set_uniform_f(_u.u_lightk, 1);
+    shader_set_uniform_f(_u.u_moss, 0);
+    wood_u3(_u.u_mosscol, WOOD_MOSS_COL);
+    wood_u3(_u.u_lichencol, WOOD_LICHEN_COL);
+    var _mi = WOOD_MIST;
+    shader_set_uniform_f(_u.u_mist, _mi[0] * lerp(WOOD_MIST_OPEN, 1, wood_ease(_b.intro)),
+                         _mi[1], _mi[2], 0);
+    wood_u3(_u.u_mist_a, WOOD_MIST_N);
+    wood_u3(_u.u_mist_b, WOOD_MIST_B);
     wood_lane(_u.u_lane);
     wood_u3(_u.u_moon, _l.moon);
     wood_u3(_u.u_moon_vis, _l.moon_vis);
@@ -1091,17 +1262,32 @@ function wood_draw_back(_b, _fill) {
     }
     wood_floor(0);
 
-    wood_mat(WOOD_MAT_BARK);
-    wood_textures(spr_wood_bark_n);
+    // The ground cover, far to near; then the trees. Both take the bark as
+    // their texture (logs, stumps, trunks) and the foliage sheet as the
+    // second (fronds, grass, ivy, stones, bones).
+    shader_set_uniform_f(_u.u_moss, 1);
+    wood_textures(spr_wood_bark_n, spr_wood_foliage, spr_wood_flat_n);
     var _bt = sprite_get_texture(spr_wood_bark, 0);
+    wood_mat(WOOD_MAT_PROP);
+    for (var _i = 0; _i < _b.prop_n; _i++) {
+        var _pr = _b.prop_seen[_i];
+        var _vb = _b.props[_pr.mesh];
+        if (_vb == -1) continue;
+        matrix_set(matrix_world, _pr.mat);
+        vertex_submit(_vb, pr_trianglelist, _bt);
+    }
+    wood_mat(WOOD_MAT_BARK);
     for (var _i = 0; _i < _b.seen_n; _i++) {
         var _tr = _b.seen[_i];
         matrix_set(matrix_world, _tr.mat);
-        var _vb = (_tr.d2 > WOOD_LOD_D2) ? _b.trees_far[_tr.mesh]
-                                         : _b.trees[_tr.mesh];
+        // Every tree in full at every distance: a far mesh without the fine
+        // twigs swapped for the near one as a tree came closer, and they
+        // showed up all at once.
+        var _vb = _b.trees[_tr.mesh];
         if (_vb != -1) vertex_submit(_vb, pr_trianglestrip, _bt);
     }
 
+    shader_set_uniform_f(_u.u_moss, 0);
     wood_draw_charms(_b);
     wood_draw_wisps(_b);
 
@@ -1132,6 +1318,11 @@ function wood_draw_charms(_b) {
     if (_b.charm_n <= 0) return;
     var _u = wood_uniforms();
     shader_set_uniform_f(_u.u_raise, 0);
+    // The cords are ribbons, drawn in their own dark colour; and a charm
+    // takes only a little of the witch-lights, its own included, so bone
+    // still reads as bone.
+    shader_set_uniform_f(_u.u_plain, 1);
+    shader_set_uniform_f(_u.u_lightk, WOOD_CHARM_LIT);
     wood_mat(WOOD_MAT_CHARM);
     wood_textures(spr_wood_flat_n);
     var _tex = sprite_get_texture(spr_wood_charm, 0);
@@ -1144,8 +1335,14 @@ function wood_draw_charms(_b) {
                              _rgb[1] * WOOD_CHARM_GLOW, _rgb[2] * WOOD_CHARM_GLOW);
         matrix_set(matrix_world, _c.mat);
         vertex_submit(_vb, pr_trianglelist, _tex);
+        if (_b.wrap != -1) {
+            matrix_set(matrix_world, _c.wrap);
+            vertex_submit(_b.wrap, pr_trianglelist, _tex);
+        }
     }
     shader_set_uniform_f(_u.u_glowcol, 1, 1, 1);
+    shader_set_uniform_f(_u.u_plain, 0);
+    shader_set_uniform_f(_u.u_lightk, 1);
     shader_set_uniform_f(_u.u_raise, 1);
 }
 
@@ -1300,21 +1497,19 @@ function wood_draw_sky(_b) {
     gpu_set_blendmode(bm_normal);
 }
 
-/// @desc The moon's shadow map: the trees near enough to throw a shadow
-///       into view, drawn from the moonlight's side into a float surface as
-///       depth along it (`sh_wood_shadow`). The box follows the camera,
-///       snapped to whole texels so the shadows don't crawl as it moves.
+/// @desc The moon's shadow map, drawn from the moonlight's side into a float
+///       surface as depth along it (`sh_wood_shadow`). Its box is fitted to
+///       the ground the shadows are seen on (from just behind the camera out
+///       to `WOOD_SHADOW_REACH`, across the view) and snapped to whole texels
+///       so the shadows don't crawl as it moves; every tree over that ground
+///       as the moon sees it casts, however far off it stands, so no shadow
+///       appears late.
 function wood_draw_shadow(_b) {
     var _l = wood_light_state();
     var _L = _l.moon;
     var _size = WOOD_SHADOW_SIZE;
     _b.shadow = wood_surface(_b.shadow, _size, _size, surface_r32float, true);
 
-    // The box's centre: ahead of the camera, on the ground.
-    var _fx = dsin(_b.yaw), _fz = dcos(_b.yaw);
-    var _cx = _b.cam_x + _fx * WOOD_SHADOW_AHEAD;
-    var _cz = _b.cam_z + _fz * WOOD_SHADOW_AHEAD;
-    var _cy = 0;
     // The light's frame: right and up across it.
     var _rx = _L[2], _ry = 0, _rz = -_L[0];
     var _rl = max(0.0001, sqrt(_rx * _rx + _rz * _rz));
@@ -1322,15 +1517,43 @@ function wood_draw_shadow(_b) {
     var _ux = _L[1] * _rz - _L[2] * _ry;
     var _uy = _L[2] * _rx - _L[0] * _rz;
     var _uz = _L[0] * _ry - _L[1] * _rx;
-    // Snap the centre to whole texels across the light.
-    var _tx = WOOD_SHADOW_W / _size;
-    var _a = _cx * _rx + _cy * _ry + _cz * _rz;
-    var _c = _cx * _ux + _cy * _uy + _cz * _uz;
-    var _sa = round(_a / _tx) * _tx - _a;
-    var _sc = round(_c / _tx) * _tx - _c;
-    _cx += _rx * _sa + _ux * _sc;
-    _cy += _ry * _sa + _uy * _sc;
-    _cz += _rz * _sa + _uz * _sc;
+
+    // The ground the shadows are seen on, as the moon sees it: the bounds of
+    // its corners across the light.
+    var _fx = dsin(_b.yaw), _fz = dcos(_b.yaw);
+    var _sx = _fz, _sz = -_fx;
+    var _th = dtan(WOOD_FOV * 0.5) * (FIELD_W / FIELD_H) * 1.1;
+    var _a0 = infinity, _a1 = -infinity, _c0 = infinity, _c1 = -infinity;
+    var _depths = [-300, WOOD_SHADOW_REACH];
+    for (var _i = 0; _i < 2; _i++) {
+        var _f = _depths[_i];
+        var _half = max(500, _f * _th) + 200;
+        for (var _j = -1; _j <= 1; _j += 2) {
+            for (var _k = 0; _k < 2; _k++) {
+                var _px = _b.cam_x + _fx * _f + _sx * _half * _j;
+                var _pz = _b.cam_z + _fz * _f + _sz * _half * _j;
+                var _py = (_k == 0) ? -40 : 160;
+                var _pa = _px * _rx + _py * _ry + _pz * _rz;
+                var _pc = _px * _ux + _py * _uy + _pz * _uz;
+                _a0 = min(_a0, _pa); _a1 = max(_a1, _pa);
+                _c0 = min(_c0, _pc); _c1 = max(_c1, _pc);
+            }
+        }
+    }
+    // Its size in whole texels' steps (so a texel's size doesn't swim), and
+    // its centre snapped to whole texels.
+    var _step = 64;
+    var _wa = ceil((_a1 - _a0) / _step) * _step;
+    var _wc = ceil((_c1 - _c0) / _step) * _step;
+    var _ta = _wa / _size, _tc = _wc / _size;
+    var _ma = floor(((_a0 + _a1) * 0.5) / _ta + 0.5) * _ta;
+    var _mc = floor(((_c0 + _c1) * 0.5) / _tc + 0.5) * _tc;
+    // The centre in the world: on the ground's plane through the camera's
+    // own depth along the light.
+    var _cf = _b.cam_x * _L[0] + 60 * _L[1] + _b.cam_z * _L[2];
+    var _cx = _rx * _ma + _ux * _mc + _L[0] * _cf;
+    var _cy = _ry * _ma + _uy * _mc + _L[1] * _cf;
+    var _cz = _rz * _ma + _uz * _mc + _L[2] * _cf;
 
     var _back = WOOD_SHADOW_RANGE * 0.5;
     var _ex = _cx + _L[0] * _back;
@@ -1338,8 +1561,7 @@ function wood_draw_shadow(_b) {
     var _ez = _cz + _L[2] * _back;
     var _view = matrix_build_lookat(_ex, _ey, _ez, _cx, _cy, _cz,
                                     _ux, _uy, _uz);
-    var _proj = matrix_build_projection_ortho(WOOD_SHADOW_W, WOOD_SHADOW_W,
-                                              1, WOOD_SHADOW_RANGE);
+    var _proj = matrix_build_projection_ortho(_wa, _wc, 1, WOOD_SHADOW_RANGE);
     _b.shadow_vp = matrix_multiply(_view, _proj);
     _b.shadow_org = [_ex, _ey, _ez];
     _b.shadow_dir = [-_L[0], -_L[1], -_L[2]];
@@ -1362,9 +1584,9 @@ function wood_draw_shadow(_b) {
     shader_set_uniform_f(_u("u_lrange"), WOOD_SHADOW_RANGE);
     wood_lane(_u("u_lane"));
 
-    // Every tree within reach casts, in view or not (a tree beside the
-    // frame throws its shadow into it); the far mesh is enough for that.
-    var _reach2 = sqr(WOOD_SHADOW_REACH + 600);
+    // Every tree whose sphere crosses the box across the light casts (its
+    // far mesh: the fine twigs throw nothing worth the map's texels).
+    var _ha = _wa * 0.5, _hc = _wc * 0.5;
     var _rows = _b.rows;
     for (var _r = 0; _r < array_length(_rows); _r++) {
         var _row = _rows[_r];
@@ -1373,14 +1595,31 @@ function wood_draw_shadow(_b) {
             var _tr = _slot.trees;
             for (var _k = 0; _k < array_length(_tr); _k++) {
                 var _t = _tr[_k];
-                var _dz = _t.z - _b.cam_z;
-                if (_dz < -WOOD_BEHIND || _dz > WOOD_SHADOW_REACH + 400) continue;
-                if (sqr(_t.x - _b.cam_x) + sqr(_dz) > _reach2) continue;
+                var _ty = _t.y + _t.cy;
+                var _pa = _t.x * _rx + _ty * _ry + _t.z * _rz - _ma;
+                var _pc = _t.x * _ux + _ty * _uy + _t.z * _uz - _mc;
+                if (abs(_pa) - _t.rad > _ha || abs(_pc) - _t.rad > _hc) continue;
                 var _vb = _b.trees_far[_t.mesh];
                 if (_vb == -1) continue;
                 matrix_set(matrix_world, _t.mat);
                 vertex_submit(_vb, pr_trianglestrip, -1);
             }
+        }
+    }
+    // ...and so do the standing stones.
+    var _stones = _b.prop_rows[array_length(_b.prop_rows) - 1];
+    for (var _i = 0; _i < _stones.n; _i++) {
+        var _tr = _stones.cache[_i].trees;
+        for (var _k = 0; _k < array_length(_tr); _k++) {
+            var _t = _tr[_k];
+            var _ty = _t.y + _t.cy;
+            var _pa = _t.x * _rx + _ty * _ry + _t.z * _rz - _ma;
+            var _pc = _t.x * _ux + _ty * _uy + _t.z * _uz - _mc;
+            if (abs(_pa) - _t.rad > _ha || abs(_pc) - _t.rad > _hc) continue;
+            var _vb = _b.props[_t.mesh];
+            if (_vb == -1) continue;
+            matrix_set(matrix_world, _t.mat);
+            vertex_submit(_vb, pr_trianglelist, -1);
         }
     }
     shader_reset();

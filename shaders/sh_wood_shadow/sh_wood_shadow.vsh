@@ -1,8 +1,9 @@
 // The moon's shadow map (see `wood_draw_shadow` in `scripts/bg_wood`): the
 // wood's solids from the moon's side, each pixel keeping its depth along the
 // moonlight. The same ground and wind as `sh_wood` (change both), so a
-// shadow stays under what casts it. Ribbons and cards cast nothing (they are
-// moved out of view): twigs that fine would only be noise in the map.
+// shadow stays under what casts it. Ribbons, cards and glows cast nothing
+// (they are moved out of view): twigs that fine would only be noise in the
+// map. Solids, bark or stone, cast.
 
 attribute vec3 in_Position;
 attribute vec3 in_Normal;
@@ -68,6 +69,6 @@ void main() {
     wp = lane(wp);
     v_depth = dot(wp - u_lorg, u_ldir) / u_lrange;
     vec4 cp = gm_Matrices[MATRIX_PROJECTION] * (gm_Matrices[MATRIX_VIEW] * vec4(wp, 1.0));
-    if (kind > 0.5) cp = vec4(0.0, 0.0, -10.0, 1.0);
+    if (kind > 0.5 && kind < 3.5) cp = vec4(0.0, 0.0, -10.0, 1.0);
     gl_Position = cp;
 }

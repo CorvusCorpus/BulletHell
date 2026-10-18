@@ -24,7 +24,8 @@ The vertex is 52 bytes, in GameMaker's order (`wood_format` in
 
 `kind` is 0 for a lit solid (bark), 1 for a ribbon (a twig, widened to face
 the camera in the shader), 2 for a card (a leaf or a frond, cut out by the
-foliage sheet's alpha), 3 for something that glows. `conform` 1 means the
+foliage sheet's alpha), 3 for something that glows, 4 for a lit solid whose
+picture is on the foliage sheet (a stone, a bone on the ground). `conform` 1 means the
 vertex follows the ground under its own position rather than under its
 anchor, so a root runs over a bump instead of through it.
 """
@@ -38,6 +39,7 @@ KIND_SOLID = 0
 KIND_RIBBON = 1
 KIND_CARD = 2
 KIND_GLOW = 3
+KIND_ATLAS = 4
 
 VERTEX = np.dtype([
     ("pos", "<f4", 3),
