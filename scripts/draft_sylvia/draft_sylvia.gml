@@ -2,10 +2,10 @@
 ///       browser sketch `sylvia.js`: N1 and N2 from "Two spirals: peel" and
 ///       "Two spirals: spin and fling", "Iris bloom" in two versions and
 ///       two spells from it, and "Iris blooms" (at the end of this file).
-///       Placeholders: he has no stage or sprite yet.
+///       Placeholders: Sylvia has no stage or sprite yet.
 ///
-/// At the top of each hold he sends out pens (balls) to two points beside and
-/// below him. From each point the pens wind outward along the arms of a
+/// At the top of each hold Sylvia sends out pens (balls) to two points, one
+/// either side and below. From each point the pens wind outward along the arms of a
 /// spiral, laying still darts: in N1 the left spiral cyan and the right its
 /// mirror image in magenta, in N2 the other way round. A short pause after
 /// the last dart the spirals come alive.
@@ -20,12 +20,12 @@
 /// bound to a struct for its arm. A pen's life is its pair's clock; a dart
 /// knows the clock from the frame it was laid.
 
-// Each of his drafts' health: three times `DRAFT_SLOT_HP`. Full focused fire,
+// Each of Sylvia's drafts' health: three times `DRAFT_SLOT_HP`. Full focused fire,
 // every shot landing, deals 30 a second (`rank_full_fire`), so this is about
 // 36 seconds of it against a 40-second clock.
 #macro SYLVIA_DRAFT_HP 1080
 
-// The spirals: centres `DX` either side of him and `DY` below, each of `ARMS`
+// The spirals: centres `DX` either side of the caster and `DY` below, each of `ARMS`
 // arms evenly round. An arm winds `TURNS` times counterclockwise from radius
 // `R0` at bearing `A0` (plus its share of the turn) out to `R1` (the right
 // spiral mirrored). A pen reaches its centre in `REACH` frames, easing in,
@@ -192,7 +192,7 @@ function sylvia_arm_ang(_sv, _a) {
     return (_sv.m > 0) ? _a + _sv.off : 180 - (_a + _sv.off);
 }
 
-/// @desc A pen's task, bound to its arm: it eases from him to the spiral's
+/// @desc A pen's task, bound to its arm: it eases from the caster to the spiral's
 ///       centre, winds out along the arm laying darts, and fades where it
 ///       ends.
 function sylvia_pen_task(_u) {
@@ -287,7 +287,7 @@ function sylvia_spin_task(_u) {
 // Iris bloom
 //
 // Every `EVERY` frames `N` curved lasers (magenta and indigo by turns) wait
-// `DELAY` frames as marks on a ring `R0` round him, then fire `OFF` degrees
+// `DELAY` frames as marks on a ring `R0` round the caster, then fire `OFF` degrees
 // off straight out and curl back the other way along arcs, at `SPD` px a
 // frame: a pinwheel of blades sweeping out over
 // the field. Alternate volleys curl the other way, and each is turned `STEP`
@@ -299,7 +299,7 @@ function sylvia_spin_task(_u) {
 // of the player; the non-spell's run on wider arcs (`ARC`) until they near
 // the walls (`LIFE`). The spell, **Iris Rosette** (a placeholder name), keeps
 // the sketch's arcs and runs each blade a little over a whole loop
-// (`ROSETTE_*`), so the blades fold into a turning flower round him. The
+// (`ROSETTE_*`), so the blades fold into a turning flower round the caster. The
 // second non-spell (`LOOP_*`) keeps the sketch's arcs too, but each blade
 // turns `LOOP_TURN` degrees and then runs straight for `LOOP_RUN` frames, so
 // the flower forms and then fires its blades out past the player; its orbs
@@ -363,7 +363,7 @@ function draft_sylvia_rosette(_e, _g, _t) {
 
 /// @desc **Slow Rosette** (Sylvia's, a draft spell; placeholder name): Iris
 ///       Rosette at `SLOW` of its pace and `SLOW_SCALE` of its size, its
-///       blades launched and settling. Its row puts him in the middle.
+///       blades launched and settling. Its row puts the caster in the middle.
 function draft_sylvia_slow_rosette(_e, _g, _t) {
     sylvia_iris(_e, _t, SYLVIA_IRIS_ROSETTE_ARC,
                 ceil(SYLVIA_IRIS_ROSETTE_LIFE / SYLVIA_IRIS_SLOW), -1,
@@ -463,7 +463,7 @@ function sylvia_iris(_e, _t, _arc, _life, _turn_deg = -1, _pace = 1,
 //
 // From the sketch "Iris blooms". Sets of `SEEDS` seeds (rose balls) come in
 // pairs, a one-two: the second set `EVERY` frames after the first, then
-// `REST` frames before the next pair. A set's seeds leave him evenly round,
+// `REST` frames before the next pair. A set's seeds leave the caster evenly round,
 // the set at a random turn, so no two sets lay the same paths. Each leaves at
 // `SPD` and brakes by `BRAKE` a frame, curving along an arc of radius `ARC`
 // (the way the set's blooms spin) until it stops, and there spins out a small
