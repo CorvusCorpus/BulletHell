@@ -271,7 +271,7 @@ Game logic is plain functions over structs; objects are thin controllers.
 | Object | Role |
 |---|---|
 | `obj_boot` | Initialises every global and pool, parses `-selftest`, `-shot <scene>`, `-burst <list>`, `-fullscreen`, and routes to a room. Every global must be assigned here. |
-| `obj_title` | The stage rack. Starting a stage clears `global.practice`. |
+| `obj_title` | The stage rack, a grid with a column per zone. Starting a stage clears `global.practice`. |
 | `obj_practice` | The attack list for practising one attack. It leaves `global.practice` set, so returning reselects the last attack. |
 | `obj_game` | One run: timeline, player, bosses, conversation, HUD. Its Create calls `run_clear_field()` first, because the pools are globals that outlive a room. |
 | `obj_selftest`, `obj_shot` | Test runner; screenshot poser. |
@@ -895,11 +895,15 @@ What's playable:
 - The review card.
 - The old stage three.
 
-Stages two and three are unlocked from the start. The rack holds one stage
-per boss of the roster (`stage_list()`), zone by zone, with Ziggy first and
-Florentius last, so Velka's and Mika's stages sit in the Land of the Dead
-among the seventeen that are locked and not built. The order within it, and
-the unbuilt stages' names and subtitles, are placeholders.
+Stages two and three are unlocked from the start. `stage_list()` holds one
+stage per boss of the roster, zone by zone, with Ziggy first and Florentius
+last, and gives each def its `zone`. The rack is a grid of every card at
+once: a column per zone, its stages down it from the outskirts to its final
+boss, and a column of extras (Kremlatiel's stage, the old stage three, the
+review card and the drafting table). Arrows move across and down it. Velka's
+and Mika's stages sit in the Land of the Dead among the eighteen that are
+locked and not built, Kremlatiel's included; the unbuilt stages' names and
+subtitles are placeholders.
 
 Mika's slots (`mika_slots()` is the source of truth):
 

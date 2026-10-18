@@ -18,12 +18,13 @@ function stage_is_draft(_def) {
     return _def[$ "draft"] ?? false;
 }
 
-/// @desc What the rack shows: every stage in `stage_list`, then the old stage
-///       three, the review card, and the drafting table (only while it has
-///       drafts). `stage_list` itself holds only real stages, so counts of
-///       stages don't include these cards.
+/// @desc What the rack shows: every stage in `stage_list`, then Kremlatiel's
+///       stage, the old stage three, the review card, and the drafting table
+///       (only while it has drafts). `stage_list` itself holds only the
+///       roster's stages, so counts of stages don't include these cards.
 function rack_list() {
     var _l = stage_list();
+    array_push(_l, stage_secret_def());
     array_push(_l, old_stage_sanctum_def());
     array_push(_l, preview_stage_def());
     if (array_length(draft_list()) > 0) array_push(_l, draft_stage_def());

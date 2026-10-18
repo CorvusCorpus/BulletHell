@@ -416,25 +416,37 @@ function ziggy_no_mere_pawn(_e, _g, _t) {
 // The roster
 // ---------------------------------------------------------------------------
 
+/// @desc The roster's zones, in the order the rack shows them as columns.
+enum Zone { DemonRuins, Yokai, EternalForest, LandOfTheDead, CrystalCaverns }
+
+/// @desc Each zone's name, indexed by `Zone`.
+function stage_zone_names() {
+    return ["DEMON RUINS", "YOKAI ZONE", "ETERNAL FOREST", "LAND OF THE DEAD",
+            "CRYSTAL CAVERNS"];
+}
+
 /// @desc Every stage in the game, one per boss of the owner's roster, zone by
 ///       zone: the three built ones and the planned ones (drawn locked on the
-///       rack; `build` undefined means not built). Ziggy is first and
-///       Florentius last, so the Demon Ruins open and close the list; the
-///       rest of the order, and the planned stages' names, subtitles and
-///       `needs` (every stage before it), are placeholders. Kremlatiel, the
-///       hidden superboss, is bought from the shop, so she is not here.
+///       rack; `build` undefined means not built). Each def is given its
+///       `zone`, and within a zone the stages run from the boss on its
+///       outskirts to its final boss. Ziggy is first and Florentius last, so
+///       the Demon Ruins open and close the list; the rest of the order, and
+///       the planned stages' names, subtitles and `needs` (every stage before
+///       it), are placeholders. Kremlatiel, the hidden superboss, is bought
+///       from the shop, so she is not here; the rack shows her stage among
+///       its extra cards (`stage_secret_def`).
 function stage_list() {
-    // A row is a built stage's def, or a planned stage's name and subtitle
-    // with a comment naming its boss.
+    // A row is a zone (the stages after it are in it), a built stage's def,
+    // or a planned stage's name and subtitle with a comment naming its boss.
     var _rows = [
-        // --- Demon Ruins ---
+        Zone.DemonRuins,
         stage_ziggy_def(),
         // Athena
         ["THE RUINS' SHADOW", "an assassin in the Demon Ruins"],
         // Sylvia
         ["THE CROOKED PATH", "somewhere ordinary, for now"],
 
-        // --- Yokai Zone ---
+        Zone.Yokai,
         // Oscura
         ["THE YOKAI OUTSKIRTS", "at the edge of the Yokai Zone"],
         // Mikoto and Rena
@@ -444,7 +456,7 @@ function stage_list() {
         // Kara
         ["THE YOKAI HEART", "the heart of the Yokai Zone"],
 
-        // --- Eternal Forest ---
+        Zone.EternalForest,
         // Haveri
         ["THE ALCHEMIST", "at the edge of the Eternal Forest"],
         // Astyr
@@ -454,7 +466,7 @@ function stage_list() {
         // Vin'Zhen
         ["THE HEARTWOOD", "where the god of life keeps his heart"],
 
-        // --- Land of the Dead ---
+        Zone.LandOfTheDead,
         stage_grove_def(),          // Velka
         // Corvus
         ["THE DESCENDING CRYPT", "a graveyard, and what lies under it"],
@@ -462,7 +474,7 @@ function stage_list() {
         // Ashiah
         ["THE THRESHOLD THRONE", "the border of the afterlife"],
 
-        // --- Crystal Caverns ---
+        Zone.CrystalCaverns,
         // Zeek
         ["THE CAVERN MOUTH", "before the Crystal Caverns"],
         // Sally
@@ -472,27 +484,50 @@ function stage_list() {
         // Sapphire
         ["THE CRYSTAL HEART", "the heart of the Crystal Caverns"],
 
-        // --- Demon Ruins, its final boss ---
+        // The Demon Ruins' final boss, last.
+        Zone.DemonRuins,
         // Florentius
         ["THE DEMON KING'S SEAT", "the heart of the Demon Ruins"],
     ];
     var _list = [];
+    var _zone = 0;
     for (var _i = 0; _i < array_length(_rows); _i++) {
         var _r = _rows[_i];
-        if (is_struct(_r)) {
-            array_push(_list, _r);
+        if (is_numeric(_r)) {
+            _zone = _r;
             continue;
         }
-        array_push(_list, {
-            id: "planned_" + string(_i),
-            name: _r[0],
-            subtitle: _r[1],
-            needs: _i,
-            make_bg: undefined,
-            build: undefined,
-        });
+        var _def = _r;
+        if (is_array(_r)) {
+            var _n = array_length(_list);
+            _def = stage_planned_def("planned_" + string(_n), _r[0], _r[1], _n);
+        }
+        _def.zone = _zone;
+        array_push(_list, _def);
     }
     return _list;
+}
+
+/// @desc A stage not yet built, drawn locked on the rack.
+function stage_planned_def(_id, _name, _subtitle, _needs) {
+    return {
+        id: _id,
+        name: _name,
+        subtitle: _subtitle,
+        needs: _needs,
+        make_bg: undefined,
+        build: undefined,
+    };
+}
+
+/// @desc Kremlatiel's stage, not yet built: the secret boss (Kremu, a vendor,
+///       who becomes Kremlatiel). Unlocked by clearing every other boss at a
+///       certain rank, so `needs` is every stage; its name and subtitle are
+///       placeholders.
+function stage_secret_def() {
+    return stage_planned_def("planned_kremlatiel", "THE ASCENT",
+                             "into the sky, against the sunrise",
+                             array_length(stage_list()));
 }
 
 /// @desc Is this a stage that can actually be played?

@@ -16,18 +16,19 @@ if (enter_t > 0) {
     exit;
 }
 
-var _n = array_length(stages);
-var _moved = false;
-if (keyboard_check_pressed(vk_right) || keyboard_check_pressed(vk_down)) {
-    pick = (pick + 1) mod _n;
-    _moved = true;
+// Left and right move between columns, keeping the row where the next column
+// is that long; up and down move within a column. Both wrap round.
+var _dx = keyboard_check_pressed(vk_right) - keyboard_check_pressed(vk_left);
+var _dy = keyboard_check_pressed(vk_down) - keyboard_check_pressed(vk_up);
+if (_dx != 0 || _dy != 0) {
+    var _nc = array_length(columns);
+    var _c = (col_of[pick] + _dx + _nc) mod _nc;
+    var _n = array_length(columns[_c].items);
+    var _r = min(row_of[pick], _n - 1);
+    _r = (_r + _dy + _n) mod _n;
+    pick = columns[_c].items[_r];
+    sfx(Sfx.UiMove);
 }
-if (keyboard_check_pressed(vk_left) || keyboard_check_pressed(vk_up)) {
-    pick = (pick + _n - 1) mod _n;
-    _moved = true;
-}
-if (_moved) sfx(Sfx.UiMove);
-cursor += (pick - cursor) * 0.24;
 
 if (keyboard_check_pressed(ord("Z"))) {
     var _def = stages[pick];
