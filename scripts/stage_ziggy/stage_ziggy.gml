@@ -416,37 +416,78 @@ function ziggy_no_mere_pawn(_e, _g, _t) {
 // The roster
 // ---------------------------------------------------------------------------
 
-/// @desc Every stage in the game: the three built ones and the planned ones
-///       from the owner's roster (drawn locked on the rack; `build` undefined
-///       means not built). The planned stages' order, names and subtitles
-///       are placeholders; each row's comment names its boss. Kremlatiel,
-///       the hidden superboss, is bought from the shop, so she is not here.
+/// @desc Every stage in the game, one per boss of the owner's roster, zone by
+///       zone: the three built ones and the planned ones (drawn locked on the
+///       rack; `build` undefined means not built). Ziggy is first and
+///       Florentius last, so the Demon Ruins open and close the list; the
+///       rest of the order, and the planned stages' names, subtitles and
+///       `needs` (every stage before it), are placeholders. Kremlatiel, the
+///       hidden superboss, is bought from the shop, so she is not here.
 function stage_list() {
-    var _list = [stage_ziggy_def(), stage_grove_def(), stage_sanctum_def()];
-    var _planned = [
-        // Corvus
-        ["THE DESCENDING CRYPT", "a graveyard, and what lies under it", 3],
+    // A row is a built stage's def, or a planned stage's name and subtitle
+    // with a comment naming its boss.
+    var _rows = [
+        // --- Demon Ruins ---
+        stage_ziggy_def(),
+        // Athena
+        ["THE RUINS' SHADOW", "an assassin in the Demon Ruins"],
         // Sylvia
-        ["THE CROOKED PATH", "somewhere ordinary, for now", 4],
+        ["THE CROOKED PATH", "somewhere ordinary, for now"],
+
+        // --- Yokai Zone ---
+        // Oscura
+        ["THE YOKAI OUTSKIRTS", "at the edge of the Yokai Zone"],
+        // Mikoto and Rena
+        ["THE TWIN AMBUSH", "two at once, in the Yokai Zone"],
+        // Ayana
+        ["THE YOKAI DEPTHS", "deeper in the Yokai Zone"],
+        // Kara
+        ["THE YOKAI HEART", "the heart of the Yokai Zone"],
+
+        // --- Eternal Forest ---
         // Haveri
-        ["THE ALCHEMIST", "stage not yet chosen", 5],
-        // Noxus
-        ["THE TINKERER", "stage not yet chosen", 6],
+        ["THE ALCHEMIST", "at the edge of the Eternal Forest"],
         // Astyr
-        ["THE RANGER'S WOOD", "Vin'Zhen's forest, and its warden", 7],
+        ["THE RANGER'S WOOD", "Vin'Zhen's forest, and its warden"],
         // Faol
-        ["THE SINKING LAKE", "deep water in Vin'Zhen's land", 8],
+        ["THE SINKING LAKE", "deep water in Vin'Zhen's land"],
         // Vin'Zhen
-        ["THE HEARTWOOD", "where the god of life keeps his heart", 9],
+        ["THE HEARTWOOD", "where the god of life keeps his heart"],
+
+        // --- Land of the Dead ---
+        stage_grove_def(),          // Velka
+        // Corvus
+        ["THE DESCENDING CRYPT", "a graveyard, and what lies under it"],
+        stage_sanctum_def(),        // Mika
         // Ashiah
-        ["THE THRESHOLD THRONE", "the border of the afterlife", 10],
+        ["THE THRESHOLD THRONE", "the border of the afterlife"],
+
+        // --- Crystal Caverns ---
+        // Zeek
+        ["THE CAVERN MOUTH", "before the Crystal Caverns"],
+        // Sally
+        ["THE CRYSTAL CAVERNS", "inside the Crystal Caverns"],
+        // Zalerus
+        ["THE CRYSTAL DEPTHS", "deeper in the Crystal Caverns"],
+        // Sapphire
+        ["THE CRYSTAL HEART", "the heart of the Crystal Caverns"],
+
+        // --- Demon Ruins, its final boss ---
+        // Florentius
+        ["THE DEMON KING'S SEAT", "the heart of the Demon Ruins"],
     ];
-    for (var _i = 0; _i < array_length(_planned); _i++) {
+    var _list = [];
+    for (var _i = 0; _i < array_length(_rows); _i++) {
+        var _r = _rows[_i];
+        if (is_struct(_r)) {
+            array_push(_list, _r);
+            continue;
+        }
         array_push(_list, {
             id: "planned_" + string(_i),
-            name: _planned[_i][0],
-            subtitle: _planned[_i][1],
-            needs: _planned[_i][2],
+            name: _r[0],
+            subtitle: _r[1],
+            needs: _i,
             make_bg: undefined,
             build: undefined,
         });

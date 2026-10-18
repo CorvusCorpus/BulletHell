@@ -895,9 +895,11 @@ What's playable:
 - The review card.
 - The old stage three.
 
-Stages two and three are unlocked from the start. Eight more stages from the
-roster are on the rack, locked and not built; their order, names and
-subtitles are placeholders.
+Stages two and three are unlocked from the start. The rack holds one stage
+per boss of the roster (`stage_list()`), zone by zone, with Ziggy first and
+Florentius last, so Velka's and Mika's stages sit in the Land of the Dead
+among the seventeen that are locked and not built. The order within it, and
+the unbuilt stages' names and subtitles, are placeholders.
 
 Mika's slots (`mika_slots()` is the source of truth):
 
