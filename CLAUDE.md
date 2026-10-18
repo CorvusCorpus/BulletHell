@@ -1049,6 +1049,10 @@ Known gaps:
   bloom. Photograph it with `python tools/shot.py draft_blooms`.
 - There is no options screen: no volume, window mode, key remapping or
   progress reset.
+- There is no low-performance mode; the owner has put one in the backlog.
+  The 3D backgrounds (the hall and the wood) take about 5–6 ms of GPU a
+  frame on the owner's RTX 3060 Ti, so a GPU a third as fast would spend
+  most of a 60 fps frame on them alone.
 - Stages one and two's fodder can only move as `wave_line` and `wave_cross`
   describe; only stage three's waves fly routes (`enemy_routes`).
 - Missing parts of ph3's shot API:
