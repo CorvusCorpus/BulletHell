@@ -149,7 +149,7 @@ in role and design.
   web mechanic.
 - **Sylvia**, the penultimate boss: a skill check, not impossible but a boss
   to come back to later. An egregore after the Cheshire cat, technically
-  genderless. Begins somewhere
+  genderless (it/its). Begins somewhere
   that looks normal and slowly fades into a trippy Wonderland. Gimmick:
   messing with the game's visuals and controls during attacks.
 - **Florentius**, the demon king: the zone's final boss and the game's
