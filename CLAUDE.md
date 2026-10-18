@@ -659,7 +659,7 @@ to `.bad`. No test touches the real save.
 
 ## Backgrounds
 
-There are three kinds, dispatched on `bg.kind` by `bg_step`, `bg_draw_back`
+There are four kinds, dispatched on `bg.kind` by `bg_step`, `bg_draw_back`
 and `bg_draw_front`.
 
 - **Parallax** (stage one, `bg_brimstone`): three layers from `make_bg.py`.
@@ -719,6 +719,37 @@ and `bg_draw_front`.
     intermittently.
   - Restore every GPU state you change (culling, shader, depth, mipmapping).
     A leak breaks the HUD.
+- **Wood** (the review card, `bg_wood`; work in progress, stage two still
+  flies the corridor): Velka's wood in real 3D, drawn into its own HDR
+  surface with the depth buffer.
+  - Trees, charms with their ropes, and ground cover are meshes from
+    `make_wood.py`, loaded from `datafiles/wood/` as compressed vertex
+    buffers (`wood_load_strip`) and listed in `scripts/wood_table`. A file
+    that is missing or won't read is left out with only a debug line
+    (`test_wood`). The vertex format adds a custom float4: the anchor's x and
+    z, `kind * 4 + conform`, and how far the wind moves it.
+  - Everything is placed by hashed slots in rows (`wood_rows_new`,
+    `wood_prop_rows_new`), so the wood is the same on every attempt. Rows
+    from `WOOD_ROW_BARE` out always use the trees' bare meshes; nothing
+    swaps detail by distance on screen.
+  - The ground is a function (`wood_path_x`, `wood_ground_y`) written again
+    in both vertex shaders, which raise flat ground tiles and every placed
+    mesh onto it (`check_wood_ground_agrees`). The shaders also lift any limb
+    that reaches into the camera's lane over it (`lane`).
+  - Twigs are ribbons turned to the camera, kept at least about a pixel
+    wide with their true width as coverage, so fine branches don't flicker.
+  - `sh_wood` lights per pixel: the moon through a shadow map fitted to the
+    ground in view (`wood_draw_shadow`, linear depth in an `r32float`
+    surface, filtered and fading with distance), up to `WOOD_LIGHTS` point
+    lights from the charms' witch-lights and the wisps, moss and lichen, fog
+    toward the sky's colour and a ground mist. The turn's blood wavefront is
+    worked out per pixel by distance ahead. `sh_wood_post` blooms it, adds
+    rays from the moon (masked by depth) and grades it.
+  - Its textures are `For3D` sprites in the `Wood` texture group, laid by
+    world position and repeated, so each has to be alone on its page and
+    uncropped (`test_wood`).
+  - `wood_draw_front` only adds (spores and a low mist), so it can't hide a
+    bullet.
 
 Spell backgrounds (`spell_bg_*`, chosen per boss by `def.spell_bg`) darken
 the world rather than brightening it, and the front layers fade with them.
@@ -743,6 +774,8 @@ owner's Mika sheet in `tools/source/`.
 | `make_mika.py`, `make_rings.py` | Mika from the owner's sheet (a skinned rig; `MIKA_RIG_DEBUG=1` draws its regions over the art), his cut-in portrait and `scripts/cutin_table`; Mika's ring |
 | `make_portraits.py` | The conversation's standing portraits and `scripts/talk_table`: Szuix cut from the owner's drawing (`tools/source/szuix_ref.png`, its painted wall keyed out by colour), Mika from his sheet. Also Szuix's sigil cut-in portrait (`spr_cutin_szuix`) from the same drawing, larger and cut to the rows round his face, its eyes in `talk_table` too. Placeholders: one drawing each, with the eyes painted shut for a second frame. Keying also takes out the anti-aliased edges of markings whose colours pass near the page's, so the figure's inside is sealed opaque (`seal`) |
 | `make_bg.py`, `make_grove.py`, `make_sanctum.py` | Stage one's layers; stage two's scenery and `scripts/grove_table`; stage three's materials, fire and statue, and `scripts/sanctum_table` |
+| `make_wood.py` | The 3D wood: its textures, its meshes in `datafiles/wood/` (trees with their bare meshes, charms and the rope wound where one is tied, ground cover, standing stones) and `scripts/wood_table`. `--tex` or `--mesh` makes one half |
+| `wood_tex.py`, `wood_mesh.py`, `wood_trees.py`, `wood_charms.py`, `wood_props.py` | Imported by `make_wood.py`: tiling texture synthesis; meshes in the wood's vertex format (tubes, ribbons, cards); the trees and where a charm can hang from them; the charms; the ground cover |
 | `sanctum_glyphs.py`, `sanctum_relief.py` | Imported by `make_sanctum.py`: a set of hieroglyphs and the column layout that sets them in squares; and the material work (inlay, sunk and raised relief, grooves, worn gilding, marble, basalt) with the larger ornament (the winged sun, cartouche, lotus frieze, scarab) |
 | `make_sfx.py` | All sound effects |
 | `make_music.py` | The placeholder music, from downloads in `tools/source/music/`: normalised, looped, streamed |
@@ -826,6 +859,9 @@ owner's Mika sheet in `tools/source/`.
   with a varying alpha is one polygon, not segments (`talk_blade_line`).
 - A primitive textured with `sprite_get_texture` reads UVs in the sprite's
   own 0–1 space, not the texture page's.
+- A uniform declared in both a shader's vertex and fragment stage is set in
+  only one of them, and the other reads zero with no error. Give each stage
+  its own name (`u_cam` and `u_eye` in `sh_wood`). Checked.
 - The `Default` texture group crops transparent borders, so a sprite's UVs on
   the page may cover only part of it (`sprite_get_uvs` entries 4–7 say how
   much). Mapping across them as if they were the whole sprite made the hall's
@@ -906,7 +942,8 @@ What's playable:
 - The result screen and permanent progress.
 - Practice for every attack.
 - The drafting table.
-- The review card.
+- The review card (THE DEEP WOOD): Velka's wood rebuilt in real 3D (`bg_wood`),
+  flown with no enemies, beside stage two's corridor for comparison.
 - The old stage three.
 
 Stages two and three are unlocked from the start. `stage_list()` holds one

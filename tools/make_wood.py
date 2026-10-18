@@ -10,7 +10,9 @@ Writes:
   star and mist puffs;
 - the trees, grown in `tools/wood_trees.py` and skinned in
   `tools/wood_mesh.py`, as zlib-compressed vertex strips in
-  `datafiles/wood/` (GameMaker loads each straight into a vertex buffer);
+  `datafiles/wood/` (GameMaker loads each straight into a vertex buffer),
+  with the charms and their rope (`tools/wood_charms.py`) and the ground
+  cover and standing stones (`tools/wood_props.py`) beside them;
 - `scripts/wood_table`: the list of meshes and what the wood places them by
   (height, spread, where a charm can hang);
 - previews in `tools/_preview/wood_*.png`.

@@ -40,6 +40,7 @@ function selftest_run() {
     test_hall_uncropped();
     test_hall_floor();
     test_hall_preview();
+    test_wood();
     test_old_sanctum();
     test_spell_resist();
     test_player();
@@ -1401,6 +1402,50 @@ function test_hall_preview() {
     ok("...and the rewind puts it back at once", _b.omen == 0 && !_b.omen_on);
     bg_omen_step(_b);
     ok("...and it stays there until it is asked again", _b.omen == 0);
+    st_reset();
+}
+
+/// @desc The 3D wood on the review card. A mesh missing from
+///       `datafiles/wood`, or one that won't read, is left out of the wood
+///       with only a debug line. Its textures are laid by world position and
+///       repeated, which is right only for a sprite alone on its page and
+///       uncropped.
+function test_wood() {
+    st_reset();
+    var _b = bg_wood();
+    var _missing = "";
+    var _sets = [["tree", _b.trees], ["far tree", _b.trees_far],
+                 ["charm", _b.charms], ["prop", _b.props]];
+    for (var _s = 0; _s < array_length(_sets); _s++) {
+        var _l = _sets[_s][1];
+        for (var _i = 0; _i < array_length(_l); _i++) {
+            if (_l[_i] == -1) _missing += _sets[_s][0] + " " + string(_i) + " ";
+        }
+    }
+    if (_b.wrap == -1) _missing += "rope ";
+    ok("every mesh of the wood loads " + _missing, _missing == "");
+    ok("...and there are trees, charms and ground cover to load",
+       array_length(_b.trees) > 0 && array_length(_b.charms) > 0
+       && array_length(_b.props) > 0);
+    bg_free(_b);
+
+    var _l = [spr_wood_bark, spr_wood_bark_n, spr_wood_floor, spr_wood_floor_n,
+              spr_wood_path, spr_wood_path_n, spr_wood_foliage, spr_wood_flat_n,
+              spr_wood_charm, spr_wood_glow, spr_wood_star, spr_wood_moon,
+              spr_wood_ring, spr_wood_cloud, spr_wood_puff];
+    var _bad = "";
+    for (var _i = 0; _i < array_length(_l); _i++) {
+        for (var _f = 0; _f < sprite_get_number(_l[_i]); _f++) {
+            var _q = sprite_get_uvs(_l[_i], _f);
+            if (_q[0] != 0 || _q[1] != 0 || _q[2] != 1 || _q[3] != 1
+                || _q[4] != 0 || _q[5] != 0 || _q[6] != 1 || _q[7] != 1) {
+                _bad += sprite_get_name(_l[_i]) + " ";
+                break;
+            }
+        }
+    }
+    ok("the wood's textures each have a page to themselves " + _bad,
+       _bad == "");
     st_reset();
 }
 

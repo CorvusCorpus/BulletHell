@@ -1731,6 +1731,115 @@ def check_hall_buffer_textures():
                     ", ".join(sorted(slot_subs[slot]))))
 
 
+_UNIFORM = re.compile(
+    r"^\s*uniform\s+(?:(?:lowp|mediump|highp)\s+)?\w+\s+(\w+)", re.M)
+
+
+def check_shader_uniforms_one_stage():
+    """A uniform may be declared in only one stage of a shader.
+
+    GameMaker sets a uniform declared in both a shader's vertex and fragment
+    stage in only one of them, and the other reads zero with no error (the
+    wood's fragment stage once saw its camera at the origin, so its fog
+    thickened as the flight went on). Each stage gets its own name.
+    """
+    for d in sorted(glob.glob(os.path.join(ROOT, "shaders", "*"))):
+        name = os.path.basename(d)
+        stages = []
+        for ext in ("vsh", "fsh"):
+            path = os.path.join(d, name + "." + ext)
+            if not os.path.exists(path):
+                break
+            with open(path, encoding="utf-8-sig") as fh:
+                stages.append(set(_UNIFORM.findall(_strip_noise(fh.read()))))
+        if len(stages) < 2:
+            continue
+        for u in sorted(stages[0] & stages[1]):
+            fail("%s declares uniform %s in both its vertex and fragment "
+                 "stage -- GameMaker sets it in only one and the other reads "
+                 "zero. Give each stage its own name." % (name, u))
+
+
+def _body(src, header):
+    """The text between the braces of the definition that starts with
+    `header` (a regex), or None."""
+    m = re.search(header, src)
+    if not m:
+        return None
+    i = src.find("{", m.end() - 1)
+    if i < 0:
+        return None
+    depth = 0
+    for j in range(i, len(src)):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[i + 1:j]
+    return None
+
+
+_NUMBER = re.compile(r"(?<![\w.])(\d+\.\d*|\.\d+|\d+)(?![\w.])")
+
+
+def check_wood_ground_agrees():
+    """The wood's path and ground are written three times: in GML
+    (`wood_path_x`, `wood_ground_y`), which places the trees and the camera,
+    and in both of its vertex shaders (`path_x`, `ground`), which raise what
+    is drawn and what casts the moon's shadows. Apart, trees float or sink
+    and shadows come loose from their trees, with no error. The GML's numbers
+    must be the shaders' in the same order, and the two shaders' copies (and
+    their `lane`) the same text.
+    """
+    gml_path = os.path.join(ROOT, "scripts", "bg_wood", "bg_wood.gml")
+    shaders = [os.path.join(ROOT, "shaders", s, s + ".vsh")
+               for s in ("sh_wood", "sh_wood_shadow")]
+    if not os.path.exists(gml_path) or not all(map(os.path.exists, shaders)):
+        return
+
+    def read(path):
+        with open(path, encoding="utf-8-sig") as fh:
+            return _strip_noise(fh.read())
+
+    gml = read(gml_path)
+    want = []
+    for fn in ("wood_path_x", "wood_ground_y"):
+        body = _body(gml, r"\bfunction\s+%s\s*\(" % fn)
+        if body is None:
+            fail("bg_wood has no %s for check_wood_ground_agrees to read" % fn)
+            return
+        want += [float(n) for n in _NUMBER.findall(body)]
+
+    copies = []
+    for path in shaders:
+        src = read(path)
+        parts = {}
+        for fn, header in (("path_x", r"\bfloat\s+path_x\s*\("),
+                           ("ground", r"\bfloat\s+ground\s*\("),
+                           ("lane", r"\bvec3\s+lane\s*\(")):
+            body = _body(src, header)
+            if body is None:
+                fail("%s has no %s for check_wood_ground_agrees to read"
+                     % (rel(path), fn))
+                return
+            parts[fn] = " ".join(body.split())
+        got = [float(n) for n in
+               _NUMBER.findall(parts["path_x"] + " " + parts["ground"])]
+        if len(got) != len(want) or any(
+                abs(a - b) > 1e-9 * max(1.0, abs(a)) for a, b in zip(got, want)):
+            fail("%s's path_x and ground don't have the numbers of bg_wood's "
+                 "wood_path_x and wood_ground_y -- the wood would be placed on "
+                 "one ground and drawn on another. Change them together."
+                 % rel(path))
+        copies.append(parts)
+    for fn in ("path_x", "ground", "lane"):
+        if copies[0][fn] != copies[1][fn]:
+            fail("sh_wood and sh_wood_shadow have different %s -- the shadow "
+                 "pass must move the wood exactly as it is drawn, or shadows "
+                 "come loose from what casts them." % fn)
+
+
 def check_texture_groups_exist(yyp):
     """A sprite may not name a texture group the project doesn't have. An
     unknown `textureGroupId` silently falls back to Default, so the group is
@@ -1796,6 +1905,8 @@ def main():
     check_rings_block_before_enemies()
     check_hall_frame_textures()
     check_hall_buffer_textures()
+    check_shader_uniforms_one_stage()
+    check_wood_ground_agrees()
     check_sprites_not_blank()
     check_enum_references()
     check_brace_balance()
