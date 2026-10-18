@@ -1280,10 +1280,12 @@ function wood_draw_back(_b, _fill) {
     for (var _i = 0; _i < _b.seen_n; _i++) {
         var _tr = _b.seen[_i];
         matrix_set(matrix_world, _tr.mat);
-        // Every tree in full at every distance: a far mesh without the fine
-        // twigs swapped for the near one as a tree came closer, and they
-        // showed up all at once.
-        var _vb = _b.trees[_tr.mesh];
+        // A tree is drawn whole or without its fine twigs by its row, never
+        // by its distance: swapping one for the other as a tree came closer
+        // made its twigs appear all at once. The outer rows never come
+        // near the camera, and their twigs would be under a pixel anyway.
+        var _vb = (_tr.row >= WOOD_ROW_BARE) ? _b.trees_far[_tr.mesh]
+                                             : _b.trees[_tr.mesh];
         if (_vb != -1) vertex_submit(_vb, pr_trianglestrip, _bt);
     }
 
@@ -1361,18 +1363,22 @@ function wood_draw_wisps(_b) {
         var _bl = wood_blood_at(_b, _w[2] - _b.cam_z);
         var _col = merge_colour(WOOD_WISP_COL_N, WOOD_WISP_COL_B, _bl);
         var _sz = WOOD_WISP_SIZE;
-        wood_glow_card(_vb, _w[0], _w[1], _w[2], _rx, _rz, _sz * 7, _col, 0.16 * _w[3]);
-        wood_glow_card(_vb, _w[0], _w[1], _w[2], _rx, _rz, _sz * 2.2, _col, 0.55 * _w[3]);
-        wood_glow_card(_vb, _w[0], _w[1], _w[2], _rx, _rz, _sz * 0.8, c_white, 0.9 * _w[3]);
-        // The trail: where its wandering had it a moment ago.
-        for (var _k = 1; _k <= 6; _k++) {
-            var _tt = _b.t - _k * 5;
+        // A wide breath of light, a glow, and a hot core that flickers.
+        var _fl = 0.85 + 0.15 * dsin(_b.t * 7.3 + _i * 97);
+        wood_glow_card(_vb, _w[0], _w[1], _w[2], _rx, _rz, _sz * 8, _col, 0.22 * _w[3]);
+        wood_glow_card(_vb, _w[0], _w[1], _w[2], _rx, _rz, _sz * 2.6, _col, 0.85 * _w[3]);
+        wood_glow_card(_vb, _w[0], _w[1], _w[2], _rx, _rz, _sz * 0.9 * _fl, c_white,
+                       _w[3]);
+        // The trail: where its wandering had it a moment ago, fading and
+        // shrinking.
+        for (var _k = 1; _k <= 10; _k++) {
+            var _tt = _b.t - _k * 4;
             var _ox = wood_wisp_wander(_tt, _i, 0) - wood_wisp_wander(_b.t, _i, 0);
             var _oy = wood_wisp_wander(_tt, _i, 1) - wood_wisp_wander(_b.t, _i, 1);
             var _oz = wood_wisp_wander(_tt, _i, 2) - wood_wisp_wander(_b.t, _i, 2);
-            var _f = 1 - _k / 7;
+            var _f = 1 - _k / 11;
             wood_glow_card(_vb, _w[0] + _ox, _w[1] + _oy, _w[2] + _oz, _rx, _rz,
-                           _sz * (0.9 * _f + 0.3), _col, 0.35 * _f * _w[3]);
+                           _sz * (1.1 * _f + 0.25), _col, 0.45 * _f * _f * _w[3]);
         }
     }
     vertex_end(_vb);
@@ -1380,7 +1386,8 @@ function wood_draw_wisps(_b) {
 
     shader_set(sh_wood_sky);
     shader_set_uniform_f(shader_get_uniform(sh_wood_sky, "u_mode"), 3);
-    shader_set_uniform_f(shader_get_uniform(sh_wood_sky, "u_amount"), 1);
+    // Over 1, so the wood's bloom takes them up.
+    shader_set_uniform_f(shader_get_uniform(sh_wood_sky, "u_amount"), WOOD_WISP_GLOW);
     gpu_set_blendmode(bm_add);
     gpu_set_zwriteenable(false);
     matrix_set(matrix_world, matrix_build_identity());
@@ -1733,6 +1740,75 @@ function wood_moon_screen(_b, _w, _h) {
     return [0.5 + _x / _z * _f * (_h / _w), 0.5 - _y / _z * _f];
 }
 
-/// @desc The pass drawn over the field. Nothing yet.
+/// @desc The pass drawn over the field: spores drifting near the lens and
+///       a faint mist low in the view, all added (so they can never hide a
+///       bullet), faded with the spell background. Each spore has a place
+///       in the world, a little ahead of the camera, and is projected by
+///       hand (the camera only yaws and pitches), as the hall's sand is.
 function wood_draw_front(_b, _spell, _fill) {
+    var _a = (1 - 0.86 * clamp(_spell, 0, 1)) * wood_ease(_b.intro);
+    if (_a <= 0.01) return;
+    var _x0 = _fill ? 0 : FIELD_X0;
+    var _y0 = _fill ? 0 : FIELD_Y0;
+    var _w = _fill ? GAME_W : FIELD_W;
+    var _h = _fill ? GAME_H : FIELD_H;
+    var _mx = _x0 + _w * 0.5;
+    var _my = _y0 + _h * 0.5;
+    var _foc = (_h * 0.5) / dtan(WOOD_FOV * 0.5);
+    var _cy = dcos(_b.yaw), _sy = dsin(_b.yaw);
+    var _cp = dcos(_b.pitch), _sp = dsin(_b.pitch);
+    var _bw = sprite_get_width(spr_fx_bloom);
+
+    gpu_set_blendmode(bm_add);
+
+    // The mist: soft bands low over the bottom of the view, each swaying
+    // slowly from side to side at its own pace (never wrapping, so none
+    // jumps).
+    var _mist = merge_colour(WOOD_FRONT_MIST_N, WOOD_FRONT_MIST_B,
+                             wood_sky_blood(_b));
+    for (var _k = 0; _k < 3; _k++) {
+        var _px = _mx + _w * 0.25 * dsin(_b.t * (0.05 + 0.03 * _k) + _k * 120);
+        draw_sprite_ext(spr_fx_bloom, 0, _px, _y0 + _h * (0.92 - 0.05 * _k),
+                        _w * 1.1 / _bw, _h * 0.32 / _bw, 0, _mist,
+                        WOOD_FRONT_MIST_A * _a * _b.light);
+    }
+
+    // The spores.
+    var _span = WOOD_SPORE_SPAN;
+    for (var _i = 0; _i < WOOD_SPORES; _i++) {
+        var _ph = wood_hash(_i, 301);
+        var _u = frac(_ph + _b.dist / _span);
+        if (_u < 0) _u += 1;
+        var _lap = floor(_ph + _b.dist / _span) * 13 + _i;
+        var _rel = 90 + _span * (1 - _u);
+        var _wx = _b.cam_x + (wood_hash(_lap, 302) * 2 - 1) * 520
+                  + dsin(_b.t * 0.6 + _i * 41) * 30;
+        var _wy = _b.cam_y + (wood_hash(_lap, 303) * 2 - 1) * 260
+                  + dsin(_b.t * 0.45 + _i * 67) * 22;
+        var _wz = _b.cam_z + _rel;
+        // Into the camera's frame.
+        var _dx = _wx - _b.cam_x, _dy = _wy - _b.cam_y, _dz = _wz - _b.cam_z;
+        var _vx = _dx * _cy - _dz * _sy;
+        var _vz0 = _dx * _sy + _dz * _cy;
+        var _vy = _dy * _cp - _vz0 * _sp;
+        var _vz = _dy * _sp + _vz0 * _cp;
+        if (_vz < 40) continue;
+        var _k = _foc / _vz;
+        var _px = _mx + _vx * _k;
+        var _py = _my - _vy * _k;
+        if (_px < _x0 - 20 || _px > _x0 + _w + 20
+            || _py < _y0 - 20 || _py > _y0 + _h + 20) continue;
+        var _fade = min(1, _u * 4) * min(1, (1 - _u) * 5);
+        var _tw = 0.55 + 0.45 * dsin(_b.t * (2 + wood_hash(_i, 304) * 3) + _i * 53);
+        var _bl = wood_blood_at(_b, _rel);
+        var _col = merge_colour(WOOD_WISP_COL_N, WOOD_WISP_COL_B, _bl);
+        var _r = (1.5 + 2.5 * wood_hash(_i, 305)) * _k;
+        draw_sprite_ext(spr_fx_bloom, 0, _px, _py, _r * 6 / _bw, _r * 6 / _bw, 0,
+                        _col, WOOD_SPORE_A * _a * _fade * _tw * 0.35);
+        draw_sprite_ext(spr_fx_bloom, 0, _px, _py, _r * 2 / _bw, _r * 2 / _bw, 0,
+                        _col, WOOD_SPORE_A * _a * _fade * _tw);
+    }
+    gpu_set_blendmode(bm_normal);
+    draw_set_alpha(1);
+    draw_set_colour(c_white);
 }

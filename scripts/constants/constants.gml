@@ -1452,11 +1452,13 @@ enum BossMove {
 // How far ahead the wood is drawn, and how far behind the camera.
 #macro WOOD_FAR 7200
 #macro WOOD_BEHIND 500
-// Trees: the nearest row's distance from the path's middle, and the
-// clearance any trunk keeps from it.
+// Trees: the nearest row's distance from the path's middle, the clearance
+// any trunk keeps from it, and the first row (counting from 0, the nearest)
+// drawn without its fine twigs (those rows stand 2000 or more from the path).
 #macro WOOD_ROW0_IN 280
 #macro WOOD_ROW0_OUT 520
 #macro WOOD_PATH_CLEAR 230
+#macro WOOD_ROW_BARE 3
 
 // The ground's tiles: their depth, columns across, rows along, and half
 // their width.
@@ -1526,7 +1528,17 @@ enum BossMove {
 #macro WOOD_WISP_COL_B make_colour_rgb(255, 92, 48)
 #macro WOOD_WISP_POW 2.0
 #macro WOOD_WISP_REACH 650
-#macro WOOD_WISP_SIZE 22
+#macro WOOD_WISP_SIZE 30
+#macro WOOD_WISP_GLOW 1.6
+// Over the field (`wood_draw_front`): how many spores drift near the lens,
+// how deep the stretch they drift in is, and how bright they are; and the
+// faint mist low in the view, its colour (night and blood) and strength.
+#macro WOOD_SPORES 46
+#macro WOOD_SPORE_SPAN 1300
+#macro WOOD_SPORE_A 0.55
+#macro WOOD_FRONT_MIST_N make_colour_rgb(60, 150, 160)
+#macro WOOD_FRONT_MIST_B make_colour_rgb(160, 50, 40)
+#macro WOOD_FRONT_MIST_A 0.07
 
 // The palettes, night (`_N`) and blood (`_B`), as `[r, g, b]` in 0..1 (over 1
 // is brighter than white): the sky's light from above and from the ground,
