@@ -1410,3 +1410,185 @@ enum BossMove {
 #macro HALL_SAND_TRAIL_MAX 26
 // Nearer than this in view space a grain is dropped rather than projected.
 #macro HALL_SAND_ZNEAR 60
+
+// ---------------------------------------------------------------------------
+// The 3D wood (`bg_wood`): Velka's forest rebuilt in real geometry, flown on
+// the review card. World units match the grove's (the camera flies 250 above
+// the path; a tree stands 700 to 1900).
+// ---------------------------------------------------------------------------
+
+#macro BGKIND_WOOD 3
+
+// The camera: field of view (degrees, vertical), near and far planes, its
+// height over the path, and its pitch (negative looks down).
+#macro WOOD_FOV 58
+#macro WOOD_ZNEAR 20
+#macro WOOD_ZFAR 12000
+#macro WOOD_CAM_H 250
+#macro WOOD_PITCH -2.5
+// The flight: the speeds before and after the turn, the opening (frames, and
+// the share of speed it starts at), and the slow swell on the speed.
+#macro WOOD_SPEED 6
+#macro WOOD_SPEED_FAST 9.5
+#macro WOOD_INTRO_TIME 170
+#macro WOOD_INTRO_SPD 0.12
+#macro WOOD_SWELL 240
+#macro WOOD_SWELL_SURGE 0.09
+// How the camera follows the path: how far ahead it looks along it, how much
+// of the path's bend it turns with, a slow wander of its heading (degrees)
+// and height (world units), and its lean toward the player's side.
+#macro WOOD_LOOK_AHEAD 900
+#macro WOOD_YAW_FOLLOW 0.8
+#macro WOOD_SWAY 0.8
+#macro WOOD_SWAY_P1 1130
+#macro WOOD_SWAY_P2 431
+#macro WOOD_RISE 10
+#macro WOOD_RISE_P1 1670
+#macro WOOD_RISE_P2 709
+#macro WOOD_LEAN 70
+#macro WOOD_LEAN_EASE 0.016
+#macro WOOD_LEAN_SPD 0.6
+
+// How far ahead the wood is drawn, and how far behind the camera.
+#macro WOOD_FAR 7200
+#macro WOOD_BEHIND 500
+// Trees: the nearest row's distance from the path's middle, the clearance any
+// trunk keeps from it, and the distance (squared) past which a tree is drawn
+// without its fine twigs.
+#macro WOOD_ROW0_IN 280
+#macro WOOD_ROW0_OUT 520
+#macro WOOD_PATH_CLEAR 230
+#macro WOOD_LOD_D2 7840000
+
+// The ground's tiles: their depth, columns across, rows along, and half
+// their width.
+#macro WOOD_TILE_Z 640
+#macro WOOD_GROUND_NX 64
+#macro WOOD_GROUND_NZ 12
+#macro WOOD_GROUND_HALF 7000
+
+// The sky: its radius, the moon's elevation and angular radius (degrees),
+// the stars (how many, a middling one's half-size), and the clouds (how
+// many, and how fast they turn round the sky, degrees a frame).
+#macro WOOD_SKY_R 9000
+#macro WOOD_MOON_EL 3.0
+#macro WOOD_MOON_R 10.5
+#macro WOOD_STARS 1400
+#macro WOOD_STAR_SIZE 30
+#macro WOOD_CLOUDS 5
+#macro WOOD_CLOUD_SPIN 0.002
+
+// The moonlight's direction (toward the light: ahead, above and to the
+// right; not the disc's direction, which is too low to light the wood), and
+// how strong it is at night (the eclipse takes it away).
+#macro WOOD_MOON_DIR [0.30, 0.62, 0.72]
+#macro WOOD_NIGHT_LIGHT 1.0
+// The moon's shadow map: its size in texels, the width of its box in world
+// units, how deep the box is, how far ahead of the camera it is centred, how
+// far shadows reach before they fade, the depth bias, and how dark a shadow
+// is.
+#macro WOOD_SHADOW_SIZE 2048
+#macro WOOD_SHADOW_W 4400
+#macro WOOD_SHADOW_RANGE 8000
+#macro WOOD_SHADOW_AHEAD 1800
+#macro WOOD_SHADOW_REACH 3600
+#macro WOOD_SHADOW_BIAS 0.0015
+#macro WOOD_SHADOW_DARK 0.85
+// The lane the camera flies down, which the shaders keep clear (a limb
+// reaching into it is lifted over it): its half-width, the height things in
+// it are lifted to, and the lowest height lifted (world y).
+#macro WOOD_LANE_W 250
+#macro WOOD_LANE_TOP 380
+#macro WOOD_LANE_LO 110
+// The wind: how far it moves a twig's end, and which way it blows (x, z).
+#macro WOOD_WIND 7
+#macro WOOD_WIND_DIR [0.8, 0.6]
+// Point lights the shader takes (the nearest witch-lights and wisps), and
+// how far from the camera a light still counts (it fades out toward there).
+#macro WOOD_LIGHTS 12
+#macro WOOD_LIGHT_FAR 4200
+
+// The charms: the chance a tree near the path has one, their size, how far
+// they swing (degrees), the witch-light's colours (night and blood), how
+// bright their glowing parts are drawn, how strong and far-reaching the
+// light they throw is, and how far either side of the wavefront they flare.
+#macro WOOD_CHARM_ODDS 0.75
+#macro WOOD_CHARM_SCALE 2.3
+#macro WOOD_CHARM_SWING 6
+#macro WOOD_CHARM_COL_N make_colour_rgb(120, 255, 170)
+#macro WOOD_CHARM_COL_B make_colour_rgb(255, 128, 56)
+#macro WOOD_CHARM_GLOW 4.0
+#macro WOOD_CHARM_POW 2.2
+#macro WOOD_CHARM_REACH 640
+#macro WOOD_CHARM_FLARE 700
+// The wisps: how many, the stretch of wood each keeps to, their colours,
+// their light, and the size of a glow's core.
+#macro WOOD_WISPS 6
+#macro WOOD_WISP_SPAN 4600
+#macro WOOD_WISP_COL_N make_colour_rgb(104, 232, 202)
+#macro WOOD_WISP_COL_B make_colour_rgb(255, 92, 48)
+#macro WOOD_WISP_POW 2.0
+#macro WOOD_WISP_REACH 650
+#macro WOOD_WISP_SIZE 22
+
+// The palettes, night (`_N`) and blood (`_B`), as `[r, g, b]` in 0..1 (over 1
+// is brighter than white): the sky's light from above and from the ground,
+// the moonlight, the moonlight on an edge, the sky at the horizon (which the
+// fog takes) and overhead, and the moon's glow in the air.
+#macro WOOD_SKY_N [0.035, 0.085, 0.110]
+#macro WOOD_SKY_B [0.100, 0.022, 0.028]
+#macro WOOD_BOUNCE_N [0.020, 0.035, 0.035]
+#macro WOOD_BOUNCE_B [0.050, 0.015, 0.015]
+#macro WOOD_MOONLIGHT_N [0.26, 0.58, 0.70]
+#macro WOOD_MOONLIGHT_B [0.62, 0.13, 0.10]
+#macro WOOD_RIM_N [0.20, 0.45, 0.52]
+#macro WOOD_RIM_B [0.60, 0.17, 0.11]
+#macro WOOD_HOR_N [0.075, 0.23, 0.28]
+#macro WOOD_HOR_B [0.19, 0.06, 0.06]
+#macro WOOD_ZEN_N [0.027, 0.067, 0.090]
+#macro WOOD_ZEN_B [0.070, 0.024, 0.035]
+#macro WOOD_HAZE_N [0.13, 0.48, 0.55]
+#macro WOOD_HAZE_B [0.50, 0.12, 0.11]
+// The moon's face, and the eclipse's shadow on it.
+#macro WOOD_MOON_FACE_N make_colour_rgb(150, 194, 204)
+#macro WOOD_MOON_FACE_B make_colour_rgb(210, 52, 38)
+#macro WOOD_UMBRA_COL make_colour_rgb(44, 9, 7)
+// How bright the moon's face is drawn (over 1 is past white, which the
+// finish rolls off).
+#macro WOOD_MOON_BRIGHT 1.9
+// The air: its density, how fast it thins with height, the height it is
+// measured from, and the thick fog the stage opens in.
+#macro WOOD_FOG 0.00028
+#macro WOOD_FOG_FALL 0.0025
+#macro WOOD_FOG_BASE 0
+#macro WOOD_FOG_OPEN 0.0035
+
+// Surfaces, as `sh_wood` takes them: gloss, shininess, translucency, and how
+// strongly the normal map bends the light.
+#macro WOOD_MAT_GROUND [0.15, 18, 0, 1.2]
+#macro WOOD_MAT_BARK [0.08, 12, 0, 1.6]
+#macro WOOD_MAT_CHARM [0.25, 24, 0, 0]
+
+// The turn, as the grove's: the share of it the wavefront launches at, where
+// it starts (world units ahead), how deep its edge is, how wide the band of
+// light along it is, and that light's colour.
+#macro WOOD_WAVE_START 0.30
+#macro WOOD_WAVE_Z0 6400
+#macro WOOD_WAVE_FEATHER 900
+#macro WOOD_WAVE_FLARE 380
+#macro WOOD_FLARE_COL [0.90, 0.20, 0.12]
+
+// The finish (`wood_post`): the bloom's threshold and strength, the moon's
+// rays (strength, how far toward the moon each pixel looks, how fast they
+// fade, the brightness of sky they start from, and their colour), the
+// vignette, and the lift of the deepest shadows.
+#macro WOOD_BLOOM_THRESH 0.55
+#macro WOOD_BLOOM_A 0.55
+#macro WOOD_RAYS 0.55
+#macro WOOD_RAY_LEN 0.75
+#macro WOOD_RAY_DECAY 0.96
+#macro WOOD_RAY_FLOOR 0.08
+#macro WOOD_RAY_COL_N make_colour_rgb(120, 200, 210)
+#macro WOOD_RAY_COL_B make_colour_rgb(230, 70, 50)
+#macro WOOD_VIGNETTE 0.5
+#macro WOOD_LIFT [0.008, 0.012, 0.016]

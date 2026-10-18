@@ -1,0 +1,12 @@
+{
+  "$GMShader":"",
+  "%Name":"sh_wood_sky",
+  "name":"sh_wood_sky",
+  "parent":{
+    "name":"Shaders",
+    "path":"folders/Shaders.yy",
+  },
+  "resourceType":"GMShader",
+  "resourceVersion":"2.0",
+  "type":1,
+}

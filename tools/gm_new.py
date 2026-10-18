@@ -329,7 +329,7 @@ SPRITE_YY = """{
   "collisionTolerance":0,
   "DynamicTexturePage":false,
   "edgeFiltering":false,
-  "For3D":false,
+  "For3D":%(for3d)s,
   "frames":[
 %(frames)s
   ],
@@ -416,11 +416,13 @@ KEYFRAME_LINE = """            {"$Keyframe<SpriteFrameKeyframe>":"","Channels":{
 
 
 def sprite(name, images, origin="topleft", folder=None, fps=30.0, order=0,
-           texgroup="Default", bbox=None):
+           texgroup="Default", bbox=None, for3d=False):
     """Create or overwrite a sprite from a list of PIL images (one per frame).
 
     `origin` is "topleft", "center", or an (x, y) tuple.
     `bbox` is (left, top, right, bottom); it defaults to the full frame.
+    `for3d` puts it on a texture page of its own ("Separate Texture Page"),
+    so its texture coordinates run 0..1 over it and the GPU can repeat it.
     """
     if not images:
         raise SystemExit("sprite %s has no frames" % name)
@@ -474,6 +476,7 @@ def sprite(name, images, origin="topleft", folder=None, fps=30.0, order=0,
         "bbox_left": bbox[0], "bbox_top": bbox[1],
         "bbox_right": bbox[2], "bbox_bottom": bbox[3],
         "texgroup": texgroup,
+        "for3d": "true" if for3d else "false",
     })
     register(name, "sprites/%s/%s.yy" % (name, name), order)
 
@@ -596,6 +599,24 @@ def room_order(names):
 INCLUDED_LINE = ('    {"$GMIncludedFile":"","%%Name":"%(file)s","CopyToMask":-1,'
                  '"filePath":"%(dir)s","name":"%(file)s",'
                  '"resourceType":"GMIncludedFile","resourceVersion":"2.0",},')
+
+
+TEXGROUP_LINE = ('    {"$GMTextureGroup":"","%%Name":"%(name)s","autocrop":%(crop)s,'
+                 '"border":%(border)d,"compressFormat":"bz2","customOptions":"",'
+                 '"directory":"","groupParent":null,"isScaled":false,'
+                 '"loadType":"default","mipsToGenerate":%(mips)d,"name":"%(name)s",'
+                 '"resourceType":"GMTextureGroup","resourceVersion":"2.0",'
+                 '"targets":-1,},')
+
+
+def texture_group(name, mips=0, autocrop=False, border=2):
+    """Make sure a texture group exists in the .yyp (it is only a list
+    entry; sprites name it in their `textureGroupId`)."""
+    if ('"$GMTextureGroup":"","%%Name":"%s"' % name) in read(YYP):
+        return
+    _add_to_list(YYP, "TextureGroups", TEXGROUP_LINE % {
+        "name": name, "mips": mips, "crop": "true" if autocrop else "false",
+        "border": border})
 
 
 def included_file(filename, directory="datafiles"):

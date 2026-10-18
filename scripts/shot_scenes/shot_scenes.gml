@@ -23,6 +23,7 @@ function shot_scene_list() {
               "grove_boss", "grove_spell",
               "sanctum", "mika_attacks", "orrery_rage",
               "hall_a", "hall_b", "hall_turn", "hall_arrive",
+              "wood", "wood_arrive", "wood_turn", "wood_blood", "wood_red",
               "rope_lab", "title_card", "cutin", "talk", "talk_card",
               "golem_n1", "golem_n2", "golem_n3"];
     var _n = array_length(mika_slots());
@@ -219,6 +220,7 @@ function shot_scene_prepare(_name) {
         case "sanctum":
         case "hall_a":
         case "hall_b":
+        case "hall_turn":
         case "hall_arrive":
         case "talk":
         case "talk_card":
@@ -241,8 +243,13 @@ function shot_scene_prepare(_name) {
             global.stage_def = stage_sanctum_def();
             break;
 
-        case "hall_turn":
-            // The review card, whose timeline drives the turn.
+        case "wood":
+        case "wood_arrive":
+        case "wood_turn":
+        case "wood_blood":
+        case "wood_red":
+            // The review card, which flies the 3D wood with nothing in it;
+            // its own timeline drives the turn.
             global.stage_def = preview_stage_def();
             break;
 
@@ -604,11 +611,46 @@ function shot_pose(_scene, _g) {
             return round(HALL_INTRO_TIME * 0.34);
 
         case "hall_turn":
-            // The reveal, partway through, driven by the review card's own
-            // timeline.
+            // The reveal, partway through: started, then run for real
+            // frames (`shot_omen_frame`).
             _g.player.x = FIELD_CX;
             _g.player.y = FIELD_Y1 - 230;
-            return PREVIEW_HOLD_A + 40 + round(BG_OMEN_TIME * 0.62);
+            _g.bg.intro = 1;
+            _g.bg.omen_on = true;
+            return shot_omen_frame(0.62);
+
+        case "wood_arrive":
+            // Partway through the opening fog. The player holds fire, so the
+            // wood can be seen.
+            _g.player.x = FIELD_CX + 30;
+            _g.player.y = FIELD_Y1 - 150;
+            _g.player.untouchable = true;
+            _g.input_override = shot_input(false, false);
+            return round(WOOD_INTRO_TIME * 0.42);
+
+        case "wood":
+            // The night wood, six seconds in.
+            _g.player.x = FIELD_CX - 60;
+            _g.player.y = FIELD_Y1 - 150;
+            _g.player.untouchable = true;
+            _g.input_override = shot_input(false, false);
+            return 6 * FPS;
+
+        case "wood_turn":
+        case "wood_blood":
+        case "wood_red":
+            // The review card's turn, from its own timeline: the clock is
+            // wound to just before it, and the shutter waits for totality,
+            // the wavefront half way down the wood, or the blood wood after.
+            _g.player.x = FIELD_CX + 40;
+            _g.player.y = FIELD_Y1 - 150;
+            _g.player.untouchable = true;
+            _g.input_override = shot_input(false, false);
+            _g.stage.t = 40 + PREVIEW_HOLD_A - 2;
+            _g.bg.intro = 1;
+            if (_scene == "wood_turn") return 4 + shot_omen_frame(WOOD_WAVE_START * 0.5);
+            if (_scene == "wood_blood") return 4 + shot_omen_frame(WOOD_WAVE_START + 0.34);
+            return 4 + BG_OMEN_TIME + 4 * FPS;
 
         case "hall_b":
             // The hall after the reveal (`omen` written straight to 1, since

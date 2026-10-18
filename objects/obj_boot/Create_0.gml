@@ -15,6 +15,7 @@ palette_init();
 bullet_table_init();
 grove_table_init();
 sanctum_table_init();
+wood_table_init();
 
 danmaku_init();
 laser_init();

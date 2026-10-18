@@ -1,0 +1,12 @@
+{
+  "$GMShader":"",
+  "%Name":"sh_wood_post",
+  "name":"sh_wood_post",
+  "parent":{
+    "name":"Shaders",
+    "path":"folders/Shaders.yy",
+  },
+  "resourceType":"GMShader",
+  "resourceVersion":"2.0",
+  "type":1,
+}

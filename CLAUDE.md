@@ -305,7 +305,8 @@ Game logic is plain functions over structs; objects are thin controllers.
 | `sigil_cutin` | Szuix's cut-in as he spends a sigil (`sigil_cutin_draw`) |
 | `stage_drafts` | The drafting table, plus `rack_list()`: the roster and the extra cards the rack shows |
 | `draft_sylvia` | Sylvia's N1 and N2, the iris bloom and spells from it, and the iris blooms, as drafts on the drafting table |
-| `stage_preview` | The review card, which flies stage three's hall with no enemies |
+| `stage_preview` | The review card (THE DEEP WOOD), which flies the 3D wood (`bg_wood`) with no enemies, looping its turn |
+| `bg_wood`, `wood_table` | Velka's wood rebuilt in real 3D (work in progress): trees, charms and textures from `tools/make_wood.py` (meshes in `datafiles/wood/`), lit by `sh_wood` with moon shadows, witch-lights and wisps as point lights, and the grove's blood-moon turn. Stage two still flies the old corridor for comparison |
 | `stage_sanctum_old` | Stage three as it was before Mika's rebuild, frozen on its own rack card. Delete it once his slots are filled, along with its rack line, `test_old_sanctum`, its line in `test_stage_run` and `stage_is_old_draft`. |
 | `practice_functions` | Single-attack practice |
 | `rank_functions`, `rank_card` | Encounter grading and the medal card |

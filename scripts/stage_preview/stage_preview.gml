@@ -1,15 +1,17 @@
-/// @desc The review card ("THE EMPTY ARCHIVES"): a rack card that flies stage
-///       three's background with no enemies, looping approach -> reveal ->
-///       open hall, so its motion can be watched without playing the stage.
+/// @desc The review card: a rack card that flies a background with no
+///       enemies, looping its turn, so it can be looked at without playing
+///       the stage. It flies the 3D wood (`bg_wood`), Velka's forest rebuilt
+///       in real geometry; stage two still flies the old corridor, for
+///       comparison.
 ///
 /// Each loop rewinds the turn (`bg_clear_omen`), which is a hard cut back to
-/// the approach camera. `id` is empty and there is no boss, so it can never
-/// write to the save. Delete this file and its line in `rack_list` to remove
-/// the feature.
+/// the night wood. `id` is empty and there is no boss, so it can never write
+/// to the save. Delete this file and its line in `rack_list` to remove the
+/// feature.
 
-// Hold on the approach, hold on the open hall after the reveal (which takes
+// Hold on the night wood, hold on the blood wood after the turn (which takes
 // `BG_OMEN_TIME`), and how many loops.
-#macro PREVIEW_HOLD_A (7 * FPS)
+#macro PREVIEW_HOLD_A (20 * FPS)
 #macro PREVIEW_HOLD_B (15 * FPS)
 #macro PREVIEW_CYCLES 12
 
@@ -19,10 +21,10 @@
 function preview_stage_def() {
     return {
         id: "",
-        name: "THE EMPTY ARCHIVES",
-        subtitle: "Mika's hall, and nothing in it",
+        name: "THE DEEP WOOD",
+        subtitle: "Velka's wood in three dimensions, and nothing in it",
         needs: 0,
-        make_bg: bg_sanctum,
+        make_bg: bg_wood,
         build: preview_stage_script,
         encounters: 1,
         preview: true,
@@ -37,8 +39,9 @@ function stage_is_preview(_def) {
     return _def[$ "preview"] ?? false;
 }
 
-/// @desc The running order: rewind, hold on the approach, turn, hold on the
-///       open hall; `PREVIEW_CYCLES` times. (The first rewind is a no-op.)
+/// @desc The running order: rewind, hold on the night wood, turn, hold on
+///       the blood wood; `PREVIEW_CYCLES` times. (The first rewind is a
+///       no-op.)
 function preview_stage_script() {
     var _e = [];
     var _t = 40;

@@ -88,8 +88,15 @@ SCENES = (
     # opening fade.
     "hall_a",        # the approach: aimed at the floor, the hall off-frame
     "hall_b",        # the reveal: level, the room open
-    "hall_turn",     # ...and half way between them, off the review card
+    "hall_turn",     # ...and half way between them
     "hall_arrive",   # ...and the dark it all comes up out of
+
+    # The review card: the 3D wood with nothing in it.
+    "wood",          # the night wood, six seconds in
+    "wood_arrive",   # ...the fog it opens in, half lifted
+    "wood_turn",     # ...at totality
+    "wood_blood",    # ...the wavefront half way down the wood
+    "wood_red",      # ...and the blood wood after the turn
 
     # Temporary: Chakram Blitz rope variants side by side.
     "rope_lab",
