@@ -5,7 +5,11 @@
 // 1 stars, added, each twinkling at its own rate (its seed in `v_ex.x`);
 // 2 the moon, with the eclipse's shadow crossing it (`u_ecl`);
 // 3 a glow, added (the moon's corona, the ring leaving it);
-// 4 clouds, lit from behind by the moon: dark bodies, bright edges.
+// 4 clouds, lit from behind by the moon: dark bodies, bright edges;
+// 5 the far treeline (`spr_wood_treeline`): the far forest (red) and the
+//   nearer edge (green) as the sky's own colour darkened through the air
+//   between, the mist along their foot, and a rim (blue) catching the moon's
+//   glow on edges near it.
 
 varying vec3 v_dir;
 varying vec4 v_col;
@@ -28,6 +32,9 @@ uniform vec3 u_zen_a;
 uniform vec3 u_zen_b;
 uniform vec3 u_haze_a;
 uniform vec3 u_haze_b;
+uniform vec4 u_tl;             // the treeline: far and near layers' share of the sky, rim, mist
+uniform vec3 u_mist_a;         // the mist lying on the ground (as `sh_wood`'s)
+uniform vec3 u_mist_b;
 
 // The same as `sky_col` in `sh_wood`; change both.
 vec3 sky_col(vec3 d, float bl) {
@@ -71,9 +78,24 @@ void main() {
         gl_FragColor = vec4(v_col.rgb * a, a);
         return;
     }
+    float m = max(dot(d, u_moon_vis), 0.0);
+    if (u_mode > 4.5) {
+        vec3 sky = sky_col(d, u_bl);
+        float af = t.r;
+        float an = t.g;
+        vec3 pre = sky * u_tl.y * an + sky * u_tl.x * af * (1.0 - an);
+        float a = an + af * (1.0 - an);
+        vec3 c = pre / max(a, 0.001);
+        // The mist the far wood stands in, as `sh_wood` lays it.
+        vec3 mcol = mix(u_mist_a, u_mist_b, u_bl)
+                  + mix(u_haze_a, u_haze_b, u_bl) * 0.25 * pow(m, 6.0) * u_light;
+        c = mix(c, mcol, u_tl.w * (1.0 - smoothstep(-0.07, 0.0, d.y)));
+        c += mix(u_haze_a, u_haze_b, u_bl) * t.b * u_tl.z * pow(m, 8.0) * u_light;
+        gl_FragColor = vec4(c, a);
+        return;
+    }
     // Clouds: thin edges glow with the moon behind them, thick bodies stay
     // dark against the sky.
-    float m = max(dot(d, u_moon_vis), 0.0);
     float near = pow(m, 10.0);
     float dens = t.a * v_col.a;
     float thin = 1.0 - smoothstep(0.15, 0.85, t.a);

@@ -11,8 +11,15 @@
 // - the turn's wavefront: past it (ahead of `u_wave.x`) every colour is the
 //   blood palette's, and along it a band of red light runs over everything.
 //
-// Then height fog toward the sky's own colour in that direction (so the far
-// wood dissolves into the sky behind it), with the moon's glow in it.
+// Then height fog toward the sky's own colour in that direction, with the
+// moon's glow in it; and toward the far end everything fades into the sky
+// as it was drawn behind it (`u_skytex`: the moon, the clouds, the far
+// treeline), so nothing arrives at the end of the wood all at once.
+//
+// Soft things (twigs, the cut-out edges of leaves) are drawn in two passes
+// (`u_pass`): first what is solid, writing depth; then, without writing
+// depth, the see-through rest, so a faint twig never hides what is behind
+// it.
 //
 // Bark and the ground are normal mapped without stored tangents: the frame
 // is worked out from the screen-space derivatives of the position and the
@@ -29,6 +36,7 @@ varying vec2 v_uv;
 varying vec4 v_shadow;
 varying vec4 v_info;
 varying float v_up;
+varying vec3 v_scr;
 
 uniform sampler2D u_nmap;      // the base texture's normal map
 uniform sampler2D u_tex2;      // the ground: the path; the rest: the foliage sheet
@@ -81,7 +89,11 @@ uniform vec3 u_zen_b;
 uniform vec3 u_haze_a;         // the moon's glow in the air
 uniform vec3 u_haze_b;
 uniform vec4 u_fogp;           // density, falloff with height, base height, most
-uniform vec2 u_fogfar;         // where the wood starts to end, and is gone
+uniform vec2 u_fogfar;         // where the wood starts to fade into the sky, and is gone
+uniform sampler2D u_skytex;    // the sky as drawn behind the wood, by screen position
+// Which pass: 0 everything; 1 only what is solid (coverage at least `.y`),
+// drawn opaque; 2 only the see-through rest.
+uniform vec2 u_pass;
 
 // The canopy overhead. `u_canopy`: 1 while drawing the canopy itself; where
 // the gap over the path starts to close and is closed (from its middle);
@@ -96,7 +108,6 @@ uniform sampler2D u_cookie;
 uniform vec4 u_canopy;
 uniform vec4 u_mouth;
 uniform vec4 u_cookiep;
-uniform float u_fogk;          // the fog's distance is reckoned at this share (the far hedge)
 
 uniform vec4 u_lpos[LIGHTS];   // xyz, reach (0: off)
 uniform vec4 u_lcol[LIGHTS];   // colour (already scaled), unused
@@ -217,17 +228,16 @@ void main() {
         // far frond neither dissolves nor turns to a hard stair-step).
         tex = texture2D(u_tex2, v_uv);
         float fw = max(fwidth(tex.a), 0.0001);
-        float cut = 0.5;
-        if (u_canopy.x > 0.5) {
-            // The canopy's alpha climbs with the depth into its picture, so
-            // a higher cut-off eats it from its twig tips in: it thins away
-            // toward the mouth ahead. Drawn small, it is cut a little lower,
-            // so its fine twigs aren't lost to the mipmaps first.
-            float lod = log2(max(max(fwidth(v_uv.x) * 2048.0,
-                                     fwidth(v_uv.y) * 1024.0), 1.0));
-            cut = mix(0.5 - 0.04 * min(lod, 3.0), 1.02, canopy_open(p).y);
-        }
+        // Drawn small, a picture is cut a little lower, so its fine parts
+        // aren't lost to the mipmaps (which average them toward clear) and
+        // then found again as it nears. (The canopy's sheet is twice as
+        // wide as the foliage's.)
+        float tw = (u_canopy.x > 0.5) ? 2048.0 : 1024.0;
+        float lod = log2(max(max(fwidth(v_uv.x) * tw, fwidth(v_uv.y) * 1024.0), 1.0));
+        float cut = 0.5 - 0.045 * min(lod, 3.0);
         tex.a = clamp((tex.a - cut) / fw + 0.5, 0.0, 1.0);
+        // The canopy fades away into the mouth of the wood ahead.
+        if (u_canopy.x > 0.5) tex.a *= 1.0 - canopy_open(p).y;
     } else if (kind > 3.5) {
         // A solid pictured from the foliage sheet (a stone, a bone).
         tex = texture2D(u_tex2, v_uv);
@@ -263,6 +273,14 @@ void main() {
 
     float alpha = tex.a * cover;
     if (alpha < u_alpharef) discard;
+    if (u_pass.x > 0.5) {
+        if (u_pass.x < 1.5) {
+            if (alpha < u_pass.y) discard;
+            alpha = 1.0;
+        } else if (alpha >= u_pass.y) {
+            discard;
+        }
+    }
 
     // The palette: night, or blood behind the wavefront.
     float ahead = p.z - u_eye.z;
@@ -346,10 +364,8 @@ void main() {
     float od = (abs(dh) > 0.5)
                ? (exp(-f * h0) - exp(-f * h1)) / (f * dh)
                : exp(-f * h0);
-    float fdist = dist * u_fogk;
-    float fog = 1.0 - exp(-u_fogp.x * fdist * od);
+    float fog = 1.0 - exp(-u_fogp.x * dist * od);
     fog = min(fog, u_fogp.w);
-    fog = max(fog, smoothstep(u_fogfar.x, u_fogfar.y, fdist));
     // Under the canopy the air is dark; toward the mouth ahead it holds the
     // moon's light.
     float gloom = mix(u_cookiep.w, 1.0, co.x);
@@ -365,10 +381,17 @@ void main() {
     float om = (abs(dm) > 0.5)
                ? (exp(-fm * m0) - exp(-fm * m1)) / (fm * dm)
                : exp(-fm * m0);
-    float mist = 1.0 - exp(-u_mist.x * fdist * om);
+    float mist = 1.0 - exp(-u_mist.x * dist * om);
     vec3 mcol = (mix(u_mist_a, u_mist_b, bl) + mix(u_haze_a, u_haze_b, bl)
                  * 0.25 * pow(max(dot(-V, u_moon_vis), 0.0), 6.0) * u_light) * gloom;
     c = mix(c, mcol, clamp(mist, 0.0, 0.85));
+
+    // The far end: into the sky behind.
+    float ff = smoothstep(u_fogfar.x, u_fogfar.y, dist);
+    if (ff > 0.0) {
+        vec2 su = vec2(0.5 + 0.5 * v_scr.x / v_scr.z, 0.5 - 0.5 * v_scr.y / v_scr.z);
+        c = mix(c, texture2D(u_skytex, su).rgb, ff);
+    }
 
     gl_FragColor = vec4(c, alpha);
 }

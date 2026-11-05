@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The wood's canopy, and the hedge at its far end (`tools/make_wood.py`
+"""The wood's canopy, and the treeline at its far end (`tools/make_wood.py`
 writes them out).
 
 The canopy is the ceiling the wood closes into overhead: clumps of twig
@@ -17,9 +17,9 @@ from the edge (to 1 at `ERODE` pixels), so raising the cut-off in the
 shader eats a clump from its twig tips inward: that is how the canopy thins
 and opens into the mouth of the wood ahead (`u_mouth` in `sh_wood.fsh`).
 
-The hedge is a band of bramble and scrub across the far end of the path
-(`hedge`), which the wood keeps a fixed distance ahead of the camera, so the
-ground is never seen to stop.
+The far treeline (`treeline`) is a silhouette of the wood beyond the end of
+the path, drawn with the sky, into which the wood fades as it nears the far
+end.
 """
 import math
 
@@ -207,10 +207,12 @@ def _bark_col(rng, lichen_k=0.35):
     return col_of
 
 
+# Few forks, each kept thick, so a clump reads as a handful of crooked
+# branches rather than a haze of hairlines.
 LACE = {
-    "levels": 5, "kids": [(4, 6), (3, 5), (3, 4), (2, 4)],
-    "fork": (0.3, 0.9), "kid_len": (0.45, 0.72), "gnarl": 0.17,
-    "curl": 0.03, "kink": 0.08, "tip": 0.30, "droop": 0.0,
+    "levels": 4, "kids": [(3, 4), (2, 3), (2, 3)],
+    "fork": (0.35, 0.95), "kid_len": (0.48, 0.74), "gnarl": 0.17,
+    "curl": 0.03, "kink": 0.10, "tip": 0.38, "droop": 0.0,
 }
 
 
@@ -229,7 +231,7 @@ def lace(rng, limbs, leafy=0.0):
         sy = 0.5 + 0.52 * math.sin(a)
         aim = math.atan2(0.5 - sy, 0.5 - sx) + rng.normal(0.0, 0.35)
         grow(cv, rng, (sx * S, sy * S), aim, rng.uniform(0.5, 0.78) * S,
-             rng.uniform(0.014, 0.024) * S, 0, LACE, col_of)
+             rng.uniform(0.022, 0.032) * S, 0, LACE, col_of)
     if leafy > 0:
         layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
         d = ImageDraw.Draw(layer)
@@ -400,7 +402,7 @@ def bramble(rng, tall=False):
     S = CELL * SS
     layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
-    # The dense heart of it: a low mass with a lumpy top, so the hedge is
+    # The dense heart of it: a low mass with a lumpy top, so the scrub is
     # solid below whatever pokes out of it.
     ph = rng.uniform(0, math.tau, 5)
     top = []
@@ -554,6 +556,7 @@ HALF_W = 4200.0             # how far it reaches either side of the path
 GAP = (120.0, 420.0)        # over the path the clumps thin out from GAP[1] in to GAP[0]
 H_SIDE, H_PATH = 760.0, 1150.0
 VAULT = (260.0, 1400.0)     # the vault rises from H_SIDE to H_PATH between these
+CLEAR = (320.0, 500.0)      # nothing hangs lower than [1] within [0] of the path's middle
 SPACING = 235.0             # clumps a jittered grid this far apart
 BARK_TINT = np.array([0.62, 0.60, 0.56])
 
@@ -631,7 +634,9 @@ def clump(strip, rng, x, z):
                         tint * 0.92, 0.8, (0.1, 0.1, 0.1, 0.1)))
     th = rng.normal(0.0, 0.55)
     for k in range(2):
-        cell = ["droop", "droop", "ivy", "leaves", "lace1"][int(rng.integers(0, 5))]
+        # (Not the ivy or the dead leaves: hung up as a curtain, a mass of
+        # them reads as a ball floating in the air.)
+        cell = ["droop", "droop", "droop", "moss", "lace1"][int(rng.integers(0, 5))]
         w = s * rng.uniform(0.6, 0.95)
         h = s * rng.uniform(0.45, 0.8)
         yw = th if k == 0 else th + rng.uniform(1.0, 2.1)
@@ -643,6 +648,11 @@ def clump(strip, rng, x, z):
         strip.add(_upright(c, rng.normal(0.0, 0.7), s * rng.uniform(0.35, 0.5),
                            y, s * rng.uniform(0.5, 0.95), "moss", tint, 0.9,
                            (0.6, 0.4, 0.15, 0.0)))
+
+
+def _over_path(q, r=0.0):
+    """Whether a point hangs low over the path, where the camera flies."""
+    return abs(q[0]) - r < CLEAR[0] and q[1] - r < CLEAR[1]
 
 
 def bough(strip, rng, z):
@@ -682,7 +692,10 @@ def bough(strip, rng, z):
         d = M.rot_y(math.degrees(yaw)) @ out
         d = M.norm(d + np.array([0.0, rng.uniform(-0.35, 0.25), 0.0]))
         ln = rng.uniform(120.0, 360.0)
-        pts = WT.walk(rng, P[i], d, ln, 26.0, 0.16, -0.06, droop=0.5)
+        pts = WT.walk(rng, P[i], d, ln, 26.0, 0.16, -0.06, droop=0.5,
+                      avoid=lambda q: _over_path(q, 8.0))
+        if len(pts) < 3:
+            continue
         pts = WT.smooth(pts, 2)
         rr = WT.taper(len(pts), R[i] * rng.uniform(0.35, 0.5), 1.0, 0.9)
         sw = 0.12 + 0.5 * np.linspace(0.0, 1.0, len(pts))
@@ -694,16 +707,24 @@ def bough(strip, rng, z):
         for _ in range(int(rng.integers(2, 5))):
             j = int(rng.integers(max(1, len(pts) // 2), len(pts)))
             tw = WT.walk(rng, pts[j], M.norm(d + rng.normal(0, 0.6, 3)),
-                         rng.uniform(40.0, 120.0), 14.0, 0.25, -0.1, droop=0.9)
+                         rng.uniform(40.0, 120.0), 14.0, 0.25, -0.1, droop=0.9,
+                         avoid=lambda q: _over_path(q, 4.0))
+            if len(tw) < 2:
+                continue
             strip.add(M.ribbon(tw, np.linspace(2.0, 0.3, len(tw)), BARK_TINT * 0.85,
                                ao=0.85, sway=0.6))
     for _ in range(int(rng.integers(2, 4))):
         i = int(rng.integers(4, k - 3))
         c = P[i] - np.array([0.0, R[i] * 0.6, 0.0])
-        cell = ["droop", "droop", "ivy", "leaves", "moss"][int(rng.integers(0, 5))]
+        cell = ["droop", "droop", "droop", "moss", "moss"][int(rng.integers(0, 5))]
         h = rng.uniform(140.0, 320.0)
+        w = rng.uniform(150.0, 260.0)
+        if abs(c[0]) - w * 0.5 < CLEAR[0]:
+            h = min(h, c[1] + 20.0 - CLEAR[1])
+        if h < 80.0:
+            continue
         strip.add(_upright((c[0], 0.0, c[2]), rng.normal(0.0, 0.6),
-                           rng.uniform(150.0, 260.0), c[1] + 20.0, h, cell,
+                           w, c[1] + 20.0, h, cell,
                            _tint(rng), 0.8, (0.6, 0.4, 0.15, 0.0)))
 
 
@@ -733,36 +754,214 @@ def tile(seed):
 
 
 # ---------------------------------------------------------------------------
-# The hedge
+# The far treeline
 # ---------------------------------------------------------------------------
+#
+# The wood beyond the end of the path, as a silhouette at the foot of the sky:
+# a band the wood draws round the camera with the sky (so, like the moon, it
+# turns with the camera and never comes nearer), into which everything the
+# wood draws fades as it nears the far end. So a tree arrives out of the far
+# wood rather than appearing, and the moon sets its foot behind trees.
+#
+# Two layers in one picture, coloured by the sky's shader: red, the far
+# forest, a mass with crowns and dead spires standing out of it; green, the
+# nearer edge of the forest, lower, with a few big crooked trees standing
+# clear against the sky; and blue, a rim along the upper edges of both, which
+# catches the moon's glow. The picture spans `TL_SPAN` degrees round (the
+# wood repeats it) and `TL_EL` degrees of elevation; it tiles across. It is
+# drawn at twice the size it is kept at (`TL_KEEP`), which smooths its edges.
 
-HEDGE_W = 5600.0            # how far it runs either side of the path
-HEDGE_ROWS = ((700.0, 0.75), (330.0, 0.9), (0.0, 1.0))   # depth behind its front, size
+TL_W, TL_H = 4096, 1024
+TL_KEEP = 2
+TL_SPAN = 120.0
+TL_EL = (-14.0, 12.0)       # bottom and top of the picture, degrees
 
 
-def hedge(seed=97):
-    """The hedge across the far end of the path: rows of bramble and scrub,
-    crossed cards facing back down the path, low where the path goes into
-    it and higher either side, with here and there a taller bush. Its foot
-    is sunk below the ground so it stands on any rise there."""
+class _Sdf:
+    """A silhouette as a signed distance in pixels (negative inside),
+    drawn with capsules, `margin` pixels wider each side so that what
+    crosses an edge can be folded back round (`fold`)."""
+
+    def __init__(self, w, h, margin):
+        self.w, self.h, self.m = w, h, margin
+        self.d = np.full((h, w + 2 * margin), 1e6, np.float32)
+
+    def capsule(self, a, b, ra, rb, col=None, shade=0.0):
+        ax, ay = float(a[0]) + self.m, float(a[1])
+        bx, by = float(b[0]) + self.m, float(b[1])
+        r = max(ra, rb)
+        x0 = int(max(0, math.floor(min(ax, bx) - r - 2)))
+        x1 = int(min(self.d.shape[1], math.ceil(max(ax, bx) + r + 2)))
+        y0 = int(max(0, math.floor(min(ay, by) - r - 2)))
+        y1 = int(min(self.h, math.ceil(max(ay, by) + r + 2)))
+        if x0 >= x1 or y0 >= y1:
+            return
+        X, Y = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
+        vx, vy = bx - ax, by - ay
+        l2 = vx * vx + vy * vy + 1e-9
+        t = np.clip(((X - ax) * vx + (Y - ay) * vy) / l2, 0.0, 1.0)
+        sd = np.hypot(X - (ax + t * vx), Y - (ay + t * vy)) - (ra + (rb - ra) * t)
+        sub = self.d[y0:y1, x0:x1]
+        np.minimum(sub, sd.astype(np.float32), out=sub)
+
+    def below(self, top):
+        """Everything under the line `top` (a row per column)."""
+        y = np.arange(self.h, dtype=np.float32)[:, None] + 0.5
+        t = np.concatenate([top[-self.m:], top, top[:self.m]])[None, :]
+        np.minimum(self.d, (t - y).astype(np.float32), out=self.d)
+
+    def fold(self):
+        m, w = self.m, self.w
+        d = self.d[:, m:m + w].copy()
+        np.minimum(d[:, :m], self.d[:, m + w:], out=d[:, :m])
+        np.minimum(d[:, w - m:], self.d[:, :m], out=d[:, w - m:])
+        return d
+
+
+def _tl_row(el):
+    """The picture's row at elevation `el` (degrees)."""
+    return (TL_EL[1] - el) / (TL_EL[1] - TL_EL[0]) * TL_H
+
+
+def _tl_px(deg):
+    """Pixels up the picture for `deg` degrees of elevation."""
+    return deg / (TL_EL[1] - TL_EL[0]) * TL_H
+
+
+def _tl_ridge(rng, mean, swing, lumps):
+    """A wavering line (a row per column) across the picture, tiling:
+    `mean` degrees up, swinging by `swing`, broken by `lumps` round crowns."""
+    x = np.arange(TL_W) / TL_W * math.tau
+    h = np.zeros(TL_W)
+    for k, amp in ((2, 0.55), (3, 0.35), (5, 0.25), (9, 0.15)):
+        h += amp * np.sin(k * x + rng.uniform(0, math.tau))
+    h = h / 1.3 * swing + mean
+    row = (TL_EL[1] - h) / (TL_EL[1] - TL_EL[0]) * TL_H
+    bump = np.zeros(TL_W)
+    cols = np.arange(TL_W)
+    for _ in range(lumps):
+        c = rng.uniform(0, TL_W)
+        r = rng.uniform(14, 46)
+        dx = (cols - c + TL_W / 2) % TL_W - TL_W / 2
+        bump = np.maximum(bump, np.sqrt(np.clip(r * r - dx * dx, 0, None)) * 0.55)
+    return row - bump
+
+
+def _tl_thicket(sd, rng, ridge, n, rise, rad):
+    """A forest's mass seen from afar: solid under `ridge` and broken along
+    its top by `n` crowns of bare twigs (each a ragged spatter of specks,
+    thick in its heart, on a stem), rising up to `rise` degrees over it, so
+    no level line shows anywhere."""
+    sd.below(ridge + 40)
+    for _ in range(n):
+        x = rng.uniform(0, TL_W)
+        base = ridge[int(x) % TL_W]
+        top = base - _tl_px(rng.uniform(0.0, rise) ** 1.4 / rise ** 0.4)
+        w = rng.uniform(1.2, 2.4) * rad[1]
+        h = rng.uniform(0.8, 1.6) * rad[1]
+        cy = top + h
+        for _ in range(int(rng.integers(10, 20))):
+            u, v = rng.normal(0, 0.45, 2)
+            c = (x + u * w, cy + v * h)
+            r = rng.uniform(1.6, rad[0]) * (1.0 - 0.5 * min(1.0, math.hypot(u, v)))
+            sd.capsule(c, c, max(r, 1.2), max(r, 1.2))
+        sd.capsule((x, cy), (x + rng.normal(0, 4), base + 44), 1.8, 2.8)
+
+
+TL_BARE = {
+    "levels": 4, "kids": [(2, 3), (2, 3), (1, 3)], "fork": (0.35, 0.85),
+    "kid_len": (0.45, 0.68), "gnarl": 0.12, "curl": 0.02, "kink": 0.08,
+    "tip": 0.35, "droop": 0.0,
+}
+TL_DENSE = dict(TL_BARE, kids=[(3, 4), (2, 3), (2, 3)], gnarl=0.16, kink=0.12)
+TL_WEEP = dict(TL_BARE, droop=0.55, kids=[(3, 4), (2, 3), (2, 3)], fork=(0.5, 1.1))
+
+
+def _tl_tree(sd, rng, x, base, height, trunk, lean=0.0, weep=False, dense=False):
+    """A tree in silhouette standing on row `base`, `height` pixels tall:
+    a trunk that forks into a few strong limbs ending in claws of twig."""
+    P = TL_WEEP if weep else (TL_DENSE if dense else TL_BARE)
+    split = rng.uniform(0.35, 0.6) * height
+    pts = [np.array([x, base + 4.0])]
+    n = 6
+    a = -math.pi / 2 + lean
+    for k in range(n):
+        a += rng.normal(0, 0.06)
+        pts.append(pts[-1] + split / n * np.array([math.cos(a), math.sin(a)]))
+    for k in range(n):
+        sd.capsule(pts[k], pts[k + 1], trunk * (1.0 - 0.25 * k / n),
+                   trunk * (1.0 - 0.25 * (k + 1) / n))
+    for j in range(int(rng.integers(2, 5))):
+        ka = a + rng.uniform(-0.9, 0.9)
+        grow(sd, rng, pts[-1], ka, (height - split) * rng.uniform(0.75, 1.05),
+             trunk * rng.uniform(0.5, 0.7), 1, P, lambda lv, t: (0, 0, 0))
+
+
+def _tl_snag(sd, rng, x, base, height, trunk):
+    """A dead spire: a straight trunk snapped off, a few broken stubs."""
+    lean = rng.normal(0, 0.05)
+    top = np.array([x + math.sin(lean) * height, base - height])
+    foot = np.array([x, base + 4.0])
+    sd.capsule(foot, top, trunk, trunk * 0.55)
+    for _ in range(int(rng.integers(1, 4))):
+        f = rng.uniform(0.45, 0.9)
+        p = foot + (top - foot) * f
+        s = rng.choice([-1.0, 1.0])
+        q = p + np.array([s * rng.uniform(10, 30), -rng.uniform(4, 16)])
+        sd.capsule(p, q, trunk * 0.4, trunk * 0.2)
+
+
+def treeline(seed=97):
+    """The far treeline's picture (see above)."""
     rng = np.random.default_rng(seed)
-    strip = M.Strip()
-    for dz, k in HEDGE_ROWS:
-        x = -HEDGE_W
-        while x < HEDGE_W:
-            open_ = smoothstep(150.0, 700.0, abs(x))
-            w = rng.uniform(260.0, 480.0)
-            h = (190.0 + 230.0 * open_) * rng.uniform(0.75, 1.25) * k
-            if rng.random() < 0.18 * open_:
-                h += rng.uniform(220.0, 420.0)
-            cell = "bramble1" if h > 380.0 else "bramble0"
-            th = rng.normal(0.0, 0.45)
-            c = (x, 0.0, dz + rng.normal(0.0, 60.0))
-            tint = _tint(rng, 0.85)
-            strip.add(_upright(c, th, w, h, h + 70.0, cell, tint, 0.8,
-                               (0.0, 0.05, 0.1, 0.15)))
-            strip.add(_upright(c, th + rng.uniform(0.9, 1.4), w * 0.7, h * 0.9,
-                               h * 0.9 + 70.0, cell, tint * 0.9, 0.75,
-                               (0.0, 0.05, 0.1, 0.15)))
-            x += w * rng.uniform(0.45, 0.7)
-    return strip.build()
+    far = _Sdf(TL_W, TL_H, 300)
+    near = _Sdf(TL_W, TL_H, 300)
+
+    # The far forest: a mass a little over the horizon whose top is a press
+    # of bare crowns, with taller trees and dead spires standing out of it.
+    ridge = _tl_ridge(rng, 1.4, 0.8, 0)
+    _tl_thicket(far, rng, ridge, 900, 2.0, (6, 20))
+    for _ in range(340):
+        x = rng.uniform(0, TL_W)
+        _tl_tree(far, rng, x, ridge[int(x) % TL_W] + 30, _tl_px(rng.uniform(1.2, 2.6)),
+                 rng.uniform(1.6, 2.6), lean=rng.normal(0, 0.1))
+    for _ in range(46):
+        x = rng.uniform(0, TL_W)
+        _tl_tree(far, rng, x, ridge[int(x) % TL_W] + 20, _tl_px(rng.uniform(2.8, 5.0)),
+                 rng.uniform(2.6, 3.6), lean=rng.normal(0, 0.08), dense=True)
+    for _ in range(8):
+        x = rng.uniform(0, TL_W)
+        _tl_snag(far, rng, x, ridge[int(x) % TL_W] + 10, _tl_px(rng.uniform(4.5, 7.0)),
+                 rng.uniform(3.0, 4.2))
+
+    # The near edge: lower, its top a press of scrub and thicket (no level
+    # line anywhere), and a few big crooked trees set apart, so each reads on
+    # its own against the far forest and the moon.
+    ridge2 = _tl_ridge(rng, -0.9, 0.5, 0)
+    _tl_thicket(near, rng, ridge2, 520, 1.5, (4, 13))
+    for _ in range(220):
+        x = rng.uniform(0, TL_W)
+        _tl_tree(near, rng, x, ridge2[int(x) % TL_W] + 24, _tl_px(rng.uniform(1.0, 2.4)),
+                 rng.uniform(1.6, 2.6), lean=rng.normal(0, 0.25))
+    xs = (np.arange(14) + rng.uniform(0.1, 0.9, 14)) / 14 * TL_W
+    for x in xs:
+        b = ridge2[int(x) % TL_W] + 12
+        kind = rng.random()
+        if kind < 0.15:
+            _tl_snag(near, rng, x, b, _tl_px(rng.uniform(5.5, 8.0)), rng.uniform(4.5, 6.0))
+        else:
+            _tl_tree(near, rng, x, b, _tl_px(rng.uniform(4.0, 7.5)), rng.uniform(5.0, 7.0),
+                     lean=rng.normal(0, 0.12), weep=kind > 0.8, dense=True)
+
+    df, dn = far.fold(), near.fold()
+    cf = np.clip(0.5 - df, 0.0, 1.0)
+    cn = np.clip(0.5 - dn, 0.0, 1.0)
+    # The rim: a band just inside an upper edge of either layer.
+    d = np.minimum(df, dn)
+    gy = np.zeros_like(d)
+    gy[1:-1] = (d[2:] - d[:-2]) * 0.5
+    up = np.clip(-gy, 0.0, 1.0)
+    rim = np.clip(1.0 + d / 3.0, 0.0, 1.0) * np.clip(0.5 - d, 0.0, 1.0) * up
+    rgba = np.dstack([cf, cn, rim, np.ones_like(cf)]) * 255.0
+    img = Image.fromarray(np.clip(rgba + 0.5, 0, 255).astype(np.uint8), "RGBA")
+    return img.resize((TL_W // TL_KEEP, TL_H // TL_KEEP), Image.BOX)

@@ -13,6 +13,13 @@ wood turns to face the path), so the limbs of the trees beside the path
 arch over it as the corridor's did. A trunk flares into buttresses at its
 foot and sends roots out over the ground.
 
+A tree is grown for the nearest it may stand to the path's middle
+(`Tree.near`, which the wood keeps to): nothing it grows between knee and
+well over head height may reach into the lane the camera flies, so a limb on
+the path side climbs over it or stops short (`Tree.in_lane`). The wood turns
+a tree by up to `LANE_YAW` and scales it up to `LANE_SCALE`, and the path
+bends, so the lane is reckoned for the worst of those.
+
 All lengths are world units (the camera flies 250 above the path).
 """
 import math
@@ -26,6 +33,22 @@ GOLDEN = math.pi * (3.0 - math.sqrt(5.0))
 
 # Below this radius a branch is a ribbon rather than a tube.
 RIBBON_R = 2.4
+
+# The lane the camera flies (see `Tree.in_lane`): its half-width either side
+# of the path's middle, the heights (in a tree's own space) that must stay out
+# of it, the most the wood turns a tree off square to the path plus the
+# path's own slope, the largest scale it draws one at, and half the path's
+# sharpest bend (how far it can swing toward a tree along its reach).
+# `bg_wood` places a tree no nearer the path than its `near`.
+LANE_W = 210.0
+LANE_Y = (30.0, 410.0)
+LANE_YAW = math.radians(40.0 + 16.0)
+LANE_SCALE = 1.18
+LANE_BEND = 0.00024
+# The nearest a tree beside the path stands: the first row's inner edge, and
+# the clearance a trunk keeps from the path's middle (more for a thick one).
+NEAR_ROW = 280.0
+NEAR_CLEAR = 230.0
 
 # Ivy up a trunk (`Tree.ivy`): the chance a tree of each species has it.
 IVY_ODDS = {"oak": 0.6, "ancient": 0.85, "snag": 0.5, "crook": 0.3,
@@ -46,6 +69,10 @@ HANG_DROP = 300.0
 HANG_CLEAR = 55.0
 HANG_APART = 120.0
 HANG_Y = (420.0, 1050.0)
+
+# Heights at which the trunk's axis and radius are written out, for tying a
+# ward's rope round it (`Tree.info`).
+TRUNK_Y = tuple(float(y) for y in range(400, 1001, 50))
 
 
 class Branch:
@@ -77,12 +104,16 @@ def perp(d, rng):
 
 
 def walk(rng, start, d0, length, seg, gnarl, tropism, reach=None, reach_k=0.0,
-         kink=0.0, bend=0.5, droop=0.0):
+         kink=0.0, bend=0.5, droop=0.0, avoid=None):
     """A branch's path: `length` in steps of about `seg`, its direction
     knocked by `gnarl` radians a step about a random axis, turning steadily
     about a slowly wandering axis (`bend` times `gnarl` a step), pulled up by
     `tropism` (down if negative), toward `reach` by `reach_k`, and, with
-    `droop`, more and more downward toward its end (a weeping limb)."""
+    `droop`, more and more downward toward its end (a weeping limb).
+
+    With `avoid` (a test of a point), a step that would go where it mustn't
+    turns upward and back instead, harder each try, and if no turn clears it
+    the branch ends there."""
     n = max(2, int(math.ceil(length / seg)))
     step = length / n
     d = np.asarray(d0, float)
@@ -106,6 +137,17 @@ def walk(rng, start, d0, length, seg, gnarl, tropism, reach=None, reach_k=0.0,
         if reach is not None and reach_k:
             d = d + np.asarray(reach, float) * reach_k * (step / 100.0)
         d = d / max(np.linalg.norm(d), 1e-9)
+        if avoid is not None and avoid(pts[-1] + d * step):
+            ok = False
+            for k in range(1, 5):
+                d2 = d + np.array([-0.35 * k, 0.55 * k, 0.0])
+                d2 = d2 / max(np.linalg.norm(d2), 1e-9)
+                if not avoid(pts[-1] + d2 * step):
+                    d = d2
+                    ok = True
+                    break
+            if not ok:
+                break
         pts.append(pts[-1] + d * step)
     return np.array(pts)
 
@@ -119,71 +161,77 @@ def taper(n, r0, r1, power=1.0):
 # Species
 # ---------------------------------------------------------------------------
 #
-# Per level (0 trunk, 1 limbs, 2 branches, 3 twigs, 4 fine twigs): how many
-# children, where along the parent they start, their angle off it (degrees),
-# their length against the parent's, their radius against the parent's there,
-# and the step and knock of their walk.
+# Per level (0 trunk, 1 limbs, 2 branches, 3 twigs): how many children,
+# where along the parent they start, their angle off it (degrees), their
+# length against the parent's, their radius against the parent's there, and
+# the step and knock of their walk. Few children, each kept thick, so a tree
+# reads as a handful of strong crooked limbs ending in claws of twig rather
+# than a haze of hairlines. `near`, where given, is the nearest the tree
+# stands to the path's middle, so a broad crown has room to arch over it
+# (620 is the second row's inner edge); otherwise it is worked out from the
+# first row and its trunk (`Tree.grow`).
 
 SPECIES = {
     # A broad old oak gone grey: a short thick trunk, heavy limbs thrown out
-    # sideways and twisting, a dense crown of crooked twigs.
+    # sideways and twisting, ending in a few clawed twigs.
     "oak": dict(
         height=(860, 1060), r0=(48, 62), lean=10, gnarl0=0.075, tropism0=0.30,
-        limbs=(4, 6), limb_t=(0.24, 0.82), limb_ang=(52, 86),
-        limb_len=(0.80, 1.10), limb_r=(0.48, 0.66), reach_k=0.30,
+        limbs=(4, 5), limb_t=(0.24, 0.82), limb_ang=(52, 86),
+        limb_len=(0.80, 1.10), limb_r=(0.56, 0.72), reach_k=0.30,
         limb_shrink=0.30, trunk_frac=0.78,
-        kids=[(0, 0), (4, 6), (4, 6), (3, 5), (2, 3)],
-        kid_t=[(0, 0), (0.25, 0.95), (0.25, 0.95), (0.20, 0.95), (0.3, 0.95)],
-        kid_ang=[(0, 0), (32, 70), (28, 62), (24, 55), (22, 50)],
-        kid_len=[(0, 0), (0.48, 0.72), (0.42, 0.66), (0.40, 0.62), (0.45, 0.65)],
-        kid_r=[(0, 0), (0.50, 0.72), (0.50, 0.72), (0.48, 0.70), (0.5, 0.7)],
-        seg=[32, 26, 20, 14, 10], gnarl=[0.075, 0.15, 0.18, 0.22, 0.26],
-        tropism=[0.30, 0.03, 0.08, 0.12, 0.10], levels=5,
-        buttress=(0.55, 5, 70), roots=(5, 7), broken=0.12, kink=0.06,
+        kids=[(0, 0), (2, 4), (2, 3), (2, 3)],
+        kid_t=[(0, 0), (0.30, 0.95), (0.30, 0.95), (0.35, 0.95)],
+        kid_ang=[(0, 0), (30, 66), (28, 60), (26, 55)],
+        kid_len=[(0, 0), (0.50, 0.74), (0.46, 0.68), (0.42, 0.62)],
+        kid_r=[(0, 0), (0.58, 0.76), (0.58, 0.76), (0.56, 0.74)],
+        seg=[32, 24, 18, 13], gnarl=[0.075, 0.17, 0.21, 0.25],
+        tropism=[0.30, 0.04, 0.09, 0.12], levels=4,
+        buttress=(0.55, 5, 70), roots=(5, 7), broken=0.12, kink=0.08,
+        near=450.0,
     ),
     # A thin tree grown crooked and leaning, its few limbs clawing.
     "crook": dict(
         height=(680, 900), r0=(24, 34), lean=18, gnarl0=0.12, tropism0=0.22,
         limbs=(3, 4), limb_t=(0.38, 0.85), limb_ang=(30, 60),
-        limb_len=(0.50, 0.75), limb_r=(0.50, 0.68), reach_k=0.45,
-        kids=[(0, 0), (3, 4), (3, 5), (2, 4), (2, 3)],
-        kid_t=[(0, 0), (0.35, 0.95), (0.30, 0.95), (0.25, 0.95), (0.3, 0.95)],
-        kid_ang=[(0, 0), (30, 65), (30, 60), (26, 58), (24, 52)],
-        kid_len=[(0, 0), (0.45, 0.70), (0.42, 0.66), (0.42, 0.62), (0.45, 0.65)],
-        kid_r=[(0, 0), (0.52, 0.72), (0.50, 0.72), (0.48, 0.70), (0.5, 0.7)],
-        seg=[30, 22, 18, 13, 10], gnarl=[0.09, 0.17, 0.21, 0.25, 0.28],
-        tropism=[0.25, 0.10, 0.12, 0.14, 0.10], levels=5,
-        buttress=(0.35, 4, 40), roots=(3, 5), broken=0.18, kink=0.10,
+        limb_len=(0.50, 0.75), limb_r=(0.56, 0.72), reach_k=0.45,
+        kids=[(0, 0), (2, 3), (2, 3), (1, 3)],
+        kid_t=[(0, 0), (0.40, 0.95), (0.35, 0.95), (0.35, 0.95)],
+        kid_ang=[(0, 0), (30, 65), (30, 60), (26, 58)],
+        kid_len=[(0, 0), (0.48, 0.72), (0.45, 0.68), (0.42, 0.62)],
+        kid_r=[(0, 0), (0.58, 0.76), (0.56, 0.74), (0.55, 0.72)],
+        seg=[30, 22, 16, 12], gnarl=[0.09, 0.18, 0.23, 0.27],
+        tropism=[0.25, 0.10, 0.12, 0.14], levels=4, near=620.0,
+        buttress=(0.35, 4, 40), roots=(3, 5), broken=0.18, kink=0.12,
     ),
     # A dead giant, mostly trunk: tall, nearly straight, a few broken limbs
     # and a snapped crown. These are the trunks that pass by the camera.
     "snag": dict(
         height=(1500, 1900), r0=(52, 74), lean=4, gnarl0=0.03, tropism0=0.5,
         limbs=(4, 6), limb_t=(0.42, 0.92), limb_ang=(48, 80),
-        limb_len=(0.24, 0.40), limb_r=(0.30, 0.46), reach_k=0.25,
-        kids=[(0, 0), (2, 4), (3, 5), (2, 4), (2, 3)],
-        kid_t=[(0, 0), (0.30, 0.95), (0.25, 0.95), (0.20, 0.95), (0.3, 0.95)],
-        kid_ang=[(0, 0), (30, 60), (28, 58), (26, 55), (22, 50)],
-        kid_len=[(0, 0), (0.45, 0.70), (0.42, 0.66), (0.40, 0.62), (0.45, 0.65)],
-        kid_r=[(0, 0), (0.50, 0.70), (0.50, 0.72), (0.48, 0.70), (0.5, 0.7)],
-        seg=[40, 26, 20, 14, 10], gnarl=[0.03, 0.12, 0.16, 0.22, 0.26],
-        tropism=[0.5, 0.0, 0.08, 0.10, 0.08], levels=5,
-        buttress=(0.75, 6, 110), roots=(6, 8), broken=0.40, kink=0.04,
+        limb_len=(0.24, 0.40), limb_r=(0.34, 0.50), reach_k=0.25,
+        kids=[(0, 0), (2, 3), (2, 3), (1, 2)],
+        kid_t=[(0, 0), (0.35, 0.95), (0.30, 0.95), (0.35, 0.95)],
+        kid_ang=[(0, 0), (30, 60), (28, 58), (26, 55)],
+        kid_len=[(0, 0), (0.48, 0.72), (0.44, 0.66), (0.42, 0.62)],
+        kid_r=[(0, 0), (0.56, 0.74), (0.56, 0.74), (0.55, 0.72)],
+        seg=[40, 24, 18, 13], gnarl=[0.03, 0.13, 0.18, 0.24],
+        tropism=[0.5, 0.0, 0.08, 0.10], levels=4,
+        buttress=(0.75, 6, 110), roots=(6, 8), broken=0.40, kink=0.05,
         top_broken=True,
     ),
     # A weeping tree: limbs that arch out and down, hung with long strands.
     "weeper": dict(
         height=(760, 900), r0=(32, 42), lean=5, gnarl0=0.05, tropism0=0.4,
-        limbs=(5, 7), limb_t=(0.45, 0.90), limb_ang=(38, 70),
-        limb_len=(0.62, 0.85), limb_r=(0.46, 0.62), reach_k=0.25,
-        kids=[(0, 0), (4, 6), (4, 6), (3, 5), (0, 0)],
-        kid_t=[(0, 0), (0.25, 0.95), (0.20, 0.95), (0.15, 0.95), (0, 0)],
-        kid_ang=[(0, 0), (25, 55), (25, 55), (20, 45), (0, 0)],
-        kid_len=[(0, 0), (0.50, 0.75), (0.55, 0.85), (0.8, 1.3), (0, 0)],
-        kid_r=[(0, 0), (0.50, 0.70), (0.50, 0.70), (0.45, 0.65), (0, 0)],
-        seg=[32, 24, 18, 14, 10], gnarl=[0.05, 0.10, 0.13, 0.12, 0.2],
-        tropism=[0.4, 0.10, -0.15, -0.6, 0.0], levels=4,
-        droop=[0.0, 0.5, 1.2, 2.5, 0.0],
+        limbs=(4, 6), limb_t=(0.45, 0.90), limb_ang=(38, 70),
+        limb_len=(0.62, 0.85), limb_r=(0.50, 0.66), reach_k=0.25,
+        kids=[(0, 0), (3, 4), (2, 4), (2, 3)],
+        kid_t=[(0, 0), (0.30, 0.95), (0.25, 0.95), (0.20, 0.95)],
+        kid_ang=[(0, 0), (25, 55), (25, 55), (20, 45)],
+        kid_len=[(0, 0), (0.50, 0.75), (0.55, 0.85), (0.8, 1.3)],
+        kid_r=[(0, 0), (0.56, 0.74), (0.56, 0.74), (0.55, 0.72)],
+        seg=[32, 24, 18, 14], gnarl=[0.05, 0.10, 0.13, 0.12],
+        tropism=[0.4, 0.10, -0.15, -0.6], levels=4, near=620.0,
+        droop=[0.0, 0.5, 1.2, 2.5],
         buttress=(0.45, 5, 60), roots=(4, 6), broken=0.05, kink=0.03,
     ),
     # An ancient: a huge low bole on great buttresses, splitting into three
@@ -193,28 +241,28 @@ SPECIES = {
         limbs=(3, 3), limb_t=(0.20, 0.32), limb_ang=(18, 36),
         limb_len=(1.70, 2.10), limb_r=(0.58, 0.70), reach_k=0.20,
         limb_shrink=0.0,
-        kids=[(0, 0), (4, 6), (4, 6), (3, 5), (2, 3)],
-        kid_t=[(0, 0), (0.30, 0.95), (0.25, 0.95), (0.20, 0.95), (0.3, 0.95)],
-        kid_ang=[(0, 0), (30, 62), (28, 58), (26, 55), (22, 50)],
-        kid_len=[(0, 0), (0.45, 0.66), (0.42, 0.66), (0.40, 0.62), (0.45, 0.65)],
-        kid_r=[(0, 0), (0.50, 0.70), (0.50, 0.72), (0.48, 0.70), (0.5, 0.7)],
-        seg=[34, 26, 20, 14, 10], gnarl=[0.04, 0.11, 0.16, 0.22, 0.26],
-        tropism=[0.4, 0.12, 0.10, 0.12, 0.10], levels=5,
-        buttress=(0.85, 6, 140), roots=(7, 9), broken=0.15, kink=0.05,
-        trunk_frac=0.34,
+        kids=[(0, 0), (3, 4), (2, 4), (2, 3)],
+        kid_t=[(0, 0), (0.30, 0.95), (0.30, 0.95), (0.30, 0.95)],
+        kid_ang=[(0, 0), (30, 62), (28, 58), (26, 55)],
+        kid_len=[(0, 0), (0.48, 0.70), (0.44, 0.68), (0.42, 0.62)],
+        kid_r=[(0, 0), (0.58, 0.76), (0.58, 0.76), (0.56, 0.74)],
+        seg=[34, 24, 18, 13], gnarl=[0.04, 0.12, 0.18, 0.24],
+        tropism=[0.4, 0.12, 0.10, 0.12], levels=4,
+        buttress=(0.85, 6, 140), roots=(7, 9), broken=0.15, kink=0.06,
+        trunk_frac=0.34, near=620.0,
     ),
     # A dead sapling: one thin stem and a few whips.
     "sapling": dict(
         height=(260, 420), r0=(5, 8), lean=10, gnarl0=0.10, tropism0=0.3,
         limbs=(2, 4), limb_t=(0.35, 0.85), limb_ang=(25, 55),
         limb_len=(0.35, 0.55), limb_r=(0.5, 0.7), reach_k=0.3,
-        kids=[(0, 0), (1, 3), (1, 2), (0, 0), (0, 0)],
-        kid_t=[(0, 0), (0.3, 0.9), (0.3, 0.9), (0, 0), (0, 0)],
-        kid_ang=[(0, 0), (25, 55), (25, 50), (0, 0), (0, 0)],
-        kid_len=[(0, 0), (0.45, 0.7), (0.45, 0.6), (0, 0), (0, 0)],
-        kid_r=[(0, 0), (0.55, 0.75), (0.5, 0.7), (0, 0), (0, 0)],
-        seg=[20, 14, 10, 10, 10], gnarl=[0.10, 0.18, 0.24, 0.25, 0.25],
-        tropism=[0.3, 0.15, 0.12, 0.1, 0.1], levels=3,
+        kids=[(0, 0), (1, 3), (1, 2)],
+        kid_t=[(0, 0), (0.3, 0.9), (0.3, 0.9)],
+        kid_ang=[(0, 0), (25, 55), (25, 50)],
+        kid_len=[(0, 0), (0.45, 0.7), (0.45, 0.6)],
+        kid_r=[(0, 0), (0.55, 0.75), (0.5, 0.7)],
+        seg=[20, 14, 10], gnarl=[0.10, 0.18, 0.24],
+        tropism=[0.3, 0.15, 0.12], levels=3, near=620.0,
         buttress=(0.2, 3, 15), roots=(0, 0), broken=0.2, kink=0.08,
     ),
 }
@@ -270,6 +318,18 @@ class Tree:
         self.branches.append(trunk)
         self.height = float(pts[:, 1].max())
 
+        # How near the path it may stand: its row's, or further if its own
+        # trunk (buttresses and all) leans into the lane from there.
+        near = sp.get("near", max(NEAR_ROW, NEAR_CLEAR + 1.6 * r0))
+        for p, r in zip(pts, rad):
+            if not (LANE_Y[0] < p[1] < LANE_Y[1]):
+                continue
+            flare = 1.0 + 0.8 * math.exp(-max(p[1] + 40.0, 0.0) / 120.0)
+            need = (self.lane_reach(p, r * flare) + LANE_W) / math.cos(math.radians(16.0))
+            near = max(near, need + 10.0)
+        self.near = float(near)
+        self.lane_x = self.near * math.cos(math.radians(16.0)) - LANE_W
+
         # The limbs off the trunk.
         nl = randi(rng, sp["limbs"])
         ts = np.sort(rng.uniform(*sp["limb_t"], nl))
@@ -281,10 +341,17 @@ class Tree:
             i = int(np.clip(round(t * (n - 1)), 1, n - 2))
             ang = math.radians(rand(rng, sp["limb_ang"]))
             side = math.cos(az) * N[i] + math.sin(az) * B[i]
-            # Favour the reach side: blend the azimuth's direction toward it.
+            # Favour the reach side: blend the azimuth's direction toward it;
+            # but a limb low enough to cross the lane, when the lane is
+            # close, is turned the other way (it would only be cut short).
             side = side + reach * sp["reach_k"] * rng.uniform(0.5, 1.5)
             side = side - np.dot(side, T[i]) * T[i]
             side /= max(np.linalg.norm(side), 1e-9)
+            # A limb low enough to cross the lane, on the path side, rises
+            # steeply, so it is over the lane before it reaches it (and the
+            # tree arches over the path rather than being cut short there).
+            if pts[i][1] < LANE_Y[1] and side[0] > 0.2:
+                ang = min(ang, math.radians(26.0))
             d = math.cos(ang) * T[i] + math.sin(ang) * side
             ln = (trunk_len * rand(rng, sp["limb_len"])
                   * (1.0 - sp.get("limb_shrink", 0.45) * t))
@@ -295,6 +362,26 @@ class Tree:
         self.hangs = self.hang_sites()
         self.vines = self.vine_sites()
 
+    # -- the lane ---------------------------------------------------------------
+
+    def lane_reach(self, p, r=0.0):
+        """How far toward the path's middle a point of radius `r` can reach
+        (scaled and turned as the wood may, the path bent toward it), from
+        the tree's axis."""
+        rxz = math.hypot(p[0], p[2])
+        phi = math.atan2(abs(p[2]), p[0])
+        a = max(0.0, phi - LANE_YAW)
+        if a >= math.pi * 0.5:
+            return -1e9
+        return ((rxz * math.cos(a) + r) * LANE_SCALE
+                + LANE_BEND * (LANE_SCALE * rxz) ** 2)
+
+    def in_lane(self, p, r=0.0):
+        """Whether a point of radius `r` could be in the camera's lane."""
+        if p[1] + r < LANE_Y[0] or p[1] - r > LANE_Y[1]:
+            return False
+        return self.lane_reach(p, r) > self.lane_x
+
     # -- where charms hang ----------------------------------------------------
 
     def hang_sites(self, drop=HANG_DROP, clear=HANG_CLEAR, apart=HANG_APART):
@@ -302,7 +389,13 @@ class Tree:
         seen (a tube, not a twig), where it runs near level, high enough to
         be seen from the path, with `drop` of open air below it, `clear` wide
         (a charm and its swing). The point is the branch's underside, so the
-        cord starts on the bark. No two within `apart` of each other."""
+        cord starts on the bark. No two within `apart` of each other.
+
+        Each site is scored by how much of the path it can be seen from
+        (`score`, 0..1: the share of sight lines from the charm to points
+        along the path, near and far either way, that no limb crosses), so
+        the wood hangs its charms where they are seen, not behind the tree's
+        own branches."""
         A, B, RR = [], [], []
         for b in self.branches:
             for i in range(len(b.pts) - 1):
@@ -329,6 +422,27 @@ class Tree:
             d = np.linalg.norm(Q[:, None, :] - C, axis=2) - RR[None]
             return float(d.min()) > clear
 
+        # Where the camera sees it from: the path's middle (local +x, at the
+        # nearest the tree stands), at the camera's height, near and far
+        # along it either way (the wood may mirror a tree along the path).
+        eyes = [np.array([self.near, 250.0, z]) for z in
+                (-1800.0, -900.0, -450.0, -200.0, 200.0, 450.0, 900.0, 1800.0)]
+
+        def seen(p):
+            c = p - np.array([0.0, drop * 0.45, 0.0])
+            k = 0
+            for e in eyes:
+                v = e - c
+                ln = float(np.linalg.norm(v))
+                ts = np.linspace(40.0, min(ln, 900.0), 18) / ln
+                Q = c[None] + v[None] * ts[:, None]
+                AQ = Q[:, None, :] - A[None, :, :]
+                t = np.clip(np.sum(AQ * AB[None], axis=2) / L2[None], 0, 1)
+                C = A[None] + AB[None] * t[..., None]
+                d = np.linalg.norm(Q[:, None, :] - C, axis=2) - RR[None]
+                k += 1 if float(d.min()) > 12.0 else 0
+            return k / len(eyes)
+
         sites = []
         for b in self.branches:
             if b.root or b.level == 0 or b.level > 2:
@@ -350,7 +464,9 @@ class Tree:
                 if not open_below(p):
                     continue
                 t = Tn[i] / max(np.linalg.norm(Tn[i]), 1e-9)
-                sites.append({"p": p, "axis": P[i].copy(), "r": r, "t": t})
+                sites.append({"p": p, "axis": P[i].copy(), "r": r, "t": t,
+                              "score": seen(p)})
+        sites.sort(key=lambda q: -q["score"])
         return sites
 
     # -- what hangs from the limbs ---------------------------------------------
@@ -379,6 +495,9 @@ class Tree:
                 ln = min(rng.uniform(*VINE_LEN), y - 140.0)
                 if ln < 60:
                     continue
+                if any(self.in_lane(P[i] - np.array([0.0, f * ln, 0.0]), 8.0)
+                       for f in (0.0, 0.25, 0.5, 0.75, 1.0)):
+                    continue
                 out.append((P[i] - np.array([0.0, R[i] * 0.8, 0.0]), ln,
                             rng.uniform(0.7, 1.3), rng.random()))
         return out
@@ -391,7 +510,10 @@ class Tree:
             length *= rng.uniform(0.35, 0.7)
         pts = walk(rng, start, d, length, sp["seg"][level], sp["gnarl"][level],
                    sp["tropism"][level], reach, sp["reach_k"] * 0.4,
-                   kink=sp["kink"], droop=droop)
+                   kink=sp["kink"], droop=droop,
+                   avoid=lambda q: self.in_lane(q, r))
+        if len(pts) < 3:
+            return
         pts = smooth(pts, 2)
         n = len(pts)
         r_end = r * (0.38 if broken else 0.10)
@@ -454,10 +576,14 @@ class Tree:
     # -- skinning -------------------------------------------------------------
 
     def mesh(self, lod=0):
-        """The tree as a strip. `lod` 1 is the far version: fewer sides, no
-        fine twigs."""
+        """The tree as two strips: its solid parts (bark tubes), and the soft
+        ones whose edges are see-through (twigs as ribbons, leaves as cards),
+        which the wood draws after everything solid without writing depth,
+        so a twig never hides what is behind it. `lod` 1 is the far
+        version: fewer sides, no twigs (so nothing soft)."""
         sp, rng = self.sp, np.random.default_rng(self.seed + 999)
         strip = M.Strip()
+        soft = M.Strip()
         tint = np.array([1.0, 1.0, 1.0]) * rng.uniform(0.85, 1.05)
         twig_tint = tint * 0.80
         H = max(self.height, 1.0)
@@ -492,7 +618,7 @@ class Tree:
             if r_base < RIBBON_R:
                 if lod >= 1:
                     continue
-                strip.add(M.ribbon(P, R, twig_tint, ao=ao, sway=sway))
+                soft.add(M.ribbon(P, R, twig_tint, ao=ao, sway=sway))
                 continue
             if lod >= 1 and b.level >= 3:
                 continue
@@ -527,14 +653,16 @@ class Tree:
                     tip_len = max(10.0, float(R[-1]) * 10)
                     tip = np.array([P[-1], P[-1] + T[-1] * tip_len * 0.5,
                                     P[-1] + T[-1] * tip_len])
-                    strip.add(M.ribbon(tip, [float(R[-1]), float(R[-1]) * 0.5, 0.05],
+                    if self.in_lane(tip[-1]):
+                        continue
+                    soft.add(M.ribbon(tip, [float(R[-1]), float(R[-1]) * 0.5, 0.05],
                                        twig_tint, ao=float(ao[-1]),
                                        sway=float(sway[-1])))
         if lod == 0:
             irng = np.random.default_rng(self.seed + 777)
             if irng.random() < IVY_ODDS.get(self.species, 0.0):
                 for part in self.ivy(irng):
-                    strip.add(part)
+                    soft.add(part)
             # Leafy vines hanging from the limbs: a stem that curls a little
             # as it falls and turns up at its end, ivy leaves along it.
             vrng = np.random.default_rng(self.seed + 5151)
@@ -546,7 +674,7 @@ class Tree:
                                  -t * ln + ln * 0.08 * t ** 6,
                                  np.cos(t * 2.1 + ph * 6.0) * ln * 0.05], 1)
                 pts = top[None, :] + curl
-                strip.add(M.ribbon(pts, (0.75 - 0.3 * t) * w, vt, ao=0.85,
+                soft.add(M.ribbon(pts, (0.75 - 0.3 * t) * w, vt, ao=0.85,
                                    sway=0.25 + 0.75 * t))
                 for j in range(1, k):
                     f = j / (k - 1)
@@ -566,10 +694,10 @@ class Tree:
                                    c + right * h + up * h, c - right * h + up * h)
                         cell = "ivy%d" % vrng.integers(0, 4)
                         sw = 0.25 + 0.75 * f
-                        strip.add(M.card(corners, TX.cell_rect(cell, 0.04),
+                        soft.add(M.card(corners, TX.cell_rect(cell, 0.04),
                                          np.array([1.0, 1.0, 1.0]) * vrng.uniform(0.75, 1.05),
                                          normal=nrm, ao=0.9, sway=(sw, sw, sw, sw)))
-        return strip
+        return strip, soft
 
     def ivy(self, rng):
         """Ivy climbing the trunk: a stem winding up from near the foot,
@@ -633,12 +761,25 @@ class Tree:
         parts.extend(leaves)
         return parts
 
+    def trunk_at(self, y):
+        """The trunk's axis and radius at height `y`: `(x, y, z, r)`."""
+        P, R = self.branches[0].pts, self.branches[0].rad
+        i = int(np.clip(np.searchsorted(P[:, 1], y) - 1, 0, len(P) - 2))
+        f = float(np.clip((y - P[i, 1]) / max(P[i + 1, 1] - P[i, 1], 1e-6), 0.0, 1.0))
+        p = P[i] + (P[i + 1] - P[i]) * f
+        return (float(p[0]), float(y), float(p[2]), float(R[i] + (R[i + 1] - R[i]) * f))
+
     def info(self):
         """What the wood needs to place it: its height, the trunk's radius
-        at the foot, how far it spreads from its axis (for culling), and its
-        hang points."""
+        at the foot, how far it spreads from its axis (for culling), the
+        nearest it may stand to the path, its hang points (the most seen
+        first, with their scores), and its trunk's axis and radius at
+        `TRUNK_Y` (where a ward's rope can be tied round it)."""
         allp = np.concatenate([b.pts for b in self.branches])
         spread = float(np.sqrt(allp[:, 0] ** 2 + allp[:, 2] ** 2).max())
-        hangs = [tuple(float(v) for v in (*h["p"], h["r"], *h["t"]))
+        hangs = [tuple(float(v) for v in (*h["p"], h["r"], *h["t"], h["score"]))
                  for h in self.hangs]
-        return dict(height=self.height, r0=self.r0, spread=spread, hangs=hangs)
+        top = float(self.branches[0].pts[:, 1].max())
+        trunk = [self.trunk_at(y) for y in TRUNK_Y if y < top - 60.0]
+        return dict(height=self.height, r0=self.r0, spread=spread, hangs=hangs,
+                    near=self.near, trunk=trunk)

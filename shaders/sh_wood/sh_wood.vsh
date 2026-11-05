@@ -10,6 +10,9 @@
 // The kind of vertex (`ex.z / 4`): 0 a solid, 1 a ribbon (a twig, widened
 // here across the line of sight to at least a pixel or so, with its true
 // width kept as coverage), 2 a card, 3 a glow.
+//
+// Nothing is bent out of the camera's way here: the trees are grown with
+// their limbs clear of its lane (`tools/wood_trees.py`).
 
 attribute vec3 in_Position;
 attribute vec3 in_Normal;
@@ -24,6 +27,7 @@ varying vec2 v_uv;
 varying vec4 v_shadow;
 varying vec4 v_info;     // kind, ribbon side, ribbon coverage, ribbon width in px
 varying float v_up;      // how high up its own mesh a vertex is (moss keeps low)
+varying vec3 v_scr;      // where it is on screen (clip x, y, w), for the sky behind it
 
 uniform vec3 u_cam;
 uniform float u_time;
@@ -32,8 +36,7 @@ uniform float u_pix;     // world size of a pixel, per unit of distance
 uniform mat4 u_shadow;   // world to the moon's shadow map
 uniform float u_ground;  // 1: the ground's own tiles
 uniform float u_raise;   // 1: stand on the ground (0 for what is placed whole, the charms)
-uniform vec4 u_lane;     // the flight's lane (see `lane`)
-uniform float u_follow;  // 1: laid out from the path's middle (the canopy, the hedge), so moved onto it
+uniform float u_follow;  // 1: laid out from the path's middle (the canopy), so moved onto it
 
 // The path's middle at depth `z`, and the ground's height at `p` (x, z).
 // The same numbers as `wood_path_x` and `wood_ground_y`; change both.
@@ -53,18 +56,6 @@ float ground(vec2 p) {
                      * sin(p.y * 0.0063 + p.x * 0.0029);
     hum *= smoothstep(160.0, 500.0, a);
     return trough + bank + hum;
-}
-
-// The flight's lane: whatever reaches into it at the camera's height is
-// lifted over it, so a limb that crosses the path arches above the camera
-// rather than through it. `u_lane` is its half-width, the height things are
-// lifted to, and the lowest height that is lifted.
-vec3 lane(vec3 wp) {
-    float dx = abs(wp.x - path_x(wp.z));
-    float w = 1.0 - smoothstep(u_lane.x * 0.55, u_lane.x, dx);
-    float inside = smoothstep(u_lane.z, u_lane.z + 50.0, wp.y);
-    wp.y = mix(wp.y, max(wp.y, u_lane.y), w * inside);
-    return wp;
 }
 
 void main() {
@@ -96,7 +87,6 @@ void main() {
         wp.y -= abs(sway) * u_wind.x * ex.w * 0.15;
     }
 
-    if (u_raise > 0.5 && u_ground < 0.5) wp = lane(wp);
 
     v_info = vec4(kind, 0.0, 1.0, 0.0);
     v_uv = in_TextureCoord;
@@ -137,4 +127,5 @@ void main() {
     v_shadow = u_shadow * vec4(wp, 1.0);
     gl_Position = gm_Matrices[MATRIX_PROJECTION]
                 * (gm_Matrices[MATRIX_VIEW] * vec4(wp, 1.0));
+    v_scr = gl_Position.xyw;
 }

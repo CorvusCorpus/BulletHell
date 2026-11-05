@@ -10,7 +10,9 @@
 //   rolled off rather than clipped, a vignette, and a dither so the dark
 //   gradients of the fog don't band;
 // 4 the rays' source: the scene where it is open sky (the depth buffer at
-//   its far plane), and nothing where the wood stands in front of it.
+//   its far plane, or far enough that the wood has faded into the sky
+//   there), and nothing where the wood stands in front of it or the far
+//   treeline covers the sky (the sky's own alpha, `u_open`).
 
 varying vec2 v_vTexcoord;
 varying vec4 v_vColour;
@@ -22,9 +24,11 @@ uniform float u_thresh;
 uniform sampler2D u_bloom;
 uniform sampler2D u_rays;
 uniform sampler2D u_depth;
+uniform sampler2D u_open;
 uniform vec2 u_sun;            // the moon on screen, 0..1
 uniform vec4 u_rayp;           // length, decay, strength, how much of the sky
 uniform vec3 u_raycol;
+uniform vec4 u_zp;             // the near and far planes, and where the wood fades into the sky
 uniform float u_bloom_k;
 uniform float u_vignette;
 uniform vec3 u_lift;
@@ -84,7 +88,9 @@ void main() {
             vec2 o = vec2(mod(float(i), 2.0) * 2.0 - 1.0, floor(float(i) / 2.0) * 2.0 - 1.0);
             vec2 q = uv + u_texel * o;
             float z = texture2D(u_depth, q).r;
-            float sky = step(0.99995, z);
+            float zv = u_zp.x * u_zp.y / max(u_zp.y - z * (u_zp.y - u_zp.x), 0.001);
+            float sky = max(step(0.99995, z), smoothstep(u_zp.z, u_zp.w, zv))
+                      * clamp(texture2D(u_open, q).a, 0.0, 1.0);
             c += texture2D(gm_BaseTexture, q).rgb * sky;
         }
         c *= 0.25;

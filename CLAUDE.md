@@ -306,7 +306,7 @@ Game logic is plain functions over structs; objects are thin controllers.
 | `stage_drafts` | The drafting table, plus `rack_list()`: the roster and the extra cards the rack shows |
 | `draft_sylvia` | Sylvia's N1 and N2, the iris bloom and spells from it, and the iris blooms, as drafts on the drafting table |
 | `stage_preview` | The review card (THE DEEP WOOD), which flies the 3D wood (`bg_wood`) with no enemies, looping its turn |
-| `bg_wood`, `wood_table` | Velka's wood rebuilt in real 3D (work in progress): trees, charms and textures from `tools/make_wood.py` (meshes in `datafiles/wood/`), lit by `sh_wood` with moon shadows, witch-lights and wisps as point lights, and the grove's blood-moon turn. Stage two still flies the old corridor for comparison |
+| `bg_wood`, `wood_table` | Velka's wood rebuilt in real 3D (work in progress): trees, charms, the wards strung across the path and textures from `tools/make_wood.py` (meshes in `datafiles/wood/`), lit by `sh_wood` with moon shadows, witch-lights and wisps as point lights, a far treeline drawn with the sky, and the grove's blood-moon turn. Stage two still flies the old corridor for comparison |
 | `stage_sanctum_old` | Stage three as it was before Mika's rebuild, frozen on its own rack card. Delete it once his slots are filled, along with its rack line, `test_old_sanctum`, its line in `test_stage_run` and `stage_is_old_draft`. |
 | `practice_functions` | Single-attack practice |
 | `rank_functions`, `rank_card` | Encounter grading and the medal card |
@@ -728,41 +728,67 @@ and `bg_draw_front`.
     that is missing or won't read is left out with only a debug line
     (`test_wood`). The vertex format adds a custom float4: the anchor's x and
     z, `kind * 4 + conform`, and how far the wind moves it.
+  - A tree is three meshes: its solid parts (bark), its soft ones (twig
+    ribbons and leaf cards) and a bare far version. A tree has few limbs,
+    each kept thick (`SPECIES` in `wood_trees.py`).
   - Everything is placed by hashed slots in rows (`wood_rows_new`,
     `wood_prop_rows_new`), so the wood is the same on every attempt. Rows
     from `WOOD_ROW_BARE` out always use the trees' bare meshes; nothing
     swaps detail by distance on screen.
+  - Nothing reaches into the lane the camera flies: each tree is grown for
+    the nearest it will stand to the path (`near` in `wood_table`, which
+    `wood_slot_fill` keeps to), with any limb that would cross the lane at
+    the camera's height turned up over it or ended short (`Tree.in_lane`,
+    reckoned for the turn, scale and path bend the wood can give it). The
+    canopy's boughs keep over the path the same way (`CLEAR` in
+    `wood_canopy.py`). Nothing is bent out of the way in the shaders.
   - The ground is a function (`wood_path_x`, `wood_ground_y`) written again
     in both vertex shaders, which raise flat ground tiles and every placed
     mesh onto it, and the path once more in the fragment shader
-    (`check_wood_ground_agrees`). The shaders also lift any limb that reaches
-    into the camera's lane over it (`lane`).
+    (`check_wood_ground_agrees`).
   - The canopy closes overhead (`wood_draw_canopy`): tiles of crossed cards
     (twig tangle, drooping twigs, beard moss, ivy, dead leaves) with boughs
     arching over the path, from `wood_canopy.py`. A tile is laid out from
-    the path's middle and the shader moves it onto the path (`u_follow`). A
-    card's alpha climbs with the depth into its picture, so a higher cut-off
-    eats it from the twig tips in: that is how the canopy thins and opens
-    into the mouth of the wood ahead, where the moon is (`canopy_open` in
-    `sh_wood.fsh`, `WOOD_MOUTH`). Trees nearer than `WOOD_CANOPY_NEAR` are
-    drawn after it, so their twigs lie over it.
+    the path's middle and the shader moves it onto the path (`u_follow`). It
+    fades away into the mouth of the wood ahead, where the moon is
+    (`canopy_open` in `sh_wood.fsh`, `WOOD_MOUTH`). Trees nearer than
+    `WOOD_CANOPY_NEAR` are drawn after it, so their twigs lie over it.
   - What the canopy lets through is a tiling mask (`spr_wood_canopy_light`)
     laid over everything under it, opened over the path's gap and toward the
     mouth; under it the sky's light and the air's colour are cut as well
     (`WOOD_GLOOM`). Only its boughs cast into the shadow map.
-  - The hedge across the far end (`wood_draw_hedge`) is kept `WOOD_HEDGE_D`
-    ahead of the camera, so the ground is never seen to stop. Its fog is
-    reckoned nearer than it stands (`WOOD_HEDGE_FOG`), which keeps it a
-    ragged silhouette across the foot of the moon.
+  - The sky is drawn on its own first (`_b.sky`), and everything in the wood
+    fades into it toward the far end (`WOOD_FADE`, `u_skytex` sampled at
+    the pixel's place on screen), so what arrives there comes out of the sky
+    as drawn, moon included, instead of appearing. The sky carries the far
+    treeline (`spr_wood_treeline`, `wood_canopy.treeline`): a band of
+    silhouette right round the camera, which turns with the camera as the
+    moon does and never comes nearer, its foot in the ground's mist. It
+    takes its cover out of the sky's alpha, which the rays read as how open
+    the sky is.
   - Twigs are ribbons turned to the camera, kept at least about a pixel
     wide with their true width as coverage, so fine branches don't flicker.
+    Drawing goes in two passes (`wood_pass`): first everything solid,
+    nearest first, writing depth (cards and ribbons only where fully
+    covered, `WOOD_SOLID_A`); then everything see-through, far to near,
+    without writing depth. A faint twig written to depth hid the trunk
+    behind it and showed the sky through it.
+  - The wards (`wood_ward_fill`): now and then a rope strung across the path
+    between two dead trees, tied round their trunks (the trunks' axes are
+    in `wood_table`), with three or five charms hung down it, the largest in
+    the middle. A tree beside the path hangs at most one charm, on the limb
+    most seen from the path (`Tree.hang_sites` scores them), and none near
+    a ward.
   - `sh_wood` lights per pixel: the moon through a shadow map fitted to the
     ground in view (`wood_draw_shadow`, linear depth in an `r32float`
     surface, filtered and fading with distance), up to `WOOD_LIGHTS` point
     lights from the charms' witch-lights and the wisps, moss and lichen, fog
-    toward the sky's colour and a ground mist. The turn's blood wavefront is
-    worked out per pixel by distance ahead. `sh_wood_post` blooms it, adds
-    rays from the moon (masked by depth) and grades it.
+    toward the sky's colour and a ground mist. A light fades out as the
+    first one left out of the list nears it (`WOOD_LIGHT_SWAP`), and every
+    charm in reach counts, in view or not, so no light switches. The turn's
+    blood wavefront is worked out per pixel by distance ahead.
+    `sh_wood_post` blooms it, adds rays from the moon (masked by depth and
+    the sky's openness) and grades it.
   - Its textures are `For3D` sprites in the `Wood` texture group, laid by
     world position and repeated, so each has to be alone on its page and
     uncropped (`test_wood`).
@@ -792,8 +818,8 @@ owner's Mika sheet in `tools/source/`.
 | `make_mika.py`, `make_rings.py` | Mika from the owner's sheet (a skinned rig; `MIKA_RIG_DEBUG=1` draws its regions over the art), his cut-in portrait and `scripts/cutin_table`; Mika's ring |
 | `make_portraits.py` | The conversation's standing portraits and `scripts/talk_table`: Szuix cut from the owner's drawing (`tools/source/szuix_ref.png`, its painted wall keyed out by colour), Mika from his sheet. Also Szuix's sigil cut-in portrait (`spr_cutin_szuix`) from the same drawing, larger and cut to the rows round his face, its eyes in `talk_table` too. Placeholders: one drawing each, with the eyes painted shut for a second frame. Keying also takes out the anti-aliased edges of markings whose colours pass near the page's, so the figure's inside is sealed opaque (`seal`) |
 | `make_bg.py`, `make_grove.py`, `make_sanctum.py` | Stage one's layers; stage two's scenery and `scripts/grove_table`; stage three's materials, fire and statue, and `scripts/sanctum_table` |
-| `make_wood.py` | The 3D wood: its textures, its meshes in `datafiles/wood/` (trees with their bare meshes, charms and the rope wound where one is tied, ground cover, standing stones) and `scripts/wood_table`. `--tex` or `--mesh` makes one half |
-| `wood_tex.py`, `wood_mesh.py`, `wood_trees.py`, `wood_charms.py`, `wood_props.py`, `wood_canopy.py` | Imported by `make_wood.py`: tiling texture synthesis; meshes in the wood's vertex format (tubes, ribbons, cards); the trees and where a charm can hang from them; the charms; the ground cover; the canopy (its picture sheet, its mask of light and its tiles) and the far hedge |
+| `make_wood.py` | The 3D wood: its textures, its meshes in `datafiles/wood/` (trees, each solid, soft and bare, charms and the rope wound where one is tied, ground cover, standing stones) and `scripts/wood_table`. `--tex` or `--mesh` makes one half |
+| `wood_tex.py`, `wood_mesh.py`, `wood_trees.py`, `wood_charms.py`, `wood_props.py`, `wood_canopy.py` | Imported by `make_wood.py`: tiling texture synthesis; meshes in the wood's vertex format (tubes, ribbons, cards); the trees (grown clear of the camera's lane) and where a charm can hang from them; the charms; the ground cover; the canopy (its picture sheet, its mask of light and its tiles) and the far treeline |
 | `sanctum_glyphs.py`, `sanctum_relief.py` | Imported by `make_sanctum.py`: a set of hieroglyphs and the column layout that sets them in squares; and the material work (inlay, sunk and raised relief, grooves, worn gilding, marble, basalt) with the larger ornament (the winged sun, cartouche, lotus frieze, scarab) |
 | `make_sfx.py` | All sound effects |
 | `make_music.py` | The placeholder music, from downloads in `tools/source/music/`: normalised, looped, streamed |

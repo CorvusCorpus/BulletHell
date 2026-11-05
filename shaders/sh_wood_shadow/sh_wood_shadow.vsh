@@ -18,7 +18,6 @@ uniform vec4 u_wind;
 uniform vec3 u_lorg;     // the shadow camera's position
 uniform vec3 u_ldir;     // ...the way it looks
 uniform float u_lrange;  // ...and how deep its box is
-uniform vec4 u_lane;     // the flight's lane (as `sh_wood`'s)
 uniform float u_raise;   // 1: stand on the ground (as `sh_wood`'s)
 uniform float u_follow;  // 1: laid out from the path's middle (as `sh_wood`'s)
 
@@ -40,18 +39,6 @@ float ground(vec2 p) {
     return trough + bank + hum;
 }
 
-// The flight's lane: whatever reaches into it at the camera's height is
-// lifted over it, so a limb that crosses the path arches above the camera
-// rather than through it. `u_lane` is its half-width, the height things are
-// lifted to, and the lowest height that is lifted.
-vec3 lane(vec3 wp) {
-    float dx = abs(wp.x - path_x(wp.z));
-    float w = 1.0 - smoothstep(u_lane.x * 0.55, u_lane.x, dx);
-    float inside = smoothstep(u_lane.z, u_lane.z + 50.0, wp.y);
-    wp.y = mix(wp.y, max(wp.y, u_lane.y), w * inside);
-    return wp;
-}
-
 void main() {
     vec4 ex = in_TextureCoord1;
     float kind = floor(ex.z * 0.25 + 0.001);
@@ -69,7 +56,6 @@ void main() {
         wp.xz += u_wind.zw * sway * u_wind.x * ex.w;
         wp.y -= abs(sway) * u_wind.x * ex.w * 0.15;
     }
-    if (u_raise > 0.5) wp = lane(wp);
     // Every attribute is read (this never comes true), so none is dropped
     // from the compiled shader: with one dropped, `in_TextureCoord1` read
     // another attribute's data, and nothing was culled below.

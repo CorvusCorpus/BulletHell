@@ -13,7 +13,7 @@ Writes:
   `datafiles/wood/` (GameMaker loads each straight into a vertex buffer),
   with the charms and their rope (`tools/wood_charms.py`), the ground
   cover and standing stones (`tools/wood_props.py`), and the canopy's tiles
-  and the far hedge (`tools/wood_canopy.py`) beside them;
+  (`tools/wood_canopy.py`) beside them;
 - `scripts/wood_table`: the list of meshes and what the wood places them by
   (height, spread, where a charm can hang);
 - previews in `tools/_preview/wood_*.png`.
@@ -93,9 +93,18 @@ def make_textures():
     sprite("spr_wood_canopy", sheet)
     light = WCN.canopy_light(cells)
     sprite("spr_wood_canopy_light", light)
+    print("treeline")
+    tl = WCN.treeline()
+    sprite("spr_wood_treeline", tl)
+    a = np.asarray(tl).astype(np.float32) / 255.0
+    sky = np.array([0.20, 0.50, 0.58])
+    c = sky * (1 - a[..., 0:1]) + sky * 0.6 * a[..., 0:1]
+    c = c * (1 - a[..., 1:2]) + sky * 0.35 * a[..., 1:2] + a[..., 2:3] * 0.25
+    Image.fromarray((np.clip(c, 0, 1) * 255).astype(np.uint8)).save(
+        os.path.join(A.PREVIEW, "wood_treeline.png"))
     bg = Image.new("RGBA", sheet.size, (150, 170, 180, 255))
     bg.alpha_composite(sheet)
-    A.preview([bg.convert("RGB"), light.convert("RGB")],
+    A.preview([bg, light.convert("RGBA")],
               os.path.join(A.PREVIEW, "wood_canopy.png"), cols=2,
               labels=["canopy sheet", "light through it"])
 
@@ -119,11 +128,11 @@ HANG_SIDE = 0.10
 
 
 def hang_points(info):
-    """The tree's hang sites a charm may use (`Tree.hang_sites`), the
-    furthest over the path first."""
-    out = [h for h in info["hangs"] if h[0] > HANG_SIDE * info["spread"]]
-    out.sort(key=lambda h: -h[0])
-    return out[:12]
+    """The tree's hang sites a charm may use (`Tree.hang_sites`), on the
+    path side and seen from at least half the path, the most seen first."""
+    out = [h for h in info["hangs"]
+           if h[0] > HANG_SIDE * info["spread"] and h[7] >= 0.5]
+    return out[:6]
 
 
 def make_meshes():
@@ -133,21 +142,29 @@ def make_meshes():
     for i, (sp, seed) in enumerate(TREES):
         tree = WT.Tree(sp, seed)
         info = tree.info()
-        near = tree.mesh(0).build()
-        far = tree.mesh(1).build()
+        solid, soft = tree.mesh(0)
+        near = solid.build()
+        twigs = soft.build()
+        far = tree.mesh(1)[0].build()
         name = "tree_%02d" % i
-        for suffix, v in (("", near), ("_far", far)):
+        for suffix, v in (("", near), ("_soft", twigs), ("_far", far)):
             fn = name + suffix + ".vbuf"
+            if len(v) == 0:
+                # Nothing soft on it: no file, and the table says so.
+                if os.path.exists(os.path.join(DATA, fn)):
+                    os.remove(os.path.join(DATA, fn))
+                    drop_included(fn)
+                continue
             data = M.pack(v)
             with open(os.path.join(DATA, fn), "wb") as f:
                 f.write(data)
             gm_new.included_file(fn, "datafiles/wood")
             total += len(data)
         hangs = hang_points(info)
-        rows.append((name, sp, info, len(near), len(far), hangs))
-        print("%s %-8s verts %6d far %5d  h %5.0f spread %4.0f hangs %d"
-              % (name, sp, len(near), len(far), info["height"],
-                 info["spread"], len(hangs)))
+        rows.append((name, sp, info, len(twigs), len(far), hangs))
+        print("%s %-8s verts %6d soft %5d far %5d  h %5.0f spread %4.0f near %4.0f hangs %d"
+              % (name, sp, len(near), len(twigs), len(far), info["height"],
+                 info["spread"], info["near"], len(hangs)))
     charms = []
     for name, v, glow, drop in WC.build_all():
         fn = "charm_%s.vbuf" % name
@@ -181,7 +198,7 @@ def make_meshes():
         props.append((fn, "stone", h))
         print("stone %s verts %5d  height %4.0f" % (fn, len(v), h))
 
-    # The canopy's tiles and the far hedge.
+    # The canopy's tiles.
     canopy = []
     for k in range(CANOPY_TILES):
         v = WCN.tile(400 + k)
@@ -193,13 +210,6 @@ def make_meshes():
         total += len(data)
         canopy.append(fn)
         print("canopy %s verts %5d" % (fn, len(v)))
-    v = WCN.hedge()
-    data = M.pack(v)
-    with open(os.path.join(DATA, "hedge.vbuf"), "wb") as f:
-        f.write(data)
-    gm_new.included_file("hedge.vbuf", "datafiles/wood")
-    total += len(data)
-    print("hedge verts %5d" % len(v))
 
     # The rope wound round a limb where a charm is tied.
     data = M.pack(WC.rope_wrap())
@@ -207,10 +217,11 @@ def make_meshes():
         f.write(data)
     gm_new.included_file("charm_wrap.vbuf", "datafiles/wood")
     total += len(data)
-    # A charm kind that is no longer made leaves no file behind.
+    # A charm kind that is no longer made, or the old hedge, leaves no file
+    # behind.
     made = {"charm_%s.vbuf" % c[0] for c in charms} | {"charm_wrap.vbuf"}
     for fn in os.listdir(DATA):
-        if fn.startswith("charm_") and fn not in made:
+        if (fn.startswith("charm_") and fn not in made) or fn == "hedge.vbuf":
             os.remove(os.path.join(DATA, fn))
             drop_included(fn)
     print("mesh data %.2f MB" % (total / 1e6))
@@ -230,28 +241,37 @@ def write_table(rows, charms, props, canopy):
         "/// @desc The 3D wood's meshes -- GENERATED by tools/make_wood.py. Do",
         "///       not edit.",
         "///",
-        "/// Each tree is a vertex strip in `datafiles/wood/` (the near version",
-        "/// and a far one without the fine twigs), and what the wood places it",
+        "/// Each tree is vertex strips in `datafiles/wood/` (its solid parts, its",
+        "/// soft ones -- twigs and leaves, drawn after everything solid -- and a",
+        "/// far version, solid, without the twigs; `soft` is empty for a tree",
+        "/// with nothing soft on it), and what the wood places it",
         "/// by: its species, its height, the trunk's radius at the foot, how far",
-        "/// it spreads from its axis, and the points a charm can hang from, in",
+        "/// it spreads from its axis, the nearest it may stand to the path's",
+        "/// middle (its limbs keep out of the camera's lane from there), and",
+        "/// the points a charm can hang from, in",
         "/// its own space (y up, the foot at the origin, reaching toward +x):",
-        "/// each `[x, y, z, r, tx, ty, tz]`, the underside of a limb of radius",
-        "/// `r` running along `t`. The charms are triangle lists (the trees are",
-        "/// strips).",
+        "/// each `[x, y, z, r, tx, ty, tz, seen]`, the underside of a limb of",
+        "/// radius `r` running along `t`, the most seen from the path first",
+        "/// (`seen`, 0..1); and its trunk's axis and radius, `[x, y, z, r]`, at",
+        "/// heights a ward's rope can be tied at. The charms are triangle lists",
+        "/// (the trees are strips).",
         "",
         "function wood_table_init() {",
         "    global.wood_trees = [",
     ]
-    for name, sp, info, nv, nf, hangs in rows:
-        hl = ", ".join("[%s]" % ", ".join(gml_num(c) if i < 4 else "%.3f" % c
+    for name, sp, info, nsoft, nf, hangs in rows:
+        hl = ", ".join("[%s]" % ", ".join(gml_num(c) if i < 4 else "%.2f" % c
                                            for i, c in enumerate(h))
                        for h in hangs[:24])
-        lines.append('        { file: "wood/%s.vbuf", far: "wood/%s_far.vbuf",'
-                     % (name, name))
-        lines.append('          species: "%s", height: %s, r0: %s, spread: %s,'
+        soft = ('"wood/%s_soft.vbuf"' % name) if nsoft > 0 else '""'
+        lines.append('        { file: "wood/%s.vbuf", soft: %s, far: "wood/%s_far.vbuf",'
+                     % (name, soft, name))
+        lines.append('          species: "%s", height: %s, r0: %s, spread: %s, near: %s,'
                      % (sp, gml_num(info["height"]), gml_num(info["r0"]),
-                        gml_num(info["spread"])))
-        lines.append("          hangs: [%s] }," % hl)
+                        gml_num(info["spread"]), gml_num(info["near"])))
+        lines.append("          hangs: [%s]," % hl)
+        tk = ", ".join("[%s]" % ", ".join(gml_num(c) for c in t) for t in info["trunk"])
+        lines.append("          trunk: [%s] }," % tk)
     lines.append("    ];")
     lines.append("")
     lines.append("    // The charms: each hangs from its origin (where its cord is tied),")
@@ -279,13 +299,15 @@ def write_table(rows, charms, props, canopy):
     lines.append("    // The canopy: tiles laid out from the path's middle (x across it, z")
     lines.append("    // down it, `period` deep), which the wood repeats down the path and")
     lines.append("    // the shader bends onto it; `gap`, where its clumps thin out over")
-    lines.append("    // the path (all but gone at the first, full at the second); and the")
-    lines.append("    // hedge across the far end, laid out the same way.")
+    lines.append("    // the path (all but gone at the first, full at the second); and")
+    lines.append("    // `treeline`, how many degrees round the far treeline's picture spans")
+    lines.append("    // and the elevations (degrees) of its foot and top.")
     lines.append("    global.wood_canopy = {")
     lines.append("        tiles: [%s]," % ", ".join('"wood/%s"' % fn for fn in canopy))
     lines.append("        period: %s," % gml_num(WCN.TILE_Z))
     lines.append("        gap: [%s, %s]," % (gml_num(WCN.GAP[0]), gml_num(WCN.GAP[1])))
-    lines.append('        hedge: "wood/hedge.vbuf",')
+    lines.append("        treeline: [%s, %s, %s]," % (gml_num(WCN.TL_SPAN), gml_num(WCN.TL_EL[0]),
+                                                  gml_num(WCN.TL_EL[1])))
     lines.append("    };")
     lines.append("}")
     lines.append("")

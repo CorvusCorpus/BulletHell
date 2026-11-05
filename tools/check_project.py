@@ -1815,8 +1815,8 @@ def check_wood_ground_agrees():
     fragment shader, which lays the path's texture and the canopy's light.
     Apart, trees float or sink, shadows come loose from their trees, and the
     canopy's gap leaves the path, with no error. The GML's numbers must be
-    the shaders' in the same order, and the two vertex shaders' copies (and
-    their `lane`) the same text.
+    the shaders' in the same order, and the two vertex shaders' copies the
+    same text.
     """
     gml_path = os.path.join(ROOT, "scripts", "bg_wood", "bg_wood.gml")
     shaders = [os.path.join(ROOT, "shaders", s, s + ".vsh")
@@ -1842,8 +1842,7 @@ def check_wood_ground_agrees():
         src = read(path)
         parts = {}
         for fn, header in (("path_x", r"\bfloat\s+path_x\s*\("),
-                           ("ground", r"\bfloat\s+ground\s*\("),
-                           ("lane", r"\bvec3\s+lane\s*\(")):
+                           ("ground", r"\bfloat\s+ground\s*\(")):
             body = _body(src, header)
             if body is None:
                 fail("%s has no %s for check_wood_ground_agrees to read"
@@ -1869,7 +1868,7 @@ def check_wood_ground_agrees():
             fail("%s's path_x doesn't have the numbers of bg_wood's "
                  "wood_path_x -- the path's texture and the canopy's gap "
                  "would leave the path. Change them together." % rel(frag))
-    for fn in ("path_x", "ground", "lane"):
+    for fn in ("path_x", "ground"):
         if copies[0][fn] != copies[1][fn]:
             fail("sh_wood and sh_wood_shadow have different %s -- the shadow "
                  "pass must move the wood exactly as it is drawn, or shadows "

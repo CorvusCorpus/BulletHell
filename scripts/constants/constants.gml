@@ -1449,16 +1449,22 @@ enum BossMove {
 #macro WOOD_LEAN_EASE 0.016
 #macro WOOD_LEAN_SPD 0.6
 
-// How far ahead the wood is drawn, and how far behind the camera.
+// How far ahead the wood is drawn, how far behind the camera, and where
+// (as shares of how far ahead) it starts to fade into the sky drawn behind
+// it and is gone, so nothing arrives at its far end all at once.
 #macro WOOD_FAR 7200
 #macro WOOD_BEHIND 500
-// Trees: the nearest row's distance from the path's middle, the clearance
-// any trunk keeps from it, and the first row (counting from 0, the nearest)
-// drawn without its fine twigs (those rows stand 2000 or more from the path).
+#macro WOOD_FADE [0.55, 0.95]
+// Trees: the nearest row's distance from the path's middle (a tree stands no
+// nearer than it was grown for, its `near`), and the first row (counting
+// from 0, the nearest) drawn without its twigs (those rows stand 2000 or
+// more from the path).
 #macro WOOD_ROW0_IN 280
 #macro WOOD_ROW0_OUT 520
-#macro WOOD_PATH_CLEAR 230
 #macro WOOD_ROW_BARE 3
+// The coverage at which a twig or a leaf's edge counts as solid: drawn in
+// the first pass, writing depth (the rest is drawn after, without).
+#macro WOOD_SOLID_A 0.985
 
 // The ground's tiles: their depth, columns across, rows along, and half
 // their width.
@@ -1491,25 +1497,29 @@ enum BossMove {
 #macro WOOD_SHADOW_REACH 3400
 #macro WOOD_SHADOW_BIAS 0.0015
 #macro WOOD_SHADOW_DARK 0.85
-// The lane the camera flies down, which the shaders keep clear (a limb
-// reaching into it is lifted over it): its half-width, the height things in
-// it are lifted to, and the lowest height lifted (world y).
-#macro WOOD_LANE_W 250
-#macro WOOD_LANE_TOP 380
-#macro WOOD_LANE_LO 110
+// The lane the camera flies down, which nothing reaches into (the trees are
+// grown clear of it, `tools/wood_trees.py`, which has its own copy of the
+// half-width): its half-width either side of the path's middle, and the
+// height (world y) a charm hanging over it must stay above.
+#macro WOOD_LANE_W 210
+#macro WOOD_LANE_TOP 420
 // The wind: how far it moves a twig's end, and which way it blows (x, z).
 #macro WOOD_WIND 7
 #macro WOOD_WIND_DIR [0.8, 0.6]
-// Point lights the shader takes (the nearest witch-lights and wisps), and
-// how far from the camera a light still counts (it fades out toward there).
+// Point lights the shader takes (the nearest witch-lights and wisps), how
+// far from the camera a light still counts (it fades out toward there), and
+// how near the first light left out may come before the furthest one taken
+// has faded out for it.
 #macro WOOD_LIGHTS 12
 #macro WOOD_LIGHT_FAR 4200
+#macro WOOD_LIGHT_SWAP 600
 
-// The charms: the chance a tree near the path has one, their size, how far
-// they swing (degrees), the witch-light's colours (night and blood), how
-// bright their glowing parts are drawn, how strong and far-reaching the
-// light they throw is, and how far either side of the wavefront they flare.
-#macro WOOD_CHARM_ODDS 0.75
+// The charms: the chance a tree near the path has one (on its limb most seen
+// from the path), their size, how far they swing (degrees), the
+// witch-light's colours (night and blood), how bright their glowing parts
+// are drawn, how strong and far-reaching the light they throw is, and how
+// far either side of the wavefront they flare.
+#macro WOOD_CHARM_ODDS 0.35
 #macro WOOD_CHARM_SCALE 2.3
 #macro WOOD_CHARM_SWING 6
 #macro WOOD_CHARM_COL_N make_colour_rgb(120, 255, 170)
@@ -1520,6 +1530,20 @@ enum BossMove {
 // ...and how much of the witch-lights a charm itself takes.
 #macro WOOD_CHARM_LIT 0.3
 #macro WOOD_CHARM_FLARE 700
+// The wards (`wood_ward_fill`): a rope strung across the path between two
+// dead trees, hung with a row of charms. One to a slot this long down the
+// path, by this chance; how far from the path's middle its trees stand (at
+// least), how high (over their ground) the rope is tied, how far it sags, its
+// radius, the size of its charms, and how far either side of a ward no tree
+// beside the path hangs a charm (so a ward stands on its own).
+#macro WOOD_WARD_SLOT 3000
+#macro WOOD_WARD_ODDS 0.8
+#macro WOOD_WARD_HALF 380
+#macro WOOD_WARD_TIE 760
+#macro WOOD_WARD_SAG 90
+#macro WOOD_WARD_ROPE 3.4
+#macro WOOD_WARD_SCALE 2.3
+#macro WOOD_WARD_QUIET 1100
 // The wisps: how many, the stretch of wood each keeps to, their colours,
 // their light, and the size of a glow's core.
 #macro WOOD_WISPS 6
@@ -1552,10 +1576,11 @@ enum BossMove {
 #macro WOOD_MOUTH [2600, 4200, 1300, 5400]
 #macro WOOD_CANOPY_LIGHT_P 2400
 #macro WOOD_GLOOM [0.06, 0.45, 0.35]
-// The hedge across the far end: how far ahead it stands, and the share of
-// its distance the fog is reckoned at (under 1 keeps it a silhouette).
-#macro WOOD_HEDGE_D 6500
-#macro WOOD_HEDGE_FOG 0.45
+// The far treeline drawn with the sky (`spr_wood_treeline`): how much of the
+// sky's colour the far forest and the nearer edge keep (the air between),
+// how strongly their edges catch the moon's glow, and how much of the
+// ground's mist lies along their foot.
+#macro WOOD_TREELINE_K [0.62, 0.36, 1.0, 0.65]
 
 // The palettes, night (`_N`) and blood (`_B`), as `[r, g, b]` in 0..1 (over 1
 // is brighter than white): the sky's light from above and from the ground,
