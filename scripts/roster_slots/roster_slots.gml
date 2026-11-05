@@ -34,7 +34,7 @@ function athena_slots() {
     ];
 }
 
-/// @desc Sylvia's N1 and N2 and her iris drafts wait on the drafting table
+/// @desc Sylvia's N1 and N2 and his iris drafts wait on the drafting table
 ///       (`draft_sylvia`).
 function sylvia_def() {
     return slot_boss_def("SYLVIA", "the egregore", BCOL_MAGENTA);

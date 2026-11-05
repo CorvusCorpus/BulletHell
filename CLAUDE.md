@@ -151,8 +151,8 @@ in role and design.
   Her attacks make heavy use of shuriken shot types; maybe a sticky
   web mechanic.
 - **Sylvia**, the penultimate boss: a skill check, not impossible but a boss
-  to come back to later. An egregore after the Cheshire cat, technically
-  genderless (it/its). Begins somewhere
+  to come back to later. A male egregore after the Cheshire cat, with a
+  drag queen's aesthetic. Begins somewhere
   that looks normal and slowly fades into a trippy Wonderland. Gimmick:
   messing with the game's visuals and controls during attacks.
 - **Florentius**, the demon king: the zone's final boss and the game's
