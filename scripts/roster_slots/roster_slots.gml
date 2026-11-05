@@ -10,7 +10,7 @@
 ///
 /// The counts are the owner's tiers: Ziggy five non-spells and five spells;
 /// Sylvia, Kara, Vin'Zhen, Ashiah and Sapphire eight and ten; Florentius ten
-/// and twelve; Kremlatiel ten and thirteen; everyone else six and eight.
+/// and twelve; Kremlatiel ten and thirteen; everyone else seven and eight.
 /// Non-spells and spells alternate, and the spells left over come last.
 
 // ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ function athena_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -92,7 +92,7 @@ function oscura_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -111,7 +111,7 @@ function mikoto_rena_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -128,7 +128,7 @@ function ayana_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -168,7 +168,7 @@ function haveri_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -185,7 +185,7 @@ function astyr_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -202,7 +202,7 @@ function faol_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -242,7 +242,7 @@ function corvus_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -282,7 +282,7 @@ function zeek_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -299,7 +299,7 @@ function sally_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }
@@ -316,7 +316,7 @@ function zalerus_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
         slot_s(8),
     ];
 }

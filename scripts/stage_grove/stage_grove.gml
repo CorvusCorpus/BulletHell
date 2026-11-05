@@ -220,10 +220,10 @@ function velka_def() {
     };
 }
 
-/// @desc Velka's fourteen slots (six non-spells, eight spells), one row each
-///       in fight order (`slot_functions`). The first five attacks are
+/// @desc Velka's fifteen slots (seven non-spells, eight spells), one row
+///       each in fight order (`slot_functions`). The first five attacks are
 ///       placeholders, each with the health it had before the stubs were
-///       added; N3 to N6 and S4 to S7 are stubs; S8 is the Hex.
+///       added; N3 to N7 and S4 to S7 are stubs; S8 is the Hex.
 function velka_slots() {
     return [
         { name: "", col: BCOL_VIOLET, hp: 210, time: 24 * FPS,
@@ -243,7 +243,7 @@ function velka_slots() {
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),
         slot_n(6), slot_s(6),
-        slot_s(7),
+        slot_n(7), slot_s(7),
 
         // `Track`: the player spends much of it pinned inside a ward and
         // can't go to her, so she comes to them. The clock is three full

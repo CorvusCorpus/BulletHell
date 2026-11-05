@@ -107,8 +107,7 @@ and is open to change. Earlier agents wrote a great deal of invented
   five non-spells and five spells; Sylvia, Kara, Vin'Zhen, Ashiah and
   Sapphire (deity or godkiller) eight and ten; Florentius (the final boss)
   ten and twelve; Kremlatiel (the superboss) ten and thirteen; everyone else
-  six and eight. (Mika's fifteen, above, predates this and hasn't been
-  reconciled with it.) A boss's health rail is one long bar for the whole
+  seven and eight. A boss's health rail is one long bar for the whole
   fight that gives each attack an equal share, whatever its health.
 - **Szuix steals an artifact from every boss.** The main menu will let him
   trade artifacts into the shop for abilities, and equip them in slots: a
@@ -1024,7 +1023,7 @@ laid out in placeholder slots (`roster_slots`), with the attack counts of
 its tier, and can be practised from its locked card with X; its def (title,
 hue, Ziggy's sprite, Mika's cut-in) is a placeholder too. Mikoto and Rena
 are one boss for now. Ziggy's and Velka's fights are filled out to their
-counts the same way: Ziggy's N4, S4 and N5 are stubs, and Velka's N3 to N6
+counts the same way: Ziggy's N4, S4 and N5 are stubs, and Velka's N3 to N7
 and S4 to S7, before her Hex.
 
 Mika's slots (`mika_slots()` is the source of truth):
