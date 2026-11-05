@@ -27,8 +27,8 @@
 ///   run in from their side of the field, long while they speak and short
 ///   while they listen.
 /// - The words are typed onto a plate of the cut-in's glass along the foot
-///   of the field (one gilt rule along each edge, the title card's crescent
-///   set into the top one), with the speaker's name on a tab standing on
+///   of the field (one gilt rule along each edge), with the speaker's name
+///   on a tab standing on
 ///   their end of it. A boss not yet named is `? ? ?`.
 ///
 /// Z shows the rest of a line, then turns to the next; held, it hurries. X
@@ -790,24 +790,16 @@ function talk_pane_fill(_p, _u0, _u1, _v0, _v1, _c0, _a0, _c1, _a1) {
                      [_c0, _c0, _c1, _c1], [_a0, _a0, _a1, _a1]);
 }
 
-/// @desc A rule along a pane, `_v0` to `_v1` down it, broken for `_gap`
-///       either side of its middle (0 for a whole one).
-function talk_pane_rule(_p, _hl, _v0, _v1, _gap, _col, _a) {
-    if (_gap <= 0) {
-        draw_poly(talk_pane_quad(_p, -_hl, _hl, _v0, _v1), _col, _a);
-        return;
-    }
-    draw_poly(talk_pane_quad(_p, -_hl, -_gap, _v0, _v1), _col, _a);
-    draw_poly(talk_pane_quad(_p, _gap, _hl, _v0, _v1), _col, _a);
+/// @desc A rule along a pane, `_v0` to `_v1` down it.
+function talk_pane_rule(_p, _hl, _v0, _v1, _col, _a) {
+    draw_poly(talk_pane_quad(_p, -_hl, _hl, _v0, _v1), _col, _a);
 }
 
 /// @desc A pane of the cut-in's glass, `_len` by `_hgt`: indigo over a
 ///       shadow, lit at the end `_side` (-1 left, +1 right) with `_col`, a
 ///       gilt rule along its top and one along its foot, and a bar of `_col`
-///       down that end. `_gap_top` and `_gap_foot` break the rules at their
-///       middles, for an ornament set into them.
-function talk_draw_pane(_p, _len, _hgt, _col, _side, _a, _gap_top = 0,
-                        _gap_foot = 0) {
+///       down that end.
+function talk_draw_pane(_p, _len, _hgt, _col, _side, _a) {
     if (_a <= 0.01 || _hgt <= 1) return;
     var _hl = _len * 0.5;
     var _hh = _hgt * 0.5;
@@ -826,25 +818,14 @@ function talk_draw_pane(_p, _len, _hgt, _col, _side, _a, _gap_top = 0,
 
     // The rules: a lit one along the top with a dark line under it, and one
     // along the foot.
-    talk_pane_rule(_p, _hl, -_hh, -_hh + 2.4, _gap_top, COL_GILT_LIT,
-                   0.95 * _a);
-    talk_pane_rule(_p, _hl, -_hh + 2.4, -_hh + 4.2, _gap_top, COL_VOID,
-                   0.8 * _a);
-    talk_pane_rule(_p, _hl, _hh - 2.4, _hh, _gap_foot, COL_GILT, 0.9 * _a);
+    talk_pane_rule(_p, _hl, -_hh, -_hh + 2.4, COL_GILT_LIT, 0.95 * _a);
+    talk_pane_rule(_p, _hl, -_hh + 2.4, -_hh + 4.2, COL_VOID, 0.8 * _a);
+    talk_pane_rule(_p, _hl, _hh - 2.4, _hh, COL_GILT, 0.9 * _a);
 
     // The bar of their colour down that end.
     talk_pane_fill(_p, (_side < 0) ? -_hl : (_hl - TALK_BAR_W),
                    (_side < 0) ? (TALK_BAR_W - _hl) : _hl, -_hh, _hh,
                    _col, 0.95 * _a, _col, 0.95 * _a);
-}
-
-/// @desc One of `spr_card_rule`'s ornaments (`band_draw_ornament`), level
-///       and centred on (`_x`, `_y`): the middle `_w` of frame `_fr`.
-function talk_draw_ornament(_fr, _w, _x, _y, _a) {
-    var _sw = sprite_get_width(spr_card_rule);
-    var _sh = sprite_get_height(spr_card_rule);
-    draw_sprite_part_ext(spr_card_rule, _fr, (_sw - _w) * 0.5, 0, _w, _sh,
-                         _x - _w * 0.5, _y - _sh * 0.5, 1, 1, c_white, _a);
 }
 
 /// @desc The plate, the words on it, the speaker's name tab, and the mark
@@ -861,18 +842,8 @@ function talk_draw_plate(_t, _g) {
     // The name tabs first: they rise from behind the plate.
     for (var _i = 0; _i < 2; _i++) talk_draw_tab(_t, _t.cast[_i], _g, _hgt);
 
-    talk_draw_pane(_p, TALK_PLATE_W, _hgt, _c.col, _c.side, _a,
-                   RULE_ORN_CRESCENT * 0.5 + 12, RULE_ORN_LOZENGE * 0.5 + 4);
-
-    // The title card's ornaments set into its rules where they break: the
-    // crescent on top, the lozenge under. Each is the middle of its rule's
-    // sprite, whose own lines are left out (the plate has its own), centred
-    // on the plate's rule.
+    talk_draw_pane(_p, TALK_PLATE_W, _hgt, _c.col, _c.side, _a);
     var _top = talk_pane_at(_p, 0, -_hgt * 0.5 + 1.2);
-    var _bot = talk_pane_at(_p, 0, _hgt * 0.5 - 1.2);
-    var _oa = _a * clamp((_t.plate - 0.5) * 2, 0, 1);
-    talk_draw_ornament(0, RULE_ORN_CRESCENT, _top[0], _top[1], _oa);
-    talk_draw_ornament(1, RULE_ORN_LOZENGE, _bot[0], _bot[1], _oa);
 
     // The line it opens from, and shuts to (gone before the words show).
     if (_t.plate < 0.7) {
@@ -898,17 +869,8 @@ function talk_draw_plate(_t, _g) {
     var _ta = clamp((_t.plate - 0.7) / 0.3, 0, 1);
     if (_ta > 0.01) talk_draw_words(_t, _ta);
 
-    // What the keys do, along its foot; and a star over that once the line
-    // is done.
+    // A star in its corner once the line is done.
     var _foot = TALK_PLATE_Y + TALK_PLATE_H * 0.5;
-    if (_ta > 0.01) {
-        draw_set_font(fnt_small());
-        draw_set_valign(fa_middle);
-        draw_text_tracked(FIELD_CX + _hl - 62, _foot - 19,
-                          "Z  NEXT     X  SKIP", 4, HUD_TAG_COL, 0.6 * _ta, 2,
-                          fa_right);
-        draw_set_valign(fa_top);
-    }
     if (_ta > 0.01 && _t.shown >= _t.n && _t.n > 0) {
         card_draw_star(FIELD_CX + _hl - 54,
                        _foot - 58 + dsin(_t.t * 5) * 3,
