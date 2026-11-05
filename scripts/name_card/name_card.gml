@@ -80,12 +80,6 @@ function namecard_live(_boss) {
     return _boss != undefined && _boss.boss.card_t >= 0;
 }
 
-// How much of the middle of `spr_card_rule`'s two frames is ornament rather
-// than line: the crescent, and the lozenge. A band or a plate with a rule of
-// its own sets one into a break in it, and leaves the sprite's lines out.
-#macro RULE_ORN_CRESCENT 44
-#macro RULE_ORN_LOZENGE 22
-
 // ---------------------------------------------------------------------------
 // Parts shared with a conversation (`talk_draw_blade`, `talk_draw_plate`)
 // ---------------------------------------------------------------------------
@@ -94,14 +88,6 @@ function namecard_live(_boss) {
 ///       and `_x0` to `_x1` across the field.
 function band_draw_line(_g, _a, _b, _x0, _x1, _col, _alpha) {
     draw_poly(cutin_strip(_g, _a, _b, _x0, _x1), _col, _alpha);
-}
-
-/// @desc One of `spr_card_rule`'s ornaments (frame 0's crescent, frame 1's
-///       lozenge: `_w` is its width in the sprite), turned with the band and
-///       centred `_off` down from the point (`_x`, `_y`).
-function band_draw_ornament(_fr, _w, _x, _y, _off, _a) {
-    cutin_draw_rule(_fr, { cx: _x, cy: _y }, _off,
-                    _w / sprite_get_width(spr_card_rule), _a);
 }
 
 /// @desc Rays of `_col` out from (`_x`, `_y`), cut to the convex polygon
@@ -292,7 +278,7 @@ function namecard_draw_band(_g, _boss, _tx, _col, _room) {
 
         if (_t < 26 || _o >= 0) cutin_draw_streaks(_g, _band);
         band_draw_motes(_g, _col, _g.open, _t);
-        namecard_draw_edges(_g, _tx);
+        namecard_draw_edges(_g);
 
         namecard_draw_text(_g, _b, _tx, _col, _room);
 
@@ -330,26 +316,17 @@ function namecard_draw_strips(_g, _col) {
 }
 
 /// @desc The band's edges: one gilt line on each with a dark one outside
-///       it, the field's width. The title card's lozenge is set into a break
-///       in the upper line and its crescent into one in the lower, at the
-///       column `_tx` the writing is centred on.
-function namecard_draw_edges(_g, _tx) {
+///       it, the field's width.
+function namecard_draw_edges(_g) {
     var _hh = _g.h * 0.5;
     var _a = min(1, _g.h / 40);
-    var _gaps = [RULE_ORN_LOZENGE * 0.5 + 6, RULE_ORN_CRESCENT * 0.5 + 12];
-    for (var _i = 0; _i < 2; _i++) {
-        var _s = (_i == 0) ? -1 : 1;
+    for (var _s = -1; _s <= 1; _s += 2) {
         var _e = _s * _hh;
         band_draw_line(_g, _e + _s * 1.2, _e + _s * 4.2, FIELD_X0, FIELD_X1,
                        COL_VOID, 0.8 * _a);
-        band_draw_line(_g, _e - 1.2, _e + 1.2, FIELD_X0, _tx - _gaps[_i],
-                       COL_GILT_LIT, 0.9 * _a);
-        band_draw_line(_g, _e - 1.2, _e + 1.2, _tx + _gaps[_i], FIELD_X1,
+        band_draw_line(_g, _e - 1.2, _e + 1.2, FIELD_X0, FIELD_X1,
                        COL_GILT_LIT, 0.9 * _a);
     }
-    var _w = card_ramp(_g.t, 6, 14) * _a;
-    band_draw_ornament(1, RULE_ORN_LOZENGE, _tx, cutin_y(_g, _tx), -_hh, _w);
-    band_draw_ornament(0, RULE_ORN_CRESCENT, _tx, cutin_y(_g, _tx), _hh, _w);
 }
 
 /// @desc The title, the rule and the name on the band. The name is drawn
@@ -379,10 +356,15 @@ function namecard_draw_text(_g, _b, _tx, _col, _room) {
                                merge_colour(COL_PARCHMENT, _col, 0.22), _ta);
     }
 
-    // The rule between them, drawn out from its middle.
-    var _rw = card_ramp(_t, NAMECARD_TITLE_AT + 4, 22) * 0.62;
-    cutin_draw_rule(1, { cx: _tx - NAMECARD_RULE_V * _ay, cy: _cy },
-                    NAMECARD_RULE_V * _ax, _rw, _keep * _g.open);
+    // The rule between them: a gilt line fading out at its ends, drawn out
+    // from its middle.
+    var _rh = 260 * card_ramp(_t, NAMECARD_TITLE_AT + 4, 22);
+    if (_rh > 1) {
+        talk_blade_line(_g, NAMECARD_RULE_V - 1.2, NAMECARD_RULE_V + 1.2,
+                        [_tx - _rh, _tx - _rh * 0.5, _tx, _tx + _rh * 0.5,
+                         _tx + _rh], [0, 0.85, 1, 0.85, 0], COL_GILT_LIT,
+                        0.9 * _keep * _g.open);
+    }
 
     // The name: slammed in oversized, flashing white, a sheen crossing it
     // after.

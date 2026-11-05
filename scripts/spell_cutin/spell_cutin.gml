@@ -756,22 +756,6 @@ function cutin_draw_edges(_g) {
     }
 }
 
-/// @desc Frame `_fr` of `spr_card_rule`, `_f` of it showing from its middle,
-///       centred on the band's edge `_off` from its centre line and turned
-///       with it (`_ang`).
-function cutin_draw_rule(_fr, _g, _off, _f, _a, _ang = CUTIN_TILT) {
-    if (_f <= 0 || _a <= 0.01) return;
-    var _w = sprite_get_width(spr_card_rule);
-    var _hgt = sprite_get_height(spr_card_rule);
-    var _half = _w * 0.5 * _f;
-    // The part's top-left corner, turned about the rule's middle.
-    var _x = _g.cx - _half * dcos(_ang) - _hgt * 0.5 * dsin(_ang);
-    var _y = _g.cy + _off + _half * dsin(_ang) - _hgt * 0.5 * dcos(_ang);
-    draw_sprite_general(spr_card_rule, _fr, _w * 0.5 - _half, 0, _half * 2,
-                        _hgt, _x, _y, 1, 1, _ang, c_white, c_white, c_white,
-                        c_white, _a);
-}
-
 /// @desc The cut the band opens from, running across the field left to right;
 ///       and the line the band closes to, flaring before it goes.
 function cutin_draw_cut(_g, _col) {
