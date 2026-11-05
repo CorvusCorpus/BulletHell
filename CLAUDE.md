@@ -103,9 +103,13 @@ and is open to change. Earlier agents wrote a great deal of invented
 - **Spending a sigil plays Szuix's own cut-in**, in the spell cut-in's
   style, as though he were declaring a spell of his own against the boss.
   It has no name plate.
-- **A boss has between ten and twenty attacks**, and its health rail is one
-  long bar for the whole fight that gives each attack an equal share,
-  whatever its health.
+- **How many attacks a boss has goes by its tier**: Ziggy (the tutorial)
+  five non-spells and five spells; Sylvia, Kara, Vin'Zhen, Ashiah and
+  Sapphire (deity or godkiller) eight and ten; Florentius (the final boss)
+  ten and twelve; Kremlatiel (the superboss) ten and thirteen; everyone else
+  six and eight. (Mika's fifteen, above, predates this and hasn't been
+  reconciled with it.) A boss's health rail is one long bar for the whole
+  fight that gives each attack an equal share, whatever its health.
 - **Szuix steals an artifact from every boss.** The main menu will let him
   trade artifacts into the shop for abilities, and equip them in slots: a
   main shot, a special and a passive effect. (Not built yet.)
@@ -309,6 +313,8 @@ Game logic is plain functions over structs; objects are thin controllers.
 | `bg_wood`, `wood_table` | Velka's wood rebuilt in real 3D (work in progress): trees, charms, the wards strung across the path and textures from `tools/make_wood.py` (meshes in `datafiles/wood/`), lit by `sh_wood` with moon shadows, witch-lights and wisps as point lights, a far treeline drawn with the sky, and the grove's blood-moon turn. Stage two still flies the old corridor for comparison |
 | `stage_sanctum_old` | Stage three as it was before Mika's rebuild, frozen on its own rack card. Delete it once his slots are filled, along with its rack line, `test_old_sanctum`, its line in `test_stage_run` and `stage_is_old_draft`. |
 | `practice_functions` | Single-attack practice |
+| `slot_functions` | Slot tables: a fight written as one row per attack, the phase table derived from it, and the placeholder rows (`slot_n`, `slot_s`) |
+| `roster_slots` | The fights of the bosses whose stages aren't built, as slot tables of placeholders |
 | `rank_functions`, `rank_card` | Encounter grading and the medal card |
 | `bg_functions`, `bg_corridor`, `bg_grove`, `bg_sanctum` | Backgrounds: dispatch and stage one's parallax, the corridor projection, stage two's wood, stage three's 3D hall |
 | `hud_functions`, `ui_functions` | The console, the boss's health rail, menus; drawing helpers, fonts, gauges, cached layers |
@@ -556,7 +562,10 @@ frames elapsed. The last three are for grading (see below).
 - `def.music` is a boss's theme, which takes over from the stage's when it
   spawns, or at its name card if it arrives talking.
 - Phase tables are built by functions (`ziggy_phases()` and so on), never
-  shared, because phase structs are mutable.
+  shared, because phase structs are mutable. Ziggy's, Velka's and the
+  unbuilt stages' bosses' are derived from slot tables (`slot_phases`), one
+  row per attack with its own `hp`, summed into the thresholds; Mika's from
+  his own (`mika_slots`).
 
 **Conversations** (`talk_functions`). `wave_boss` starts one as a boss with
 `def.talk` arrives (`talk_begin`), in a stage and in a practised whole
@@ -609,7 +618,9 @@ bosses, music?}`.
   card's art is the def's `card` frame (`tools/make_titles.py`), and a def
   without one shows none.
 - `bosses` lists `{name, spawn, phases, turned?}` for practice and counting;
-  `turned` starts practice in the stage's second-half background.
+  `turned` starts practice in the stage's second-half background. An
+  unbuilt stage's def carries its boss too (`stage_planned_def`,
+  `slot_boss`).
 - A def whose `id` is empty can never write a clear: `progress_record` refuses
   it. Practice, the drafting table, the review card and the old stage three
   all rely on that.
@@ -625,8 +636,9 @@ threshold with no grazing, and each second past par has to be made up with
 `RANK_WAVE_SHARE` of what its fodder is worth (each one killed, and its gold
 collected). All three constants are unplayed first guesses.
 
-**Practice.** X on the rack lists a stage's attacks, and a practice run is an
-ordinary run with an empty timeline:
+**Practice.** X on the rack lists a stage's attacks, built or not (an
+unbuilt stage is practised over stage one's background, `practice_bg`), and
+a practice run is an ordinary run with an empty timeline:
 
 - The boss is placed on the chosen attack, with full life and full sigil.
 - A `READY` count runs inside the boss's between-phase pause.
@@ -930,7 +942,11 @@ Create every resource through `tools/gm_new.py`.
 
 - **An attack**: a row in a boss's phase table and a function
   `(_e, _g, _t)`. It appears in the practice list by itself. Add `move` only
-  if the default drift works against the pattern.
+  if the default drift works against the pattern. For a boss written as a
+  slot table (Ziggy, Velka and every unbuilt stage's boss in
+  `roster_slots`), replace one of its placeholder rows (`slot_n(k)`,
+  `slot_s(k)`) with the attack's row (`{name, col, hp, time, attack, ...}`,
+  fields in `slot_functions`).
 - **An attack with no boss yet**: a row in `draft_list()` in `stage_drafts`
   (a name, or `""` for a non-spell; a colour; a time; the function; an
   optional `move`). Moving it to a boss later means moving the function and
@@ -1003,7 +1019,13 @@ boss, and a column of extras (Kremlatiel's stage, the old stage three, the
 review card and the drafting table). Arrows move across and down it. Velka's
 and Mika's stages sit in the Land of the Dead among the eighteen that are
 locked and not built, Kremlatiel's included; the unbuilt stages' names and
-subtitles are placeholders.
+subtitles are placeholders. Every unbuilt stage's boss has its whole fight
+laid out in placeholder slots (`roster_slots`), with the attack counts of
+its tier, and can be practised from its locked card with X; its def (title,
+hue, Ziggy's sprite, Mika's cut-in) is a placeholder too. Mikoto and Rena
+are one boss for now. Ziggy's and Velka's fights are filled out to their
+counts the same way: Ziggy's N4, S4 and N5 are stubs, and Velka's N3 to N6
+and S4 to S7, before her Hex.
 
 Mika's slots (`mika_slots()` is the source of truth):
 
@@ -1033,8 +1055,9 @@ Known gaps:
 - Nothing has been balanced against a human; every tuning number is a first
   guess.
 - These are placeholders: all attacks except the Hex, Mika's non-spells,
-  `Storm Cage`, `Chakram Blitz` and `Grand Orrery` (Ziggy's, Velka's first five, the
-  midbosses', stage three's ten waves, every draft), Ziggy's art, every
+  `Storm Cage`, `Chakram Blitz` and `Grand Orrery` (Ziggy's, Velka's others, the
+  midbosses', stage three's ten waves, every draft, and every placeholder
+  slot, named `Placeholder Spell k` if a spell), Ziggy's art, every
   boss's cut-in portrait (all show Mika's, shut eyes painted over his
   sheet), the grove's tree art, every sound, and both music tracks. Only
   stage three has music. So are the conversation's two portraits (one

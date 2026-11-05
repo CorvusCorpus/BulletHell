@@ -111,6 +111,8 @@
   },
   "name":"Bullet Hell",
   "resources":[
+    {"id":{"name":"roster_slots","path":"scripts/roster_slots/roster_slots.yy",},},
+    {"id":{"name":"slot_functions","path":"scripts/slot_functions/slot_functions.yy",},},
     {"id":{"name":"spr_wood_treeline","path":"sprites/spr_wood_treeline/spr_wood_treeline.yy",},},
     {"id":{"name":"obj_boot","path":"objects/obj_boot/obj_boot.yy",},},
     {"id":{"name":"obj_game","path":"objects/obj_game/obj_game.yy",},},

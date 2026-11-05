@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"slot_functions",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"slot_functions",
+  "parent":{
+    "name":"game",
+    "path":"folders/Scripts/game.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

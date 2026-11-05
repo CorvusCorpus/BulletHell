@@ -191,6 +191,12 @@ function practice_seed_best(_p) {
 // The request
 // ---------------------------------------------------------------------------
 
+/// @desc The background a practice run of a stage flies: its own, or stage
+///       one's (a placeholder) for a stage not yet built, which has none.
+function practice_bg(_stage) {
+    return _stage[$ "make_bg"] ?? bg_brimstone;
+}
+
 /// @desc The empty timeline a practice run plays (`stage_step` marks it done
 ///       on the first frame).
 function practice_empty_script() {
@@ -222,7 +228,7 @@ function practice_new(_stage, _boss_i, _phase_i) {
             name: _label,
             subtitle: _boss.name + "   " + _stage.name,
             needs: 0,
-            make_bg: _stage.make_bg,
+            make_bg: practice_bg(_stage),
             build: practice_empty_script,
             music: _stage[$ "music"],
             encounters: 1,
@@ -253,7 +259,7 @@ function practice_new_fight(_stage, _boss_i) {
             name: _boss.name,
             subtitle: "WHOLE FIGHT   " + _stage.name,
             needs: 0,
-            make_bg: _stage.make_bg,
+            make_bg: practice_bg(_stage),
             build: method({ spawn: _boss.spawn }, function() {
                 return [ev(30, wave_boss(spawn))];
             }),

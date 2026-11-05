@@ -3114,9 +3114,15 @@ function test_practice() {
         }
     }
     if (_unbuilt != undefined) {
-        ok("an unbuilt stage offers nothing to practise",
-           !practice_available(_unbuilt));
+        ok("an unbuilt stage's boss can be practised",
+           practice_available(_unbuilt));
+        var _up = practice_new(_unbuilt, 0, 0);
+        ok("on a background, though the stage has none of its own",
+           is_callable(_up.def.make_bg)
+           && is_callable(practice_new_fight(_unbuilt, 0).def.make_bg));
     }
+    ok("a card with no bosses offers nothing to practise",
+       !practice_available(preview_stage_def()));
     ok("and stage one does", practice_available(_stage));
 
     // Pick attacks out of Ziggy's table by kind, so this survives the table

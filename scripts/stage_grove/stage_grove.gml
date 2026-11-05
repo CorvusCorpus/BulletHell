@@ -1,9 +1,9 @@
 /// @desc Stage two: the Hollow Grove -- waves, the Husk (midboss), and Velka.
 ///
 /// The work in this stage is the background (`bg_grove`: a night wood whose
-/// moon turns to blood halfway through). The Husk's attacks and Velka's first
-/// five are placeholders. Her last spell, `Demon Sealing Hex`, is the one
-/// designed attack; it was written on the drafting table and moved here.
+/// moon turns to blood halfway through). The Husk's attacks and all but one
+/// of Velka's are placeholders. Her last spell, `Demon Sealing Hex`, is the
+/// one designed attack; it was written on the drafting table and moved here.
 ///
 /// The fodder is stage one's greyscale sprites, tinted at draw time.
 
@@ -204,7 +204,7 @@ function husk_rootbound(_e, _g, _t) {
 }
 
 // ---------------------------------------------------------------------------
-// Velka: five placeholder attacks, then `Demon Sealing Hex`.
+// Velka: placeholder attacks and stubs, then `Demon Sealing Hex`.
 // ---------------------------------------------------------------------------
 
 function velka_def() {
@@ -220,45 +220,49 @@ function velka_def() {
     };
 }
 
-function velka_phases() {
+/// @desc Velka's fourteen slots (six non-spells, eight spells), one row each
+///       in fight order (`slot_functions`). The first five attacks are
+///       placeholders, each with the health it had before the stubs were
+///       added; N3 to N6 and S4 to S7 are stubs; S8 is the Hex.
+function velka_slots() {
     return [
-        // Thresholds: the first five attacks keep their shares of her
-        // original 1500 HP; the Hex adds `DRAFT_SLOT_HP` (see `velka_spawn`).
-        { kind: AttackKind.NonSpell, name: "", col: BCOL_VIOLET, bg: -1,
-          hp_end: 0.887, time: 24 * FPS, attack: velka_basic_fans },
+        { name: "", col: BCOL_VIOLET, hp: 210, time: 24 * FPS,
+          attack: velka_basic_fans },
+        { name: "Witchlight Vigil", col: BCOL_CYAN, hp: 300, time: 38 * FPS,
+          attack: velka_witchlight, move: BossMove.Fixed },
 
-        { kind: AttackKind.Spell, name: "Witchlight Vigil",
-          col: BCOL_CYAN, bg: BCOL_CYAN,
-          hp_end: 0.726, time: 38 * FPS, attack: velka_witchlight,
-          move: BossMove.Fixed },
+        { name: "", col: BCOL_VIOLET, hp: 210, time: 24 * FPS,
+          attack: velka_basic_spiral },
+        { name: "Carrion Bloom", col: BCOL_ROSE, hp: 360, time: 40 * FPS,
+          attack: velka_carrion_bloom },
 
-        { kind: AttackKind.NonSpell, name: "", col: BCOL_VIOLET, bg: -1,
-          hp_end: 0.613, time: 24 * FPS, attack: velka_basic_spiral },
+        slot_n(3),
+        { name: "The Long Antler", col: BCOL_MAGENTA, hp: 420,
+          time: 46 * FPS, attack: velka_long_antler, move: BossMove.Track },
 
-        { kind: AttackKind.Spell, name: "Carrion Bloom",
-          col: BCOL_ROSE, bg: BCOL_ROSE,
-          hp_end: 0.419, time: 40 * FPS, attack: velka_carrion_bloom },
-
-        { kind: AttackKind.Spell, name: "The Long Antler",
-          col: BCOL_MAGENTA, bg: BCOL_MAGENTA,
-          hp_end: 0.194, time: 46 * FPS, attack: velka_long_antler,
-          move: BossMove.Track },
+        slot_n(4), slot_s(4),
+        slot_n(5), slot_s(5),
+        slot_n(6), slot_s(6),
+        slot_s(7),
 
         // `Track`: the player spends much of it pinned inside a ward and
         // can't go to her, so she comes to them. The clock is three full
         // `HEX_CYCLE`s plus a little, so the last pass isn't cut off before
         // its collapse.
-        { kind: AttackKind.Spell, name: "Demon Sealing Hex",
-          col: BCOL_CRIMSON, bg: BCOL_CRIMSON,
-          hp_end: 0.0, time: 53 * FPS, attack: velka_demon_sealing_hex,
+        { name: "Demon Sealing Hex", col: BCOL_CRIMSON, hp: DRAFT_SLOT_HP,
+          time: 53 * FPS, attack: velka_demon_sealing_hex,
           move: BossMove.Track },
     ];
 }
 
-/// @desc 1860 = 1500 for the first five attacks + 360 for the Hex.
+/// @desc The phase table, derived from `velka_slots`.
+function velka_phases() {
+    return slot_phases(velka_slots());
+}
+
 function velka_spawn(_g) {
-    return boss_spawn(FIELD_CX, FIELD_Y0 - 200, 1860, velka_phases(),
-                      velka_def());
+    return boss_spawn(FIELD_CX, FIELD_Y0 - 200, slot_hp(velka_slots()),
+                      velka_phases(), velka_def());
 }
 
 /// @desc Wide aimed fans with a lazy ring under them.

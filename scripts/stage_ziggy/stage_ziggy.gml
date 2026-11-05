@@ -221,44 +221,47 @@ function ziggy_def() {
     };
 }
 
-/// @desc Ziggy's seven attacks, in order.
-function ziggy_phases() {
+/// @desc Ziggy's ten slots (five non-spells, five spells), one row each in
+///       fight order (`slot_functions`). Every one is a placeholder; N4, S4
+///       and N5 are stubs.
+function ziggy_slots() {
     return [
-        { kind: AttackKind.NonSpell, name: "", col: BCOL_EMBER, bg: -1,
-          hp_end: 0.90, time: 24 * FPS, attack: ziggy_basic_fans },
+        { name: "", col: BCOL_EMBER, hp: 340, time: 24 * FPS,
+          attack: ziggy_basic_fans },
+        { name: "Cinder Waltz", col: BCOL_AMBER, hp: 510, time: 42 * FPS,
+          attack: ziggy_cinder_waltz },
 
-        { kind: AttackKind.Spell, name: "Cinder Waltz",
-          col: BCOL_AMBER, bg: BCOL_AMBER,
-          hp_end: 0.75, time: 42 * FPS, attack: ziggy_cinder_waltz },
+        { name: "", col: BCOL_EMBER, hp: 340, time: 24 * FPS,
+          attack: ziggy_basic_spiral },
+        { name: "Meteor Fall", col: BCOL_CRIMSON, hp: 510, time: 46 * FPS,
+          attack: ziggy_meteor_fall },
 
-        { kind: AttackKind.NonSpell, name: "", col: BCOL_EMBER, bg: -1,
-          hp_end: 0.65, time: 24 * FPS, attack: ziggy_basic_spiral },
+        { name: "", col: BCOL_EMBER, hp: 340, time: 24 * FPS,
+          attack: ziggy_basic_scatter },
+        { name: "Sundering Lash", col: BCOL_GOLD, hp: 680, time: 50 * FPS,
+          attack: ziggy_sundering_lash },
 
-        { kind: AttackKind.Spell, name: "Meteor Fall",
-          col: BCOL_CRIMSON, bg: BCOL_CRIMSON,
-          hp_end: 0.50, time: 46 * FPS, attack: ziggy_meteor_fall },
+        slot_n(4), slot_s(4),
 
-        { kind: AttackKind.NonSpell, name: "", col: BCOL_EMBER, bg: -1,
-          hp_end: 0.40, time: 24 * FPS, attack: ziggy_basic_scatter },
-
-        { kind: AttackKind.Spell, name: "Sundering Lash",
-          col: BCOL_GOLD, bg: BCOL_GOLD,
-          hp_end: 0.20, time: 50 * FPS, attack: ziggy_sundering_lash },
-
-        { kind: AttackKind.Spell, name: "No Mere Pawn",
-          col: BCOL_ROSE, bg: BCOL_ROSE,
-          hp_end: 0.0, time: 60 * FPS, attack: ziggy_no_mere_pawn },
+        slot_n(5),
+        { name: "No Mere Pawn", col: BCOL_ROSE, hp: 680, time: 60 * FPS,
+          attack: ziggy_no_mere_pawn },
     ];
 }
 
+/// @desc The phase table, derived from `ziggy_slots`.
+function ziggy_phases() {
+    return slot_phases(ziggy_slots());
+}
+
 function ziggy_spawn(_g) {
-    var _b = boss_spawn(FIELD_CX, FIELD_Y0 - 200, 3400, ziggy_phases(),
-                        ziggy_def());
+    var _b = boss_spawn(FIELD_CX, FIELD_Y0 - 200, slot_hp(ziggy_slots()),
+                        ziggy_phases(), ziggy_def());
     if (_b != undefined) _b.boss.home_y = BOSS_HOME_Y;
     return _b;
 }
 
-// --- the three non-spells --------------------------------------------------
+// --- the non-spells ----------------------------------------------------------
 
 function ziggy_basic_fans(_e, _g, _t) {
     if ((_t mod 40) == 0) {
@@ -432,62 +435,65 @@ function stage_zone_names() {
 ///       outskirts to its final boss. Ziggy is first and Florentius last, so
 ///       the Demon Ruins open and close the list; the rest of the order, and
 ///       the planned stages' names, subtitles and `needs` (every stage before
-///       it), are placeholders. Kremlatiel, the hidden superboss, is bought
+///       it), are placeholders. A planned stage carries its boss's fight as a
+///       slot table of placeholders (`roster_slots`), so it can be practised
+///       before it is built. Kremlatiel, the hidden superboss, is bought
 ///       from the shop, so she is not here; the rack shows her stage among
 ///       its extra cards (`stage_secret_def`).
 function stage_list() {
     // A row is a zone (the stages after it are in it), a built stage's def,
-    // or a planned stage's name and subtitle with a comment naming its boss.
+    // or a planned stage's name and subtitle with its boss's def and slot
+    // table functions.
     var _rows = [
         Zone.DemonRuins,
         stage_ziggy_def(),
-        // Athena
-        ["THE RUINS' SHADOW", "an assassin in the Demon Ruins"],
-        // Sylvia
-        ["THE CROOKED PATH", "somewhere ordinary, for now"],
+        ["THE RUINS' SHADOW", "an assassin in the Demon Ruins",
+         athena_def, athena_slots],
+        ["THE CROOKED PATH", "somewhere ordinary, for now",
+         sylvia_def, sylvia_slots],
 
         Zone.Yokai,
-        // Oscura
-        ["THE YOKAI OUTSKIRTS", "at the edge of the Yokai Zone"],
-        // Mikoto and Rena
-        ["THE TWIN AMBUSH", "two at once, in the Yokai Zone"],
-        // Ayana
-        ["THE YOKAI DEPTHS", "deeper in the Yokai Zone"],
-        // Kara
-        ["THE YOKAI HEART", "the heart of the Yokai Zone"],
+        ["THE YOKAI OUTSKIRTS", "at the edge of the Yokai Zone",
+         oscura_def, oscura_slots],
+        ["THE TWIN AMBUSH", "two at once, in the Yokai Zone",
+         mikoto_rena_def, mikoto_rena_slots],
+        ["THE YOKAI DEPTHS", "deeper in the Yokai Zone",
+         ayana_def, ayana_slots],
+        ["THE YOKAI HEART", "the heart of the Yokai Zone",
+         kara_def, kara_slots],
 
         Zone.EternalForest,
-        // Haveri
-        ["THE ALCHEMIST", "at the edge of the Eternal Forest"],
-        // Astyr
-        ["THE RANGER'S WOOD", "Vin'Zhen's forest, and its warden"],
-        // Faol
-        ["THE SINKING LAKE", "deep water in Vin'Zhen's land"],
-        // Vin'Zhen
-        ["THE HEARTWOOD", "where the god of life keeps his heart"],
+        ["THE ALCHEMIST", "at the edge of the Eternal Forest",
+         haveri_def, haveri_slots],
+        ["THE RANGER'S WOOD", "Vin'Zhen's forest, and its warden",
+         astyr_def, astyr_slots],
+        ["THE SINKING LAKE", "deep water in Vin'Zhen's land",
+         faol_def, faol_slots],
+        ["THE HEARTWOOD", "where the god of life keeps his heart",
+         vinzhen_def, vinzhen_slots],
 
         Zone.LandOfTheDead,
         stage_grove_def(),          // Velka
-        // Corvus
-        ["THE DESCENDING CRYPT", "a graveyard, and what lies under it"],
+        ["THE DESCENDING CRYPT", "a graveyard, and what lies under it",
+         corvus_def, corvus_slots],
         stage_sanctum_def(),        // Mika
-        // Ashiah
-        ["THE THRESHOLD THRONE", "the border of the afterlife"],
+        ["THE THRESHOLD THRONE", "the border of the afterlife",
+         ashiah_def, ashiah_slots],
 
         Zone.CrystalCaverns,
-        // Zeek
-        ["THE CAVERN MOUTH", "before the Crystal Caverns"],
-        // Sally
-        ["THE CRYSTAL CAVERNS", "inside the Crystal Caverns"],
-        // Zalerus
-        ["THE CRYSTAL DEPTHS", "deeper in the Crystal Caverns"],
-        // Sapphire
-        ["THE CRYSTAL HEART", "the heart of the Crystal Caverns"],
+        ["THE CAVERN MOUTH", "before the Crystal Caverns",
+         zeek_def, zeek_slots],
+        ["THE CRYSTAL CAVERNS", "inside the Crystal Caverns",
+         sally_def, sally_slots],
+        ["THE CRYSTAL DEPTHS", "deeper in the Crystal Caverns",
+         zalerus_def, zalerus_slots],
+        ["THE CRYSTAL HEART", "the heart of the Crystal Caverns",
+         sapphire_def, sapphire_slots],
 
         // The Demon Ruins' final boss, last.
         Zone.DemonRuins,
-        // Florentius
-        ["THE DEMON KING'S SEAT", "the heart of the Demon Ruins"],
+        ["THE DEMON KING'S SEAT", "the heart of the Demon Ruins",
+         florentius_def, florentius_slots],
     ];
     var _list = [];
     var _zone = 0;
@@ -500,7 +506,8 @@ function stage_list() {
         var _def = _r;
         if (is_array(_r)) {
             var _n = array_length(_list);
-            _def = stage_planned_def("planned_" + string(_n), _r[0], _r[1], _n);
+            _def = stage_planned_def("planned_" + string(_n), _r[0], _r[1], _n,
+                                     _r[2], _r[3]);
         }
         _def.zone = _zone;
         array_push(_list, _def);
@@ -508,8 +515,11 @@ function stage_list() {
     return _list;
 }
 
-/// @desc A stage not yet built, drawn locked on the rack.
-function stage_planned_def(_id, _name, _subtitle, _needs) {
+/// @desc A stage not yet built, drawn locked on the rack, with its boss
+///       (`_boss_def`, `_boss_slots`: its def and slot table functions) to
+///       practise.
+function stage_planned_def(_id, _name, _subtitle, _needs, _boss_def,
+                           _boss_slots) {
     return {
         id: _id,
         name: _name,
@@ -517,6 +527,7 @@ function stage_planned_def(_id, _name, _subtitle, _needs) {
         needs: _needs,
         make_bg: undefined,
         build: undefined,
+        bosses: [slot_boss(_boss_def, _boss_slots)],
     };
 }
 
@@ -527,7 +538,8 @@ function stage_planned_def(_id, _name, _subtitle, _needs) {
 function stage_secret_def() {
     return stage_planned_def("planned_kremlatiel", "THE ASCENT",
                              "into the sky, against the sunrise",
-                             array_length(stage_list()));
+                             array_length(stage_list()),
+                             kremlatiel_def, kremlatiel_slots);
 }
 
 /// @desc Is this a stage that can actually be played?

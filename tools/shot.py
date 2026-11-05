@@ -68,6 +68,7 @@ SCENES = (
     "draft_iris_loop",  # ...and its blades looping, then running straight
     "draft_slow_rosette",  # ...and the spell slowed, from the middle
     "draft_blooms",  # Sylvia's iris blooms (a draft): seeds bursting into spirals
+    "roster_slot",  # an unbuilt stage's boss practised: a placeholder spell
     "hex_draw",     # `Demon Sealing Hex`: the ward half inscribed
     "hex_seal",     # ...closed, turning, and being fired into
     "hex_scatter",  # ...coming apart, every bead its own way

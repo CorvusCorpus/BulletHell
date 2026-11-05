@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"roster_slots",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"roster_slots",
+  "parent":{
+    "name":"content",
+    "path":"folders/Scripts/content.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}

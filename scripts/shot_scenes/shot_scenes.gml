@@ -25,7 +25,7 @@ function shot_scene_list() {
               "hall_a", "hall_b", "hall_turn", "hall_arrive",
               "wood", "wood_arrive", "wood_turn", "wood_blood", "wood_red",
               "rope_lab", "title_card", "cutin", "talk", "talk_card",
-              "golem_n1", "golem_n2", "golem_n3"];
+              "golem_n1", "golem_n2", "golem_n3", "roster_slot"];
     var _n = array_length(mika_slots());
     for (var _i = 0; _i < _n; _i++) {
         array_push(_l, shot_mika_scene(_i));
@@ -262,6 +262,16 @@ function shot_scene_prepare(_name) {
             global.stage_def = stage_grove_def();
             break;
 
+        case "roster_slot":
+            // The last slot (a placeholder spell) of the roster's last
+            // stage, Florentius's, which isn't built.
+            var _list = stage_list();
+            var _fl = _list[array_length(_list) - 1];
+            global.stage_def = _fl;
+            global.practice = practice_new(_fl, 0,
+                array_length(practice_bosses(_fl)[0].phases()) - 1);
+            break;
+
         case "hex_draw":
         case "hex_seal":
         case "hex_scatter":
@@ -478,7 +488,8 @@ function shot_pose(_scene, _g) {
             return 76 + BOSS_SPELL_LEAD;
 
         case "rays":
-            shot_boss(_g, 6, ziggy_spawn);
+            // No Mere Pawn, his last attack.
+            shot_boss(_g, array_length(ziggy_phases()) - 1, ziggy_spawn);
             _g.player.x = FIELD_CX - 90;
             _g.player.y = FIELD_Y1 - 300;
             return 210 + BOSS_SPELL_LEAD;
@@ -516,7 +527,7 @@ function shot_pose(_scene, _g) {
             return 190;
 
         case "result":
-            shot_boss(_g, 6, ziggy_spawn);
+            shot_boss(_g, array_length(ziggy_phases()) - 1, ziggy_spawn);
             _g.player.x = FIELD_CX;
             _g.player.y = FIELD_Y1 - 260;
             return 220 + BOSS_SPELL_LEAD;
@@ -537,6 +548,7 @@ function shot_pose(_scene, _g) {
         case "draft_lasers":
         case "draft_rosette":
         case "draft_slow_rosette":
+        case "roster_slot":
             // As `draft_spell`; untouchable, so a hit doesn't clear the field.
             _g.player.x = FIELD_CX - 40;
             _g.player.y = FIELD_Y1 - 240;
