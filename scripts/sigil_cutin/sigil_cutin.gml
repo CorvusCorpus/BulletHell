@@ -117,7 +117,7 @@ function sigil_cutin_draw(_p) {
         sigil_cutin_draw_flare(_g, _f, _band);
         sigil_cutin_draw_streaks(_g, _band);
         cutin_draw_motes(_g, COL_RUNE, SIGIL_CUTIN_CLOSE_AT);
-        cutin_draw_edges(_g, SIGIL_CUTIN_TILT);
+        cutin_draw_edges(_g);
     }
     sigil_cutin_draw_cut(_g, COL_SIGIL);
     sigil_cutin_draw_marks(_g);

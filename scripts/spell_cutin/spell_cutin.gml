@@ -744,10 +744,8 @@ function cutin_draw_motes(_g, _col, _close_at = CUTIN_CLOSE_AT) {
 }
 
 /// @desc The band's edges: a gilt line on each with a dark one outside it,
-///       the field's width, and over them the title card's rules drawn out
-///       from the middle (the plain one along the top, the one with the
-///       crescent hanging under the band), turned with it (`_ang`).
-function cutin_draw_edges(_g, _ang = CUTIN_TILT) {
+///       the field's width.
+function cutin_draw_edges(_g) {
     var _hh = _g.h * 0.5;
     var _a = min(1, _g.h / 40);
     for (var _s = -1; _s <= 1; _s += 2) {
@@ -756,9 +754,6 @@ function cutin_draw_edges(_g, _ang = CUTIN_TILT) {
                   0.8 * _a);
         draw_poly(cutin_strip(_g, _e - 1.2, _e + 1.2), COL_GILT_LIT, 0.9 * _a);
     }
-    var _w = card_ramp(_g.t, 6, 18);
-    cutin_draw_rule(1, _g, -_hh, _w, _a, _ang);
-    cutin_draw_rule(0, _g, _hh, _w, _a, _ang);
 }
 
 /// @desc Frame `_fr` of `spr_card_rule`, `_f` of it showing from its middle,
