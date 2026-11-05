@@ -111,6 +111,7 @@
   },
   "name":"Bullet Hell",
   "resources":[
+    {"id":{"name":"sylvia_spirals","path":"scripts/sylvia_spirals/sylvia_spirals.yy",},},
     {"id":{"name":"roster_slots","path":"scripts/roster_slots/roster_slots.yy",},},
     {"id":{"name":"slot_functions","path":"scripts/slot_functions/slot_functions.yy",},},
     {"id":{"name":"spr_wood_treeline","path":"sprites/spr_wood_treeline/spr_wood_treeline.yy",},},

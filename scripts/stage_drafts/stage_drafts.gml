@@ -131,19 +131,6 @@ function draft_list() {
         { name: "Three Lights", col: BCOL_VIOLET,  time: 40 * FPS,
           move: BossMove.Fixed, attack: draft_three_lights },
 
-        // Sylvia's N1 and N2, from the non-spell sketches "Two spirals:
-        // peel" and "spin and fling" (`draft_sylvia`), a pair of spirals laid
-        // each hold.
-        { name: "",             col: BCOL_MAGENTA, time: 40 * FPS,
-          hp: SYLVIA_DRAFT_HP,
-          move: BossMove.Step, hold: SYLVIA_SPI_HOLD,
-          attack: draft_sylvia_peel },
-
-        { name: "",             col: BCOL_CYAN,    time: 40 * FPS,
-          hp: SYLVIA_DRAFT_HP,
-          move: BossMove.Step, hold: SYLVIA_SPI_HOLD,
-          attack: draft_sylvia_fling },
-
         // Sylvia's "Iris bloom" sketch with blades that reach the walls
         // (`draft_sylvia`). `Fixed`: in the sketch the caster holds still.
         { name: "",             col: BCOL_INDIGO,  time: 40 * FPS,

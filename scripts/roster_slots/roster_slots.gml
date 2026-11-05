@@ -34,16 +34,24 @@ function athena_slots() {
     ];
 }
 
-/// @desc Sylvia's N1 and N2 and his iris drafts wait on the drafting table
-///       (`draft_sylvia`).
+/// @desc Sylvia's iris drafts wait on the drafting table (`draft_sylvia`).
 function sylvia_def() {
     return slot_boss_def("SYLVIA", "the egregore", BCOL_MAGENTA);
 }
 
 function sylvia_slots() {
     return [
-        slot_n(1), slot_s(1),
-        slot_n(2), slot_s(2),
+        // N1 and N2 -- two spirals, peeling and then spun and flung
+        // (`sylvia_spirals`), each with the health it had on the drafting
+        // table.
+        { name: "", col: BCOL_MAGENTA, hp: SYLVIA_DRAFT_HP, time: 40 * FPS,
+          move: BossMove.Step, hold: SYLVIA_SPI_HOLD,
+          attack: sylvia_n1_peel },
+        slot_s(1),
+        { name: "", col: BCOL_CYAN, hp: SYLVIA_DRAFT_HP, time: 40 * FPS,
+          move: BossMove.Step, hold: SYLVIA_SPI_HOLD,
+          attack: sylvia_n2_fling },
+        slot_s(2),
         slot_n(3), slot_s(3),
         slot_n(4), slot_s(4),
         slot_n(5), slot_s(5),

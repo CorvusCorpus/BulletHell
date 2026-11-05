@@ -14,7 +14,7 @@ function shot_scene_list() {
               "result", "rank", "practice_ready", "practice_result",
               "bullets",
               "motion", "drafts", "draft_attacks", "draft_spell",
-              "draft_lasers", "draft_peel", "draft_fling", "draft_iris",
+              "draft_lasers", "draft_iris",
               "draft_rosette", "draft_iris_loop", "draft_slow_rosette",
               "draft_blooms",
               "hex_draw", "hex_seal", "hex_scatter", "hex_gaps",
@@ -25,7 +25,8 @@ function shot_scene_list() {
               "hall_a", "hall_b", "hall_turn", "hall_arrive",
               "wood", "wood_arrive", "wood_turn", "wood_blood", "wood_red",
               "rope_lab", "title_card", "cutin", "talk", "talk_card",
-              "golem_n1", "golem_n2", "golem_n3", "roster_slot"];
+              "golem_n1", "golem_n2", "golem_n3", "roster_slot",
+              "sylvia_n1", "sylvia_n2"];
     var _n = array_length(mika_slots());
     for (var _i = 0; _i < _n; _i++) {
         array_push(_l, shot_mika_scene(_i));
@@ -195,8 +196,6 @@ function shot_scene_prepare(_name) {
                                            shot_draft_index(_spell));
             break;
 
-        case "draft_peel":
-        case "draft_fling":
         case "draft_iris":
         case "draft_iris_loop":
         case "draft_blooms":
@@ -204,8 +203,6 @@ function shot_scene_prepare(_name) {
             var _fn = draft_sylvia_iris;
             if (_name == "draft_iris_loop") _fn = draft_sylvia_iris_loop;
             if (_name == "draft_blooms") _fn = draft_sylvia_blooms;
-            if (_name == "draft_peel") _fn = draft_sylvia_peel;
-            if (_name == "draft_fling") _fn = draft_sylvia_fling;
             global.practice = practice_new(draft_stage_def(), 0,
                                            shot_draft_attack(_fn));
             break;
@@ -260,6 +257,15 @@ function shot_scene_prepare(_name) {
         case "grove_boss":
         case "grove_spell":
             global.stage_def = stage_grove_def();
+            break;
+
+        case "sylvia_n1":
+        case "sylvia_n2":
+            // Sylvia's spirals, practised from his locked card.
+            var _sy = shot_roster_stage("SYLVIA");
+            global.stage_def = _sy;
+            global.practice = practice_new(_sy, 0, shot_boss_attack(_sy,
+                (_name == "sylvia_n1") ? sylvia_n1_peel : sylvia_n2_fling));
             break;
 
         case "roster_slot":
@@ -555,8 +561,8 @@ function shot_pose(_scene, _g) {
             _g.player.untouchable = true;
             return 200 + PRACTICE_READY + BOSS_SPELL_LEAD;
 
-        case "draft_peel":
-        case "draft_fling":
+        case "sylvia_n1":
+        case "sylvia_n2":
         case "draft_iris":
         case "draft_iris_loop":
         case "draft_blooms":
@@ -1121,6 +1127,28 @@ function shot_draft_index(_name) {
     var _l = draft_list();
     for (var _i = 0; _i < array_length(_l); _i++) {
         if (_l[_i].name == _name) return _i;
+    }
+    return 0;
+}
+
+/// @desc The stage on the roster whose boss is named `_boss`.
+function shot_roster_stage(_boss) {
+    var _l = stage_list();
+    for (var _i = 0; _i < array_length(_l); _i++) {
+        var _b = _l[_i][$ "bosses"];
+        if (is_array(_b) && array_length(_b) > 0 && _b[0].name == _boss) {
+            return _l[_i];
+        }
+    }
+    return _l[0];
+}
+
+/// @desc The index of the attack `_fn` in the first boss of stage `_def`,
+///       or 0.
+function shot_boss_attack(_def, _fn) {
+    var _ph = practice_bosses(_def)[0].phases();
+    for (var _i = 0; _i < array_length(_ph); _i++) {
+        if (_ph[_i].attack == _fn) return _i;
     }
     return 0;
 }

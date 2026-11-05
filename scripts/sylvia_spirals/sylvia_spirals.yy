@@ -1,0 +1,13 @@
+{
+  "$GMScript":"v1",
+  "%Name":"sylvia_spirals",
+  "isCompatibility":false,
+  "isDnD":false,
+  "name":"sylvia_spirals",
+  "parent":{
+    "name":"content",
+    "path":"folders/Scripts/content.yy",
+  },
+  "resourceType":"GMScript",
+  "resourceVersion":"2.0",
+}
